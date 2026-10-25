@@ -15,11 +15,11 @@ A person in the Family whom Items can concern, child or adult.
 _Avoid_: User, profile, kid
 
 **Admin**:
-A parent with access to settings, Sources, and the review of uncertain Items.
+A parent who signs in with their own account to manage settings, Sources, and the review of uncertain Items.
 _Avoid_: Owner, superuser, parent account
 
 **View**:
-A read-only, configurable perspective on the Family's Items, such as one showing only Items that concern a given Family Member.
+A read-only, configurable perspective on the Family's Items, such as one showing only Items that concern a given Family Member; opened without signing in.
 _Avoid_: Dashboard, read-only user, kiosk
 
 ### Inputs
