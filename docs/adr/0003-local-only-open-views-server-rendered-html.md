@@ -17,3 +17,5 @@ Without an internet-facing origin, a PWA buys little and costs HTTPS on the LAN.
 - **A secret link per View**: needed on the internet, but on the home network it only adds rotation and device pairing.
 - **A login per Family Member**: turns children into user accounts, with passwords and resets.
 - **A React/Vite PWA**: offline use and Web Push, but only over HTTPS, which a LAN install doesn't have by default.
+
+_Amended by ADR-0005: with Remote Access, requests from outside the home network arrive on a separate listener, where a View opens only through its View Link. Open Views as described here apply to the local listener only._
