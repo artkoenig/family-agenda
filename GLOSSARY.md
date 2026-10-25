@@ -65,3 +65,21 @@ _Avoid_: Due date, Frist
 **Notice**:
 Information worth knowing that carries no time slot and nothing to do.
 _Avoid_: Message, info, announcement
+
+### Operation
+
+**Instance**:
+One self-hosted installation of Family Butler, serving exactly one Family.
+_Avoid_: Server, deployment, tenant
+
+**Butler Cloud**:
+The paid services an Instance can subscribe to, such as Remote Access, push notifications, a hosted LLM endpoint and off-site backups; never a place where Items live.
+_Avoid_: Hosted version, SaaS, cloud edition
+
+**Remote Access**:
+Reaching an Instance from outside the home network through Butler Cloud.
+_Avoid_: Tunnel, relay, external access
+
+**View Link**:
+A secret, revocable URL that opens one View from outside the home network.
+_Avoid_: Share link, token, magic link
