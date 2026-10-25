@@ -14,6 +14,14 @@ _Avoid_: Account, tenant, user group
 A person in the Family whom Items can concern, child or adult.
 _Avoid_: User, profile, kid
 
+**Admin**:
+A parent with access to settings, Sources, and the review of uncertain Items.
+_Avoid_: Owner, superuser, parent account
+
+**View**:
+A read-only, configurable perspective on the Family's Items, such as one showing only Items that concern a given Family Member.
+_Avoid_: Dashboard, read-only user, kiosk
+
 ### Inputs
 
 **Source**:
