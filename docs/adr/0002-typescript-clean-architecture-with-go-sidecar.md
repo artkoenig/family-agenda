@@ -17,3 +17,5 @@ The sidecar holds no domain logic. It keeps its own whatsmeow session store, dro
 
 - **Python backend with a Go sidecar**: best library fit for three of the four Source areas, but a second language next to the frontend.
 - **All Go**: no sidecar, but the Untis client and ICS recurrence would be written by hand.
+
+_The frontend part is amended by ADR-0003: there is no React app, and `apps/api` serves server-rendered HTML next to the REST API._
