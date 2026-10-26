@@ -1,4 +1,5 @@
 import { serve } from "@hono/node-server";
+import { openViewAccess } from "@family-butler/application";
 import { bootApplication } from "./composition-root";
 import { readConfig } from "./config";
 import { createHttpApp } from "./http/app";
@@ -6,7 +7,11 @@ import { createHttpApp } from "./http/app";
 const config = readConfig();
 const application = await bootApplication(config);
 const server = serve(
-  { fetch: createHttpApp(application, { trustProxy: config.trustProxy }).fetch, port: config.port },
+  { fetch: createHttpApp(application, {
+      trustProxy: config.trustProxy,
+      // The only listener in v1 is the local one, where Views open without a secret (ADR-0005).
+      viewAccess: openViewAccess,
+    }).fetch, port: config.port },
   (info) => {
     console.log(`Family Butler listening on port ${info.port}`);
   },

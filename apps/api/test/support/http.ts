@@ -1,26 +1,37 @@
+import { openViewAccess } from "@family-butler/application";
 import { createHttpApp, type HttpOptions } from "../../src/http/app";
 import { bootForTest, type TestInstance } from "./boot";
 
+type RequestInit = { cookie?: string; headers?: Record<string, string> };
+
 export type HttpTestInstance = TestInstance & {
-  get(path: string, init?: { cookie?: string; headers?: Record<string, string> }): Promise<Response>;
+  /** Posts a multipart form, as for a file upload. */
+  request(path: string, init: RequestInit & { body: FormData }): Promise<Response>;
+  get(path: string, init?: RequestInit): Promise<Response>;
   post(
     path: string,
     form: Record<string, string>,
-    init?: { cookie?: string; headers?: Record<string, string> },
+    init?: RequestInit,
   ): Promise<Response>;
 };
 
 /** Boots an Instance and drives its Hono app with in-process requests. */
 export async function bootHttpForTest(options: Partial<HttpOptions> = {}): Promise<HttpTestInstance> {
   const instance = await bootForTest();
-  const http = createHttpApp(instance.app, { trustProxy: false, ...options });
-  const headersFor = (init?: { cookie?: string; headers?: Record<string, string> }) => ({
+  const http = createHttpApp(instance.app, { trustProxy: false, viewAccess: openViewAccess, ...options });
+  const headersFor = (init?: RequestInit) => ({
     ...(init?.cookie ? { cookie: init.cookie } : {}),
     ...init?.headers,
   });
   return {
     ...instance,
     get: async (path, init) => http.request(path, { headers: headersFor(init) }),
+    request: async (path, init) =>
+      http.request(path, {
+        method: "POST",
+        body: init.body,
+        headers: { origin: "http://localhost", ...headersFor(init) },
+      }),
     post: async (path, form, init) =>
       http.request(path, {
         method: "POST",

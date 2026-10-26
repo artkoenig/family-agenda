@@ -1,7 +1,19 @@
-import type { AdminSummary, RecoveryKit } from "@family-butler/application";
-import { minimumPasswordLength } from "@family-butler/domain";
+import type {
+  AdminSummary,
+  FamilyMemberSummary,
+  RecoveryKit,
+  ViewSummary,
+} from "@family-butler/application";
+import {
+  defaultHorizonDays,
+  horizonDaysRange,
+  maximumNameLength,
+  minimumPasswordLength,
+  photoTypes,
+} from "@family-butler/domain";
 import type { Child } from "hono/jsx";
 import { Layout, Problem } from "./layout";
+import { Avatar, viewUrl } from "./view-page";
 
 export function FirstAdminPage(props: { email?: string; problem?: string }) {
   return (
@@ -41,6 +53,8 @@ function AdminLayout(props: { title: string; admin: AdminSummary; children: Chil
     <Layout title={props.title}>
       <nav>
         <a href="/admin">Admin area</a>
+        <a href="/admin/family-members">Family Members</a>
+        <a href="/admin/views">Views</a>
         <a href="/admin/admins">Admins</a>
         <a href="/admin/recovery-kit">Recovery Kit</a>
         <span>{props.admin.email}</span>
@@ -57,7 +71,14 @@ function AdminLayout(props: { title: string; admin: AdminSummary; children: Chil
 export function AdminHomePage(props: { admin: AdminSummary }) {
   return (
     <AdminLayout title="Admin area" admin={props.admin}>
-      <p>Nothing to manage yet.</p>
+      <ul>
+        <li>
+          <a href="/admin/family-members">Family Members</a>: whom Items can concern.
+        </li>
+        <li>
+          <a href="/admin/views">Views</a>: what the Family opens on the home network, without signing in.
+        </li>
+      </ul>
     </AdminLayout>
   );
 }
@@ -140,5 +161,124 @@ export function RecoveryKitPage(props: {
         </form>
       )}
     </AdminLayout>
+  );
+}
+
+export function FamilyMembersPage(props: {
+  admin: AdminSummary;
+  members: FamilyMemberSummary[];
+  name?: string;
+  problem?: string;
+}) {
+  return (
+    <AdminLayout title="Family Members" admin={props.admin}>
+      <Problem message={props.problem} />
+      <ul class="entries">
+        {props.members.map((member) => (
+          <li>
+            <form method="post" action={`/admin/family-members/${member.id}`} enctype="multipart/form-data">
+              <Avatar member={member} />
+              <label for={`name-${member.id}`}>Name</label>
+              <input id={`name-${member.id}`} name="name" required maxlength={maximumNameLength} value={member.name} />
+              <label for={`photo-${member.id}`}>{member.hasPhoto ? "Replace photo" : "Photo (optional)"}</label>
+              <input id={`photo-${member.id}`} name="photo" type="file" accept={photoTypes.join(",")} />
+              {member.hasPhoto ? (
+                <label>
+                  <input type="checkbox" name="removePhoto" value="yes" /> Remove photo
+                </label>
+              ) : null}
+              <button type="submit">Save</button>
+            </form>
+            <form method="post" action={`/admin/family-members/${member.id}/remove`}>
+              <button type="submit">Remove {member.name}</button>
+            </form>
+          </li>
+        ))}
+      </ul>
+      <h2>Add a Family Member</h2>
+      <form method="post" action="/admin/family-members" enctype="multipart/form-data">
+        <label for="name">Name</label>
+        <input id="name" name="name" required maxlength={maximumNameLength} value={props.name} />
+        <label for="photo">Photo (optional; without one, the avatar shows the initial)</label>
+        <input id="photo" name="photo" type="file" accept={photoTypes.join(",")} />
+        <button type="submit">Add Family Member</button>
+      </form>
+    </AdminLayout>
+  );
+}
+
+export function ViewsPage(props: {
+  admin: AdminSummary;
+  views: ViewSummary[];
+  members: FamilyMemberSummary[];
+  problem?: string;
+}) {
+  const nameOf = (id: string) => props.members.find((member) => member.id === id)?.name ?? "";
+  return (
+    <AdminLayout title="Views" admin={props.admin}>
+      <p>
+        Anyone on the home network can open a View at its address, without signing in. Its quick filter
+        starts with the preselected Family Members, or with everyone if none are.
+      </p>
+      <Problem message={props.problem} />
+      <ul class="entries">
+        {props.views.map((view) => (
+          <li>
+            <p>
+              <a href={viewUrl(view.id)}>{viewUrl(view.id)}</a>:{" "}
+              {view.preselected.length > 0 ? view.preselected.map(nameOf).join(", ") : "everyone"}, {view.horizonDays}{" "}
+              {view.horizonDays === 1 ? "day" : "days"}
+            </p>
+            <ViewSettingsForm action={`/admin/views/${view.id}`} members={props.members} view={view} submit="Save" />
+            <form method="post" action={`/admin/views/${view.id}/remove`}>
+              <button type="submit">Remove View</button>
+            </form>
+          </li>
+        ))}
+      </ul>
+      <h2>Create a View</h2>
+      <ViewSettingsForm action="/admin/views" members={props.members} submit="Create View" />
+    </AdminLayout>
+  );
+}
+
+function ViewSettingsForm(props: {
+  action: string;
+  members: FamilyMemberSummary[];
+  view?: ViewSummary;
+  submit: string;
+}) {
+  const id = (name: string) => `${name}-${props.view?.id ?? "new"}`;
+  return (
+    <form method="post" action={props.action}>
+      <fieldset>
+        <legend>Preselected Family Members</legend>
+        {props.members.length === 0 ? <p>No Family Members yet.</p> : null}
+        {props.members.map((member) => (
+          <label>
+            <input
+              type="checkbox"
+              name="preselected"
+              value={member.id}
+              checked={props.view?.preselected.includes(member.id) ?? false}
+            />{" "}
+            {member.name}
+          </label>
+        ))}
+      </fieldset>
+      <label for={id("horizon")}>
+        Horizon in days ({horizonDaysRange.min} to {horizonDaysRange.max}), today included
+      </label>
+      <input
+        id={id("horizon")}
+        name="horizonDays"
+        type="number"
+        required
+        min={horizonDaysRange.min}
+        max={horizonDaysRange.max}
+        value={String(props.view?.horizonDays ?? defaultHorizonDays)}
+      />
+      <button type="submit">{props.submit}</button>
+    </form>
   );
 }

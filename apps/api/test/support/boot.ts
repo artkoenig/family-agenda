@@ -42,6 +42,8 @@ export async function bootForTest(options: TestOptions = {}): Promise<TestInstan
   const config = {
     databaseUrl: databaseUrl.toString(),
     masterKeyFile: join(keyDirectory, "master.key"),
+    blobDirectory: join(keyDirectory, "blobs"),
+    timeZone: "Europe/Berlin",
     clock,
     ...options,
   };

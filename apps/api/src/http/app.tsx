@@ -1,10 +1,20 @@
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import type { AdminSummary } from "@family-butler/application";
-import { minimumPasswordLength, type AdminId } from "@family-butler/domain";
+import type { AdminSummary, Showing, ViewAccessPolicy } from "@family-butler/application";
+import {
+  horizonDaysRange,
+  maximumNameLength,
+  maximumPhotoBytes,
+  minimumPasswordLength,
+  photoTypes,
+  type AdminId,
+  type FamilyMemberId,
+  type ViewId,
+} from "@family-butler/domain";
 import type { HealthResponse } from "@family-butler/contracts";
 import type { HttpBindings } from "@hono/node-server";
 import { Hono, type Context } from "hono";
+import { bodyLimit } from "hono/body-limit";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { csrf } from "hono/csrf";
 import { createMiddleware } from "hono/factory";
@@ -13,15 +23,20 @@ import type { Application } from "../composition-root";
 import {
   AdminHomePage,
   AdminsPage,
+  FamilyMembersPage,
   FirstAdminPage,
   RecoveryKitPage,
   recoveryKitText,
   SignInPage,
+  ViewsPage,
 } from "./pages";
+import { ViewPageDocument, ViewTimeline } from "./view-page";
 
 export type HttpOptions = {
   /** Whether a reverse proxy in front sets `X-Forwarded-For` and `X-Forwarded-Proto`. */
   trustProxy: boolean;
+  /** Whether a View opens, as decided for the listener this app serves (ADR-0005). */
+  viewAccess: ViewAccessPolicy;
 };
 
 type Env = {
@@ -40,12 +55,18 @@ const problems = {
   "own-account": "You cannot reset your own password here.",
   "unknown-admin": "This Admin does not exist.",
   "kit-not-saved": "Confirm that you have saved the Recovery Kit.",
+  "invalid-name": `Enter a name of at most ${maximumNameLength} characters.`,
+  "invalid-photo": `The photo must be one of ${photoTypes.map((type) => type.replace("image/", "").toUpperCase()).join(", ")}.`,
+  "photo-too-large": `The photo must be at most ${maximumPhotoBytes / 1024 / 1024} MB.`,
+  "unknown-member": "This Family Member does not exist.",
+  "invalid-horizon": `The horizon must be between ${horizonDaysRange.min} and ${horizonDaysRange.max} days.`,
+  "unknown-view": "This View does not exist.",
 } satisfies Record<string, string>;
 
 const htmx = readFileSync(createRequire(import.meta.url).resolve("htmx.org/dist/htmx.min.js"));
 
 export function createHttpApp(application: Application, options: HttpOptions) {
-  const { admins, recoveryKit } = application;
+  const { admins, recoveryKit, familyMembers, views } = application;
   const app = new Hono<Env>();
 
   const isHttps = (c: Context) =>
@@ -117,6 +138,30 @@ export function createHttpApp(application: Application, options: HttpOptions) {
   });
 
   app.get("/", (c) => c.redirect("/admin"));
+
+  // Views open without signing in, as far as the listener's ViewAccessPolicy allows.
+  app.get("/views/:id", async (c) => {
+    const page = await views.open(c.req.param("id") as ViewId, {
+      access: options.viewAccess,
+      ...showingOf(c.req.query("show")),
+    });
+    if (!page) return c.notFound();
+    c.header("cache-control", "no-store");
+    c.header("vary", "HX-Request");
+    // htmx asks for the whole page when it restores history it has not cached.
+    const fragment = c.req.header("hx-request") === "true" && !c.req.header("hx-history-restore-request");
+    return c.html(fragment ? <ViewTimeline page={page} /> : <ViewPageDocument page={page} />);
+  });
+
+  app.get("/family-members/:id/photo", async (c) => {
+    const photo = await familyMembers.photo(c.req.param("id") as FamilyMemberId);
+    if (!photo) return c.notFound();
+    return c.body(photo.bytes, 200, {
+      "content-type": photo.contentType,
+      "x-content-type-options": "nosniff",
+      "cache-control": "private, max-age=300",
+    });
+  });
 
   app.get("/admin/sign-in", (c) => c.html(<SignInPage />));
 
@@ -228,7 +273,112 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     return c.redirect("/admin/admins", 303);
   });
 
+  const familyMembersPage = async (
+    c: Context<Env>,
+    shown: { problem?: string; name?: string; status?: 200 | 400 | 413 } = {},
+  ) => {
+    const { problem, name } = shown;
+    const page = (
+      <FamilyMembersPage
+        admin={c.get("admin")}
+        members={await familyMembers.list()}
+        {...(problem ? { problem } : {})}
+        {...(name ? { name } : {})}
+      />
+    );
+    return c.html(page, shown.status ?? (problem ? 400 : 200));
+  };
+
+  // A photo and the rest of the form; larger uploads are refused before they are read.
+  const photoUpload = bodyLimit({
+    maxSize: maximumPhotoBytes + 64 * 1024,
+    onError: (c: Context<Env>) => familyMembersPage(c, { problem: problems["photo-too-large"], status: 413 }),
+  });
+
+  app.get("/admin/family-members", (c) => familyMembersPage(c));
+
+  app.post("/admin/family-members", photoUpload, async (c) => {
+    const form = await c.req.parseBody();
+    const name = field(form, "name");
+    const photo = await upload(form, "photo");
+    const result = await familyMembers.add({ name, ...(photo ? { photo } : {}) });
+    if (!result.ok) return familyMembersPage(c, { problem: problems[result.problem], name });
+    return c.redirect("/admin/family-members", 303);
+  });
+
+  app.post("/admin/family-members/:id", photoUpload, async (c) => {
+    const form = await c.req.parseBody();
+    const photo = field(form, "removePhoto") === "yes" ? null : await upload(form, "photo");
+    const result = await familyMembers.edit(c.req.param("id") as FamilyMemberId, {
+      name: field(form, "name"),
+      ...(photo !== undefined ? { photo } : {}),
+    });
+    if (!result.ok) return familyMembersPage(c, { problem: problems[result.problem] });
+    return c.redirect("/admin/family-members", 303);
+  });
+
+  app.post("/admin/family-members/:id/remove", async (c) => {
+    await familyMembers.remove(c.req.param("id") as FamilyMemberId);
+    return c.redirect("/admin/family-members", 303);
+  });
+
+  const viewsPage = async (c: Context<Env>, problem?: string) => {
+    const page = (
+      <ViewsPage
+        admin={c.get("admin")}
+        views={await views.list()}
+        members={await familyMembers.list()}
+        {...(problem ? { problem } : {})}
+      />
+    );
+    return c.html(page, problem ? 400 : 200);
+  };
+
+  const viewSettingsOf = async (c: Context<Env>) => {
+    const form = await c.req.parseBody({ all: true });
+    const preselected = form.preselected;
+    return {
+      preselected: (Array.isArray(preselected) ? preselected : [preselected])
+        .filter((id): id is string => typeof id === "string")
+        .map((id) => id as FamilyMemberId),
+      horizonDays: Number(field(form, "horizonDays")),
+    };
+  };
+
+  app.get("/admin/views", (c) => viewsPage(c));
+
+  app.post("/admin/views", async (c) => {
+    const result = await views.create(await viewSettingsOf(c));
+    if (!result.ok) return viewsPage(c, problems[result.problem]);
+    return c.redirect("/admin/views", 303);
+  });
+
+  app.post("/admin/views/:id", async (c) => {
+    const result = await views.edit(c.req.param("id") as ViewId, await viewSettingsOf(c));
+    if (!result.ok) return viewsPage(c, problems[result.problem]);
+    return c.redirect("/admin/views", 303);
+  });
+
+  app.post("/admin/views/:id/remove", async (c) => {
+    await views.remove(c.req.param("id") as ViewId);
+    return c.redirect("/admin/views", 303);
+  });
+
   return app;
+}
+
+/** The quick filter's setting from the `show` query parameter: `all`, or ids separated by commas. */
+function showingOf(show: string | undefined): { show?: Showing } {
+  if (show === undefined) return {};
+  if (show === "all") return { show: "all" };
+  return { show: show.split(",").map((id) => id as FamilyMemberId) };
+}
+
+/** An uploaded file's contents, or undefined if none was chosen. */
+async function upload(form: Record<string, unknown>, name: string): Promise<Uint8Array | undefined> {
+  const value = form[name];
+  if (!(value instanceof File) || value.size === 0) return undefined;
+  return new Uint8Array(await value.arrayBuffer());
 }
 
 function field(form: Record<string, unknown>, name: string): string {

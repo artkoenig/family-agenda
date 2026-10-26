@@ -22,6 +22,13 @@
       "when": 1793036636286,
       "tag": "0002_recovery_kit_confirmation",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1793038410348,
+      "tag": "0003_family_members_and_views",
+      "breakpoints": true
     }
   ]
 }

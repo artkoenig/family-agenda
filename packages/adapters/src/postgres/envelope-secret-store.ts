@@ -3,7 +3,7 @@ import type { SecretRef, SecretStore } from "@family-butler/application";
 import { eq } from "drizzle-orm";
 import { masterKeyLength } from "../file-master-key";
 import type { Database } from "./database";
-import { uuidPattern } from "./repositories";
+import { uuidPattern } from "../uuid";
 import { secrets } from "./schema";
 
 const algorithm = "aes-256-gcm";
