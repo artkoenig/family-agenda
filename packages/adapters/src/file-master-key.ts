@@ -5,10 +5,25 @@ import { dirname } from "node:path";
 export const masterKeyLength = 32;
 
 /**
- * Reads the master key from its file, creating the file with a new key on first start.
+ * The master key from its file, or null if there is no file yet.
  * The key lives only in this file, never in Postgres (ADR-0006).
  */
-export async function loadOrCreateMasterKey(path: string): Promise<Buffer> {
+export async function readMasterKey(path: string): Promise<Buffer | null> {
+  let key: Buffer;
+  try {
+    key = await readFile(path);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw error;
+  }
+  if (key.length !== masterKeyLength) {
+    throw new Error(`The master key file ${path} does not hold a ${masterKeyLength}-byte key`);
+  }
+  return key;
+}
+
+/** Creates the master key file with a new key, unless another process just did. */
+export async function createMasterKey(path: string): Promise<Buffer> {
   await mkdir(dirname(path), { recursive: true });
   // Linked into place, so that `api` and `worker` starting together never read a half-written key.
   const draft = `${path}.${process.pid}.${randomBytes(4).toString("hex")}`;
@@ -20,9 +35,7 @@ export async function loadOrCreateMasterKey(path: string): Promise<Buffer> {
   } finally {
     await unlink(draft);
   }
-  const key = await readFile(path);
-  if (key.length !== masterKeyLength) {
-    throw new Error(`The master key file ${path} does not hold a ${masterKeyLength}-byte key`);
-  }
+  const key = await readMasterKey(path);
+  if (!key) throw new Error(`The master key file ${path} vanished after creating it`);
   return key;
 }

@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile, rm, writeFile } from "node:fs/promises";
 import { afterEach, describe, expect, it } from "vitest";
 import type { SecretRef } from "@family-butler/application";
 import { bootForTest, type TestInstance } from "../support/boot";
@@ -73,6 +73,16 @@ describe("secrets at rest", () => {
     const stored = await storedValues();
     expect(stored).not.toContain(masterKey.toString("hex"));
     expect(stored).not.toContain(masterKey.toString("base64"));
+  });
+
+  it("refuses to start without the master key file once secrets are stored", async () => {
+    instance = await bootForTest();
+    await instance.app.secrets.put("hunter2");
+
+    await rm(instance.masterKeyFile);
+
+    await expect(instance.restart()).rejects.toThrow(/master key file .* is missing/);
+    await expect(readFile(instance.masterKeyFile)).rejects.toThrow(/ENOENT/);
   });
 
   it("cannot read secrets with another master key", async () => {

@@ -9,6 +9,12 @@ import { secrets } from "./schema";
 const algorithm = "aes-256-gcm";
 const ivLength = 12;
 const tagLength = 16;
+const dataKeyLength = 32;
+
+/** Whether Postgres holds any secret, which only the master key it was stored with can read. */
+export async function holdsSecrets(db: Database): Promise<boolean> {
+  return (await db.$count(secrets)) > 0;
+}
 
 /**
  * Envelope encryption: each secret is encrypted with its own data key, and the data key
@@ -26,7 +32,7 @@ export class EnvelopeSecretStore implements SecretStore {
     const id = randomUUID();
     // Both ciphertexts are bound to the id, so that rows cannot be swapped.
     const context = Buffer.from(id);
-    const dataKey = randomBytes(32);
+    const dataKey = randomBytes(dataKeyLength);
     try {
       await this.db.insert(secrets).values({
         id,

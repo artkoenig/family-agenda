@@ -60,7 +60,10 @@ export async function bootForTest(options: TestOptions = {}): Promise<TestInstan
       }
     },
     async restart() {
-      await instance.app.close();
+      const stopped = instance.app;
+      await stopped.close();
+      // Already closed, should booting again fail.
+      instance.app = { ...stopped, close: () => Promise.resolve() };
       instance.app = await bootApplication(config);
     },
     async close() {
