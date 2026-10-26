@@ -6,7 +6,7 @@ import type {
   SignInFailureLog,
 } from "@family-butler/application";
 import type { Admin, AdminId, Email, FamilyId } from "@family-butler/domain";
-import { and, asc, eq, gt, lt, sql } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, lt, sql } from "drizzle-orm";
 import type { Database } from "./database";
 import { admins, adminSessions, families, signInFailures } from "./schema";
 
@@ -120,11 +120,19 @@ export class PostgresSignInFailureLog implements SignInFailureLog {
     private readonly keepForMs: number,
   ) {}
 
-  async record(keys: string[], at: Date): Promise<void> {
-    await this.db.insert(signInFailures).values(keys.map((key) => ({ key, at })));
+  async record(keys: string[], at: Date): Promise<string[]> {
+    const rows = await this.db
+      .insert(signInFailures)
+      .values(keys.map((key) => ({ key, at })))
+      .returning({ id: signInFailures.id });
     await this.db
       .delete(signInFailures)
       .where(lt(signInFailures.at, new Date(at.getTime() - this.keepForMs)));
+    return rows.map((row) => String(row.id));
+  }
+
+  async forget(ids: string[]): Promise<void> {
+    await this.db.delete(signInFailures).where(inArray(signInFailures.id, ids.map(Number)));
   }
 
   async countAfter(key: string, after: Date): Promise<number> {

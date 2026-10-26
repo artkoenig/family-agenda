@@ -40,9 +40,11 @@ export interface AdminSessionRepository {
   removeAllOf(adminId: AdminId): Promise<void>;
 }
 
-/** Failed sign-in attempts, counted per key (an account or a client). */
+/** Sign-in attempts that have not succeeded, counted per key (an account or a client). */
 export interface SignInFailureLog {
-  record(keys: string[], at: Date): Promise<void>;
+  /** Returns ids of the recorded entries, for `forget`. */
+  record(keys: string[], at: Date): Promise<string[]>;
+  forget(ids: string[]): Promise<void>;
   countAfter(key: string, after: Date): Promise<number>;
   clear(key: string): Promise<void>;
 }

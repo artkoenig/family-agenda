@@ -1,4 +1,4 @@
-import type { SignedInAdmin } from "@family-butler/application";
+import type { AdminSummary } from "@family-butler/application";
 import { minimumPasswordLength } from "@family-butler/domain";
 import type { Child } from "hono/jsx";
 import { Layout, Problem } from "./layout";
@@ -36,7 +36,7 @@ export function SignInPage(props: { email?: string; problem?: string }) {
   );
 }
 
-function AdminLayout(props: { title: string; admin: SignedInAdmin; children: Child }) {
+function AdminLayout(props: { title: string; admin: AdminSummary; children: Child }) {
   return (
     <Layout title={props.title}>
       <nav>
@@ -53,7 +53,7 @@ function AdminLayout(props: { title: string; admin: SignedInAdmin; children: Chi
   );
 }
 
-export function AdminHomePage(props: { admin: SignedInAdmin }) {
+export function AdminHomePage(props: { admin: AdminSummary }) {
   return (
     <AdminLayout title="Admin area" admin={props.admin}>
       <p>Nothing to manage yet.</p>
@@ -62,8 +62,8 @@ export function AdminHomePage(props: { admin: SignedInAdmin }) {
 }
 
 export function AdminsPage(props: {
-  admin: SignedInAdmin;
-  admins: SignedInAdmin[];
+  admin: AdminSummary;
+  admins: AdminSummary[];
   email?: string;
   problem?: string;
 }) {

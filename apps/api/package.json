@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "exports": {
-    "./composition-root": "./src/composition-root.ts"
+    "./composition-root": "./src/composition-root.ts",
+    "./config": "./src/config.ts"
   },
   "scripts": {
     "start": "node --import tsx src/main.ts",

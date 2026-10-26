@@ -33,7 +33,7 @@ export type AdminAccessDeps = {
   signInFailures: SignInFailureLog;
 };
 
-export type SignedInAdmin = { id: AdminId; email: Email };
+export type AdminSummary = { id: AdminId; email: Email };
 
 export type AccountProblem = "invalid-email" | "password-too-short";
 
@@ -109,11 +109,14 @@ export function createAdminAccess(deps: AdminAccessDeps) {
       const accountKey = `account:${email ?? input.email}`;
       const clientKey = `client:${input.client}`;
 
+      // Recorded before checking, so that attempts arriving at the same time count each other.
+      const attempt = await signInFailures.record([accountKey, clientKey], now);
       const [accountFailures, clientFailures] = await Promise.all([
         signInFailures.countAfter(accountKey, windowStart),
         signInFailures.countAfter(clientKey, windowStart),
       ]);
-      if (accountFailures >= signInLimits.perAccount || clientFailures >= signInLimits.perClient) {
+      if (accountFailures > signInLimits.perAccount || clientFailures > signInLimits.perClient) {
+        await signInFailures.forget(attempt);
         return { ok: false, problem: "rate-limited" };
       }
 
@@ -122,11 +125,9 @@ export function createAdminAccess(deps: AdminAccessDeps) {
         admin?.passwordHash ?? (await unknownAccountHash),
         input.password,
       );
-      if (!admin || !passwordMatches) {
-        await signInFailures.record([accountKey, clientKey], now);
-        return { ok: false, problem: "invalid-credentials" };
-      }
+      if (!admin || !passwordMatches) return { ok: false, problem: "invalid-credentials" };
 
+      await signInFailures.forget(attempt);
       await signInFailures.clear(accountKey);
       return { ok: true, sessionToken: await startSession(admin.id) };
     },
@@ -135,7 +136,7 @@ export function createAdminAccess(deps: AdminAccessDeps) {
       await sessions.remove(hashToken(sessionToken));
     },
 
-    async listAdmins(): Promise<SignedInAdmin[]> {
+    async listAdmins(): Promise<AdminSummary[]> {
       const all = await admins.list(await families.theFamily());
       return all.map((admin) => ({ id: admin.id, email: admin.email }));
     },
@@ -153,7 +154,7 @@ export function createAdminAccess(deps: AdminAccessDeps) {
 
     /** Resets another Admin's password, for one who forgot theirs, and ends their sessions. */
     async resetPassword(
-      actor: SignedInAdmin,
+      actor: AdminSummary,
       input: { adminId: AdminId; newPassword: string },
     ): Promise<PasswordResetResult> {
       if (input.adminId === actor.id) return { ok: false, problem: "own-account" };
@@ -174,7 +175,7 @@ export function createAdminAccess(deps: AdminAccessDeps) {
     },
 
     /** The Admin a session token belongs to, or null if it is unknown or expired. */
-    async authenticate(sessionToken: string): Promise<SignedInAdmin | null> {
+    async authenticate(sessionToken: string): Promise<AdminSummary | null> {
       const session = await sessions.find(hashToken(sessionToken));
       if (!session) return null;
       if (session.expiresAt <= clock.now()) {

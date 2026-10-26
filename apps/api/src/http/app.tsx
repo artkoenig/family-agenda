@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import type { SignedInAdmin } from "@family-butler/application";
+import type { AdminSummary } from "@family-butler/application";
 import { minimumPasswordLength, type AdminId } from "@family-butler/domain";
 import type { HealthResponse } from "@family-butler/contracts";
 import type { HttpBindings } from "@hono/node-server";
@@ -8,7 +8,7 @@ import { Hono, type Context } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { csrf } from "hono/csrf";
 import { createMiddleware } from "hono/factory";
-import { sessionLifetimeMs } from "@family-butler/application";
+import { sessionLifetimeMs, signInLimits } from "@family-butler/application";
 import type { Application } from "../composition-root";
 import { AdminHomePage, AdminsPage, FirstAdminPage, SignInPage } from "./pages";
 
@@ -19,7 +19,7 @@ export type HttpOptions = {
 
 type Env = {
   Bindings: HttpBindings;
-  Variables: { admin: SignedInAdmin };
+  Variables: { admin: AdminSummary };
 };
 
 const sessionCookie = "fb_session";
@@ -29,7 +29,7 @@ const problems = {
   "password-too-short": `The password must have at least ${minimumPasswordLength} characters.`,
   "email-taken": "This email already has an Admin account.",
   "invalid-credentials": "Wrong email or password.",
-  "rate-limited": "Too many failed sign-ins. Wait 15 minutes and try again.",
+  "rate-limited": `Too many failed sign-ins. Wait ${signInLimits.windowMs / 60_000} minutes and try again.`,
   "own-account": "You cannot reset your own password here.",
   "unknown-admin": "This Admin does not exist.",
 } satisfies Record<string, string>;
@@ -151,6 +151,18 @@ export function createHttpApp(application: Application, options: HttpOptions) {
 
   app.get("/admin", (c) => c.html(<AdminHomePage admin={c.get("admin")} />));
 
+  const adminsPageWithProblem = async (c: Context<Env>, problem: string, email = "") => {
+    const page = (
+      <AdminsPage
+        admin={c.get("admin")}
+        admins={await admins.listAdmins()}
+        email={email}
+        problem={problem}
+      />
+    );
+    return c.html(page, 400);
+  };
+
   app.get("/admin/admins", async (c) =>
     c.html(<AdminsPage admin={c.get("admin")} admins={await admins.listAdmins()} />),
   );
@@ -159,17 +171,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     const form = await c.req.parseBody();
     const email = field(form, "email");
     const result = await admins.createAdmin({ email, password: field(form, "password") });
-    if (!result.ok) {
-      const page = (
-        <AdminsPage
-          admin={c.get("admin")}
-          admins={await admins.listAdmins()}
-          email={email}
-          problem={problems[result.problem]}
-        />
-      );
-      return c.html(page, 400);
-    }
+    if (!result.ok) return adminsPageWithProblem(c, problems[result.problem], email);
     return c.redirect("/admin/admins", 303);
   });
 
@@ -179,16 +181,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
       adminId: c.req.param("id") as AdminId,
       newPassword: field(form, "password"),
     });
-    if (!result.ok) {
-      const page = (
-        <AdminsPage
-          admin={c.get("admin")}
-          admins={await admins.listAdmins()}
-          problem={problems[result.problem]}
-        />
-      );
-      return c.html(page, 400);
-    }
+    if (!result.ok) return adminsPageWithProblem(c, problems[result.problem]);
     return c.redirect("/admin/admins", 303);
   });
 

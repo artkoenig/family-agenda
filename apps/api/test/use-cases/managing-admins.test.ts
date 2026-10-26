@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { SignedInAdmin } from "@family-butler/application";
+import type { AdminSummary } from "@family-butler/application";
 import { bootForTest, type TestInstance } from "../support/boot";
 
 const password = "correct horse battery";
 
 describe("managing Admins", () => {
   let instance: TestInstance;
-  let anna: SignedInAdmin;
+  let anna: AdminSummary;
   beforeEach(async () => {
     instance = await bootForTest();
     const created = await instance.app.admins.createFirstAdmin({

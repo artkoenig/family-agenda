@@ -81,6 +81,16 @@ describe("Admin sign-in", () => {
     expect((await signIn("anna@example.org", password)).ok).toBe(true);
   });
 
+  it("checks at most 5 guesses for an account, even when they arrive at the same time", async () => {
+    const burst = () =>
+      Promise.all(Array.from({ length: 12 }, () => signIn("anna@example.org", "wrong password!!")));
+
+    const results = [...(await burst()), ...(await burst()), ...(await burst())];
+
+    const checked = results.filter((r) => !r.ok && r.problem === "invalid-credentials");
+    expect(checked.length).toBeLessThanOrEqual(5);
+  });
+
   it("forgets an account's failures after a successful sign-in", async () => {
     for (let i = 0; i < 4; i++) await signIn("anna@example.org", "wrong password!!");
     await signIn("anna@example.org", password);
