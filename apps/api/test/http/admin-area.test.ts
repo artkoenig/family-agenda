@@ -8,6 +8,7 @@ describe("Admin area over HTTP", () => {
   beforeEach(async () => {
     instance = await bootHttpForTest();
     await instance.post("/setup", { email: "anna@example.org", password });
+    await instance.app.recoveryKit.confirm();
   });
   afterEach(async () => {
     await instance.close();

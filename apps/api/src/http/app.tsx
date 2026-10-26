@@ -10,7 +10,14 @@ import { csrf } from "hono/csrf";
 import { createMiddleware } from "hono/factory";
 import { sessionLifetimeMs, signInLimits } from "@family-butler/application";
 import type { Application } from "../composition-root";
-import { AdminHomePage, AdminsPage, FirstAdminPage, SignInPage } from "./pages";
+import {
+  AdminHomePage,
+  AdminsPage,
+  FirstAdminPage,
+  RecoveryKitPage,
+  recoveryKitText,
+  SignInPage,
+} from "./pages";
 
 export type HttpOptions = {
   /** Whether a reverse proxy in front sets `X-Forwarded-For` and `X-Forwarded-Proto`. */
@@ -32,12 +39,13 @@ const problems = {
   "rate-limited": `Too many failed sign-ins. Wait ${signInLimits.windowMs / 60_000} minutes and try again.`,
   "own-account": "You cannot reset your own password here.",
   "unknown-admin": "This Admin does not exist.",
+  "kit-not-saved": "Confirm that you have saved the Recovery Kit.",
 } satisfies Record<string, string>;
 
 const htmx = readFileSync(createRequire(import.meta.url).resolve("htmx.org/dist/htmx.min.js"));
 
 export function createHttpApp(application: Application, options: HttpOptions) {
-  const { admins } = application;
+  const { admins, recoveryKit } = application;
   const app = new Hono<Env>();
 
   const isHttps = (c: Context) =>
@@ -105,7 +113,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
       return c.html(<FirstAdminPage email={email} problem={problems[result.problem]} />, 400);
     }
     startSession(c, result.sessionToken);
-    return c.redirect("/admin", 303);
+    return c.redirect("/admin/recovery-kit", 303);
   });
 
   app.get("/", (c) => c.redirect("/admin"));
@@ -139,14 +147,49 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     c.set("admin", admin);
     await next();
   });
-  app.use("/admin", requireAdmin);
-  app.use("/admin/*", requireAdmin);
+  // Until an Admin confirms saving the Recovery Kit, the Admin area shows only the kit (ADR-0006).
+  const requireSavedRecoveryKit = createMiddleware<Env>(async (c, next) => {
+    const exempt = ["/admin/sign-in", "/admin/sign-out"].includes(c.req.path) ||
+      c.req.path.startsWith("/admin/recovery-kit");
+    if (!exempt && !(await recoveryKit.isConfirmed())) return c.redirect("/admin/recovery-kit");
+    await next();
+  });
+  for (const path of ["/admin", "/admin/*"]) app.use(path, requireAdmin, requireSavedRecoveryKit);
 
   app.post("/admin/sign-out", async (c) => {
     const token = getCookie(c, sessionCookie);
     if (token) await admins.signOut(token);
     deleteCookie(c, sessionCookie, { path: "/" });
     return c.redirect("/admin/sign-in", 303);
+  });
+
+  const recoveryKitPage = async (c: Context<Env>, problem?: string) => {
+    c.header("cache-control", "no-store");
+    const page = (
+      <RecoveryKitPage
+        admin={c.get("admin")}
+        kit={recoveryKit.contents()}
+        confirmed={await recoveryKit.isConfirmed()}
+        problem={problem}
+      />
+    );
+    return c.html(page, problem ? 400 : 200);
+  };
+
+  app.get("/admin/recovery-kit", (c) => recoveryKitPage(c));
+
+  app.get("/admin/recovery-kit/download", (c) =>
+    c.text(recoveryKitText(recoveryKit.contents()), 200, {
+      "cache-control": "no-store",
+      "content-disposition": 'attachment; filename="family-butler-recovery-kit.txt"',
+    }),
+  );
+
+  app.post("/admin/recovery-kit/confirm", async (c) => {
+    const form = await c.req.parseBody();
+    if (field(form, "saved") !== "yes") return recoveryKitPage(c, problems["kit-not-saved"]);
+    await recoveryKit.confirm();
+    return c.redirect("/admin", 303);
   });
 
   app.get("/admin", (c) => c.html(<AdminHomePage admin={c.get("admin")} />));

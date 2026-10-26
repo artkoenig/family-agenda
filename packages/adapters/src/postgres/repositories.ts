@@ -10,7 +10,7 @@ import { and, asc, eq, gt, inArray, lt, sql } from "drizzle-orm";
 import type { Database } from "./database";
 import { admins, adminSessions, families, signInFailures } from "./schema";
 
-const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** Arbitrary key that serialises creating the Family and the first Admin. */
 const setupLockKey = 7_342_002;
@@ -27,6 +27,21 @@ export class PostgresFamilyRepository implements FamilyRepository {
       if (!created) throw new Error("creating the Family returned no row");
       return created.id as FamilyId;
     });
+  }
+
+  async recoveryKitConfirmed(id: FamilyId): Promise<boolean> {
+    const [row] = await this.db
+      .select({ at: families.recoveryKitConfirmedAt })
+      .from(families)
+      .where(eq(families.id, id));
+    return row?.at != null;
+  }
+
+  async confirmRecoveryKit(id: FamilyId, at: Date): Promise<void> {
+    await this.db
+      .update(families)
+      .set({ recoveryKitConfirmedAt: sql`coalesce(${families.recoveryKitConfirmedAt}, ${at})` })
+      .where(eq(families.id, id));
   }
 }
 
