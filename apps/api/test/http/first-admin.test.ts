@@ -21,15 +21,15 @@ describe("first Admin over HTTP", () => {
     expect(await page.text()).toContain("Create the first Admin");
   });
 
-  it("signs the first Admin in, and the page is gone afterwards", async () => {
+  it("signs the first Admin in, shows the Recovery Kit, and the page is gone afterwards", async () => {
     const created = await instance.post("/setup", {
       email: "anna@example.org",
       password: "correct horse battery",
     });
     expect(created.status).toBe(303);
-    expect(created.headers.get("location")).toBe("/admin");
+    expect(created.headers.get("location")).toBe("/admin/recovery-kit");
 
-    const adminArea = await instance.get("/admin", { cookie: sessionCookieOf(created) });
+    const adminArea = await instance.get("/admin/recovery-kit", { cookie: sessionCookieOf(created) });
     expect(adminArea.status).toBe(200);
     expect(await adminArea.text()).toContain("anna@example.org");
 

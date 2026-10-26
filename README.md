@@ -8,7 +8,9 @@ A self-hosted Instance that gathers family-relevant information from many channe
 docker compose up -d --build
 ```
 
-This starts `api` (on port 8080, or `PORT`), `worker` and `postgres`. Open the Instance in a browser: on first start it asks you to create the first Admin account.
+This starts `api` (on port 8080, or `PORT`), `worker` and `postgres`. Open the Instance in a browser: on first start it asks you to create the first Admin account, and then shows the Recovery Kit.
+
+- **Recovery Kit**: Source credentials are encrypted with a master key that is created on first start in the `master-key` volume, never in Postgres. Print or download the Recovery Kit and keep it away from the Instance: a Backup can restore the credentials only with it. Any Admin can show it again in the Admin area.
 
 - **HTTPS**: the Instance serves plain HTTP. Behind your own HTTPS reverse proxy, set `TRUST_PROXY=true`, so that session cookies become `Secure` and sign-in rate limiting sees each client's address. The proxy must set `X-Forwarded-Proto` and `X-Forwarded-For`.
 - **Forgotten password**: another Admin can reset it in the Admin area, or inside the container:
@@ -39,7 +41,7 @@ After changing `packages/adapters/src/postgres/schema.ts`, generate a migration 
 | --- | --- |
 | `packages/domain` | Plain TypeScript, imports nothing |
 | `packages/application` | Use cases and ports |
-| `packages/adapters` | Postgres (Drizzle), pg-boss, Argon2id |
+| `packages/adapters` | Postgres (Drizzle), pg-boss, Argon2id, the master key file and the envelope-encrypting `SecretStore` |
 | `packages/contracts` | zod schemas for REST DTOs |
 | `packages/source-sdk` | The `SourcePlugin` contract, and its shared contract tests in `@family-butler/source-sdk/testing` |
 | `apps/api` | Hono, the composition root, HTML and the CLI |
@@ -47,6 +49,6 @@ After changing `packages/adapters/src/postgres/schema.ts`, generate a migration 
 
 ### Tests
 
-- **Use cases**: `apps/api/test/use-cases`, booted through the composition root against a throwaway Postgres database with a controllable `Clock` (`apps/api/test/support/boot.ts`).
+- **Use cases**: `apps/api/test/use-cases`, booted through the composition root against a throwaway Postgres database and master key file, with a controllable `Clock` (`apps/api/test/support/boot.ts`). Pass `secretStore: new InMemorySecretStore()` to keep secrets in memory instead.
 - **Source plugin contracts**: each plugin calls `describeSourcePluginContract` from `@family-butler/source-sdk/testing` in its own tests.
 - **HTTP**: `apps/api/test/http`, in-process requests against the Hono app (`apps/api/test/support/http.ts`).

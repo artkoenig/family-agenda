@@ -96,6 +96,10 @@ _Avoid_: Hosted version, SaaS, cloud edition
 Reaching an Instance from outside the home network through Butler Cloud.
 _Avoid_: Tunnel, relay, external access
 
+**Recovery Kit**:
+What an Admin prints or saves at first start to recover the Instance's master key: without it, a Backup cannot restore Source credentials; Backups to Butler Cloud are encrypted with a key derived from it.
+_Avoid_: Recovery key, master key (for the document), backup code
+
 **View Link**:
 A secret, revocable URL that opens one View from outside the home network.
 _Avoid_: Share link, token, magic link

@@ -1,0 +1,1 @@
+ALTER TABLE "families" ADD COLUMN "recovery_kit_confirmed_at" timestamp with time zone;

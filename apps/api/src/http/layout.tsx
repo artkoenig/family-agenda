@@ -9,6 +9,13 @@ const styles = `
   .problem { color: #ff8a80; }
   nav { display: flex; gap: 1rem; align-items: center; }
   a { color: #8ab4f8; }
+  .secret { font-family: ui-monospace, monospace; font-size: 1.1rem; overflow-wrap: anywhere; }
+  .actions { display: flex; gap: 1rem; align-items: center; }
+  @media print {
+    :root { color-scheme: light; }
+    body { background: #fff; color: #000; }
+    nav, form, .actions { display: none; }
+  }
 `;
 
 export function Layout(props: { title: string; children: Child }) {

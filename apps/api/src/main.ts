@@ -4,7 +4,7 @@ import { readConfig } from "./config";
 import { createHttpApp } from "./http/app";
 
 const config = readConfig();
-const application = await bootApplication({ databaseUrl: config.databaseUrl });
+const application = await bootApplication(config);
 const server = serve(
   { fetch: createHttpApp(application, { trustProxy: config.trustProxy }).fetch, port: config.port },
   (info) => {
