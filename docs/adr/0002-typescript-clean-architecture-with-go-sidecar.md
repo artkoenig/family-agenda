@@ -21,3 +21,5 @@ The sidecar holds no domain logic. It keeps its own whatsmeow session store, dro
 _The frontend part is amended by ADR-0003: there is no React app, and `apps/api` serves server-rendered HTML next to the REST API._
 
 _Amended by ADR-0010: the Sources are Source plugins in `packages/source-*` that register themselves at startup, and the `SourceAdapter` port becomes the `SourcePlugin` contract in `packages/source-sdk`._
+
+_Amended by ADR-0011: WhatsApp is read through Baileys, a TypeScript library, inside the worker. There is no Go sidecar, and the Instance is TypeScript only._

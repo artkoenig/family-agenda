@@ -18,3 +18,5 @@ Contributions are licensed inbound as outbound, under AGPLv3, and each commit ca
 
 - **Keep GPLv3**: leaves the hosted-service loophole open.
 - **AGPLv3 with a CLA**: keeps relicensing and dual licensing possible, but deters contributors. That is too high a price while Butler Cloud needs neither.
+
+_Since ADR-0011 the WhatsApp library is Baileys (MIT) instead of whatsmeow (MPL-2.0); both are AGPL-compatible._

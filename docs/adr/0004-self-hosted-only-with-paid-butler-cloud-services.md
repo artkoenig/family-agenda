@@ -30,3 +30,5 @@ Which implementation is wired is decided in the composition root from configurat
 
 - **Multi-tenant SaaS with Postgres row-level security**: the usual way to sell a hosted version. Rejected because WhatsApp and WebUntis would have to run in the provider's cloud, and because the provider would become the processor of every Family's and every third party's messages.
 - **SaaS plus a local connector agent for the risky Sources**: keeps WhatsApp at home, but still needs the full multi-tenant system, tenant isolation, and a split pipeline across two places.
+
+_Since ADR-0011 the WhatsApp client is Baileys instead of whatsmeow; the reasoning here is unchanged._

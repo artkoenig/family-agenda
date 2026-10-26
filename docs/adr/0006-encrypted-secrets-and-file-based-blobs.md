@@ -20,3 +20,5 @@ Raw source messages and attachments, such as PDFs and images, are kept behind a 
 - **Credentials in plain Postgres columns, protected by disk encryption**: common in self-hosted apps, but every dump leaks them.
 - **Blobs as `bytea` in Postgres**: one store and transactional, but dumps grow with every PDF and restores get slow on a Raspberry Pi.
 - **An S3-compatible store (MinIO, Garage) in Compose**: one more service to run, for no gain on a single Instance.
+
+_Amended by ADR-0011: there is no whatsmeow sidecar. The WhatsApp session is Baileys' auth state, stored as secret Source state through the `SecretStore` like the other credentials, so it needs no volume of its own._
