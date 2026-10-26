@@ -1,8 +1,19 @@
-import { bigserial, index, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import {
+  bigserial,
+  customType,
+  index,
+  pgTable,
+  text,
+  timestamp,
+  uuid,
+} from "drizzle-orm/pg-core";
+
+const bytea = customType<{ data: Buffer }>({ dataType: () => "bytea" });
 
 export const families = pgTable("families", {
   id: uuid("id").primaryKey().defaultRandom(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  recoveryKitConfirmedAt: timestamp("recovery_kit_confirmed_at", { withTimezone: true }),
 });
 
 export const admins = pgTable("admins", {
@@ -32,3 +43,11 @@ export const signInFailures = pgTable(
   },
   (table) => [index("sign_in_failures_key_at_idx").on(table.key, table.at)],
 );
+
+/** Envelope-encrypted secrets (ADR-0006); the master key that unwraps them is not in Postgres. */
+export const secrets = pgTable("secrets", {
+  id: uuid("id").primaryKey(),
+  wrappedDataKey: bytea("wrapped_data_key").notNull(),
+  ciphertext: bytea("ciphertext").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});

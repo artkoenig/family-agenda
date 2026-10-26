@@ -10,7 +10,7 @@ if (command !== "reset-admin-password" || !email) {
   process.exit(2);
 }
 
-const application = await bootApplication({ databaseUrl: readConfig().databaseUrl });
+const application = await bootApplication(readConfig());
 try {
   const newPassword = randomBytes(12).toString("base64url");
   const result = await application.admins.resetPasswordByEmail({ email, newPassword });

@@ -12,6 +12,9 @@ export interface PasswordHasher {
 export interface FamilyRepository {
   /** The Instance's one Family, created on first use. */
   theFamily(): Promise<FamilyId>;
+  recoveryKitConfirmed(id: FamilyId): Promise<boolean>;
+  /** Keeps the first confirmation if there is one. */
+  confirmRecoveryKit(id: FamilyId, at: Date): Promise<void>;
 }
 
 export interface AdminRepository {
@@ -47,6 +50,17 @@ export interface SignInFailureLog {
   forget(ids: string[]): Promise<void>;
   countAfter(key: string, after: Date): Promise<number>;
   clear(key: string): Promise<void>;
+}
+
+/** Where a secret is kept in the SecretStore; stored in Postgres in the secret's place. */
+export type SecretRef = string & { readonly __brand: "SecretRef" };
+
+/** Keeps secrets, such as Source credentials, encrypted at rest (ADR-0006). */
+export interface SecretStore {
+  put(plaintext: string): Promise<SecretRef>;
+  /** The plaintext, or null if no secret has this reference. */
+  get(ref: SecretRef): Promise<string | null>;
+  remove(ref: SecretRef): Promise<void>;
 }
 
 export interface JobQueue {

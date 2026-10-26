@@ -8,6 +8,20 @@
       "when": 1793032233219,
       "tag": "0000_initial",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1793036577789,
+      "tag": "0001_secrets",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1793036636286,
+      "tag": "0002_recovery_kit_confirmation",
+      "breakpoints": true
     }
   ]
 }

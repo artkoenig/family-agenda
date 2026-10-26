@@ -1,4 +1,4 @@
-import type { AdminSummary } from "@family-butler/application";
+import type { AdminSummary, RecoveryKit } from "@family-butler/application";
 import { minimumPasswordLength } from "@family-butler/domain";
 import type { Child } from "hono/jsx";
 import { Layout, Problem } from "./layout";
@@ -42,6 +42,7 @@ function AdminLayout(props: { title: string; admin: AdminSummary; children: Chil
       <nav>
         <a href="/admin">Admin area</a>
         <a href="/admin/admins">Admins</a>
+        <a href="/admin/recovery-kit">Recovery Kit</a>
         <span>{props.admin.email}</span>
         <form method="post" action="/admin/sign-out">
           <button type="submit">Sign out</button>
@@ -94,6 +95,50 @@ export function AdminsPage(props: {
         <input id="password" name="password" type="password" required minlength={minimumPasswordLength} autocomplete="new-password" />
         <button type="submit">Add Admin</button>
       </form>
+    </AdminLayout>
+  );
+}
+
+const recoveryKitPurpose = [
+  "Keep this kit offline, printed or saved away from the Instance.",
+  "Restoring a Backup needs it to read the Source credentials, and Backups are encrypted with a key derived from it.",
+  "Anyone with this kit and a Backup can read the Source credentials.",
+];
+
+/** The kit as a text file to download. */
+export function recoveryKitText(kit: RecoveryKit): string {
+  return ["Family Butler Recovery Kit", "", "Master key:", kit.masterKey, "", ...recoveryKitPurpose, ""].join("\n");
+}
+
+export function RecoveryKitPage(props: {
+  admin: AdminSummary;
+  kit: RecoveryKit;
+  confirmed: boolean;
+  problem?: string | undefined;
+}) {
+  return (
+    <AdminLayout title="Recovery Kit" admin={props.admin}>
+      {props.confirmed ? null : (
+        <p>Print or save this Recovery Kit before you continue. Any Admin can show it again later.</p>
+      )}
+      <h2>Master key</h2>
+      <p class="secret">{props.kit.masterKey}</p>
+      {recoveryKitPurpose.map((sentence) => (
+        <p>{sentence}</p>
+      ))}
+      <p class="actions">
+        <button type="button" onclick="window.print()">Print</button>
+        <a href="/admin/recovery-kit/download">Download as a text file</a>
+      </p>
+      {props.confirmed ? null : (
+        <form method="post" action="/admin/recovery-kit/confirm">
+          <Problem message={props.problem} />
+          <label>
+            <input type="checkbox" name="saved" value="yes" required /> I have printed or saved the Recovery Kit.
+          </label>
+          <button type="submit">Continue</button>
+        </form>
+      )}
     </AdminLayout>
   );
 }

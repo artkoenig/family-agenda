@@ -8,6 +8,10 @@ x-app: &app
     DATABASE_URL: postgres://family_butler:${POSTGRES_PASSWORD:-family_butler}@postgres:5432/family_butler
     # Set to true behind your own HTTPS reverse proxy, so session cookies become Secure.
     TRUST_PROXY: ${TRUST_PROXY:-false}
+    MASTER_KEY_FILE: /var/lib/family-butler/master-key/master.key
+  volumes:
+    # The master key that Source credentials are encrypted with; never in Postgres (ADR-0006).
+    - master-key:/var/lib/family-butler/master-key
   depends_on:
     postgres:
       condition: service_healthy
@@ -44,3 +48,4 @@ services:
 
 volumes:
   postgres-data:
+  master-key:

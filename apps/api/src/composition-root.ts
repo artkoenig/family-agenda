@@ -1,47 +1,87 @@
 import {
   Argon2idPasswordHasher,
   connectPostgres,
+  createMasterKey,
+  EnvelopeSecretStore,
+  holdsSecrets,
   PgBossJobQueue,
   PostgresAdminRepository,
   PostgresAdminSessionRepository,
   PostgresFamilyRepository,
   PostgresSignInFailureLog,
+  readMasterKey,
   runMigrations,
   SystemClock,
+  type PostgresConnection,
 } from "@family-butler/adapters";
 import {
   createAdminAccess,
+  createRecoveryKitAccess,
   signInLimits,
   type AdminAccess,
   type Clock,
   type JobQueue,
+  type RecoveryKitAccess,
+  type SecretStore,
 } from "@family-butler/application";
 
 export type ApplicationConfig = {
   databaseUrl: string;
+  /** Where the master key is kept, outside Postgres; created on first start. */
+  masterKeyFile: string;
   clock?: Clock;
+  secretStore?: SecretStore;
 };
 
 export type Application = {
   admins: AdminAccess;
+  secrets: SecretStore;
+  recoveryKit: RecoveryKitAccess;
   close(): Promise<void>;
 };
 
 /** Wires the use cases to their adapters. Shared by `api`, `worker` and the CLI. */
 export async function bootApplication(config: ApplicationConfig): Promise<Application> {
   const postgres = connectPostgres(config.databaseUrl);
-  await runMigrations(postgres);
+  let masterKey: Buffer;
+  try {
+    await runMigrations(postgres);
+    masterKey = await loadMasterKey(postgres, config.masterKeyFile);
+  } catch (error) {
+    await postgres.close();
+    throw error;
+  }
+
+  const clock = config.clock ?? new SystemClock();
+  const families = new PostgresFamilyRepository(postgres.db);
 
   const admins = createAdminAccess({
-    clock: config.clock ?? new SystemClock(),
+    clock,
     passwordHasher: new Argon2idPasswordHasher(),
-    families: new PostgresFamilyRepository(postgres.db),
+    families,
     admins: new PostgresAdminRepository(postgres.db),
     sessions: new PostgresAdminSessionRepository(postgres.db),
     signInFailures: new PostgresSignInFailureLog(postgres.db, signInLimits.windowMs),
   });
 
-  return { admins, close: () => postgres.close() };
+  const secrets = config.secretStore ?? new EnvelopeSecretStore(postgres.db, masterKey);
+
+  const recoveryKit = createRecoveryKitAccess({ clock, families, masterKey });
+
+  return { admins, secrets, recoveryKit, close: () => postgres.close() };
+}
+
+/** Creates the master key on first start, but never a new one for secrets stored with a lost one. */
+async function loadMasterKey(postgres: PostgresConnection, file: string): Promise<Buffer> {
+  const existing = await readMasterKey(file);
+  if (existing) return existing;
+  if (await holdsSecrets(postgres.db)) {
+    throw new Error(
+      `The master key file ${file} is missing, but Postgres holds secrets stored with it. ` +
+        "Put the file back; a new key could not read them.",
+    );
+  }
+  return createMasterKey(file);
 }
 
 export type Worker = Application & { jobs: JobQueue };
