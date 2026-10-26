@@ -15,7 +15,7 @@ A person in the Family whom Items can concern, child or adult.
 _Avoid_: User, profile, kid
 
 **Admin**:
-A parent who signs in with their own account to manage settings, Sources, and the review of uncertain Items.
+A parent who signs in with their own account to manage settings and Sources, and to correct Items.
 _Avoid_: Owner, superuser, parent account
 
 **View**:
@@ -33,6 +33,14 @@ An Admin-maintained rule that assigns Items to Family Members, or to the whole F
 _Avoid_: Mapping, routing rule, filter
 
 ### Items
+
+**Origin**:
+One appearance of an Item in a Source, such as a mail, a WhatsApp message or a calendar entry, that the Item was extracted from or updated by.
+_Avoid_: Source message, provenance
+
+**Revision**:
+One statement about an Item from an Origin or an Admin that creates, changes, moves or cancels it; an Item is what its accepted Revisions add up to.
+_Avoid_: Event, change, update, edit
 
 **Item**:
 Any single piece of family-relevant information extracted from a Source; one of Event, Lesson, Timetable Change, Task, or Notice.
