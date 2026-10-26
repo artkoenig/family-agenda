@@ -121,7 +121,8 @@ describe("configuring Views", () => {
     expect(await showing([leo, mia])).toEqual([mia, leo]);
     expect(await showing("all")).toBe("all");
     expect(await showing([])).toBe("all");
-    expect(await showing(["no-such-member" as FamilyMemberId, leo])).toEqual([leo]);
+    const stranger = "no-such-member" as FamilyMemberId;
+    expect(await showing([stranger, leo])).toEqual([leo]);
   });
 
   it("opens no View that its access policy refuses", async () => {
