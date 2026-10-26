@@ -1,6 +1,8 @@
 import {
   bigserial,
+  boolean,
   integer,
+  jsonb,
   customType,
   index,
   pgTable,
@@ -90,4 +92,39 @@ export const viewPreselections = pgTable(
       .references(() => familyMembers.id, { onDelete: "cascade" }),
   },
   (table) => [primaryKey({ columns: [table.viewId, table.familyMemberId] })],
+);
+
+/** Per Source Type id, whether an Admin enabled it and when it was discovered (ADR-0010). */
+export const sourceTypes = pgTable("source_types", {
+  id: text("id").primaryKey(),
+  enabled: boolean("enabled").notNull().default(false),
+  /** The application version the Source Type was first discovered in. */
+  firstSeenIn: text("first_seen_in").notNull(),
+  firstSeenAt: timestamp("first_seen_at", { withTimezone: true }).notNull(),
+  /** Until an Admin opens the list of Source Types. */
+  isNew: boolean("is_new").notNull().default(true),
+});
+
+/**
+ * Sources of every Source Type, so that a new one needs no migration. A Source keeps its
+ * Source Type id even when the plugin is removed, and resumes once it is installed again.
+ */
+export const sources = pgTable(
+  "sources",
+  {
+    id: uuid("id").primaryKey(),
+    position: bigserial("position", { mode: "number" }).notNull(),
+    familyId: uuid("family_id")
+      .notNull()
+      .references(() => families.id),
+    sourceTypeId: text("source_type_id").notNull(),
+    config: jsonb("config").$type<Record<string, unknown>>().notNull(),
+    configVersion: integer("config_version").notNull(),
+    /** The SecretStore references of the secret fields, by field key. */
+    secretRefs: jsonb("secret_refs").$type<Record<string, string>>().notNull(),
+    /** The plugin's opaque state, handed back on its next run. */
+    state: text("state"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+  },
+  (table) => [index("sources_source_type_id_idx").on(table.sourceTypeId)],
 );

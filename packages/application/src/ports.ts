@@ -6,6 +6,8 @@ import type {
   FamilyId,
   FamilyMember,
   FamilyMemberId,
+  SourceId,
+  SourceTypeId,
   View,
   ViewId,
 } from "@family-butler/domain";
@@ -110,6 +112,85 @@ export interface BlobStore {
   /** The contents, or null if no file has this reference. */
   get(ref: BlobRef): Promise<Uint8Array<ArrayBuffer> | null>;
   remove(ref: BlobRef): Promise<void>;
+}
+
+/** A Source Type as its plugin's manifest describes it, read without loading the plugin's code. */
+export type InstalledSourceType = {
+  id: SourceTypeId;
+  displayName: string;
+  description: string;
+  /** The plugin's version. */
+  version: string;
+  needsLlm: boolean;
+  /** Shown before an Admin can enable it; null if there is none. */
+  riskNotice: string | null;
+  /** Why the plugin cannot be loaded, such as an incompatible SDK version; null if it can. */
+  notLoadable: string | null;
+};
+
+/** A plain configuration, as JSON. */
+export type PlainConfig = Record<string, unknown>;
+
+/** What the core needs of a loaded plugin; it never asks which one it is. */
+export type LoadedSourceType = {
+  configuration: {
+    version: number;
+    fields: { key: string; secret: boolean; required: boolean }[];
+  };
+  /** The plain configuration of `fromVersion` migrated to the current version. */
+  migrateConfig: (plain: PlainConfig, fromVersion: number) => PlainConfig;
+};
+
+/** The Source plugins discovered at startup (ADR-0010). */
+export interface SourceTypeRegistry {
+  installed(): InstalledSourceType[];
+  /** Loads the plugin's code once; a plugin that fails to load is not loadable from then on. */
+  load(id: SourceTypeId): Promise<{ ok: true; sourceType: LoadedSourceType } | { ok: false }>;
+}
+
+/** What the Instance stores per Source Type id, installed or not. */
+export type SourceTypeRecord = {
+  id: SourceTypeId;
+  enabled: boolean;
+  /** The application version the Source Type was first discovered in. */
+  firstSeenIn: string;
+  /** Whether it was discovered since an Admin last opened the list. */
+  isNew: boolean;
+};
+
+export interface SourceTypeRepository {
+  /** Records the ids not stored yet as new and disabled; keeps the others as they are. */
+  recordDiscovered(ids: SourceTypeId[], applicationVersion: string, at: Date): Promise<void>;
+  list(): Promise<SourceTypeRecord[]>;
+  enable(id: SourceTypeId): Promise<void>;
+  /** Disables the Source Type unless it has Sources. Returns whether it did. */
+  disableIfUnused(id: SourceTypeId): Promise<boolean>;
+  markAllSeen(): Promise<void>;
+}
+
+export type Source = {
+  id: SourceId;
+  familyId: FamilyId;
+  sourceTypeId: SourceTypeId;
+  plain: PlainConfig;
+  /** The configuration version of the plugin the plain configuration was stored with. */
+  configVersion: number;
+  /** Where each secret field's value is kept in the SecretStore. */
+  secrets: Record<string, SecretRef>;
+  /** The plugin's opaque state, such as a sync token, handed back on its next run. */
+  state: string | null;
+  createdAt: Date;
+};
+
+export interface SourceRepository {
+  add(source: Source): Promise<void>;
+  /** In the order they were added. */
+  list(familyId: FamilyId): Promise<Source[]>;
+  listOfType(sourceTypeId: SourceTypeId): Promise<Source[]>;
+  findById(id: SourceId): Promise<Source | null>;
+  /** Stores a migrated plain configuration, unless the Source is no longer at `fromVersion`. */
+  migrateConfig(id: SourceId, fromVersion: number, plain: PlainConfig, configVersion: number): Promise<void>;
+  remove(id: SourceId): Promise<void>;
 }
 
 export interface JobQueue {

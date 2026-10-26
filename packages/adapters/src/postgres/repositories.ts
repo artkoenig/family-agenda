@@ -4,7 +4,13 @@ import type {
   AdminSessionRepository,
   FamilyMemberRepository,
   FamilyRepository,
+  PlainConfig,
+  SecretRef,
   SignInFailureLog,
+  Source,
+  SourceRepository,
+  SourceTypeRecord,
+  SourceTypeRepository,
   ViewRepository,
 } from "@family-butler/application";
 import type {
@@ -16,6 +22,8 @@ import type {
   FamilyMember,
   FamilyMemberId,
   PhotoType,
+  SourceId,
+  SourceTypeId,
   View,
   ViewId,
 } from "@family-butler/domain";
@@ -28,10 +36,11 @@ import {
   families,
   familyMembers,
   signInFailures,
+  sources,
+  sourceTypes,
   viewPreselections,
   views,
 } from "./schema";
-
 
 /** Arbitrary key that serialises creating the Family and the first Admin. */
 const setupLockKey = 7_342_002;
@@ -300,4 +309,101 @@ async function insertPreselections(tx: Pick<Database, "insert">, view: View): Pr
   await tx
     .insert(viewPreselections)
     .values(view.preselected.map((familyMemberId) => ({ viewId: view.id, familyMemberId })));
+}
+
+export class PostgresSourceTypeRepository implements SourceTypeRepository {
+  constructor(private readonly db: Database) {}
+
+  async recordDiscovered(ids: SourceTypeId[], applicationVersion: string, at: Date): Promise<void> {
+    if (ids.length === 0) return;
+    await this.db
+      .insert(sourceTypes)
+      .values(ids.map((id) => ({ id, firstSeenIn: applicationVersion, firstSeenAt: at })))
+      .onConflictDoNothing({ target: sourceTypes.id });
+  }
+
+  async list(): Promise<SourceTypeRecord[]> {
+    const rows = await this.db.select().from(sourceTypes).orderBy(asc(sourceTypes.id));
+    return rows.map((row) => ({
+      id: row.id as SourceTypeId,
+      enabled: row.enabled,
+      firstSeenIn: row.firstSeenIn,
+      isNew: row.isNew,
+    }));
+  }
+
+  async enable(id: SourceTypeId): Promise<void> {
+    await this.db.update(sourceTypes).set({ enabled: true }).where(eq(sourceTypes.id, id));
+  }
+
+  async disableIfUnused(id: SourceTypeId): Promise<boolean> {
+    const unused = sql`NOT EXISTS (SELECT 1 FROM ${sources} WHERE ${sources.sourceTypeId} = ${id})`;
+    const updated = await this.db
+      .update(sourceTypes)
+      .set({ enabled: false })
+      .where(and(eq(sourceTypes.id, id), unused))
+      .returning({ id: sourceTypes.id });
+    return updated.length === 1;
+  }
+
+  async markAllSeen(): Promise<void> {
+    await this.db.update(sourceTypes).set({ isNew: false }).where(eq(sourceTypes.isNew, true));
+  }
+}
+
+export class PostgresSourceRepository implements SourceRepository {
+  constructor(private readonly db: Database) {}
+
+  async add(source: Source): Promise<void> {
+    await this.db.insert(sources).values({
+      id: source.id,
+      familyId: source.familyId,
+      sourceTypeId: source.sourceTypeId,
+      config: source.plain,
+      configVersion: source.configVersion,
+      secretRefs: source.secrets,
+      state: source.state,
+      createdAt: source.createdAt,
+    });
+  }
+
+  async list(familyId: FamilyId): Promise<Source[]> {
+    return this.select(eq(sources.familyId, familyId));
+  }
+
+  async listOfType(sourceTypeId: SourceTypeId): Promise<Source[]> {
+    return this.select(eq(sources.sourceTypeId, sourceTypeId));
+  }
+
+  async findById(id: SourceId): Promise<Source | null> {
+    if (!uuidPattern.test(id)) return null;
+    const [source] = await this.select(eq(sources.id, id));
+    return source ?? null;
+  }
+
+  async migrateConfig(id: SourceId, fromVersion: number, plain: PlainConfig, configVersion: number): Promise<void> {
+    await this.db
+      .update(sources)
+      .set({ config: plain, configVersion })
+      .where(and(eq(sources.id, id), eq(sources.configVersion, fromVersion)));
+  }
+
+  async remove(id: SourceId): Promise<void> {
+    if (!uuidPattern.test(id)) return;
+    await this.db.delete(sources).where(eq(sources.id, id));
+  }
+
+  private async select(where: SQL): Promise<Source[]> {
+    const rows = await this.db.select().from(sources).where(where).orderBy(asc(sources.position));
+    return rows.map((row) => ({
+      id: row.id as SourceId,
+      familyId: row.familyId as FamilyId,
+      sourceTypeId: row.sourceTypeId as SourceTypeId,
+      plain: row.config,
+      configVersion: row.configVersion,
+      secrets: row.secretRefs as Record<string, SecretRef>,
+      state: row.state,
+      createdAt: row.createdAt,
+    }));
+  }
 }
