@@ -28,6 +28,10 @@ _Avoid_: Dashboard, read-only user, kiosk
 A channel information arrives through, such as a timetable service, a calendar, a mailbox, or a messenger group.
 _Avoid_: Channel, integration, feed, connector
 
+**Source Type**:
+The kind of channel a Source is, such as WebUntis, an ICS calendar, an IMAP mailbox or WhatsApp; each is provided by a plugin, and a Family can have several Sources of one type.
+_Avoid_: Source kind, provider, plugin (for the domain concept)
+
 **Attribution Rule**:
 An Admin-maintained rule that assigns Items to Family Members, or to the whole Family, by where they came from, such as a sender address, a messenger group, or a calendar; never by what the content mentions.
 _Avoid_: Mapping, routing rule, filter
