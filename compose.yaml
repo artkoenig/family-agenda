@@ -1,0 +1,46 @@
+name: family-butler
+
+x-app: &app
+  build: .
+  image: family-butler:local
+  restart: unless-stopped
+  environment:
+    DATABASE_URL: postgres://family_butler:${POSTGRES_PASSWORD:-family_butler}@postgres:5432/family_butler
+    # Set to true behind your own HTTPS reverse proxy, so session cookies become Secure.
+    TRUST_PROXY: ${TRUST_PROXY:-false}
+  depends_on:
+    postgres:
+      condition: service_healthy
+
+services:
+  api:
+    <<: *app
+    ports:
+      - "${PORT:-8080}:3000"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/api/health').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+
+  worker:
+    <<: *app
+    working_dir: /app/apps/worker
+
+  postgres:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: family_butler
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-family_butler}
+      POSTGRES_DB: family_butler
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "family_butler", "-d", "family_butler"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  postgres-data:
