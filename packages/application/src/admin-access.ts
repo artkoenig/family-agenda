@@ -1,0 +1,194 @@
+import { createHash, randomBytes, randomUUID } from "node:crypto";
+import {
+  isAcceptablePassword,
+  parseEmail,
+  type Admin,
+  type AdminId,
+  type Email,
+} from "@family-butler/domain";
+import type {
+  AdminRepository,
+  AdminSessionRepository,
+  Clock,
+  FamilyRepository,
+  PasswordHasher,
+  SignInFailureLog,
+} from "./ports";
+
+export const sessionLifetimeMs = 14 * 24 * 60 * 60 * 1000;
+
+/** Failed sign-ins allowed per window before further attempts are refused. */
+export const signInLimits = {
+  windowMs: 15 * 60 * 1000,
+  perAccount: 5,
+  perClient: 20,
+};
+
+export type AdminAccessDeps = {
+  clock: Clock;
+  passwordHasher: PasswordHasher;
+  families: FamilyRepository;
+  admins: AdminRepository;
+  sessions: AdminSessionRepository;
+  signInFailures: SignInFailureLog;
+};
+
+export type SignedInAdmin = { id: AdminId; email: Email };
+
+export type AccountProblem = "invalid-email" | "password-too-short";
+
+export type CreateFirstAdminResult =
+  | { ok: true; sessionToken: string }
+  | { ok: false; problem: AccountProblem | "admin-exists" };
+
+export type SignInResult =
+  | { ok: true; sessionToken: string }
+  | { ok: false; problem: "invalid-credentials" | "rate-limited" };
+
+export type PasswordResetResult =
+  | { ok: true }
+  | { ok: false; problem: "password-too-short" | "own-account" | "unknown-admin" };
+
+export function createAdminAccess(deps: AdminAccessDeps) {
+  const { clock, passwordHasher, families, admins, sessions, signInFailures } = deps;
+  // Verified against when an email is unknown, so that the answer takes as long as for a known one.
+  const unknownAccountHash = passwordHasher.hash(randomBytes(16).toString("hex"));
+
+  async function startSession(adminId: AdminId): Promise<string> {
+    const token = randomBytes(32).toString("base64url");
+    const expiresAt = new Date(clock.now().getTime() + sessionLifetimeMs);
+    await sessions.add({ id: hashToken(token), adminId, expiresAt });
+    return token;
+  }
+
+  async function newAdmin(
+    rawEmail: string,
+    password: string,
+  ): Promise<{ ok: true; admin: Admin } | { ok: false; problem: AccountProblem }> {
+    const email = parseEmail(rawEmail);
+    if (!email) return { ok: false, problem: "invalid-email" };
+    if (!isAcceptablePassword(password)) return { ok: false, problem: "password-too-short" };
+    const admin: Admin = {
+      id: randomUUID() as AdminId,
+      familyId: await families.theFamily(),
+      email,
+      passwordHash: await passwordHasher.hash(password),
+      createdAt: clock.now(),
+    };
+    return { ok: true, admin };
+  }
+
+  async function setPassword(admin: Admin, newPassword: string): Promise<PasswordResetResult> {
+    if (!isAcceptablePassword(newPassword)) return { ok: false, problem: "password-too-short" };
+    await admins.setPasswordHash(admin.id, await passwordHasher.hash(newPassword));
+    await sessions.removeAllOf(admin.id);
+    return { ok: true };
+  }
+
+  return {
+    async needsFirstAdmin(): Promise<boolean> {
+      return !(await admins.exists());
+    },
+
+    async createFirstAdmin(input: {
+      email: string;
+      password: string;
+    }): Promise<CreateFirstAdminResult> {
+      if (await admins.exists()) return { ok: false, problem: "admin-exists" };
+      const result = await newAdmin(input.email, input.password);
+      if (!result.ok) return result;
+      if (!(await admins.addFirst(result.admin))) return { ok: false, problem: "admin-exists" };
+      return { ok: true, sessionToken: await startSession(result.admin.id) };
+    },
+
+    /** `client` identifies where the attempt comes from, such as an IP address. */
+    async signIn(input: { email: string; password: string; client: string }): Promise<SignInResult> {
+      const now = clock.now();
+      const windowStart = new Date(now.getTime() - signInLimits.windowMs);
+      const email = parseEmail(input.email);
+      const accountKey = `account:${email ?? input.email}`;
+      const clientKey = `client:${input.client}`;
+
+      const [accountFailures, clientFailures] = await Promise.all([
+        signInFailures.countAfter(accountKey, windowStart),
+        signInFailures.countAfter(clientKey, windowStart),
+      ]);
+      if (accountFailures >= signInLimits.perAccount || clientFailures >= signInLimits.perClient) {
+        return { ok: false, problem: "rate-limited" };
+      }
+
+      const admin = email ? await admins.findByEmail(email) : null;
+      const passwordMatches = await passwordHasher.verify(
+        admin?.passwordHash ?? (await unknownAccountHash),
+        input.password,
+      );
+      if (!admin || !passwordMatches) {
+        await signInFailures.record([accountKey, clientKey], now);
+        return { ok: false, problem: "invalid-credentials" };
+      }
+
+      await signInFailures.clear(accountKey);
+      return { ok: true, sessionToken: await startSession(admin.id) };
+    },
+
+    async signOut(sessionToken: string): Promise<void> {
+      await sessions.remove(hashToken(sessionToken));
+    },
+
+    async listAdmins(): Promise<SignedInAdmin[]> {
+      const all = await admins.list(await families.theFamily());
+      return all.map((admin) => ({ id: admin.id, email: admin.email }));
+    },
+
+    /** Admins are equal: any Admin can create another. */
+    async createAdmin(input: {
+      email: string;
+      password: string;
+    }): Promise<{ ok: true } | { ok: false; problem: AccountProblem | "email-taken" }> {
+      const result = await newAdmin(input.email, input.password);
+      if (!result.ok) return result;
+      if (!(await admins.add(result.admin))) return { ok: false, problem: "email-taken" };
+      return { ok: true };
+    },
+
+    /** Resets another Admin's password, for one who forgot theirs, and ends their sessions. */
+    async resetPassword(
+      actor: SignedInAdmin,
+      input: { adminId: AdminId; newPassword: string },
+    ): Promise<PasswordResetResult> {
+      if (input.adminId === actor.id) return { ok: false, problem: "own-account" };
+      const admin = await admins.findById(input.adminId);
+      if (!admin) return { ok: false, problem: "unknown-admin" };
+      return setPassword(admin, input.newPassword);
+    },
+
+    /** For the CLI inside the container, which needs no signed-in Admin. */
+    async resetPasswordByEmail(input: {
+      email: string;
+      newPassword: string;
+    }): Promise<PasswordResetResult> {
+      const email = parseEmail(input.email);
+      const admin = email && (await admins.findByEmail(email));
+      if (!admin) return { ok: false, problem: "unknown-admin" };
+      return setPassword(admin, input.newPassword);
+    },
+
+    /** The Admin a session token belongs to, or null if it is unknown or expired. */
+    async authenticate(sessionToken: string): Promise<SignedInAdmin | null> {
+      const session = await sessions.find(hashToken(sessionToken));
+      if (!session) return null;
+      if (session.expiresAt <= clock.now()) {
+        await sessions.remove(session.id);
+        return null;
+      }
+      const admin = await admins.findById(session.adminId);
+      return admin && { id: admin.id, email: admin.email };
+    },
+  };
+}
+
+export type AdminAccess = ReturnType<typeof createAdminAccess>;
+
+function hashToken(token: string): string {
+  return createHash("sha256").update(token).digest("base64url");
+}
