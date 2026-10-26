@@ -3,10 +3,12 @@ import {
   connectPostgres,
   createMasterKey,
   EnvelopeSecretStore,
+  FileBlobStore,
   holdsSecrets,
   PgBossJobQueue,
   PostgresAdminRepository,
   PostgresAdminSessionRepository,
+  PostgresFamilyMemberRepository,
   PostgresFamilyRepository,
   PostgresSignInFailureLog,
   readMasterKey,
@@ -16,9 +18,12 @@ import {
 } from "@family-butler/adapters";
 import {
   createAdminAccess,
+  createFamilyMemberAccess,
   createRecoveryKitAccess,
   signInLimits,
   type AdminAccess,
+  type BlobStore,
+  type FamilyMemberAccess,
   type Clock,
   type JobQueue,
   type RecoveryKitAccess,
@@ -29,14 +34,18 @@ export type ApplicationConfig = {
   databaseUrl: string;
   /** Where the master key is kept, outside Postgres; created on first start. */
   masterKeyFile: string;
+  /** Where files such as photos are kept, outside Postgres. */
+  blobDirectory: string;
   clock?: Clock;
   secretStore?: SecretStore;
+  blobStore?: BlobStore;
 };
 
 export type Application = {
   admins: AdminAccess;
   secrets: SecretStore;
   recoveryKit: RecoveryKitAccess;
+  familyMembers: FamilyMemberAccess;
   close(): Promise<void>;
 };
 
@@ -68,7 +77,14 @@ export async function bootApplication(config: ApplicationConfig): Promise<Applic
 
   const recoveryKit = createRecoveryKitAccess({ clock, families, masterKey });
 
-  return { admins, secrets, recoveryKit, close: () => postgres.close() };
+  const familyMembers = createFamilyMemberAccess({
+    clock,
+    families,
+    members: new PostgresFamilyMemberRepository(postgres.db),
+    blobs: config.blobStore ?? new FileBlobStore(config.blobDirectory),
+  });
+
+  return { admins, secrets, recoveryKit, familyMembers, close: () => postgres.close() };
 }
 
 /** Creates the master key on first start, but never a new one for secrets stored with a lost one. */

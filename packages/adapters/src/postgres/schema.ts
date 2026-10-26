@@ -51,3 +51,17 @@ export const secrets = pgTable("secrets", {
   ciphertext: bytea("ciphertext").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+export const familyMembers = pgTable("family_members", {
+  id: uuid("id").primaryKey(),
+  /** The order Family Members were added in, which lists and quick filters keep. */
+  position: bigserial("position", { mode: "number" }).notNull(),
+  familyId: uuid("family_id")
+    .notNull()
+    .references(() => families.id),
+  name: text("name").notNull(),
+  /** The photo in the BlobStore, if any, and its image format. */
+  photoBlob: text("photo_blob"),
+  photoContentType: text("photo_content_type"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+});

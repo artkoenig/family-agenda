@@ -2,13 +2,23 @@ import type {
   AdminRepository,
   AdminSession,
   AdminSessionRepository,
+  FamilyMemberRepository,
   FamilyRepository,
   SignInFailureLog,
 } from "@family-butler/application";
-import type { Admin, AdminId, Email, FamilyId } from "@family-butler/domain";
+import type {
+  Admin,
+  AdminId,
+  BlobRef,
+  Email,
+  FamilyId,
+  FamilyMember,
+  FamilyMemberId,
+  PhotoType,
+} from "@family-butler/domain";
 import { and, asc, eq, gt, inArray, lt, sql } from "drizzle-orm";
 import type { Database } from "./database";
-import { admins, adminSessions, families, signInFailures } from "./schema";
+import { admins, adminSessions, families, familyMembers, signInFailures } from "./schema";
 
 export const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -160,4 +170,59 @@ export class PostgresSignInFailureLog implements SignInFailureLog {
   async clear(key: string): Promise<void> {
     await this.db.delete(signInFailures).where(eq(signInFailures.key, key));
   }
+}
+
+export class PostgresFamilyMemberRepository implements FamilyMemberRepository {
+  constructor(private readonly db: Database) {}
+
+  async add(member: FamilyMember): Promise<void> {
+    await this.db.insert(familyMembers).values({ ...member, ...photoColumns(member) });
+  }
+
+  async list(familyId: FamilyId): Promise<FamilyMember[]> {
+    const rows = await this.db
+      .select()
+      .from(familyMembers)
+      .where(eq(familyMembers.familyId, familyId))
+      .orderBy(asc(familyMembers.position));
+    return rows.map(toFamilyMember);
+  }
+
+  async findById(id: FamilyMemberId): Promise<FamilyMember | null> {
+    if (!uuidPattern.test(id)) return null;
+    const [row] = await this.db.select().from(familyMembers).where(eq(familyMembers.id, id));
+    return row ? toFamilyMember(row) : null;
+  }
+
+  async update(member: FamilyMember): Promise<void> {
+    await this.db
+      .update(familyMembers)
+      .set({ name: member.name, ...photoColumns(member) })
+      .where(eq(familyMembers.id, member.id));
+  }
+
+  async remove(id: FamilyMemberId): Promise<void> {
+    if (!uuidPattern.test(id)) return;
+    await this.db.delete(familyMembers).where(eq(familyMembers.id, id));
+  }
+}
+
+function toFamilyMember(row: typeof familyMembers.$inferSelect): FamilyMember {
+  return {
+    id: row.id as FamilyMemberId,
+    familyId: row.familyId as FamilyId,
+    name: row.name,
+    photo:
+      row.photoBlob && row.photoContentType
+        ? { blob: row.photoBlob as BlobRef, contentType: row.photoContentType as PhotoType }
+        : null,
+    createdAt: row.createdAt,
+  };
+}
+
+function photoColumns(member: FamilyMember) {
+  return {
+    photoBlob: member.photo?.blob ?? null,
+    photoContentType: member.photo?.contentType ?? null,
+  };
 }
