@@ -24,7 +24,6 @@ import {
   createViewAccess,
   signInLimits,
   type AdminAccess,
-  type BlobStore,
   type FamilyMemberAccess,
   type Clock,
   type JobQueue,
@@ -43,7 +42,6 @@ export type ApplicationConfig = {
   timeZone?: string;
   clock?: Clock;
   secretStore?: SecretStore;
-  blobStore?: BlobStore;
 };
 
 export type Application = {
@@ -88,7 +86,7 @@ export async function bootApplication(config: ApplicationConfig): Promise<Applic
     clock,
     families,
     members,
-    blobs: config.blobStore ?? new FileBlobStore(config.blobDirectory),
+    blobs: new FileBlobStore(config.blobDirectory),
   });
 
   const views = createViewAccess({

@@ -20,6 +20,7 @@ import type {
   ViewId,
 } from "@family-butler/domain";
 import { and, asc, eq, gt, inArray, lt, sql, type SQL } from "drizzle-orm";
+import { uuidPattern } from "../uuid";
 import type { Database } from "./database";
 import {
   admins,
@@ -31,7 +32,6 @@ import {
   views,
 } from "./schema";
 
-export const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** Arbitrary key that serialises creating the Family and the first Admin. */
 const setupLockKey = 7_342_002;

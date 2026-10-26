@@ -16,6 +16,8 @@ export type View = {
 
 export const horizonDaysRange = { min: 1, max: 31 };
 
+export const defaultHorizonDays = 7;
+
 export function isAcceptableHorizon(days: number): boolean {
   return Number.isInteger(days) && days >= horizonDaysRange.min && days <= horizonDaysRange.max;
 }

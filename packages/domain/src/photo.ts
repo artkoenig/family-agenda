@@ -1,7 +1,10 @@
 /** Where a file is kept in the BlobStore, outside Postgres (ADR-0006). */
 export type BlobRef = string & { readonly __brand: "BlobRef" };
 
-export type PhotoType = "image/jpeg" | "image/png" | "image/webp" | "image/gif";
+/** The image formats a photo may have. */
+export const photoTypes = ["image/jpeg", "image/png", "image/webp", "image/gif"] as const;
+
+export type PhotoType = (typeof photoTypes)[number];
 
 export type Photo = { blob: BlobRef; contentType: PhotoType };
 

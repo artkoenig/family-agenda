@@ -4,7 +4,13 @@ import type {
   RecoveryKit,
   ViewSummary,
 } from "@family-butler/application";
-import { horizonDaysRange, maximumNameLength, minimumPasswordLength } from "@family-butler/domain";
+import {
+  defaultHorizonDays,
+  horizonDaysRange,
+  maximumNameLength,
+  minimumPasswordLength,
+  photoTypes,
+} from "@family-butler/domain";
 import type { Child } from "hono/jsx";
 import { Layout, Problem } from "./layout";
 import { Avatar, viewUrl } from "./view-page";
@@ -175,7 +181,7 @@ export function FamilyMembersPage(props: {
               <label for={`name-${member.id}`}>Name</label>
               <input id={`name-${member.id}`} name="name" required maxlength={maximumNameLength} value={member.name} />
               <label for={`photo-${member.id}`}>{member.hasPhoto ? "Replace photo" : "Photo (optional)"}</label>
-              <input id={`photo-${member.id}`} name="photo" type="file" accept="image/jpeg,image/png,image/webp,image/gif" />
+              <input id={`photo-${member.id}`} name="photo" type="file" accept={photoTypes.join(",")} />
               {member.hasPhoto ? (
                 <label>
                   <input type="checkbox" name="removePhoto" value="yes" /> Remove photo
@@ -194,14 +200,12 @@ export function FamilyMembersPage(props: {
         <label for="name">Name</label>
         <input id="name" name="name" required maxlength={maximumNameLength} value={props.name} />
         <label for="photo">Photo (optional; without one, the avatar shows the initial)</label>
-        <input id="photo" name="photo" type="file" accept="image/jpeg,image/png,image/webp,image/gif" />
+        <input id="photo" name="photo" type="file" accept={photoTypes.join(",")} />
         <button type="submit">Add Family Member</button>
       </form>
     </AdminLayout>
   );
 }
-
-export const defaultHorizonDays = 7;
 
 export function ViewsPage(props: {
   admin: AdminSummary;
