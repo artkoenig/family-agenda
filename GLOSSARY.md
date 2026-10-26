@@ -29,8 +29,12 @@ A channel information arrives through, such as a timetable service, a calendar, 
 _Avoid_: Channel, integration, feed, connector
 
 **Source Type**:
-The kind of channel a Source is, such as WebUntis, an ICS calendar, an IMAP mailbox or WhatsApp; each is provided by a plugin, and a Family can have several Sources of one type.
+The kind of channel a Source is, such as WebUntis, an ICS calendar, an IMAP mailbox or Matrix; each is provided by a plugin, and a Family can have several Sources of one type.
 _Avoid_: Source kind, provider, plugin (for the domain concept)
+
+**Messenger**:
+A chat network, such as WhatsApp, Signal or Telegram, that the Matrix Source Type reads through a bridge on the Instance; an Admin enables each one, and each Source of the Matrix type is one linked Messenger account.
+_Avoid_: Bridge (for the domain concept), network, chat app
 
 **Attribution Rule**:
 An Admin-maintained rule that assigns Items to Family Members, or to the whole Family, by where they came from, such as a sender address, a messenger group, or a calendar; never by what the content mentions.

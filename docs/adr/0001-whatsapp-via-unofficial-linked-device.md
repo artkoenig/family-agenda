@@ -9,3 +9,5 @@ The official WhatsApp Cloud API cannot read groups the Family already belongs to
 - **A dedicated Butler number**: limits a ban to that number, but every group would have to add it, which defeats automatic ingestion.
 
 _Scoped by ADR-0004: the whatsmeow sidecar only ever runs on the self-hosted Instance. Butler Cloud never runs a WhatsApp client, so the account risk stays with the Admin who links the device, on the Family's own connection._
+
+_Superseded by ADR-0011: Family Butler has no WhatsApp client of its own. WhatsApp is one Messenger of the Matrix Source Type, read through the `mautrix-whatsapp` bridge on the Instance. The risk accepted here and the receive-only rules still apply to it._
