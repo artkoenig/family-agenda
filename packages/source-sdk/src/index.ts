@@ -163,7 +163,7 @@ function problemsWithIdentity(identity: SourcePluginIdentity): string[] {
     problems.push(`Source Type id "${identity.sourceTypeId}" is not lowercase kebab-case`);
   }
   if (identity.displayName.trim() === "") problems.push("display name is empty");
-  if (majorOf(identity.sdkVersion) !== majorOf(sdkVersion)) {
+  if (!isCompatible(identity.sdkVersion)) {
     problems.push(`built for SDK ${identity.sdkVersion}, but this is SDK ${sdkVersion}`);
   }
   return problems;
@@ -180,10 +180,15 @@ export function problemsWithOrigin(origin: Origin): string[] {
   return problems;
 }
 
-/** The compatibility-relevant part of a version: the major, or the minor while the major is 0. */
-function majorOf(version: string): string {
-  const [major, minor] = version.split(".");
-  return major === "0" ? `0.${minor}` : (major ?? "");
+/**
+ * Whether a plugin built for `version` runs on this SDK: the same major, and no newer minor,
+ * whose additions this SDK would lack. While the major is 0, every minor may break.
+ */
+function isCompatible(version: string): boolean {
+  const [major, minor] = version.split(".").map(Number);
+  const [ownMajor, ownMinor] = sdkVersion.split(".").map(Number);
+  if (major === undefined || minor === undefined || major !== ownMajor) return false;
+  return major === 0 ? minor === ownMinor : minor <= (ownMinor ?? 0);
 }
 
 /**

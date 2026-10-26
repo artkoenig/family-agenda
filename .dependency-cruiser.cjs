@@ -43,9 +43,10 @@ module.exports = {
       name: "source-plugins-import-only-source-sdk",
       comment: "The SDK is the only Family Butler package a plugin may import (ADR-0010).",
       severity: "error",
-      from: { path: "^packages/source-(?!sdk/)[^/]+/" },
+      from: { path: "^packages/(source-(?!sdk/)[^/]+)/" },
       to: {
-        path: "^(apps/|packages/(?!source-sdk/|source-[^/]+/)|@family-butler/(?!source-sdk$))",
+        path: "^(apps/|packages/|@family-butler/(?!source-sdk$))",
+        pathNot: "^packages/($1|source-sdk)/",
       },
     },
     {

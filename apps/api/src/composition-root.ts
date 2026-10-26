@@ -41,8 +41,7 @@ import {
 } from "@family-butler/application";
 import { SourceRegistry } from "./source-registry";
 
-/** The workspace's packages, where the Source plugins shipped with Family Butler are. */
-export const workspacePackages = fileURLToPath(new URL("../../../packages", import.meta.url));
+const defaultWorkspacePackages = fileURLToPath(new URL("../../../packages", import.meta.url));
 
 const packageVersion = (
   JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as { version: string }
@@ -54,13 +53,10 @@ export type ApplicationConfig = {
   masterKeyFile: string;
   /** Where files such as photos are kept, outside Postgres. */
   blobDirectory: string;
-  /**
-   * Where Source plugins are discovered: directories of packages, by default the workspace's
-   * packages and the `plugins/` volume.
-   */
-  sourcePluginDirectories?: string[];
-  /** The `plugins/` volume, for plugins an operator adds to a stock image. */
-  pluginDirectory?: string;
+  /** The `plugins/` volume, for Source plugins an operator adds to a stock image. */
+  pluginDirectory: string;
+  /** Where the Source plugins shipped with Family Butler are; by default the workspace's packages. */
+  workspacePackages?: string;
   /** The version of Family Butler, which new Source Types are recorded with. */
   applicationVersion?: string;
   /** The IANA time zone the Family lives in; by default the one of the process (`TZ`). */
@@ -124,9 +120,10 @@ export async function bootApplication(config: ApplicationConfig): Promise<Applic
     views: new PostgresViewRepository(postgres.db),
   });
 
-  const registry = await SourceRegistry.discover(
-    config.sourcePluginDirectories ?? [workspacePackages, config.pluginDirectory ?? defaultPluginDirectory],
-  );
+  const registry = await SourceRegistry.discover([
+    config.workspacePackages ?? defaultWorkspacePackages,
+    config.pluginDirectory,
+  ]);
   const sourceTypeRepository = new PostgresSourceTypeRepository(postgres.db);
   const sourceRepository = new PostgresSourceRepository(postgres.db);
   const sourceTypes = createSourceTypeAccess({
@@ -162,8 +159,6 @@ export async function bootApplication(config: ApplicationConfig): Promise<Applic
     close: () => postgres.close(),
   };
 }
-
-const defaultPluginDirectory = "/var/lib/family-butler/plugins";
 
 /** Creates the master key on first start, but never a new one for secrets stored with a lost one. */
 async function loadMasterKey(postgres: PostgresConnection, file: string): Promise<Buffer> {

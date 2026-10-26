@@ -107,8 +107,14 @@ export function createSourceTypeAccess(deps: SourceTypesDeps) {
     },
 
     /** Only a Source Type without Sources can be disabled; an Admin removes those first. */
-    async disable(id: string): Promise<{ ok: true } | { ok: false; problem: "has-sources" }> {
-      if (!(await sourceTypes.disableIfUnused(id as SourceTypeId))) return { ok: false, problem: "has-sources" };
+    async disable(
+      id: string,
+    ): Promise<{ ok: true } | { ok: false; problem: "unknown-source-type" | "has-sources" }> {
+      const record = (await sourceTypes.list()).find((type) => type.id === id);
+      if (!record) return { ok: false, problem: "unknown-source-type" };
+      if (record.enabled && !(await sourceTypes.disableIfUnused(record.id))) {
+        return { ok: false, problem: "has-sources" };
+      }
       return { ok: true };
     },
   };

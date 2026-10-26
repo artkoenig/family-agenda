@@ -320,14 +320,13 @@ export function SourceTypesPage(props: {
               Version {type.version}
               {type.needsLlm ? ". Its Sources need the LLM endpoint." : null}
             </p>
-            {type.notLoadable !== null ? (
-              <p class="problem">Not loadable: {type.notLoadable}</p>
-            ) : type.enabled ? (
+            {type.notLoadable !== null ? <p class="problem">Not loadable: {type.notLoadable}</p> : null}
+            {type.enabled ? (
               <form method="post" action={`/admin/source-types/${type.id}/disable`}>
                 <p>Enabled. It can be disabled once it has no Sources.</p>
                 <button type="submit">Disable {type.displayName}</button>
               </form>
-            ) : (
+            ) : type.notLoadable !== null ? null : (
               <form method="post" action={`/admin/source-types/${type.id}/enable`}>
                 {type.riskNotice !== null ? (
                   <>

@@ -149,6 +149,8 @@ describe("Source Types", () => {
     await instance.app.sources.remove(added.id);
     expect(await instance.app.sourceTypes.disable("school-portal")).toEqual({ ok: true });
     expect((await list())[0]?.enabled).toBe(false);
+    expect(await instance.app.sourceTypes.disable("school-portal")).toEqual({ ok: true });
+    expect(await instance.app.sourceTypes.disable("unknown")).toEqual({ ok: false, problem: "unknown-source-type" });
   });
 });
 
