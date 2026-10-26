@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   parseManifest,
   problemsWith,
+  problemsWithManifest,
   problemsWithOrigin,
   sdkVersion,
   SourceError,
@@ -127,6 +128,7 @@ describe("a manifest", () => {
   const packageJson = (sourcePlugin: unknown) => ({
     name: "family-butler-source-example",
     version: "1.2.0",
+    type: "module",
     familyButler: { sourcePlugin },
   });
 
@@ -151,8 +153,28 @@ describe("a manifest", () => {
         description: "Reads examples.",
         needsLlm: true,
         riskNotice: "Against the terms of service.",
+        esModule: true,
       },
     });
+  });
+
+  it("makes a plugin not loadable unless it is an ES module", () => {
+    const manifest = (entry: string, type?: string) => {
+      const result = parseManifest({
+        version: "1.0.0",
+        ...(type ? { type } : {}),
+        familyButler: { sourcePlugin: { entry, sourceTypeId: "example", displayName: "Example", sdkVersion, description: "Reads examples." } },
+      });
+      if (!result.ok) throw new Error("the manifest is invalid");
+      return result.manifest;
+    };
+
+    expect(problemsWithManifest(manifest("./index.js"))).toEqual([
+      'the package is no ES module; set "type": "module" in its package.json',
+    ]);
+    expect(problemsWithManifest(manifest("./index.js", "commonjs"))).toHaveLength(1);
+    expect(problemsWithManifest(manifest("./index.js", "module"))).toEqual([]);
+    expect(problemsWithManifest(manifest("./index.mts"))).toEqual([]);
   });
 
   it("is absent from packages that are no Source plugin", () => {

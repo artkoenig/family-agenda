@@ -1,4 +1,5 @@
 import { readdir, readFile } from "node:fs/promises";
+import { registerHooks } from "node:module";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import type {
@@ -37,6 +38,7 @@ export class SourceRegistry implements SourceTypeRegistry {
 
   /** The first package declaring a Source Type id wins; later ones are ignored with a warning. */
   static async discover(directories: string[]): Promise<SourceRegistry> {
+    shareSdkWith(directories);
     const discovered = new Map<string, Discovered>();
     for (const directory of directories) {
       for (const packageDirectory of await packageDirectoriesIn(directory)) {
@@ -92,6 +94,33 @@ export class SourceRegistry implements SourceTypeRegistry {
     }
     return loadedSourceType(plugin);
   }
+}
+
+const sdkSpecifier = "@family-butler/source-sdk";
+
+/** Directories, as URL prefixes, whose plugins import the SDK through `shareSdkWith`. */
+const sharingDirectories = new Set<string>();
+let hookRegistered = false;
+
+/**
+ * Lets the plugins in `directories` import the SDK by its package name although no
+ * `node_modules` above them holds it, as in the `plugins/` volume. Node resolves their import as
+ * it resolves the Instance's own, so that plugins and core share one SDK and, with it, one
+ * `SourceError`. Applies to Node's loader, not to the one of the test runner.
+ */
+function shareSdkWith(directories: string[]): void {
+  if (!hookRegistered) {
+    hookRegistered = true;
+    registerHooks({
+      resolve(specifier, context, nextResolve) {
+        const fromPlugin =
+          specifier === sdkSpecifier &&
+          [...sharingDirectories].some((directory) => context.parentURL?.startsWith(directory));
+        return nextResolve(specifier, fromPlugin ? { ...context, parentURL: import.meta.url } : context);
+      },
+    });
+  }
+  for (const directory of directories) sharingDirectories.add(pathToFileURL(join(directory, "/")).href);
 }
 
 function loadedSourceType(plugin: SourcePlugin): LoadedSourceType {

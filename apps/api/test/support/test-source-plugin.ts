@@ -83,6 +83,7 @@ export async function writeTestPluginPackage(directory: string, plugin: TestPlug
     JSON.stringify({
       name: `family-butler-source-${plugin.sourceTypeId}`,
       version: plugin.version ?? "1.0.0",
+      type: "module",
       familyButler: {
         sourcePlugin: {
           entry: "./index.ts",

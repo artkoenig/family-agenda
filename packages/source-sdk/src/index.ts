@@ -204,6 +204,11 @@ export type SourcePluginManifest = {
   needsLlm: boolean;
   /** Shown before an Admin can enable the Source Type, such as for an unofficial client. */
   riskNotice?: string;
+  /**
+   * Whether the entry is an ES module, by `"type": "module"` or an `.mjs` or `.mts` entry. Only ES
+   * modules share the Instance's SDK, so only they are loadable.
+   */
+  esModule: boolean;
 };
 
 export type ManifestResult =
@@ -241,6 +246,7 @@ export function parseManifest(packageJson: unknown): ManifestResult {
       identity: { sourceTypeId, displayName, version, sdkVersion: sdk },
       description,
       needsLlm: raw.needsLlm === true,
+      esModule: pkg.type === "module" || /\.m[jt]s$/.test(entry),
       ...(typeof raw.riskNotice === "string" ? { riskNotice: raw.riskNotice } : {}),
     },
   };
@@ -248,7 +254,9 @@ export function parseManifest(packageJson: unknown): ManifestResult {
 
 /** Problems that keep a plugin from being loaded, found in its manifest alone. */
 export function problemsWithManifest(manifest: SourcePluginManifest): string[] {
-  return problemsWithIdentity(manifest.identity);
+  const problems = problemsWithIdentity(manifest.identity);
+  if (!manifest.esModule) problems.push('the package is no ES module; set "type": "module" in its package.json');
+  return problems;
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {
