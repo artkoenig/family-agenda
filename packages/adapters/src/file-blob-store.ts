@@ -19,7 +19,7 @@ export class FileBlobStore implements BlobStore {
     return ref as BlobRef;
   }
 
-  async get(ref: BlobRef): Promise<Uint8Array | null> {
+  async get(ref: BlobRef): Promise<Uint8Array<ArrayBuffer> | null> {
     if (!uuidPattern.test(ref)) return null;
     try {
       return new Uint8Array(await readFile(join(this.directory, ref)));

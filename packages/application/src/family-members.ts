@@ -98,7 +98,10 @@ export function createFamilyMemberAccess(deps: FamilyMembersDeps) {
     },
 
     /** The Family Member's photo, or null if they have none. */
-    async photo(id: FamilyMemberId): Promise<{ bytes: Uint8Array; contentType: PhotoType } | null> {
+    async photo(id: FamilyMemberId): Promise<{
+      bytes: Uint8Array<ArrayBuffer>;
+      contentType: PhotoType;
+    } | null> {
       const member = await members.findById(id);
       if (!member?.photo) return null;
       const bytes = await blobs.get(member.photo.blob);

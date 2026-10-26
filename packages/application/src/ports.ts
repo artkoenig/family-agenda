@@ -108,7 +108,7 @@ export interface SecretStore {
 export interface BlobStore {
   put(contents: Uint8Array): Promise<BlobRef>;
   /** The contents, or null if no file has this reference. */
-  get(ref: BlobRef): Promise<Uint8Array | null>;
+  get(ref: BlobRef): Promise<Uint8Array<ArrayBuffer> | null>;
   remove(ref: BlobRef): Promise<void>;
 }
 
