@@ -48,7 +48,7 @@ export function createFamilyMemberAccess(deps: FamilyMembersDeps) {
   return {
     async list(): Promise<FamilyMemberSummary[]> {
       const all = await members.list(await families.theFamily());
-      return all.map(summarise);
+      return all.map(summariseFamilyMember);
     },
 
     /** `photo` is the uploaded file, if any. */
@@ -109,7 +109,7 @@ export function createFamilyMemberAccess(deps: FamilyMembersDeps) {
 
 export type FamilyMemberAccess = ReturnType<typeof createFamilyMemberAccess>;
 
-function summarise(member: FamilyMember): FamilyMemberSummary {
+export function summariseFamilyMember(member: FamilyMember): FamilyMemberSummary {
   return {
     id: member.id,
     name: member.name,

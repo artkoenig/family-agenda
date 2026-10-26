@@ -6,6 +6,8 @@ import type {
   FamilyId,
   FamilyMember,
   FamilyMemberId,
+  View,
+  ViewId,
 } from "@family-butler/domain";
 
 export interface Clock {
@@ -45,6 +47,27 @@ export interface FamilyMemberRepository {
   /** Stores a changed Family Member that was found before. */
   update(member: FamilyMember): Promise<void>;
   remove(id: FamilyMemberId): Promise<void>;
+}
+
+export interface ViewRepository {
+  add(view: View): Promise<void>;
+  /**
+   * In the order they were created, each with its preselected Family Members in the order
+   * those were added; Family Members removed since are no longer preselected.
+   */
+  list(familyId: FamilyId): Promise<View[]>;
+  findById(id: ViewId): Promise<View | null>;
+  /** Stores a changed View that was found before. */
+  update(view: View): Promise<void>;
+  remove(id: ViewId): Promise<void>;
+}
+
+/**
+ * Decides whether a View opens, depending on the listener that accepted the request
+ * (ADR-0005). On the local listener every View opens (ADR-0003).
+ */
+export interface ViewAccessPolicy {
+  mayOpen(view: ViewId): Promise<boolean>;
 }
 
 export type AdminSession = {

@@ -5,6 +5,7 @@ import type {
   FamilyMemberRepository,
   FamilyRepository,
   SignInFailureLog,
+  ViewRepository,
 } from "@family-butler/application";
 import type {
   Admin,
@@ -15,10 +16,20 @@ import type {
   FamilyMember,
   FamilyMemberId,
   PhotoType,
+  View,
+  ViewId,
 } from "@family-butler/domain";
-import { and, asc, eq, gt, inArray, lt, sql } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, lt, sql, type SQL } from "drizzle-orm";
 import type { Database } from "./database";
-import { admins, adminSessions, families, familyMembers, signInFailures } from "./schema";
+import {
+  admins,
+  adminSessions,
+  families,
+  familyMembers,
+  signInFailures,
+  viewPreselections,
+  views,
+} from "./schema";
 
 export const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -225,4 +236,68 @@ function photoColumns(member: FamilyMember) {
     photoBlob: member.photo?.blob ?? null,
     photoContentType: member.photo?.contentType ?? null,
   };
+}
+
+export class PostgresViewRepository implements ViewRepository {
+  constructor(private readonly db: Database) {}
+
+  async add(view: View): Promise<void> {
+    await this.db.transaction(async (tx) => {
+      await tx.insert(views).values(view);
+      await insertPreselections(tx, view);
+    });
+  }
+
+  async list(familyId: FamilyId): Promise<View[]> {
+    return this.select(eq(views.familyId, familyId));
+  }
+
+  async findById(id: ViewId): Promise<View | null> {
+    if (!uuidPattern.test(id)) return null;
+    const [view] = await this.select(eq(views.id, id));
+    return view ?? null;
+  }
+
+  async update(view: View): Promise<void> {
+    await this.db.transaction(async (tx) => {
+      await tx.update(views).set({ horizonDays: view.horizonDays }).where(eq(views.id, view.id));
+      await tx.delete(viewPreselections).where(eq(viewPreselections.viewId, view.id));
+      await insertPreselections(tx, view);
+    });
+  }
+
+  async remove(id: ViewId): Promise<void> {
+    if (!uuidPattern.test(id)) return;
+    await this.db.delete(views).where(eq(views.id, id));
+  }
+
+  private async select(where: SQL): Promise<View[]> {
+    const rows = await this.db
+      .select({ view: views, familyMemberId: viewPreselections.familyMemberId })
+      .from(views)
+      .leftJoin(viewPreselections, eq(viewPreselections.viewId, views.id))
+      .leftJoin(familyMembers, eq(familyMembers.id, viewPreselections.familyMemberId))
+      .where(where)
+      .orderBy(asc(views.position), asc(familyMembers.position));
+    const byId = new Map<string, View>();
+    for (const { view, familyMemberId } of rows) {
+      const found = byId.get(view.id) ?? {
+        id: view.id as ViewId,
+        familyId: view.familyId as FamilyId,
+        preselected: [],
+        horizonDays: view.horizonDays,
+        createdAt: view.createdAt,
+      };
+      if (familyMemberId) found.preselected.push(familyMemberId as FamilyMemberId);
+      byId.set(view.id, found);
+    }
+    return [...byId.values()];
+  }
+}
+
+async function insertPreselections(tx: Pick<Database, "insert">, view: View): Promise<void> {
+  if (view.preselected.length === 0) return;
+  await tx
+    .insert(viewPreselections)
+    .values(view.preselected.map((familyMemberId) => ({ viewId: view.id, familyMemberId })));
 }

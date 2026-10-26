@@ -1,8 +1,10 @@
 import {
   bigserial,
+  integer,
   customType,
   index,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   uuid,
@@ -65,3 +67,27 @@ export const familyMembers = pgTable("family_members", {
   photoContentType: text("photo_content_type"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
 });
+
+export const views = pgTable("views", {
+  id: uuid("id").primaryKey(),
+  position: bigserial("position", { mode: "number" }).notNull(),
+  familyId: uuid("family_id")
+    .notNull()
+    .references(() => families.id),
+  horizonDays: integer("horizon_days").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+});
+
+/** A View's preselected Family Members; removing a Family Member removes them here too. */
+export const viewPreselections = pgTable(
+  "view_preselections",
+  {
+    viewId: uuid("view_id")
+      .notNull()
+      .references(() => views.id, { onDelete: "cascade" }),
+    familyMemberId: uuid("family_member_id")
+      .notNull()
+      .references(() => familyMembers.id, { onDelete: "cascade" }),
+  },
+  (table) => [primaryKey({ columns: [table.viewId, table.familyMemberId] })],
+);
