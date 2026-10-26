@@ -1,0 +1,25 @@
+{
+  "name": "family-butler",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.28.0",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "depcruise": "depcruise packages apps",
+    "test": "vitest run",
+    "check": "pnpm lint && pnpm typecheck && pnpm depcruise && pnpm test"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^22.20.5",
+    "dependency-cruiser": "^18.7.0",
+    "eslint": "^10.13.0",
+    "typescript": "~6.0.3",
+    "typescript-eslint": "^8.72.0",
+    "vitest": "^5.0.5"
+  }
+}

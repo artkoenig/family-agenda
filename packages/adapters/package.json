@@ -1,0 +1,21 @@
+{
+  "name": "@family-butler/adapters",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@family-butler/application": "workspace:*",
+    "@family-butler/domain": "workspace:*",
+    "@node-rs/argon2": "^2.2.2",
+    "drizzle-orm": "^0.45.4",
+    "pg": "^8.23.1",
+    "pg-boss": "^12.38.0"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.23.1",
+    "drizzle-kit": "^0.31.11"
+  }
+}
