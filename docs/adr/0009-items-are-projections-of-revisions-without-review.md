@@ -16,7 +16,7 @@ We chose this because a review gate in front of every uncertain Item makes the F
 - A Revision is marked as a conflict when it was rejected automatically, when it disagrees with another Source, or when it contradicts an Admin Revision. A conflict needs no acknowledgement. The conflict filter shows only Items still on the timeline.
 - An Attribution Rule applies retroactively. Without a matching rule, an Item concerns the whole Family.
 - Merging Items and splitting an Origin off reassign Revisions to Items. They are not Revisions, but they appear in the change list and can be undone.
-- Extraction runs once per message. There is no second run to compare against.
+- Extraction runs once per message. There is no second run to compare against. "Once" means one successful run: while the LLM endpoint is unreachable or rejects the key, messages wait and are retried automatically. A message that fails on its own content three times is marked Not extracted, and an Admin can retry it.
 
 ## Consequences
 
