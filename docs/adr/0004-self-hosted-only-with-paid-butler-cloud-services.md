@@ -6,7 +6,7 @@ status: proposed
 
 Family Butler runs only as a self-hosted Instance that serves one Family. There will be no hosted multi-tenant version. The paid offering is Butler Cloud, a set of services an Instance can subscribe to, like Nabu Casa does for Home Assistant: Remote Access from outside the home network, push delivery of notifications, a hosted LLM endpoint, and encrypted off-site backups. We chose this over a multi-tenant SaaS because the Sources that make Family Butler useful cannot run in a provider's cloud. WhatsApp through whatsmeow (ADR-0001) and WebUntis through undocumented endpoints would mean the provider operating ToS-breaking clients for many accounts from data-centre IPs. Keeping Sources at home also keeps Family data, and third parties' raw messages, out of the provider's hands.
 
-The Instance stays the whole product. Every Source, the extraction pipeline, the Review Inbox and the Views run on it, and it works completely without Butler Cloud. Each Butler Cloud service sits behind a port in `packages/application` with a self-hosted implementation next to it:
+The Instance stays the whole product. Every Source, the extraction pipeline, the change list and the Views run on it, and it works completely without Butler Cloud. Each Butler Cloud service sits behind a port in `packages/application` with a self-hosted implementation next to it:
 
 | Port | Without Butler Cloud | With Butler Cloud |
 |---|---|---|
