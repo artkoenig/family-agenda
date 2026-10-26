@@ -16,6 +16,7 @@
     "@family-butler/application": "workspace:*",
     "@family-butler/contracts": "workspace:*",
     "@family-butler/domain": "workspace:*",
+    "@family-butler/source-sdk": "workspace:*",
     "@hono/node-server": "^2.1.5",
     "hono": "^4.13.14",
     "htmx.org": "^2.0.11",

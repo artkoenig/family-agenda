@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import type { AdminSummary, Showing, ViewAccessPolicy } from "@family-butler/application";
+import type { Showing, ViewAccessPolicy } from "@family-butler/application";
 import {
   horizonDaysRange,
   maximumNameLength,
@@ -28,7 +28,9 @@ import {
   RecoveryKitPage,
   recoveryKitText,
   SignInPage,
+  SourceTypesPage,
   ViewsPage,
+  type SignedInAdmin,
 } from "./pages";
 import { ViewPageDocument, ViewTimeline } from "./view-page";
 
@@ -41,7 +43,7 @@ export type HttpOptions = {
 
 type Env = {
   Bindings: HttpBindings;
-  Variables: { admin: AdminSummary };
+  Variables: { admin: SignedInAdmin };
 };
 
 const sessionCookie = "fb_session";
@@ -61,12 +63,16 @@ const problems = {
   "unknown-member": "This Family Member does not exist.",
   "invalid-horizon": `The horizon must be between ${horizonDaysRange.min} and ${horizonDaysRange.max} days.`,
   "unknown-view": "This View does not exist.",
+  "unknown-source-type": "This Source Type is not installed.",
+  "not-loadable": "This Source Type cannot be loaded.",
+  "risk-not-acknowledged": "Confirm that you understand the risk of this Source Type.",
+  "has-sources": "Remove the Sources of this Source Type before disabling it.",
 } satisfies Record<string, string>;
 
 const htmx = readFileSync(createRequire(import.meta.url).resolve("htmx.org/dist/htmx.min.js"));
 
 export function createHttpApp(application: Application, options: HttpOptions) {
-  const { admins, recoveryKit, familyMembers, views } = application;
+  const { admins, recoveryKit, familyMembers, views, sourceTypes } = application;
   const app = new Hono<Env>();
 
   const isHttps = (c: Context) =>
@@ -189,7 +195,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     const token = getCookie(c, sessionCookie);
     const admin = token ? await admins.authenticate(token) : null;
     if (!admin) return c.redirect("/admin/sign-in");
-    c.set("admin", admin);
+    c.set("admin", { ...admin, newSourceTypes: await sourceTypes.hasNew() });
     await next();
   });
   // Until an Admin confirms saving the Recovery Kit, the Admin area shows only the kit (ADR-0006).
@@ -362,6 +368,36 @@ export function createHttpApp(application: Application, options: HttpOptions) {
   app.post("/admin/views/:id/remove", async (c) => {
     await views.remove(c.req.param("id") as ViewId);
     return c.redirect("/admin/views", 303);
+  });
+
+  const sourceTypesPage = async (c: Context<Env>, problem?: string) => {
+    const list = await sourceTypes.open();
+    // Opening the list ends the banner, so this page no longer shows it.
+    const page = (
+      <SourceTypesPage
+        admin={{ ...c.get("admin"), newSourceTypes: false }}
+        sourceTypes={list}
+        {...(problem ? { problem } : {})}
+      />
+    );
+    return c.html(page, problem ? 400 : 200);
+  };
+
+  app.get("/admin/source-types", (c) => sourceTypesPage(c));
+
+  app.post("/admin/source-types/:id/enable", async (c) => {
+    const form = await c.req.parseBody();
+    const result = await sourceTypes.enable(c.req.param("id"), {
+      riskAcknowledged: field(form, "riskAcknowledged") === "yes",
+    });
+    if (!result.ok) return sourceTypesPage(c, problems[result.problem]);
+    return c.redirect("/admin/source-types", 303);
+  });
+
+  app.post("/admin/source-types/:id/disable", async (c) => {
+    const result = await sourceTypes.disable(c.req.param("id"));
+    if (!result.ok) return sourceTypesPage(c, problems[result.problem]);
+    return c.redirect("/admin/source-types", 303);
   });
 
   return app;
