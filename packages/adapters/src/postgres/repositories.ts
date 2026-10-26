@@ -1,14 +1,20 @@
+import { createHash, randomUUID } from "node:crypto";
 import type {
   AdminRepository,
   AdminSession,
   AdminSessionRepository,
   FamilyMemberRepository,
   FamilyRepository,
+  ItemProjection,
+  ItemRepository,
+  NewRevision,
   PlainConfig,
+  ProjectedItem,
   SecretRef,
   SignInFailureLog,
   Source,
   SourceRepository,
+  SourceRun,
   SourceTypeRecord,
   SourceTypeRepository,
   ViewRepository,
@@ -21,13 +27,16 @@ import type {
   FamilyId,
   FamilyMember,
   FamilyMemberId,
+  FoldableRevision,
+  ItemId,
+  ItemKind,
   PhotoType,
   SourceId,
   SourceTypeId,
   View,
   ViewId,
 } from "@family-butler/domain";
-import { and, asc, eq, gt, inArray, lt, sql, type SQL } from "drizzle-orm";
+import { and, asc, eq, gt, gte, inArray, isNotNull, lt, lte, sql, type SQL } from "drizzle-orm";
 import { uuidPattern } from "../uuid";
 import type { Database } from "./database";
 import {
@@ -35,6 +44,10 @@ import {
   adminSessions,
   families,
   familyMembers,
+  itemKeys,
+  items,
+  origins,
+  revisions,
   signInFailures,
   sources,
   sourceTypes,
@@ -363,6 +376,8 @@ export class PostgresSourceRepository implements SourceRepository {
       configVersion: source.configVersion,
       secretRefs: source.secrets,
       state: source.state,
+      pollIntervalSeconds: source.pollIntervalSeconds,
+      lastRunAt: source.lastRunAt,
       createdAt: source.createdAt,
     });
   }
@@ -388,6 +403,22 @@ export class PostgresSourceRepository implements SourceRepository {
       .where(and(eq(sources.id, id), eq(sources.configVersion, fromVersion)));
   }
 
+  async update(source: Source): Promise<void> {
+    await this.db
+      .update(sources)
+      .set({
+        config: source.plain,
+        configVersion: source.configVersion,
+        secretRefs: source.secrets,
+        pollIntervalSeconds: source.pollIntervalSeconds,
+      })
+      .where(eq(sources.id, source.id));
+  }
+
+  async recordFailedRun(id: SourceId, at: Date): Promise<void> {
+    await this.db.update(sources).set({ lastRunAt: at }).where(eq(sources.id, id));
+  }
+
   async remove(id: SourceId): Promise<void> {
     if (!uuidPattern.test(id)) return;
     await this.db.delete(sources).where(eq(sources.id, id));
@@ -403,7 +434,149 @@ export class PostgresSourceRepository implements SourceRepository {
       configVersion: row.configVersion,
       secrets: row.secretRefs as Record<string, SecretRef>,
       state: row.state,
+      pollIntervalSeconds: row.pollIntervalSeconds,
+      lastRunAt: row.lastRunAt,
       createdAt: row.createdAt,
     }));
   }
+}
+
+type Transaction = Parameters<Parameters<Database["transaction"]>[0]>[0];
+
+export class PostgresItemRepository implements ItemRepository {
+  constructor(private readonly db: Database) {}
+
+  async recordRun(
+    run: SourceRun,
+    recompute: (kind: ItemKind, revisions: FoldableRevision[]) => ItemProjection,
+  ): Promise<void> {
+    await this.db.transaction(async (tx) => {
+      const reached = new Map<ItemId, ItemKind>();
+      for (const origin of run.origins) {
+        const [row] = await tx
+          .insert(origins)
+          .values({
+            id: randomUUID(),
+            familyId: run.familyId,
+            sourceId: run.sourceId,
+            externalId: origin.externalId,
+            attributes: origin.attributes,
+            link: origin.link,
+            firstSeenAt: run.at,
+          })
+          .onConflictDoUpdate({
+            target: [origins.sourceId, origins.externalId],
+            // A later appearance without a link, such as a cancellation, keeps the link.
+            set: { attributes: origin.attributes, link: sql`coalesce(excluded.link, ${origins.link})` },
+          })
+          .returning({ id: origins.id });
+        if (!row) throw new Error("recording the Origin returned no row");
+        for (const revision of origin.revisions) {
+          const item = await this.itemFor(tx, run, revision);
+          const appended = await tx
+            .insert(revisions)
+            .values({
+              id: randomUUID(),
+              familyId: run.familyId,
+              itemId: item.id,
+              originId: row.id,
+              act: revision.act,
+              fields: revision.fields,
+              sourceTime: revision.sourceTime,
+              receivedAt: run.at,
+              accepted: revision.accepted,
+              fingerprint: fingerprintOf(revision),
+            })
+            .onConflictDoNothing({ target: [revisions.originId, revisions.fingerprint] })
+            .returning({ id: revisions.id });
+          if (appended.length > 0) reached.set(item.id, item.kind);
+        }
+      }
+      for (const [id, kind] of reached) {
+        const all = await tx
+          .select({
+            act: revisions.act,
+            fields: revisions.fields,
+            sourceTime: revisions.sourceTime,
+            sequence: revisions.sequence,
+            accepted: revisions.accepted,
+          })
+          .from(revisions)
+          .where(eq(revisions.itemId, id));
+        const projection = recompute(kind, all as FoldableRevision[]);
+        await tx
+          .update(items)
+          .set({
+            folded: projection.folded,
+            windowFrom: projection.window?.from ?? null,
+            windowTo: projection.window?.to ?? null,
+          })
+          .where(eq(items.id, id));
+      }
+      await tx.update(sources).set({ state: run.state, lastRunAt: run.at }).where(eq(sources.id, run.sourceId));
+    });
+  }
+
+  async overlapping(familyId: FamilyId, from: Date, to: Date): Promise<ProjectedItem[]> {
+    const rows = await this.db
+      .select({ id: items.id, kind: items.kind, folded: items.folded })
+      .from(items)
+      .where(
+        and(eq(items.familyId, familyId), isNotNull(items.folded), lte(items.windowFrom, to), gte(items.windowTo, from)),
+      )
+      .orderBy(asc(items.windowFrom), asc(items.createdAt));
+    if (rows.length === 0) return [];
+    const links = await this.db
+      .selectDistinct({ itemId: revisions.itemId, link: origins.link, firstSeenAt: origins.firstSeenAt })
+      .from(revisions)
+      .innerJoin(origins, eq(origins.id, revisions.originId))
+      .where(and(inArray(revisions.itemId, rows.map((row) => row.id)), isNotNull(origins.link)))
+      .orderBy(asc(origins.firstSeenAt));
+    return rows.flatMap((row) =>
+      row.folded
+        ? [
+            {
+              id: row.id as ItemId,
+              kind: row.kind as ItemKind,
+              folded: row.folded,
+              links: links.flatMap((link) => (link.itemId === row.id && link.link ? [link.link] : [])),
+            },
+          ]
+        : [],
+    );
+  }
+
+  /** The Item the Source's key names, created on the first Revision about it. */
+  private async itemFor(
+    tx: Transaction,
+    run: SourceRun,
+    revision: NewRevision,
+  ): Promise<{ id: ItemId; kind: ItemKind }> {
+    const [known] = await tx
+      .select({ id: items.id, kind: items.kind })
+      .from(itemKeys)
+      .innerJoin(items, eq(items.id, itemKeys.itemId))
+      .where(and(eq(itemKeys.sourceId, run.sourceId), eq(itemKeys.itemKey, revision.itemKey)));
+    if (known) return { id: known.id as ItemId, kind: known.kind as ItemKind };
+    const id = randomUUID() as ItemId;
+    await tx.insert(items).values({ id, familyId: run.familyId, kind: revision.itemKind, createdAt: run.at });
+    await tx.insert(itemKeys).values({ sourceId: run.sourceId, itemKey: revision.itemKey, itemId: id });
+    return { id, kind: revision.itemKind };
+  }
+}
+
+/** What a Revision states, independent of the order a plugin wrote its fields in. */
+function fingerprintOf(revision: NewRevision): string {
+  const canonical = (value: unknown): unknown =>
+    Array.isArray(value)
+      ? value.map(canonical)
+      : typeof value === "object" && value !== null
+        ? Object.fromEntries(
+            Object.entries(value)
+              .sort(([a], [b]) => a.localeCompare(b))
+              .map(([key, inner]) => [key, canonical(inner)]),
+          )
+        : value;
+  const statement = [revision.itemKey, revision.act, revision.sourceTime.toISOString(), canonical(revision.fields)];
+  return createHash("sha256").update(JSON.stringify(statement)).digest("hex");
 }

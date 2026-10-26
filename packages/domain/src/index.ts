@@ -5,3 +5,5 @@ export * from "./family-member";
 export * from "./photo";
 export * from "./source";
 export * from "./view";
+export * from "./item";
+export * from "./event";

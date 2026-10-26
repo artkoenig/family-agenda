@@ -1,6 +1,6 @@
 import { openViewAccess } from "@family-butler/application";
 import { createHttpApp, type HttpOptions } from "../../src/http/app";
-import { bootForTest, type TestInstance } from "./boot";
+import { bootForTest, type TestInstance, type TestOptions } from "./boot";
 
 type RequestInit = { cookie?: string; headers?: Record<string, string> };
 
@@ -16,8 +16,11 @@ export type HttpTestInstance = TestInstance & {
 };
 
 /** Boots an Instance and drives its Hono app with in-process requests. */
-export async function bootHttpForTest(options: Partial<HttpOptions> = {}): Promise<HttpTestInstance> {
-  const instance = await bootForTest();
+export async function bootHttpForTest(
+  options: Partial<HttpOptions> = {},
+  testOptions: TestOptions = {},
+): Promise<HttpTestInstance> {
+  const instance = await bootForTest(testOptions);
   const http = createHttpApp(instance.app, { trustProxy: false, viewAccess: openViewAccess, ...options });
   const headersFor = (init?: RequestInit) => ({
     ...(init?.cookie ? { cookie: init.cookie } : {}),

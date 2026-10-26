@@ -6,6 +6,7 @@ import {
   SourceError,
   type Configuration,
   type Origin,
+  type RunContext,
   type SourcePlugin,
 } from "@family-butler/source-sdk";
 
@@ -13,6 +14,7 @@ import {
 export const loadedTestPlugins: string[] = [];
 
 const pending = new Map<string, { origins: Origin[]; failure?: SourceError }>();
+const runs = new Map<string, RunContext[]>();
 
 /** Controls what the test plugin of a Source Type does on its next run. */
 export const testPluginControls = {
@@ -21,6 +23,10 @@ export const testPluginControls = {
   },
   failNext(sourceTypeId: string, kind: "definite" | "temporary"): void {
     pending.set(sourceTypeId, { origins: [], failure: new SourceError(`${sourceTypeId} failed`, kind) });
+  },
+  /** What the plugin of a Source Type was run with so far, oldest first. */
+  runs(sourceTypeId: string): RunContext[] {
+    return runs.get(sourceTypeId) ?? [];
   },
 };
 
@@ -46,7 +52,9 @@ export function testSourcePlugin(options: TestPluginOptions): SourcePlugin {
     ingestion: {
       mode: "polling",
       suggestedIntervalSeconds: 600,
-      poll: ({ state }) => {
+      poll: (context) => {
+        const { state } = context;
+        runs.set(sourceTypeId, [...(runs.get(sourceTypeId) ?? []), context]);
         const next = pending.get(sourceTypeId) ?? { origins: [] };
         pending.delete(sourceTypeId);
         if (next.failure) return Promise.reject(next.failure);
