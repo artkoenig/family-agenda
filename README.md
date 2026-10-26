@@ -12,6 +12,10 @@ This starts `api` (on port 8080, or `PORT`), `worker` and `postgres`. Open the I
 
 - **Recovery Kit**: Source credentials are encrypted with a master key that is created on first start in the `master-key` volume, never in Postgres. Print or download the Recovery Kit and keep it away from the Instance: a Backup can restore the credentials only with it. Any Admin can show it again in the Admin area.
 
+- **Family Members and Views**: in the Admin area, add the Family Members and create Views. Each View has its own address, `/views/<id>`, which anyone on the home network opens without signing in, so guests on your Wi-Fi can see them too. Guest Wi-Fi isolation helps. Never expose the Instance to the internet without your own authentication in front of it.
+- **Time zone**: a View's days start at midnight in `TZ`, by default `Europe/Berlin`.
+- **Blobs**: photos are kept as files in the `blobs` volume, not in Postgres. Back it up with the database.
+
 - **HTTPS**: the Instance serves plain HTTP. Behind your own HTTPS reverse proxy, set `TRUST_PROXY=true`, so that session cookies become `Secure` and sign-in rate limiting sees each client's address. The proxy must set `X-Forwarded-Proto` and `X-Forwarded-For`.
 - **Forgotten password**: another Admin can reset it in the Admin area, or inside the container:
 
@@ -41,7 +45,7 @@ After changing `packages/adapters/src/postgres/schema.ts`, generate a migration 
 | --- | --- |
 | `packages/domain` | Plain TypeScript, imports nothing |
 | `packages/application` | Use cases and ports |
-| `packages/adapters` | Postgres (Drizzle), pg-boss, Argon2id, the master key file and the envelope-encrypting `SecretStore` |
+| `packages/adapters` | Postgres (Drizzle), pg-boss, Argon2id, the master key file, the envelope-encrypting `SecretStore` and the file `BlobStore` |
 | `packages/contracts` | zod schemas for REST DTOs |
 | `packages/source-sdk` | The `SourcePlugin` contract, and its shared contract tests in `@family-butler/source-sdk/testing` |
 | `apps/api` | Hono, the composition root, HTML and the CLI |
@@ -49,6 +53,6 @@ After changing `packages/adapters/src/postgres/schema.ts`, generate a migration 
 
 ### Tests
 
-- **Use cases**: `apps/api/test/use-cases`, booted through the composition root against a throwaway Postgres database and master key file, with a controllable `Clock` (`apps/api/test/support/boot.ts`). Pass `secretStore: new InMemorySecretStore()` to keep secrets in memory instead.
+- **Use cases**: `apps/api/test/use-cases`, booted through the composition root against a throwaway Postgres database, master key file and blob directory, with a controllable `Clock` (`apps/api/test/support/boot.ts`). Pass `secretStore: new InMemorySecretStore()` to keep secrets in memory instead.
 - **Source plugin contracts**: each plugin calls `describeSourcePluginContract` from `@family-butler/source-sdk/testing` in its own tests.
 - **HTTP**: `apps/api/test/http`, in-process requests against the Hono app (`apps/api/test/support/http.ts`).

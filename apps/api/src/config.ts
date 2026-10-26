@@ -1,6 +1,7 @@
 export type Config = {
   databaseUrl: string;
   masterKeyFile: string;
+  blobDirectory: string;
   port: number;
   trustProxy: boolean;
 };
@@ -11,6 +12,7 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): Config {
   return {
     databaseUrl,
     masterKeyFile: env.MASTER_KEY_FILE ?? "/var/lib/family-butler/master-key/master.key",
+    blobDirectory: env.BLOB_DIRECTORY ?? "/var/lib/family-butler/blobs",
     port: Number(env.PORT ?? 3000),
     trustProxy: env.TRUST_PROXY === "true",
   };

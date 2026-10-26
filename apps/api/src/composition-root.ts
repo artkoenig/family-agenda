@@ -3,12 +3,15 @@ import {
   connectPostgres,
   createMasterKey,
   EnvelopeSecretStore,
+  FileBlobStore,
   holdsSecrets,
   PgBossJobQueue,
   PostgresAdminRepository,
   PostgresAdminSessionRepository,
+  PostgresFamilyMemberRepository,
   PostgresFamilyRepository,
   PostgresSignInFailureLog,
+  PostgresViewRepository,
   readMasterKey,
   runMigrations,
   SystemClock,
@@ -16,19 +19,27 @@ import {
 } from "@family-butler/adapters";
 import {
   createAdminAccess,
+  createFamilyMemberAccess,
   createRecoveryKitAccess,
+  createViewAccess,
   signInLimits,
   type AdminAccess,
+  type FamilyMemberAccess,
   type Clock,
   type JobQueue,
   type RecoveryKitAccess,
   type SecretStore,
+  type ViewAccess,
 } from "@family-butler/application";
 
 export type ApplicationConfig = {
   databaseUrl: string;
   /** Where the master key is kept, outside Postgres; created on first start. */
   masterKeyFile: string;
+  /** Where files such as photos are kept, outside Postgres. */
+  blobDirectory: string;
+  /** The IANA time zone the Family lives in; by default the one of the process (`TZ`). */
+  timeZone?: string;
   clock?: Clock;
   secretStore?: SecretStore;
 };
@@ -37,6 +48,8 @@ export type Application = {
   admins: AdminAccess;
   secrets: SecretStore;
   recoveryKit: RecoveryKitAccess;
+  familyMembers: FamilyMemberAccess;
+  views: ViewAccess;
   close(): Promise<void>;
 };
 
@@ -68,7 +81,23 @@ export async function bootApplication(config: ApplicationConfig): Promise<Applic
 
   const recoveryKit = createRecoveryKitAccess({ clock, families, masterKey });
 
-  return { admins, secrets, recoveryKit, close: () => postgres.close() };
+  const members = new PostgresFamilyMemberRepository(postgres.db);
+  const familyMembers = createFamilyMemberAccess({
+    clock,
+    families,
+    members,
+    blobs: new FileBlobStore(config.blobDirectory),
+  });
+
+  const views = createViewAccess({
+    clock,
+    timeZone: config.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
+    families,
+    members,
+    views: new PostgresViewRepository(postgres.db),
+  });
+
+  return { admins, secrets, recoveryKit, familyMembers, views, close: () => postgres.close() };
 }
 
 /** Creates the master key on first start, but never a new one for secrets stored with a lost one. */

@@ -1,4 +1,14 @@
-import type { Admin, AdminId, Email, FamilyId } from "@family-butler/domain";
+import type {
+  Admin,
+  BlobRef,
+  AdminId,
+  Email,
+  FamilyId,
+  FamilyMember,
+  FamilyMemberId,
+  View,
+  ViewId,
+} from "@family-butler/domain";
 
 export interface Clock {
   now(): Date;
@@ -27,6 +37,37 @@ export interface AdminRepository {
   findByEmail(email: Email): Promise<Admin | null>;
   list(familyId: FamilyId): Promise<Admin[]>;
   setPasswordHash(id: AdminId, passwordHash: string): Promise<void>;
+}
+
+export interface FamilyMemberRepository {
+  add(member: FamilyMember): Promise<void>;
+  /** In the order they were added. */
+  list(familyId: FamilyId): Promise<FamilyMember[]>;
+  findById(id: FamilyMemberId): Promise<FamilyMember | null>;
+  /** Stores a changed Family Member that was found before. */
+  update(member: FamilyMember): Promise<void>;
+  remove(id: FamilyMemberId): Promise<void>;
+}
+
+export interface ViewRepository {
+  add(view: View): Promise<void>;
+  /**
+   * In the order they were created, each with its preselected Family Members in the order
+   * those were added; Family Members removed since are no longer preselected.
+   */
+  list(familyId: FamilyId): Promise<View[]>;
+  findById(id: ViewId): Promise<View | null>;
+  /** Stores a changed View that was found before. */
+  update(view: View): Promise<void>;
+  remove(id: ViewId): Promise<void>;
+}
+
+/**
+ * Decides whether a View opens, depending on the listener that accepted the request
+ * (ADR-0005). On the local listener every View opens (ADR-0003).
+ */
+export interface ViewAccessPolicy {
+  mayOpen(view: ViewId): Promise<boolean>;
 }
 
 export type AdminSession = {
@@ -61,6 +102,14 @@ export interface SecretStore {
   /** The plaintext, or null if no secret has this reference. */
   get(ref: SecretRef): Promise<string | null>;
   remove(ref: SecretRef): Promise<void>;
+}
+
+/** Keeps files, such as photos and attachments, outside Postgres (ADR-0006). */
+export interface BlobStore {
+  put(contents: Uint8Array): Promise<BlobRef>;
+  /** The contents, or null if no file has this reference. */
+  get(ref: BlobRef): Promise<Uint8Array<ArrayBuffer> | null>;
+  remove(ref: BlobRef): Promise<void>;
 }
 
 export interface JobQueue {

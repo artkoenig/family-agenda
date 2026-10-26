@@ -9,9 +9,14 @@ x-app: &app
     # Set to true behind your own HTTPS reverse proxy, so session cookies become Secure.
     TRUST_PROXY: ${TRUST_PROXY:-false}
     MASTER_KEY_FILE: /var/lib/family-butler/master-key/master.key
+    BLOB_DIRECTORY: /var/lib/family-butler/blobs
+    # The Family's time zone, which decides where a View's days start.
+    TZ: ${TZ:-Europe/Berlin}
   volumes:
     # The master key that Source credentials are encrypted with; never in Postgres (ADR-0006).
     - master-key:/var/lib/family-butler/master-key
+    # Files such as Family Member photos, kept outside Postgres (ADR-0006).
+    - blobs:/var/lib/family-butler/blobs
   depends_on:
     postgres:
       condition: service_healthy
@@ -49,3 +54,4 @@ services:
 volumes:
   postgres-data:
   master-key:
+  blobs:
