@@ -20,3 +20,5 @@ Raw source messages and attachments, such as PDFs and images, are kept behind a 
 - **Credentials in plain Postgres columns, protected by disk encryption**: common in self-hosted apps, but every dump leaks them.
 - **Blobs as `bytea` in Postgres**: one store and transactional, but dumps grow with every PDF and restores get slow on a Raspberry Pi.
 - **An S3-compatible store (MinIO, Garage) in Compose**: one more service to run, for no gain on a single Instance.
+
+_Amended by ADR-0011: the whatsmeow session store is replaced by the bridges' volumes, which hold the Messenger sessions outside Postgres. A backup also includes Synapse's own database and the Synapse and bridge volumes, under the same recovery kit._
