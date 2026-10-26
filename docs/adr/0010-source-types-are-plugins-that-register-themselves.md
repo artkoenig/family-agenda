@@ -46,3 +46,5 @@ Installed is not enabled. An Admin enables each Source Type the Family uses, and
 - **Plugins as separate services over HTTP or gRPC**: isolated and language-independent, but every Source would need its own container and its own protocol for configuration and state. The push ingest endpoint keeps this path open for a plugin that wants it, as the WhatsApp sidecar does.
 - **Plugins installed from a registry at run time from the Admin area**: convenient, but it means downloading and running code on the Family's Instance from a web form. Operators add plugins to the image or the `plugins/` volume instead.
 - **Enabling every installed Source Type automatically**: one step less in onboarding, but an update would quietly start loading new code, and a risky Source Type such as WhatsApp would be on without its acknowledgement.
+
+_Amended by ADR-0011: the four v1 Source Types are WebUntis, ICS, IMAP and Matrix (`packages/source-matrix`), which reads WhatsApp and other Messengers through bridges. Where this ADR names WhatsApp's pairing step, risk notice or whatsmeow sidecar, these now belong to the WhatsApp Messenger of the Matrix plugin and its bridge container._

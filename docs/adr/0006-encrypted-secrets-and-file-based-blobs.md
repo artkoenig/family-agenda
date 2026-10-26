@@ -20,3 +20,5 @@ Raw source messages and attachments, such as PDFs and images, are kept behind a 
 - **Credentials in plain Postgres columns, protected by disk encryption**: common in self-hosted apps, but every dump leaks them.
 - **Blobs as `bytea` in Postgres**: one store and transactional, but dumps grow with every PDF and restores get slow on a Raspberry Pi.
 - **An S3-compatible store (MinIO, Garage) in Compose**: one more service to run, for no gain on a single Instance.
+
+_Amended by ADR-0011: the whatsmeow session store is replaced by the volumes of the Matrix homeserver and the bridges, which hold the Messenger sessions outside Postgres and are covered by the same backup and recovery kit._
