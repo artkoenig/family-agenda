@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import {
   Argon2idPasswordHasher,
   connectPostgres,
@@ -11,6 +13,8 @@ import {
   PostgresFamilyMemberRepository,
   PostgresFamilyRepository,
   PostgresSignInFailureLog,
+  PostgresSourceRepository,
+  PostgresSourceTypeRepository,
   PostgresViewRepository,
   readMasterKey,
   runMigrations,
@@ -21,6 +25,8 @@ import {
   createAdminAccess,
   createFamilyMemberAccess,
   createRecoveryKitAccess,
+  createSourceAccess,
+  createSourceTypeAccess,
   createViewAccess,
   signInLimits,
   type AdminAccess,
@@ -29,8 +35,18 @@ import {
   type JobQueue,
   type RecoveryKitAccess,
   type SecretStore,
+  type SourceAccess,
+  type SourceTypeAccess,
   type ViewAccess,
 } from "@family-butler/application";
+import { SourceRegistry } from "./source-registry";
+
+/** The workspace's packages, where the Source plugins shipped with Family Butler are. */
+export const workspacePackages = fileURLToPath(new URL("../../../packages", import.meta.url));
+
+const packageVersion = (
+  JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as { version: string }
+).version;
 
 export type ApplicationConfig = {
   databaseUrl: string;
@@ -38,6 +54,15 @@ export type ApplicationConfig = {
   masterKeyFile: string;
   /** Where files such as photos are kept, outside Postgres. */
   blobDirectory: string;
+  /**
+   * Where Source plugins are discovered: directories of packages, by default the workspace's
+   * packages and the `plugins/` volume.
+   */
+  sourcePluginDirectories?: string[];
+  /** The `plugins/` volume, for plugins an operator adds to a stock image. */
+  pluginDirectory?: string;
+  /** The version of Family Butler, which new Source Types are recorded with. */
+  applicationVersion?: string;
   /** The IANA time zone the Family lives in; by default the one of the process (`TZ`). */
   timeZone?: string;
   clock?: Clock;
@@ -50,6 +75,8 @@ export type Application = {
   recoveryKit: RecoveryKitAccess;
   familyMembers: FamilyMemberAccess;
   views: ViewAccess;
+  sourceTypes: SourceTypeAccess;
+  sources: SourceAccess;
   close(): Promise<void>;
 };
 
@@ -97,8 +124,46 @@ export async function bootApplication(config: ApplicationConfig): Promise<Applic
     views: new PostgresViewRepository(postgres.db),
   });
 
-  return { admins, secrets, recoveryKit, familyMembers, views, close: () => postgres.close() };
+  const registry = await SourceRegistry.discover(
+    config.sourcePluginDirectories ?? [workspacePackages, config.pluginDirectory ?? defaultPluginDirectory],
+  );
+  const sourceTypeRepository = new PostgresSourceTypeRepository(postgres.db);
+  const sourceRepository = new PostgresSourceRepository(postgres.db);
+  const sourceTypes = createSourceTypeAccess({
+    clock,
+    applicationVersion: config.applicationVersion ?? packageVersion,
+    registry,
+    sourceTypes: sourceTypeRepository,
+    sources: sourceRepository,
+  });
+  const sources = createSourceAccess({
+    clock,
+    families,
+    registry,
+    sourceTypes: sourceTypeRepository,
+    sources: sourceRepository,
+    secrets,
+  });
+  try {
+    await sourceTypes.start();
+  } catch (error) {
+    await postgres.close();
+    throw error;
+  }
+
+  return {
+    admins,
+    secrets,
+    recoveryKit,
+    familyMembers,
+    views,
+    sourceTypes,
+    sources,
+    close: () => postgres.close(),
+  };
 }
+
+const defaultPluginDirectory = "/var/lib/family-butler/plugins";
 
 /** Creates the master key on first start, but never a new one for secrets stored with a lost one. */
 async function loadMasterKey(postgres: PostgresConnection, file: string): Promise<Buffer> {

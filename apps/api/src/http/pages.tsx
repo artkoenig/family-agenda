@@ -2,6 +2,7 @@ import type {
   AdminSummary,
   FamilyMemberSummary,
   RecoveryKit,
+  SourceTypeSummary,
   ViewSummary,
 } from "@family-butler/application";
 import {
@@ -48,13 +49,17 @@ export function SignInPage(props: { email?: string; problem?: string }) {
   );
 }
 
-function AdminLayout(props: { title: string; admin: AdminSummary; children: Child }) {
+/** The Admin a page is shown to, and whether the Admin area shows the new-Source-Types banner. */
+export type SignedInAdmin = AdminSummary & { newSourceTypes: boolean };
+
+function AdminLayout(props: { title: string; admin: SignedInAdmin; children: Child }) {
   return (
     <Layout title={props.title}>
       <nav>
         <a href="/admin">Admin area</a>
         <a href="/admin/family-members">Family Members</a>
         <a href="/admin/views">Views</a>
+        <a href="/admin/source-types">Source Types</a>
         <a href="/admin/admins">Admins</a>
         <a href="/admin/recovery-kit">Recovery Kit</a>
         <span>{props.admin.email}</span>
@@ -62,13 +67,18 @@ function AdminLayout(props: { title: string; admin: AdminSummary; children: Chil
           <button type="submit">Sign out</button>
         </form>
       </nav>
+      {props.admin.newSourceTypes ? (
+        <p class="banner">
+          New Source Types are available. <a href="/admin/source-types">Look at them</a>
+        </p>
+      ) : null}
       <h1>{props.title}</h1>
       {props.children}
     </Layout>
   );
 }
 
-export function AdminHomePage(props: { admin: AdminSummary }) {
+export function AdminHomePage(props: { admin: SignedInAdmin }) {
   return (
     <AdminLayout title="Admin area" admin={props.admin}>
       <ul>
@@ -78,13 +88,16 @@ export function AdminHomePage(props: { admin: AdminSummary }) {
         <li>
           <a href="/admin/views">Views</a>: what the Family opens on the home network, without signing in.
         </li>
+        <li>
+          <a href="/admin/source-types">Source Types</a>: the kinds of channels the Family's Sources can be.
+        </li>
       </ul>
     </AdminLayout>
   );
 }
 
 export function AdminsPage(props: {
-  admin: AdminSummary;
+  admin: SignedInAdmin;
   admins: AdminSummary[];
   email?: string;
   problem?: string;
@@ -132,7 +145,7 @@ export function recoveryKitText(kit: RecoveryKit): string {
 }
 
 export function RecoveryKitPage(props: {
-  admin: AdminSummary;
+  admin: SignedInAdmin;
   kit: RecoveryKit;
   confirmed: boolean;
   problem?: string | undefined;
@@ -165,7 +178,7 @@ export function RecoveryKitPage(props: {
 }
 
 export function FamilyMembersPage(props: {
-  admin: AdminSummary;
+  admin: SignedInAdmin;
   members: FamilyMemberSummary[];
   name?: string;
   problem?: string;
@@ -208,7 +221,7 @@ export function FamilyMembersPage(props: {
 }
 
 export function ViewsPage(props: {
-  admin: AdminSummary;
+  admin: SignedInAdmin;
   views: ViewSummary[];
   members: FamilyMemberSummary[];
   problem?: string;
@@ -280,5 +293,56 @@ function ViewSettingsForm(props: {
       />
       <button type="submit">{props.submit}</button>
     </form>
+  );
+}
+
+export function SourceTypesPage(props: {
+  admin: SignedInAdmin;
+  sourceTypes: SourceTypeSummary[];
+  problem?: string;
+}) {
+  return (
+    <AdminLayout title="Source Types" admin={props.admin}>
+      <p>
+        Each Source Type is provided by an installed plugin. Enable the ones your Family uses: only their
+        code is loaded, and only they are offered when adding a Source. Nothing is enabled without an Admin.
+      </p>
+      <Problem message={props.problem} />
+      {props.sourceTypes.length === 0 ? <p>No Source Types are installed.</p> : null}
+      <ul class="entries">
+        {props.sourceTypes.map((type) => (
+          <li>
+            <h2>
+              {type.displayName} {type.isNew ? <small>(new in {type.firstSeenIn})</small> : null}
+            </h2>
+            <p>{type.description}</p>
+            <p>
+              Version {type.version}
+              {type.needsLlm ? ". Its Sources need the LLM endpoint." : null}
+            </p>
+            {type.notLoadable !== null ? (
+              <p class="problem">Not loadable: {type.notLoadable}</p>
+            ) : type.enabled ? (
+              <form method="post" action={`/admin/source-types/${type.id}/disable`}>
+                <p>Enabled. It can be disabled once it has no Sources.</p>
+                <button type="submit">Disable {type.displayName}</button>
+              </form>
+            ) : (
+              <form method="post" action={`/admin/source-types/${type.id}/enable`}>
+                {type.riskNotice !== null ? (
+                  <>
+                    <p class="problem">{type.riskNotice}</p>
+                    <label>
+                      <input type="checkbox" name="riskAcknowledged" value="yes" required /> I understand the risk.
+                    </label>
+                  </>
+                ) : null}
+                <button type="submit">Enable {type.displayName}</button>
+              </form>
+            )}
+          </li>
+        ))}
+      </ul>
+    </AdminLayout>
   );
 }

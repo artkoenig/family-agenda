@@ -1,0 +1,170 @@
+import { readdir, readFile } from "node:fs/promises";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
+import type {
+  InstalledSourceType,
+  LoadedSourceType,
+  PlainConfig,
+  SourceTypeRegistry,
+} from "@family-butler/application";
+import type { SourceTypeId } from "@family-butler/domain";
+import {
+  parseManifest,
+  problemsWith,
+  problemsWithManifest,
+  type JsonObject,
+  type SourcePlugin,
+  type SourcePluginManifest,
+} from "@family-butler/source-sdk";
+
+type Discovered = {
+  installed: InstalledSourceType;
+  /** Absent when the manifest alone keeps the plugin from loading. */
+  module?: string;
+};
+
+/**
+ * The Source plugins found at startup (ADR-0010): packages in the given directories, such as
+ * the workspace's `packages/` and the `plugins/` volume, whose `package.json` holds a
+ * `familyButler.sourcePlugin` manifest. Discovering reads manifests only; a plugin's code is
+ * loaded when it is first asked for, which only happens for enabled Source Types.
+ */
+export class SourceRegistry implements SourceTypeRegistry {
+  private readonly loading = new Map<string, Promise<LoadedSourceType | null>>();
+  private readonly loadFailures = new Map<string, string>();
+
+  private constructor(private readonly discovered: Map<string, Discovered>) {}
+
+  /** The first package declaring a Source Type id wins; later ones are ignored with a warning. */
+  static async discover(directories: string[]): Promise<SourceRegistry> {
+    const discovered = new Map<string, Discovered>();
+    for (const directory of directories) {
+      for (const packageDirectory of await packageDirectoriesIn(directory)) {
+        const found = await discoverPackage(packageDirectory);
+        if (!found) continue;
+        const { id } = found.installed;
+        if (discovered.has(id)) {
+          console.warn(`Ignoring ${packageDirectory}: Source Type "${id}" is already installed.`);
+          continue;
+        }
+        discovered.set(id, found);
+      }
+    }
+    return new SourceRegistry(discovered);
+  }
+
+  installed(): InstalledSourceType[] {
+    return [...this.discovered.values()].map(({ installed }) => {
+      const failure = this.loadFailures.get(installed.id);
+      return failure ? { ...installed, notLoadable: failure } : installed;
+    });
+  }
+
+  async load(id: SourceTypeId): Promise<{ ok: true; sourceType: LoadedSourceType } | { ok: false }> {
+    let loading = this.loading.get(id);
+    if (!loading) {
+      loading = this.import(id);
+      this.loading.set(id, loading);
+    }
+    const sourceType = await loading;
+    return sourceType ? { ok: true, sourceType } : { ok: false };
+  }
+
+  private async import(id: string): Promise<LoadedSourceType | null> {
+    const found = this.discovered.get(id);
+    if (!found?.module || found.installed.notLoadable !== null) return null;
+    let problems: string[];
+    let plugin: SourcePlugin | undefined;
+    try {
+      const imported = (await import(pathToFileURL(found.module).href)) as { default?: SourcePlugin };
+      plugin = imported.default;
+      problems = !plugin
+        ? ["the entry module has no default export"]
+        : plugin.identity.sourceTypeId !== id
+          ? [`the code is for Source Type "${plugin.identity.sourceTypeId}", the manifest for "${id}"`]
+          : problemsWith(plugin);
+    } catch (error) {
+      problems = [`loading the code failed: ${error instanceof Error ? error.message : String(error)}`];
+    }
+    if (!plugin || problems.length > 0) {
+      this.loadFailures.set(id, problems.join("; "));
+      return null;
+    }
+    return loadedSourceType(plugin);
+  }
+}
+
+function loadedSourceType(plugin: SourcePlugin): LoadedSourceType {
+  const { configuration } = plugin;
+  return {
+    configuration: {
+      version: configuration.version,
+      fields: configuration.fields.map(({ key, secret, required }) => ({ key, secret, required })),
+    },
+    migrateConfig(plain: PlainConfig, fromVersion: number): PlainConfig {
+      let migrated = plain as JsonObject;
+      for (let version = fromVersion; version < configuration.version; version++) {
+        const migrate = configuration.migrations?.[version];
+        if (!migrate) throw new Error(`no configuration migration from version ${version}`);
+        migrated = migrate(migrated);
+      }
+      return migrated;
+    },
+  };
+}
+
+async function packageDirectoriesIn(directory: string): Promise<string[]> {
+  try {
+    const entries = await readdir(directory, { withFileTypes: true });
+    return entries
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => join(directory, entry.name))
+      .sort();
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+    throw error;
+  }
+}
+
+async function discoverPackage(packageDirectory: string): Promise<Discovered | null> {
+  let packageJson: unknown;
+  try {
+    packageJson = JSON.parse(await readFile(join(packageDirectory, "package.json"), "utf8"));
+  } catch {
+    return null;
+  }
+  const result = parseManifest(packageJson);
+  if (!result.ok) {
+    if (result.problem === "no-manifest") return null;
+    if (!result.sourceTypeId) {
+      console.warn(`Ignoring ${packageDirectory}: its Source plugin manifest has no Source Type id.`);
+      return null;
+    }
+    const id = result.sourceTypeId as SourceTypeId;
+    return {
+      installed: {
+        id,
+        displayName: id,
+        description: "",
+        version: "",
+        needsLlm: false,
+        riskNotice: null,
+        notLoadable: `the manifest is invalid: ${result.details.join("; ")}`,
+      },
+    };
+  }
+  return { installed: installedOf(result.manifest), module: join(packageDirectory, result.manifest.entry) };
+}
+
+function installedOf(manifest: SourcePluginManifest): InstalledSourceType {
+  const problems = problemsWithManifest(manifest);
+  return {
+    id: manifest.identity.sourceTypeId as SourceTypeId,
+    displayName: manifest.identity.displayName,
+    description: manifest.description,
+    version: manifest.identity.version,
+    needsLlm: manifest.needsLlm,
+    riskNotice: manifest.riskNotice ?? null,
+    notLoadable: problems.length > 0 ? problems.join("; ") : null,
+  };
+}

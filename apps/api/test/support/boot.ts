@@ -1,10 +1,10 @@
 import { randomBytes } from "node:crypto";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { SecretStore } from "@family-butler/application";
 import pg from "pg";
-import { bootApplication, type Application } from "../../src/composition-root";
+import { bootApplication, type Application, type ApplicationConfig } from "../../src/composition-root";
 import { FakeClock } from "./fake-clock";
 
 const serverUrl =
@@ -13,6 +13,8 @@ const serverUrl =
 export type TestOptions = {
   /** Replaces the envelope-encrypting SecretStore, such as with an `InMemorySecretStore`. */
   secretStore?: SecretStore;
+  /** The application version the Instance runs, as an update would change it. */
+  applicationVersion?: string;
 };
 
 export type TestInstance = {
@@ -20,10 +22,17 @@ export type TestInstance = {
   clock: FakeClock;
   /** The file the master key is kept in, outside Postgres. */
   masterKeyFile: string;
+  /** Where the SourceRegistry finds workspace packages, which hold no plugins at first. */
+  workspacePackages: string;
+  /** The `plugins/` volume, empty at first. */
+  pluginDirectory: string;
   /** Runs SQL against the Instance's database, to look at what it stores. */
   query(sql: string): Promise<Record<string, unknown>[]>;
-  /** Stops the application and boots it again on the same database and master key file. */
-  restart(): Promise<void>;
+  /**
+   * Stops the application and boots it again on the same database, master key file and plugin
+   * directories, with `changes` such as a new application version.
+   */
+  restart(changes?: Pick<TestOptions, "applicationVersion">): Promise<void>;
   close(): Promise<void>;
 };
 
@@ -38,11 +47,18 @@ export async function bootForTest(options: TestOptions = {}): Promise<TestInstan
   databaseUrl.pathname = `/${databaseName}`;
   const keyDirectory = await mkdtemp(join(tmpdir(), "family-butler-test-"));
 
+  const workspacePackages = join(keyDirectory, "packages");
+  const pluginDirectory = join(keyDirectory, "plugins");
+  await mkdir(workspacePackages);
+  await mkdir(pluginDirectory);
+
   const clock = new FakeClock(new Date("2026-09-14T07:00:00Z"));
-  const config = {
+  let config: ApplicationConfig = {
     databaseUrl: databaseUrl.toString(),
     masterKeyFile: join(keyDirectory, "master.key"),
     blobDirectory: join(keyDirectory, "blobs"),
+    sourcePluginDirectories: [workspacePackages, pluginDirectory],
+    applicationVersion: "1.0.0",
     timeZone: "Europe/Berlin",
     clock,
     ...options,
@@ -52,6 +68,8 @@ export async function bootForTest(options: TestOptions = {}): Promise<TestInstan
     app: await bootApplication(config),
     clock,
     masterKeyFile: config.masterKeyFile,
+    workspacePackages,
+    pluginDirectory,
     async query(sql) {
       const client = new pg.Client({ connectionString: config.databaseUrl });
       await client.connect();
@@ -61,7 +79,8 @@ export async function bootForTest(options: TestOptions = {}): Promise<TestInstan
         await client.end();
       }
     },
-    async restart() {
+    async restart(changes = {}) {
+      config = { ...config, ...changes };
       const stopped = instance.app;
       await stopped.close();
       // Already closed, should booting again fail.

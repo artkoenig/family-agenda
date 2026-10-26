@@ -7,6 +7,7 @@ const adminStyles = `
   form { display: grid; gap: .5rem; margin: 1rem 0; }
   input, button { font: inherit; padding: .5rem; }
   .problem { color: #ff8a80; }
+  .banner { border: 1px solid #8ab4f8; padding: .5rem; }
   nav { display: flex; gap: 1rem; align-items: center; }
   a { color: #8ab4f8; }
   .secret { font-family: ui-monospace, monospace; font-size: 1.1rem; overflow-wrap: anywhere; }

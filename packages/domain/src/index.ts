@@ -3,4 +3,5 @@ export * from "./calendar";
 export * from "./family";
 export * from "./family-member";
 export * from "./photo";
+export * from "./source";
 export * from "./view";
