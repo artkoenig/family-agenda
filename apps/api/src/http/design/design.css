@@ -238,6 +238,13 @@
 /* Timeline: loading more days ------------------------------------------ */
 .fam-more { display: flex; justify-content: center; padding: var(--space-4) 0; color: var(--ink-muted); font-size: 14px; line-height: 20px; }
 
+/* Timeline: back to today, while today is out of sight ------------------ */
+.fam-back-to-today {
+  position: fixed; z-index: 2; left: 50%; transform: translateX(-50%);
+  bottom: calc(var(--space-5) + env(safe-area-inset-bottom, 0px)); box-shadow: var(--shadow-raised);
+}
+.fam-back-to-today[hidden] { display: none; }
+
 /* Admin area: plain server-rendered forms ------------------------------- */
 /* Elements inside .fam-admin get the Field and Button look without classes; :where keeps classes stronger. */
 :where(.fam-admin) form { display: grid; gap: var(--space-2); margin: var(--space-3) 0; }
