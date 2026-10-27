@@ -59,6 +59,17 @@ describe("Views over HTTP", () => {
     expect(filterLink(page, "Leo")).toContain(">L</span>");
   });
 
+  it("offers a way back to today, hidden until today scrolls out of sight", async () => {
+    const view = await createView([]);
+
+    const page = await (await instance.get(`/views/${view}`)).text();
+
+    const back = /<button[^>]*id="back-to-today"[^>]*>(?:(?!<\/button>).)*<\/button>/s.exec(page)?.[0] ?? "";
+    expect(back).toContain("hidden");
+    expect(back).toContain("Today");
+    expect(page.indexOf("back-to-today")).toBeGreaterThan(page.indexOf("</main>"));
+  });
+
   it("answers an unknown View URL with 404", async () => {
     for (const id of ["3f0b2a52-0000-4000-8000-000000000000", "kitchen"]) {
       expect((await instance.get(`/views/${id}`)).status).toBe(404);
