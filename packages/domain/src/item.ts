@@ -31,9 +31,15 @@ export type FoldableRevision = Pick<Revision, "act" | "fields" | "sourceTime" | 
 /**
  * Applies the accepted Revisions field by field in source-time order, so that the newest wins,
  * whatever order they arrived in. A cancel marks the Item cancelled and a create restores it.
- * Null when no accepted Revision is left.
+ * Null when no accepted Revision is left, or when the first Revision received was rejected: that
+ * removes the Item, and later Revisions stay with it without bringing it back.
  */
 export function fold(revisions: readonly FoldableRevision[]): FoldedItem | null {
+  const first = revisions.reduce<FoldableRevision | undefined>(
+    (earliest, revision) => (earliest && earliest.sequence <= revision.sequence ? earliest : revision),
+    undefined,
+  );
+  if (!first?.accepted) return null;
   const accepted = revisions
     .filter((revision) => revision.accepted)
     .sort((a, b) => a.sourceTime.getTime() - b.sourceTime.getTime() || a.sequence - b.sequence);

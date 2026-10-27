@@ -39,7 +39,8 @@ import {
   ViewsPage,
   type SignedInAdmin,
 } from "./pages";
-import { ViewPageDocument, ViewTimeline } from "./view-page";
+import { icsFeed } from "./ics-feed";
+import { ViewPageDocument, ViewTimeline, viewUrl } from "./view-page";
 
 export type HttpOptions = {
   /** Whether a reverse proxy in front sets `X-Forwarded-For` and `X-Forwarded-Proto`. */
@@ -167,6 +168,17 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     // htmx asks for the whole page when it restores history it has not cached.
     const fragment = c.req.header("hx-request") === "true" && !c.req.header("hx-history-restore-request");
     return c.html(fragment ? <ViewTimeline page={page} /> : <ViewPageDocument page={page} />);
+  });
+
+  // A View's feed follows the View's access, so that calendar apps can subscribe without a session.
+  app.get("/views/:id/feed.ics", async (c) => {
+    const feed = await views.feed(c.req.param("id") as ViewId, { access: options.viewAccess });
+    if (!feed) return c.notFound();
+    const viewLink = `${isHttps(c) ? "https" : "http"}://${hostOf(c)}${viewUrl(feed.id)}`;
+    return c.body(icsFeed(feed, viewLink), 200, {
+      "content-type": "text/calendar; charset=utf-8",
+      "cache-control": "no-store",
+    });
   });
 
   app.get("/family-members/:id/photo", async (c) => {

@@ -3,6 +3,7 @@ import {
   addDays,
   eventOf,
   isAcceptableHorizon,
+  lastDayOf,
   localDateTime,
   spanOnDay,
   type Event,
@@ -11,6 +12,7 @@ import {
   type ItemId,
   type LocalDate,
   type LocalTime,
+  type TimeSpan,
   type ViewId,
 } from "@family-butler/domain";
 import { summariseFamilyMember, type FamilyMemberSummary } from "./family-members";
@@ -77,6 +79,30 @@ export type ViewPage = {
   days: { date: LocalDate; items: TimelineEvent[] }[];
 };
 
+/**
+ * An Event as an entry of a View's feed. Until there are Attribution Rules, every Event concerns
+ * the whole Family, so the feed's filter to the preselected Family Members never drops it.
+ */
+export type FeedEvent = {
+  itemId: ItemId;
+  title: string;
+  span: TimeSpan;
+  /** The span on the Family's clocks, for the details. */
+  when: TimelineEvent["span"];
+  place: string | null;
+  cancelled: boolean;
+};
+
+export type ViewFeed = {
+  id: ViewId;
+  generatedAt: Date;
+  /** Those of the last 30 days and all of the future, in order of time. */
+  events: FeedEvent[];
+};
+
+/** How many days back a feed reaches, today not counted. */
+export const feedDaysBack = 30;
+
 /** Lets every View open, as on the local listener (ADR-0003). */
 export const openViewAccess: ViewAccessPolicy = { mayOpen: () => Promise.resolve(true) };
 
@@ -119,14 +145,18 @@ export function createViewAccess(deps: ViewsDeps) {
       itemId,
       title: event.title,
       ...on,
-      span: span.allDay
-        ? span
-        : { allDay: false, start: localDateTime(span.start, timeZone), end: localDateTime(span.end, timeZone) },
+      span: onClocks(span),
       place: event.place,
       cancelled: event.cancelled,
       earlier: !span.allDay && span.end <= now,
       links,
     };
+  }
+
+  function onClocks(span: TimeSpan): TimelineEvent["span"] {
+    return span.allDay
+      ? span
+      : { allDay: false, start: localDateTime(span.start, timeZone), end: localDateTime(span.end, timeZone) };
   }
 
   /** The settings with the preselected Family Members in the Family's order, or a problem. */
@@ -200,6 +230,27 @@ export function createViewAccess(deps: ViewsDeps) {
         days: await timelineOf(view.familyId, dates, instant),
       };
     },
+
+    /**
+     * The View as a calendar feed, or null if there is no such View or `access` refuses it: the
+     * Events of the last 30 days and all of the future, cancelled ones included, whatever the
+     * View's horizon.
+     */
+    async feed(id: ViewId, input: { access: ViewAccessPolicy }): Promise<ViewFeed | null> {
+      const view = await views.findById(id);
+      if (!view || !(await input.access.mayOpen(view.id))) return null;
+      const generatedAt = clock.now();
+      const firstDay = addDays(localDateTime(generatedAt, timeZone).date, -feedDaysBack);
+      // No time zone is more than 14 hours from UTC.
+      const from = new Date(new Date(`${firstDay}T00:00:00Z`).getTime() - 24 * 60 * 60 * 1000);
+      const events = (await items.overlapping(view.familyId, from, null)).flatMap((item) => {
+        const event = item.kind === "event" ? eventOf(item.folded) : null;
+        if (!event || lastDayOf(event.span, timeZone) < firstDay) return [];
+        const { title, span, place, cancelled } = event;
+        return [{ itemId: item.id, title, span, when: onClocks(span), place, cancelled }];
+      });
+      return { id: view.id, generatedAt, events: events.sort(byStart) };
+    },
   };
 }
 
@@ -208,5 +259,11 @@ export type ViewAccess = ReturnType<typeof createViewAccess>;
 /** All-day rows first, then by the time they start on the day, earliest first. */
 function byTime(a: TimelineEvent, b: TimelineEvent): number {
   const key = (row: TimelineEvent) => (row.span.allDay ? "" : (row.from ?? "00:00"));
+  return key(a).localeCompare(key(b)) || a.title.localeCompare(b.title);
+}
+
+/** By the day and time they start, all-day ones first on their day. */
+function byStart(a: FeedEvent, b: FeedEvent): number {
+  const key = ({ when }: FeedEvent) => (when.allDay ? when.firstDay : `${when.start.date} ${when.start.time}`);
   return key(a).localeCompare(key(b)) || a.title.localeCompare(b.title);
 }
