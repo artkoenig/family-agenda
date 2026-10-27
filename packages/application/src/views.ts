@@ -1,8 +1,10 @@
 import { randomUUID } from "node:crypto";
 import {
   addDays,
+  daysBetween,
   eventOf,
   isAcceptableHorizon,
+  isAcceptableTimelineRange,
   lastDayOf,
   localDateTime,
   spanOnDay,
@@ -78,9 +80,17 @@ export type ViewPage = {
   /** Everyone in the Family, for the quick filter. */
   members: FamilyMemberSummary[];
   showing: Showing;
-  /** One per day of the horizon, today first, each with its Events in order of time. */
+  /** How many days one step of scrolling loads: the View's horizon. */
+  horizonDays: number;
+  /**
+   * One per day shown, each with its Events in order of time: the horizon from today, or the
+   * days scrolled to.
+   */
   days: { date: LocalDate; items: TimelineEvent[] }[];
 };
+
+/** Days of a timeline, from `first` to `last`, both included. */
+export type TimelineDays = { first: LocalDate; last: LocalDate };
 
 /**
  * An Event in a View's feed. Until there are Attribution Rules, every Event concerns the whole
@@ -223,8 +233,16 @@ export function createViewAccess(deps: ViewsDeps) {
     /**
      * The View as its timeline, or null if there is no such View or `access` refuses it.
      * `show` is what the quick filter was set to; without it, it starts with the preselection.
+     * `days` are those scrolled to, into the past or the future; without them, it shows the
+     * horizon from today. They must pass `isAcceptableTimelineRange`.
      */
-    async open(id: ViewId, input: { access: ViewAccessPolicy; show?: Showing }): Promise<ViewPage | null> {
+    async open(
+      id: ViewId,
+      input: { access: ViewAccessPolicy; show?: Showing; days?: TimelineDays },
+    ): Promise<ViewPage | null> {
+      if (input.days && !isAcceptableTimelineRange(input.days.first, input.days.last)) {
+        throw new Error(`unacceptable timeline days ${input.days.first} to ${input.days.last}`);
+      }
       const view = await views.findById(id);
       if (!view || !(await input.access.mayOpen(view.id))) return null;
       const family = await members.list(view.familyId);
@@ -232,12 +250,14 @@ export function createViewAccess(deps: ViewsDeps) {
       const showing = show === "all" ? [] : family.map((member) => member.id).filter((memberId) => show.includes(memberId));
       const instant = clock.now();
       const now = localDateTime(instant, timeZone);
-      const dates = Array.from({ length: view.horizonDays }, (_, day) => addDays(now.date, day));
+      const { first, last } = input.days ?? { first: now.date, last: addDays(now.date, view.horizonDays - 1) };
+      const dates = Array.from({ length: daysBetween(first, last) + 1 }, (_, day) => addDays(first, day));
       return {
         id: view.id,
         now,
         members: family.map(summariseFamilyMember),
         showing: showing.length > 0 ? showing : "all",
+        horizonDays: view.horizonDays,
         days: await timelineOf(view.familyId, dates, instant),
       };
     },
