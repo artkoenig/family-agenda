@@ -64,6 +64,13 @@
       "when": 1793094160681,
       "tag": "0008_background_activities",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1793116135484,
+      "tag": "0009_source_visibility",
+      "breakpoints": true
     }
   ]
 }

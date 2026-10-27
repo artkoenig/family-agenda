@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { SourceId, SourceTypeId } from "@family-agenda/domain";
 import type {
+  BlobStore,
   Clock,
   ConfigFieldSpec,
   FamilyRepository,
@@ -20,6 +21,7 @@ export type SourcesDeps = {
   sourceTypes: SourceTypeRepository;
   sources: SourceRepository;
   secrets: SecretStore;
+  blobs: BlobStore;
 };
 
 export type SourceSummary = {
@@ -32,6 +34,8 @@ export type SourceSummary = {
   storedSecrets: string[];
   /** As an Admin set it; null for the plugin's suggestion. */
   pollIntervalSeconds: number | null;
+  /** Whether its Items show on the timeline and in the feeds; a hidden Source is still read. */
+  shown: boolean;
 };
 
 /** What the Admin area renders a Source's form from, for an enabled Source Type. */
@@ -70,7 +74,7 @@ export type EditSourceResult =
   | SourceProblem;
 
 export function createSourceAccess(deps: SourcesDeps) {
-  const { clock, families, registry, sourceTypes, sources, secrets } = deps;
+  const { clock, families, registry, sourceTypes, sources, secrets, blobs } = deps;
 
   /** The plugin of an enabled Source Type, or null. */
   async function enabled(sourceTypeId: SourceTypeId): Promise<LoadedSourceType | null> {
@@ -121,6 +125,7 @@ export function createSourceAccess(deps: SourcesDeps) {
         plain: source.plain,
         storedSecrets: Object.keys(source.secrets).sort(),
         pollIntervalSeconds: source.pollIntervalSeconds,
+        shown: source.shown,
       }));
     },
 
@@ -163,6 +168,7 @@ export function createSourceAccess(deps: SourcesDeps) {
         secrets: refs,
         state: null,
         pollIntervalSeconds: input.pollIntervalSeconds ?? null,
+        shown: true,
         lastRunAt: null,
         createdAt: clock.now(),
       });
@@ -200,12 +206,21 @@ export function createSourceAccess(deps: SourcesDeps) {
       return { ok: true };
     },
 
-    /** Removes the Source and its secrets; its Origins and Revisions stay, and so do its Items. */
+    /**
+     * Shows or hides the Source's Items on the timeline and in the feeds. A hidden Source is still
+     * read, so that its Items are up to date once it is shown again.
+     */
+    async setShown(id: SourceId, shown: boolean): Promise<void> {
+      await sources.setShown(id, shown);
+    },
+
+    /** Removes the Source with its secrets and everything it brought in: Origins, messages, Revisions and Items. */
     async remove(id: SourceId): Promise<void> {
       const source = await sources.findById(id);
       if (!source) return;
-      await sources.remove(id);
+      const files = await sources.remove(id);
       for (const ref of Object.values(source.secrets)) await secrets.remove(ref);
+      for (const file of files) await blobs.remove(file);
     },
   };
 }

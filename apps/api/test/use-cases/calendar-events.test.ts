@@ -186,13 +186,28 @@ describe("calendar Events on the timeline", () => {
     expect(await timeline()).toEqual({ "2026-09-15": ["16:00-17:00 Piano lesson"] });
   });
 
-  it("keeps the Events of a removed Source", async () => {
+  it("removes the Events of a removed Source", async () => {
     await arrive(piano());
     const [source] = await instance.app.sources.list();
 
     await instance.app.sources.remove(source!.id);
 
-    expect(await timeline()).toEqual({ "2026-09-15": ["16:00-17:00 Piano lesson"] });
+    expect(await timeline()).toEqual({});
+    expect((await instance.app.views.feed(view, { access: openViewAccess }))?.events).toEqual([]);
+  });
+
+  it("hides the Events of a hidden Source, and keeps reading it", async () => {
+    await arrive(piano());
+    const [source] = await instance.app.sources.list();
+
+    await instance.app.sources.setShown(source!.id, false);
+    expect(await timeline()).toEqual({});
+    expect((await instance.app.views.feed(view, { access: openViewAccess }))?.events).toEqual([]);
+    expect(await instance.app.sources.list()).toMatchObject([{ shown: false }]);
+
+    await arrive(rename);
+    await instance.app.sources.setShown(source!.id, true);
+    expect(await timeline()).toEqual({ "2026-09-15": ["16:00-17:00 Piano recital"] });
   });
 });
 
