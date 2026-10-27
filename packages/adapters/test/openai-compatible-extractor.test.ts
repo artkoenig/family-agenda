@@ -87,6 +87,7 @@ describe("the OpenAI-compatible Extractor", () => {
     expect(sent?.headers.authorization).toBe("Bearer sk-test");
     expect(sent?.body).toMatchObject({
       model: "qwen3.5:9b",
+      reasoning_effort: "low",
       response_format: { type: "json_schema", json_schema: { name: "events", strict: true } },
     });
     const prompt = JSON.stringify(sent?.body.messages);

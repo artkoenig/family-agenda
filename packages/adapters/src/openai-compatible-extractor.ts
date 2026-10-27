@@ -164,7 +164,8 @@ export class OpenAiCompatibleExtractor implements Extractor {
           "content-type": "application/json",
           ...(endpoint.apiKey ? { authorization: `Bearer ${endpoint.apiKey}` } : {}),
         },
-        body: JSON.stringify({ model: endpoint.model, ...body }),
+        // A reasoning model left to its default may think for minutes about one short mail.
+        body: JSON.stringify({ model: endpoint.model, reasoning_effort: "low", ...body }),
         signal: AbortSignal.timeout(this.timeoutMs),
       });
     } catch (error) {
