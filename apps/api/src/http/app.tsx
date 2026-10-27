@@ -601,6 +601,12 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     return c.redirect("/admin/sources", 303);
   });
 
+  app.post("/admin/sources/:id/shown", async (c) => {
+    const form = await c.req.parseBody();
+    await sources.setShown(c.req.param("id") as SourceId, field(form, "shown") === "yes");
+    return c.redirect("/admin/sources", 303);
+  });
+
   app.post("/admin/sources/:id/remove", async (c) => {
     await sources.remove(c.req.param("id") as SourceId);
     return c.redirect("/admin/sources", 303);

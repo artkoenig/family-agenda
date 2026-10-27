@@ -816,7 +816,7 @@ export function SourcesPage(props: {
     <AdminLayout title="Sources" admin={props.admin} current="sources" dialog={dialog}>
       <SectionHeader
         title="Sources"
-        description="The channels information arrives through. Removing a Source stops reading it; what it has brought in stays on the timeline."
+        description="The channels information arrives through. A hidden Source is still read, but its Items stay off the timeline until it is shown again. Removing a Source stops reading it and removes everything it has brought in."
         action={props.forms.length > 0 ? addButton("/admin/sources/new", "Add Source") : undefined}
       />
       <Problem message={props.problem} />
@@ -840,6 +840,18 @@ export function SourcesPage(props: {
                   ) : (
                     <p class="fam-problem">Its Source Type is not enabled or not installed, so it is not read.</p>
                   )}
+                  <form method="post" action={`/admin/sources/${source.id}/shown`} class="fam-entry__form">
+                    <input type="hidden" name="shown" value={source.shown ? "no" : "yes"} />
+                    {source.shown ? (
+                      <span class="fam-status fam-status--ok">Shown on the timeline</span>
+                    ) : (
+                      <span class="fam-status fam-status--waiting">Hidden from the timeline</span>
+                    )}
+                    <button type="submit" class="fam-button fam-button--secondary">
+                      {source.shown ? "Hide from the timeline" : "Show on the timeline"}
+                    </button>
+                    <small>A hidden Source is still read.</small>
+                  </form>
                   <form method="post" action={`/admin/sources/${source.id}/remove`}>
                     <button type="submit" class="fam-button fam-button--danger">
                       Remove this {source.displayName}
@@ -855,7 +867,7 @@ export function SourcesPage(props: {
   );
 }
 
-/** A Source's row: its plain settings, whether a secret is stored, and how often it is checked. */
+/** A Source's row: its plain settings, whether a secret is stored, how often it is checked, and whether it is hidden. */
 function sourceMeta(source: SourceSummary, form: SourceForm | undefined): string {
   const plain = Object.values(source.plain)
     .filter((value) => (typeof value === "string" && value !== "") || typeof value === "number")
@@ -863,7 +875,8 @@ function sourceMeta(source: SourceSummary, form: SourceForm | undefined): string
   const secrets = source.storedSecrets.length > 0 ? ["secret stored"] : [];
   const seconds = source.pollIntervalSeconds ?? form?.suggestedIntervalSeconds ?? null;
   const interval = seconds !== null ? [`every ${plural(seconds / 60, "minute", "minutes")}`] : [];
-  return [...plain, ...secrets, ...interval].join(" · ");
+  const hidden = source.shown ? [] : ["hidden from the timeline"];
+  return [...plain, ...secrets, ...interval, ...hidden].join(" · ");
 }
 
 /** The fields a plugin declares; a secret is never shown, only whether one is stored. */
