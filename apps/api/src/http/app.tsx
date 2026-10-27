@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import {
+  type RuleInput,
   type SourceInput,
   type Showing,
   type TimelineDays,
@@ -13,6 +14,7 @@ import {
   isLocalDate,
   maximumPhotoBytes,
   type AdminId,
+  type AttributionRuleId,
   type FamilyLanguage,
   type FamilyMemberId,
   type RawMessageId,
@@ -33,6 +35,7 @@ import type { Catalogue } from "./i18n/en";
 import { TranslationContext, translationFor, type Translation } from "./i18n/translation";
 import {
   AdminsPage,
+  AttributionRulesPage,
   FamilyMembersPage,
   FirstAdminPage,
   LanguagePage,
@@ -44,6 +47,7 @@ import {
   SourcesPage,
   SourceTypesPage,
   ViewsPage,
+  type RuleDialog,
   type SettingsSummary,
   type SignedInAdmin,
   type SourceAdding,
@@ -106,8 +110,19 @@ const fonts: Record<string, typeof htmx> = Object.fromEntries(
 );
 
 export function createHttpApp(application: Application, options: HttpOptions) {
-  const { admins, recoveryKit, familyMembers, languages, views, sourceTypes, sources, llmEndpoint, messages, timeZone } =
-    application;
+  const {
+    admins,
+    recoveryKit,
+    familyMembers,
+    languages,
+    views,
+    sourceTypes,
+    sources,
+    attributionRules,
+    llmEndpoint,
+    messages,
+    timeZone,
+  } = application;
   const app = new Hono<Env>();
 
   const isHttps = (c: Context) =>
@@ -307,6 +322,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
       members: (await familyMembers.list()).map((member) => member.name),
       views: (await views.list()).length,
       sources: (await sources.list()).length,
+      rules: (await attributionRules.list()).length,
       enabledSourceTypes: (await sources.forms()).length,
       llm: endpoint ? { model: endpoint.model, local: endpoint.local } : null,
       admins: (await admins.listAdmins()).length,
@@ -619,6 +635,92 @@ export function createHttpApp(application: Application, options: HttpOptions) {
   app.post("/admin/sources/:id/remove", async (c) => {
     await sources.remove(c.req.param("id") as SourceId);
     return c.redirect("/admin/sources", 303);
+  });
+
+  const rulesPage = async (c: Context<Env>, dialog?: RuleDialog) => {
+    const page = (
+      <AttributionRulesPage
+        admin={c.get("admin")}
+        rules={await attributionRules.list()}
+        targets={await attributionRules.targets()}
+        members={await familyMembers.list()}
+        {...(dialog ? { dialog } : {})}
+      />
+    );
+    return render(c, page, dialog?.step === "form" && dialog.problem ? 400 : 200);
+  };
+
+  /** A rule form's value and whom it concerns: Family Member ids, or `whole-family`, which wins. */
+  const ruleInputOf = async (c: Context<Env>) => {
+    const form = await c.req.parseBody({ all: true });
+    const chosen = form.concerns;
+    const concerns = (Array.isArray(chosen) ? chosen : [chosen]).filter((id): id is string => typeof id === "string");
+    const input: RuleInput = {
+      value: field(form, "value"),
+      concerns: concerns.includes("whole-family") ? "whole-family" : concerns.map((id) => id as FamilyMemberId),
+    };
+    return { input, entered: { value: input.value, concerns }, form };
+  };
+
+  app.get("/admin/attribution-rules", (c) => rulesPage(c));
+
+  // Adding a rule: choosing what it matches on, a Source's Origin attribute, then its form.
+  app.get("/admin/attribution-rules/new", async (c) => {
+    const targets = await attributionRules.targets();
+    const only = targets.length === 1 ? targets[0] : undefined;
+    const sourceId = c.req.query("source") ?? only?.sourceId;
+    const attribute = c.req.query("attribute") ?? only?.attribute;
+    if (sourceId === undefined || attribute === undefined) {
+      if (targets.length === 0) return c.redirect("/admin/attribution-rules");
+      return rulesPage(c, { step: "choose" });
+    }
+    const form = await attributionRules.form(sourceId as SourceId, attribute);
+    if (!form) return c.redirect("/admin/attribution-rules/new");
+    return rulesPage(c, { step: "form", form });
+  });
+
+  app.post("/admin/attribution-rules", async (c) => {
+    const { input, entered, form: posted } = await ruleInputOf(c);
+    const sourceId = field(posted, "sourceId") as SourceId;
+    const attribute = field(posted, "attribute");
+    const result = await attributionRules.create({ sourceId, attribute, ...input });
+    if (!result.ok) {
+      const form = await attributionRules.form(sourceId, attribute);
+      if (!form) return c.redirect("/admin/attribution-rules/new", 303);
+      return rulesPage(c, { step: "form", form, entered, problem: problemIn(c, result.problem) });
+    }
+    return c.redirect("/admin/attribution-rules", 303);
+  });
+
+  /** The dialog editing a rule, with the values its Source's plugin knows of; null if there is no such rule. */
+  const ruleDialog = async (id: AttributionRuleId, shown: Pick<Extract<RuleDialog, { step: "form" }>, "entered" | "problem"> = {}) => {
+    const rule = await attributionRules.find(id);
+    if (!rule) return null;
+    const form = (await attributionRules.form(rule.sourceId, rule.attribute)) ?? { ...rule, knownValues: [] };
+    return { step: "form" as const, form, rule, ...shown };
+  };
+
+  app.get("/admin/attribution-rules/:id", async (c) => {
+    const dialog = await ruleDialog(c.req.param("id") as AttributionRuleId);
+    if (!dialog) return c.redirect("/admin/attribution-rules");
+    return rulesPage(c, dialog);
+  });
+
+  app.post("/admin/attribution-rules/:id", async (c) => {
+    const id = c.req.param("id") as AttributionRuleId;
+    const { input, entered } = await ruleInputOf(c);
+    const result = await attributionRules.edit(id, input);
+    if (!result.ok) {
+      const dialog = await ruleDialog(id, { entered, problem: problemIn(c, result.problem) });
+      if (!dialog) return c.redirect("/admin/attribution-rules", 303);
+      return rulesPage(c, dialog);
+    }
+    return c.redirect("/admin/attribution-rules", 303);
+  });
+
+  app.post("/admin/attribution-rules/:id/remove", async (c) => {
+    await attributionRules.remove(c.req.param("id") as AttributionRuleId);
+    return c.redirect("/admin/attribution-rules", 303);
   });
 
   const languagePage = async (c: Context<Env>, problem?: string) => {

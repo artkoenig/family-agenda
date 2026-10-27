@@ -1,5 +1,6 @@
 export * from "./activity";
 export * from "./admin-access";
+export * from "./attribution-rules";
 export * from "./extraction";
 export * from "./family-members";
 export * from "./languages";

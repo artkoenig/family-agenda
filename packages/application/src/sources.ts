@@ -9,7 +9,9 @@ import type {
   PlainConfig,
   SecretRef,
   SecretStore,
+  Source,
   SourceRepository,
+  SourceRunContext,
   SourceTypeRegistry,
   SourceTypeRepository,
 } from "./ports";
@@ -76,12 +78,7 @@ export type EditSourceResult =
 export function createSourceAccess(deps: SourcesDeps) {
   const { clock, families, registry, sourceTypes, sources, secrets, blobs } = deps;
 
-  /** The plugin of an enabled Source Type, or null. */
-  async function enabled(sourceTypeId: SourceTypeId): Promise<LoadedSourceType | null> {
-    const record = (await sourceTypes.list()).find((type) => type.id === sourceTypeId);
-    const loaded = record?.enabled ? await registry.load(sourceTypeId) : null;
-    return loaded?.ok ? loaded.sourceType : null;
-  }
+  const enabled = (sourceTypeId: SourceTypeId) => enabledSourceType(sourceTypeId, { registry, sourceTypes });
 
   /** Why the input does not fit the plugin's configuration; `stored` secrets count as given. */
   function check(sourceType: LoadedSourceType, input: SourceInput, stored: string[] = []): SourceProblem | null {
@@ -214,7 +211,7 @@ export function createSourceAccess(deps: SourcesDeps) {
       await sources.setShown(id, shown);
     },
 
-    /** Removes the Source with its secrets and everything it brought in: Origins, messages, Revisions and Items. */
+    /** Removes the Source with its secrets, its Attribution Rules and everything it brought in: Origins, messages, Revisions and Items. */
     async remove(id: SourceId): Promise<void> {
       const source = await sources.findById(id);
       if (!source) return;
@@ -226,3 +223,26 @@ export function createSourceAccess(deps: SourcesDeps) {
 }
 
 export type SourceAccess = ReturnType<typeof createSourceAccess>;
+
+/** The plugin of an enabled Source Type, or null. */
+export async function enabledSourceType(
+  sourceTypeId: SourceTypeId,
+  deps: { registry: SourceTypeRegistry; sourceTypes: SourceTypeRepository },
+): Promise<LoadedSourceType | null> {
+  const record = (await deps.sourceTypes.list()).find((type) => type.id === sourceTypeId);
+  const loaded = record?.enabled ? await deps.registry.load(sourceTypeId) : null;
+  return loaded?.ok ? loaded.sourceType : null;
+}
+
+/** What a plugin is given to run for a Source: its configuration, with the values of its secrets. */
+export async function runContextOf(
+  source: Source,
+  context: { secrets: SecretStore; now: Date; timeZone: string },
+): Promise<SourceRunContext> {
+  const secretValues: Record<string, string> = {};
+  for (const [key, ref] of Object.entries(source.secrets)) {
+    const value = await context.secrets.get(ref);
+    if (value !== null) secretValues[key] = value;
+  }
+  return { plain: source.plain, secrets: secretValues, state: source.state, now: context.now, timeZone: context.timeZone };
+}

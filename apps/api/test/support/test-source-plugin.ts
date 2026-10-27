@@ -16,6 +16,7 @@ export const loadedTestPlugins: string[] = [];
 
 const pending = new Map<string, { origins: Origin[]; failure?: SourceError }>();
 const runs = new Map<string, RunContext[]>();
+const knownValues = new Map<string, { value: string; label: string }[] | "fail">();
 
 /** Controls what the test plugin of a Source Type does on its next run. */
 export const testPluginControls = {
@@ -24,6 +25,10 @@ export const testPluginControls = {
   },
   failNext(sourceTypeId: string, kind: "definite" | "temporary"): void {
     pending.set(sourceTypeId, { origins: [], failure: new SourceError(`${sourceTypeId} failed`, kind) });
+  },
+  /** What the plugin's `sender` attribute says it knows of from now on, or that asking it fails. */
+  knowValues(sourceTypeId: string, values: { value: string; label: string }[] | "fail"): void {
+    knownValues.set(sourceTypeId, values);
   },
   /** What the plugin of a Source Type was run with so far, oldest first. */
   runs(sourceTypeId: string): RunContext[] {
@@ -62,7 +67,16 @@ export function testSourcePlugin(options: TestPluginOptions): SourcePlugin {
         return Promise.resolve({ origins: next.origins, state: String(Number(state ?? 0) + 1) });
       },
     },
-    originAttributes: [{ key: "sender", label: "Sender", knownValues: () => Promise.resolve([]) }],
+    originAttributes: [
+      {
+        key: "sender",
+        label: "Sender",
+        knownValues: () => {
+          const values = knownValues.get(sourceTypeId) ?? [];
+          return values === "fail" ? Promise.reject(new Error("unreachable")) : Promise.resolve(values);
+        },
+      },
+    ],
     health: { silentApplies: true },
   };
 }
