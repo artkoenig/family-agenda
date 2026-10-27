@@ -10,6 +10,7 @@ import {
   holdsSecrets,
   OpenAiCompatibleExtractor,
   PgBossJobQueue,
+  PostgresActivityRepository,
   PostgresAdminRepository,
   PostgresAdminSessionRepository,
   PostgresFamilyMemberRepository,
@@ -26,6 +27,7 @@ import {
   type PostgresConnection,
 } from "@family-butler/adapters";
 import {
+  createActivityLog,
   createAdminAccess,
   createExtraction,
   createFamilyMemberAccess,
@@ -139,6 +141,7 @@ export async function bootApplication(config: ApplicationConfig): Promise<Applic
 
   const timeZone = config.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
   const items = new PostgresItemRepository(postgres.db);
+  const activity = createActivityLog({ clock, families, activities: new PostgresActivityRepository(postgres.db) });
   const views = createViewAccess({
     clock,
     timeZone,
@@ -146,6 +149,7 @@ export async function bootApplication(config: ApplicationConfig): Promise<Applic
     members,
     views: new PostgresViewRepository(postgres.db),
     items,
+    activity,
   });
 
   const registry = await SourceRegistry.discover([
@@ -178,6 +182,7 @@ export async function bootApplication(config: ApplicationConfig): Promise<Applic
     secrets,
     items,
     blobs,
+    activity,
   });
   const endpoints = new PostgresLlmEndpointRepository(postgres.db);
   const llmEndpoint = createLlmEndpointAccess({ clock, families, endpoints, secrets });
@@ -191,6 +196,7 @@ export async function bootApplication(config: ApplicationConfig): Promise<Applic
     blobs,
     extractor: config.extractor ?? new OpenAiCompatibleExtractor(),
     textExtractor: config.textExtractor ?? new CommandLineTextExtractor(),
+    activity,
   });
   const messages = createMessageAccess({ items, blobs });
   try {

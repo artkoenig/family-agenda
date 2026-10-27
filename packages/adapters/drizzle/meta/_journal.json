@@ -57,6 +57,13 @@
       "when": 1793085944889,
       "tag": "0007_pdf_attachments",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1793094160681,
+      "tag": "0008_background_activities",
+      "breakpoints": true
     }
   ]
 }
