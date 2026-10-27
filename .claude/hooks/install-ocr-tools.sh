@@ -5,7 +5,7 @@
 set -euo pipefail
 
 if command -v pdftotext >/dev/null && command -v pdftoppm >/dev/null && command -v tesseract >/dev/null \
-  && tesseract --list-langs 2>&1 | grep -qx deu; then
+  && tesseract --list-langs 2>&1 | grep -x deu >/dev/null; then
   exit 0
 fi
 

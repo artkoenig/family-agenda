@@ -55,7 +55,9 @@ describe("the poppler and Tesseract command-line tools", () => {
     expect([...result.value[0]!.subarray(0, 4)]).toEqual(png);
   });
 
-  it("says why a file that is no PDF cannot be converted", async () => {
+  it("says why a file that is no PDF cannot be converted", async (context) => {
+    // Without the tools it would pass on "not installed" alone.
+    requireOcrTools(context, "pdftotext", "pdftoppm");
     const broken = new TextEncoder().encode("this is no PDF");
 
     for (const result of [
