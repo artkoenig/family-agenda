@@ -39,6 +39,11 @@ export function createLanguageAccess(deps: LanguagesDeps) {
   }
 
   return {
+    /** The language the Instance speaks to the Family in. */
+    async familyLanguage(): Promise<FamilyLanguage> {
+      return (await stored()).language;
+    },
+
     async current(): Promise<LanguageSettings> {
       const { language, ocrLanguages } = await stored();
       const models = await ocrModels.installed();

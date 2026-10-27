@@ -15,6 +15,7 @@ import type {
   ItemKind,
   LocalDate,
   LocalTime,
+  MultilingualText,
   OcrLanguage,
   RawMessageId,
   SourceId,
@@ -130,13 +131,13 @@ export interface BlobStore {
 /** A Source Type as its plugin's manifest describes it, read without loading the plugin's code. */
 export type InstalledSourceType = {
   id: SourceTypeId;
-  displayName: string;
-  description: string;
+  displayName: MultilingualText;
+  description: MultilingualText;
   /** The plugin's version. */
   version: string;
   needsLlm: boolean;
   /** Shown before an Admin can enable it; null if there is none. */
-  riskNotice: string | null;
+  riskNotice: MultilingualText | null;
   /** Why the plugin cannot be loaded, such as an incompatible SDK version; null if it can. */
   notLoadable: string | null;
 };
@@ -147,10 +148,10 @@ export type PlainConfig = Record<string, unknown>;
 /** One field of a Source's configuration, as the Admin area renders it. */
 export type ConfigFieldSpec = {
   key: string;
-  label: string;
+  label: MultilingualText;
   secret: boolean;
   required: boolean;
-  description: string | null;
+  description: MultilingualText | null;
 };
 
 /** What a plugin is given for one run of a Source. */

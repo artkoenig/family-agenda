@@ -6,6 +6,7 @@ import {
   SourceError,
   type Configuration,
   type Origin,
+  type PluginText,
   type RunContext,
   type SourcePlugin,
 } from "@family-agenda/source-sdk";
@@ -70,12 +71,12 @@ export type TestPluginPackage = {
   sourceTypeId: string;
   /** The package's directory name; by default the Source Type id. */
   directory?: string;
-  displayName?: string;
+  displayName?: PluginText;
   version?: string;
   sdkVersion?: string;
-  description?: string;
+  description?: PluginText;
   needsLlm?: boolean;
-  riskNotice?: string;
+  riskNotice?: PluginText;
   /** Source code of a configuration (an object literal) the plugin declares. */
   configuration?: string;
 };

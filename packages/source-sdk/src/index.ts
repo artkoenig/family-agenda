@@ -2,12 +2,24 @@
  * The contract a Source plugin implements (ADR-0010). It is the only Family Agenda package a
  * plugin may import.
  */
-export const sdkVersion = "0.2.0";
+export const sdkVersion = "0.3.0";
+
+/**
+ * A text the Admin area shows: plain, or per language as `{ en: "Calendar", de: "Kalender" }`.
+ * The Family Language picks one; a language the text lacks falls back to English, which every
+ * per-language text has. A plain string shows the same in every language.
+ */
+export type PluginText = string | { en: string; [language: string]: string | undefined };
+
+/** The English of a text, or the text itself if it is plain. */
+export function englishOf(text: PluginText): string {
+  return typeof text === "string" ? text : text.en;
+}
 
 export type SourcePluginIdentity = {
   /** Stable id of the Source Type, such as `ics`. Never changes once released. */
   sourceTypeId: string;
-  displayName: string;
+  displayName: PluginText;
   /** The plugin's own version. */
   version: string;
   /** The `sdkVersion` the plugin was built against. */
@@ -23,10 +35,10 @@ export type JsonObject = { [key: string]: JsonValue };
  */
 export type ConfigField = {
   key: string;
-  label: string;
+  label: PluginText;
   secret: boolean;
   required: boolean;
-  description?: string;
+  description?: PluginText;
 };
 
 export type Configuration = {
@@ -41,7 +53,7 @@ export type Configuration = {
 };
 
 /** An interactive step the wizard shows, such as pairing an account by QR code. */
-export type SetupStep = { id: string; title: string; description: string };
+export type SetupStep = { id: string; title: PluginText; description: PluginText };
 
 /** What a plugin gets for one Source on each run. */
 export type RunContext = {
@@ -132,7 +144,7 @@ export type Origin = {
 /** Something an Attribution Rule can match on, such as a sender or a calendar. */
 export type OriginAttribute = {
   key: string;
-  label: string;
+  label: PluginText;
   /** The values seen so far, for the wizard's rule suggestions. */
   knownValues(context: RunContext): Promise<{ value: string; label: string }[]>;
 };
@@ -201,7 +213,7 @@ function problemsWithIdentity(identity: SourcePluginIdentity): string[] {
   if (!sourceTypeIdPattern.test(identity.sourceTypeId)) {
     problems.push(`Source Type id "${identity.sourceTypeId}" is not lowercase kebab-case`);
   }
-  if (identity.displayName.trim() === "") problems.push("display name is empty");
+  if (englishOf(identity.displayName).trim() === "") problems.push("display name is empty");
   if (!isCompatible(identity.sdkVersion)) {
     problems.push(`built for SDK ${identity.sdkVersion}, but this is SDK ${sdkVersion}`);
   }
@@ -250,11 +262,11 @@ export type SourcePluginManifest = {
   /** The module, relative to the package, whose default export is the `SourcePlugin`. */
   entry: string;
   identity: SourcePluginIdentity;
-  description: string;
+  description: PluginText;
   /** Whether its Sources need the LLM endpoint, as for extracting Items from raw messages. */
   needsLlm: boolean;
   /** Shown before an Admin can enable the Source Type, such as for an unofficial client. */
-  riskNotice?: string;
+  riskNotice?: PluginText;
   /**
    * Whether the entry is an ES module, by `"type": "module"` or an `.mjs` or `.mts` entry. Only ES
    * modules share the Instance's SDK, so only they are loadable.
@@ -279,14 +291,23 @@ export function parseManifest(packageJson: unknown): ManifestResult {
     details.push(`${key} is missing`);
     return "";
   };
+  /** A text the Admin area shows: plain, or per language with English. */
+  const shown = (key: string, value: unknown): PluginText => {
+    if (!isObject(value)) return text(key, value);
+    const valid =
+      typeof value.en === "string" && value.en.trim() !== "" && Object.values(value).every((v) => typeof v === "string");
+    if (valid) return value as PluginText;
+    details.push(`${key} is no text: give a string, or strings by language with "en" among them`);
+    return "";
+  };
   const entry = text("entry", raw.entry);
   const sourceTypeId = text("sourceTypeId", raw.sourceTypeId);
-  const displayName = text("displayName", raw.displayName);
+  const displayName = shown("displayName", raw.displayName);
   const sdk = text("sdkVersion", raw.sdkVersion);
-  const description = text("description", raw.description);
+  const description = shown("description", raw.description);
   const version = typeof pkg.version === "string" ? pkg.version : "0.0.0";
   if (raw.needsLlm !== undefined && typeof raw.needsLlm !== "boolean") details.push("needsLlm is not true or false");
-  if (raw.riskNotice !== undefined && typeof raw.riskNotice !== "string") details.push("riskNotice is not text");
+  const riskNotice = raw.riskNotice === undefined ? undefined : shown("riskNotice", raw.riskNotice);
   if (details.length > 0) {
     return { ok: false, problem: "invalid-manifest", ...(sourceTypeId ? { sourceTypeId } : {}), details };
   }
@@ -298,7 +319,7 @@ export function parseManifest(packageJson: unknown): ManifestResult {
       description,
       needsLlm: raw.needsLlm === true,
       esModule: pkg.type === "module" || /\.m[jt]s$/.test(entry),
-      ...(typeof raw.riskNotice === "string" ? { riskNotice: raw.riskNotice } : {}),
+      ...(riskNotice !== undefined ? { riskNotice } : {}),
     },
   };
 }
