@@ -38,12 +38,14 @@ describe("Events extracted from PDF attachments", () => {
   let instance: TestInstance;
   let extractor: ScriptedExtractor;
   let textExtractor: FakeTextExtractor;
+  let blobs: InMemoryBlobStore;
   let view: ViewId;
   beforeEach(async () => {
     // The clock starts on Monday 2026-09-14 at 09:00 in Berlin.
     extractor = new ScriptedExtractor();
     textExtractor = new FakeTextExtractor();
-    instance = await bootForTest({ extractor, textExtractor, blobStore: new InMemoryBlobStore() });
+    blobs = new InMemoryBlobStore();
+    instance = await bootForTest({ extractor, textExtractor, blobStore: blobs });
     await writeTestPluginPackage(instance.workspacePackages, { sourceTypeId: "mailbox", needsLlm: true });
     await instance.restart();
     await instance.app.sourceTypes.enable("mailbox");
@@ -88,6 +90,21 @@ describe("Events extracted from PDF attachments", () => {
     expect(await timeline()).toEqual({ "2026-09-25": ["08:00-08:00 Wandertag"] });
     expect(extractor.requests[0]?.message.text).toContain(covering);
     expect(extractor.requests[0]?.message.text).toContain("Treffpunkt ist um 8:00 Uhr am Bahnhof.");
+  });
+
+  it("removes the mails, their attachments and their Events with their Source", async () => {
+    extractor.script("Wandertag der Klasse 5b", [hikingDay]);
+    await arrive(mail("m1", covering, [pdf("elternbrief.pdf", fakePdf({ text: letter }))]));
+    const page = await instance.app.views.open(view, { access: openViewAccess });
+    const message = page?.days.flatMap((day) => day.items)[0]?.messages[0];
+    expect(message).toBeDefined();
+
+    const [source] = await instance.app.sources.list();
+    await instance.app.sources.remove(source!.id);
+
+    expect(await timeline()).toEqual({});
+    expect(await instance.app.messages.open(message!)).toBeNull();
+    expect(blobs.size).toBe(0);
   });
 
   it("reads the scanned pages of a PDF with OCR when the endpoint cannot see images", async () => {

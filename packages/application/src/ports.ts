@@ -248,6 +248,8 @@ export type Source = {
   state: string | null;
   /** How often the worker polls it, as an Admin set it; null for the plugin's suggestion. */
   pollIntervalSeconds: number | null;
+  /** Whether its Items show on the timeline and in the feeds; a hidden Source is still read. */
+  shown: boolean;
   /** When the worker last ran it, successfully or not; null before its first run. */
   lastRunAt: Date | null;
   createdAt: Date;
@@ -265,8 +267,13 @@ export interface SourceRepository {
   update(source: Source): Promise<void>;
   /** Records a run that failed, which keeps the state for the next one. */
   recordFailedRun(id: SourceId, at: Date): Promise<void>;
-  /** Removes the Source; its Origins and Revisions stay. */
-  remove(id: SourceId): Promise<void>;
+  /** Shows or hides the Source's Items on the timeline and in the feeds. */
+  setShown(id: SourceId, shown: boolean): Promise<void>;
+  /**
+   * Removes the Source in one transaction with its Origins, raw messages, Revisions and Items.
+   * Returns the BlobStore files of its raw messages, for the caller to remove.
+   */
+  remove(id: SourceId): Promise<BlobRef[]>;
 }
 
 /** Why a Revision was rejected automatically (ADR-0009). */
@@ -408,7 +415,7 @@ export interface ItemRepository {
   findMessage(id: RawMessageId): Promise<RawMessage | null>;
   /**
    * The Family's Items whose window overlaps the given time, with the links of their Origins; a
-   * `to` of null means all of the future.
+   * `to` of null means all of the future. Items of a hidden Source are left out.
    */
   overlapping(familyId: FamilyId, from: Date, to: Date | null): Promise<ProjectedItem[]>;
 }

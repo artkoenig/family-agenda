@@ -46,7 +46,7 @@ import type {
   View,
   ViewId,
 } from "@family-agenda/domain";
-import { and, asc, eq, gt, gte, inArray, isNotNull, isNull, lt, lte, sql, type SQL } from "drizzle-orm";
+import { and, asc, eq, gt, gte, inArray, isNotNull, isNull, lt, lte, or, sql, type SQL } from "drizzle-orm";
 import { uuidPattern } from "../uuid";
 import type { Database } from "./database";
 import {
@@ -391,6 +391,7 @@ export class PostgresSourceRepository implements SourceRepository {
       secretRefs: source.secrets,
       state: source.state,
       pollIntervalSeconds: source.pollIntervalSeconds,
+      shown: source.shown,
       lastRunAt: source.lastRunAt,
       createdAt: source.createdAt,
     });
@@ -433,9 +434,32 @@ export class PostgresSourceRepository implements SourceRepository {
     await this.db.update(sources).set({ lastRunAt: at }).where(eq(sources.id, id));
   }
 
-  async remove(id: SourceId): Promise<void> {
+  async setShown(id: SourceId, shown: boolean): Promise<void> {
     if (!uuidPattern.test(id)) return;
-    await this.db.delete(sources).where(eq(sources.id, id));
+    await this.db.update(sources).set({ shown }).where(eq(sources.id, id));
+  }
+
+  async remove(id: SourceId): Promise<BlobRef[]> {
+    if (!uuidPattern.test(id)) return [];
+    return this.db.transaction(async (tx) => {
+      const keyed = await tx.select({ id: itemKeys.itemId }).from(itemKeys).where(eq(itemKeys.sourceId, id));
+      const itemIds = keyed.map((row) => row.id);
+      const originsOfSource = tx.select({ id: origins.id }).from(origins).where(eq(origins.sourceId, id));
+      const messagesOfSource = tx.select({ id: rawMessages.id }).from(rawMessages).where(eq(rawMessages.sourceId, id));
+      const attachments = await tx
+        .delete(messageAttachments)
+        .where(inArray(messageAttachments.rawMessageId, messagesOfSource))
+        .returning({ blob: messageAttachments.blob });
+      const texts = await tx.delete(rawMessages).where(eq(rawMessages.sourceId, id)).returning({ blob: rawMessages.textBlob });
+      await tx
+        .delete(revisions)
+        .where(or(inArray(revisions.originId, originsOfSource), itemIds.length > 0 ? inArray(revisions.itemId, itemIds) : undefined));
+      await tx.delete(itemKeys).where(eq(itemKeys.sourceId, id));
+      if (itemIds.length > 0) await tx.delete(items).where(inArray(items.id, itemIds));
+      await tx.delete(origins).where(eq(origins.sourceId, id));
+      await tx.delete(sources).where(eq(sources.id, id));
+      return [...texts, ...attachments].map((row) => row.blob as BlobRef);
+    });
   }
 
   private async select(where: SQL): Promise<Source[]> {
@@ -449,6 +473,7 @@ export class PostgresSourceRepository implements SourceRepository {
       secrets: row.secretRefs as Record<string, SecretRef>,
       state: row.state,
       pollIntervalSeconds: row.pollIntervalSeconds,
+      shown: row.shown,
       lastRunAt: row.lastRunAt,
       createdAt: row.createdAt,
     }));
@@ -639,6 +664,8 @@ export class PostgresItemRepository implements ItemRepository {
           isNotNull(items.folded),
           to ? lte(items.windowFrom, to) : undefined,
           gte(items.windowTo, from),
+          // Items of a hidden Source stay recorded, but leave the timeline and the feeds.
+          sql`NOT EXISTS (SELECT 1 FROM ${itemKeys} INNER JOIN ${sources} ON ${sources.id} = ${itemKeys.sourceId} WHERE ${itemKeys.itemId} = ${items.id} AND NOT ${sources.shown})`,
         ),
       )
       .orderBy(asc(items.windowFrom), asc(items.createdAt));

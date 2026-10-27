@@ -128,6 +128,8 @@ export const sources = pgTable(
     state: text("state"),
     /** As an Admin set it; null for the plugin's suggestion. */
     pollIntervalSeconds: integer("poll_interval_seconds"),
+    /** Whether its Items show on the timeline; a hidden Source is still read. */
+    shown: boolean("shown").notNull().default(true),
     lastRunAt: timestamp("last_run_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
   },
@@ -135,8 +137,8 @@ export const sources = pgTable(
 );
 
 /**
- * Appearances of Items in Sources (ADR-0009). They outlive their Source, so `source_id` has no
- * foreign key: removing a Source keeps its Origins and Revisions.
+ * Appearances of Items in Sources (ADR-0009). Removing a Source removes them, with their raw
+ * messages, Revisions and Items, in the same transaction as the Source itself.
  */
 export const origins = pgTable(
   "origins",

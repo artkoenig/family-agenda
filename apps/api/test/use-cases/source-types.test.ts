@@ -185,6 +185,7 @@ describe("Sources", () => {
         plain: { url: "https://school.example.org" },
         storedSecrets: ["password"],
         pollIntervalSeconds: null,
+        shown: true,
       },
     ]);
     const [row] = await instance.query("SELECT config, secret_refs::text AS refs, state FROM sources");

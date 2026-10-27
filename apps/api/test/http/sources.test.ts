@@ -70,6 +70,23 @@ describe("Sources in the Admin area", () => {
     expect(await instance.app.sources.list()).toEqual([]);
   });
 
+  it("hides a Source from the timeline and shows it again", async () => {
+    await instance.app.sourceTypes.enable("calendar");
+    const added = await instance.app.sources.add({ sourceTypeId: "calendar", plain: { url: "https://calendar.example.org" }, secrets: {} });
+    if (!added.ok) throw new Error("adding failed");
+    expect(await page()).toContain("Hide from the timeline");
+
+    const hidden = await instance.post(`/admin/sources/${added.id}/shown`, { shown: "no" }, { cookie });
+    expect(hidden.status).toBe(303);
+    expect(await instance.app.sources.list()).toMatchObject([{ shown: false }]);
+    const list = await page();
+    expect(list).toContain("hidden from the timeline");
+    expect(list).toContain("Show on the timeline");
+
+    await instance.post(`/admin/sources/${added.id}/shown`, { shown: "yes" }, { cookie });
+    expect(await instance.app.sources.list()).toMatchObject([{ shown: true }]);
+  });
+
   it("shows why a Source cannot be saved", async () => {
     await instance.app.sourceTypes.enable("calendar");
 

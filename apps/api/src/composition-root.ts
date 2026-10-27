@@ -172,6 +172,7 @@ export async function bootApplication(config: ApplicationConfig): Promise<Applic
     sourceTypes: sourceTypeRepository,
     sources: sourceRepository,
     secrets,
+    blobs,
   });
   const polling = createSourcePolling({
     clock,
