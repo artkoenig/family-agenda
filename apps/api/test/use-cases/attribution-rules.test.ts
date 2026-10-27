@@ -172,6 +172,13 @@ describe("Attribution Rules", () => {
     expect(await instance.app.attributionRules.list()).toEqual([]);
   });
 
+  it("matches a value whatever its case, as a sender address is the same in any", async () => {
+    await arrive(entry("Piano lesson", "teacher@school.example"));
+    await rule("Teacher@School.example", [mia]);
+
+    expect(await tuesday()).toEqual(["Piano lesson: Mia"]);
+  });
+
   it("lets a rule left without anyone match nothing", async () => {
     await arrive(entry("Piano lesson", "Music school"));
     await rule("Music school", [leo]);

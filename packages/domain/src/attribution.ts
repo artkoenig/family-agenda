@@ -38,6 +38,11 @@ export function parseAttributeValue(raw: string): string | null {
   return value.length > 0 && value.length <= maximumAttributeValueLength ? value : null;
 }
 
+/** Whether an Origin's attribute value is a rule's, whatever their case, as for a sender address. */
+function sameValue(a: string | undefined, b: string): boolean {
+  return a !== undefined && a.normalize("NFC").toLowerCase() === b.normalize("NFC").toLowerCase();
+}
+
 /**
  * Whom an Item concerns, by the rules its Origins match: the union of what they assign, the
  * whole Family covering everyone. Without a matching rule, the whole Family. A rule left without
@@ -47,8 +52,8 @@ export function parseAttributeValue(raw: string): string | null {
 export function attributionOf(origins: readonly OriginOf[], rules: readonly AttributionRule[]): Attribution {
   const matched = rules.filter(
     (rule) =>
-      rule.concerns.length > 0 &&
-      origins.some((origin) => origin.sourceId === rule.sourceId && origin.attributes[rule.attribute] === rule.value),
+      (rule.concerns === "whole-family" || rule.concerns.length > 0) &&
+      origins.some((origin) => origin.sourceId === rule.sourceId && sameValue(origin.attributes[rule.attribute], rule.value)),
   );
   if (matched.length === 0 || matched.some((rule) => rule.concerns === "whole-family")) return "whole-family";
   return [...new Set(matched.flatMap((rule) => rule.concerns as FamilyMemberId[]))];

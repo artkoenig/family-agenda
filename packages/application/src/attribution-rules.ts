@@ -14,7 +14,6 @@ import type {
   FamilyMemberRepository,
   FamilyRepository,
   KnownValue,
-  LoadedSourceType,
   OriginAttributeSpec,
   PlainConfig,
   SecretStore,
@@ -23,7 +22,7 @@ import type {
   SourceTypeRegistry,
   SourceTypeRepository,
 } from "./ports";
-import { runContextOf } from "./sources";
+import { enabledSourceType, runContextOf } from "./sources";
 
 export type AttributionRulesDeps = {
   clock: Clock;
@@ -72,12 +71,7 @@ export type EditRuleResult = { ok: true } | { ok: false; problem: RuleProblem | 
 export function createAttributionRuleAccess(deps: AttributionRulesDeps) {
   const { clock, timeZone, families, members, registry, sourceTypes, sources, secrets, rules } = deps;
 
-  /** The plugin of an enabled Source Type, or null. */
-  async function enabled(sourceTypeId: SourceTypeId): Promise<LoadedSourceType | null> {
-    const record = (await sourceTypes.list()).find((type) => type.id === sourceTypeId);
-    const loaded = record?.enabled ? await registry.load(sourceTypeId) : null;
-    return loaded?.ok ? loaded.sourceType : null;
-  }
+  const enabled = (sourceTypeId: SourceTypeId) => enabledSourceType(sourceTypeId, { registry, sourceTypes });
 
   function targetOf(source: Source, attribute: string, spec: OriginAttributeSpec | undefined): RuleTarget {
     const installed = registry.installed().find((type) => type.id === source.sourceTypeId);

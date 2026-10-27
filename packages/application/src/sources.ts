@@ -78,12 +78,7 @@ export type EditSourceResult =
 export function createSourceAccess(deps: SourcesDeps) {
   const { clock, families, registry, sourceTypes, sources, secrets, blobs } = deps;
 
-  /** The plugin of an enabled Source Type, or null. */
-  async function enabled(sourceTypeId: SourceTypeId): Promise<LoadedSourceType | null> {
-    const record = (await sourceTypes.list()).find((type) => type.id === sourceTypeId);
-    const loaded = record?.enabled ? await registry.load(sourceTypeId) : null;
-    return loaded?.ok ? loaded.sourceType : null;
-  }
+  const enabled = (sourceTypeId: SourceTypeId) => enabledSourceType(sourceTypeId, { registry, sourceTypes });
 
   /** Why the input does not fit the plugin's configuration; `stored` secrets count as given. */
   function check(sourceType: LoadedSourceType, input: SourceInput, stored: string[] = []): SourceProblem | null {
@@ -228,6 +223,16 @@ export function createSourceAccess(deps: SourcesDeps) {
 }
 
 export type SourceAccess = ReturnType<typeof createSourceAccess>;
+
+/** The plugin of an enabled Source Type, or null. */
+export async function enabledSourceType(
+  sourceTypeId: SourceTypeId,
+  deps: { registry: SourceTypeRegistry; sourceTypes: SourceTypeRepository },
+): Promise<LoadedSourceType | null> {
+  const record = (await deps.sourceTypes.list()).find((type) => type.id === sourceTypeId);
+  const loaded = record?.enabled ? await deps.registry.load(sourceTypeId) : null;
+  return loaded?.ok ? loaded.sourceType : null;
+}
 
 /** What a plugin is given to run for a Source: its configuration, with the values of its secrets. */
 export async function runContextOf(
