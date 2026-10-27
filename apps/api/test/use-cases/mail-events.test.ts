@@ -98,6 +98,18 @@ describe("Events extracted from mail", () => {
     expect(await timeline()).toEqual({});
   });
 
+  it("does not link an Event to a later mail of its thread whose Revision was rejected", async () => {
+    extractor.script("Elternabend der Klasse", [parentsEvening]);
+    await arrive(mail("m1", "2026-09-14T06:12:00Z", invitation));
+    extractor.script("verlegt", [extracted({ updates: "E1", startTime: "16:00", evidence: "auf 16 Uhr verschoben" })]);
+
+    await arrive(mail("m2", "2026-09-15T10:00:00Z", "Der Elternabend wird auf 16 Uhr verlegt.", "m1"));
+
+    const page = await instance.app.views.open(view, { access: openViewAccess });
+    expect(page?.days[3]?.items[0]).toMatchObject({ from: "19:30" });
+    expect(page?.days[3]?.items[0]?.messages).toHaveLength(1);
+  });
+
   it("adds nothing for a mail that only informs", async () => {
     const newsletter = "Liebe Eltern,\n\ndie Mensa bietet ab sofort auch vegetarische Gerichte an.";
 
@@ -179,6 +191,28 @@ describe("Events extracted from mail", () => {
     extractor.recover();
     await instance.app.extraction.extractPending();
     expect(await timeline()).toEqual({ "2026-09-17": ["19:30-19:30 Elternabend Klasse 5b"] });
+  });
+
+  it("does not send a mail whose text is gone to the endpoint", async () => {
+    const blobs = new InMemoryBlobStore();
+    const fresh = await bootForTest({ extractor, blobStore: blobs });
+    try {
+      await writeTestPluginPackage(fresh.workspacePackages, { sourceTypeId: "inbox", needsLlm: true });
+      await fresh.restart();
+      await fresh.app.sourceTypes.enable("inbox");
+      await fresh.app.sources.add({ sourceTypeId: "inbox", plain: { url: "imap.example.org" }, secrets: {} });
+      await fresh.app.llmEndpoint.save({ baseUrl: "http://localhost:11434/v1", model: "qwen3.5:9b", apiKey: "" });
+      testPluginControls.emit("inbox", [mail("m1", "2026-09-14T06:12:00Z", invitation)]);
+      await fresh.app.polling.pollDue();
+      const [text] = await fresh.query("SELECT text_blob FROM raw_messages");
+      await blobs.remove(text!.text_blob as never);
+      const before = extractor.requests.length;
+
+      expect((await fresh.app.extraction.extractPending()).extracted).toHaveLength(1);
+      expect(extractor.requests.length).toBe(before);
+    } finally {
+      await fresh.close();
+    }
   });
 
   it("records a mail the mailbox emits again only once", async () => {

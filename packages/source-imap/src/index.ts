@@ -130,8 +130,8 @@ export function createImapPlugin(options: ImapPluginOptions = {}): SourcePlugin 
           } else {
             const since = new Date(context.now.getTime() - firstRunDays * 24 * 60 * 60 * 1000);
             const uids = (await client.search({ since }, { uid: true })) || [];
-            const mailbox = client.mailbox;
-            const highest = mailbox ? mailbox.uidNext - 1 : 0;
+            const uidNext = client.mailbox ? client.mailbox.uidNext : NaN;
+            const highest = Number.isInteger(uidNext) ? uidNext - 1 : 0;
             if (uids.length === 0) return { origins: [], state: stateOf(uidValidity, highest) };
             range = uids.join(",");
           }

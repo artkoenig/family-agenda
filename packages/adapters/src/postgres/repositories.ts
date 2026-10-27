@@ -630,7 +630,8 @@ export class PostgresItemRepository implements ItemRepository {
       .selectDistinct({ itemId: revisions.itemId, id: rawMessages.id, sentAt: rawMessages.sentAt })
       .from(revisions)
       .innerJoin(rawMessages, eq(rawMessages.originId, revisions.originId))
-      .where(inArray(revisions.itemId, ids))
+      // A message whose Revisions were all rejected said nothing that shows.
+      .where(and(inArray(revisions.itemId, ids), eq(revisions.accepted, true)))
       .orderBy(asc(rawMessages.sentAt));
     return rows.flatMap((row) =>
       row.folded

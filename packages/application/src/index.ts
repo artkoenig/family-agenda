@@ -2,6 +2,7 @@ export * from "./admin-access";
 export * from "./extraction";
 export * from "./family-members";
 export * from "./llm-endpoint";
+export * from "./messages";
 export * from "./polling";
 export * from "./ports";
 export * from "./recovery-kit";

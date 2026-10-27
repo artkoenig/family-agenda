@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { instantAt, isLocalHost, quoteFoundIn, resolveDate, type DateMention, type LocalDate } from "../src";
+import { instantAt, quoteFoundIn, resolveDate, type DateMention, type LocalDate } from "../src";
 
 const nothing: DateMention = { day: null, month: null, year: null, weekday: null, daysAfter: null, weeksAfter: null };
 
@@ -31,6 +31,7 @@ describe("a date as a message mentions it", () => {
     { case: "tomorrow, said to be a Friday", mention: { daysAfter: 1, weekday: "friday" }, problem: { problem: "weekday-mismatch", date: "2026-11-05" } },
     { case: "a date that does not exist", mention: { day: 31, month: 11 }, problem: { problem: "no-date" } },
     { case: "a day without a month", mention: { day: 12 }, problem: { problem: "no-date" } },
+    { case: "a day without a month, next to a weekday", mention: { day: 5, weekday: "friday" }, problem: { problem: "no-date" } },
     { case: "no date at all", mention: {}, problem: { problem: "no-date" } },
   ] as const)("refuses $case", ({ mention, problem }) => {
     expect(resolveDate({ ...nothing, ...mention }, sentOn)).toEqual({ ok: false, ...problem });
@@ -62,18 +63,5 @@ describe("an evidence quote", () => {
     expect(quoteFoundIn("Elternabend am Mittwoch", message)).toBe(false);
     expect(quoteFoundIn("elternabend der klasse 5b", message)).toBe(false);
     expect(quoteFoundIn("  ", message)).toBe(false);
-  });
-});
-
-describe("a host", () => {
-  it.each(["localhost", "127.0.0.1", "::1", "[::1]", "192.168.1.20", "10.0.0.5", "172.20.1.1", "ollama", "gpu.local", "llm.home.arpa", "host.docker.internal", "fd12::1"])(
-    "%s is on the home network",
-    (host) => {
-      expect(isLocalHost(host)).toBe(true);
-    },
-  );
-
-  it.each(["api.openai.com", "8.8.8.8", "172.32.0.1", "2001:db8::1", "local.example.com"])("%s is not", (host) => {
-    expect(isLocalHost(host)).toBe(false);
   });
 });

@@ -23,6 +23,7 @@ import type {
   FamilyRepository,
   ItemRepository,
   KnownEvent,
+  LlmEndpoint,
   LlmEndpointRepository,
   NewRevision,
   PendingMessage,
@@ -62,7 +63,7 @@ const batchSize = 20;
 export function createExtraction(deps: ExtractionDeps) {
   const { clock, timeZone, items, blobs, extractor } = deps;
 
-  async function extractOne(message: PendingMessage, text: string, endpoint: Parameters<Extractor["extract"]>[0]["endpoint"]) {
+  async function extractOne(message: PendingMessage, text: string, endpoint: LlmEndpoint) {
     const thread = message.thread ? await items.itemsOfThread(message.sourceId, message.thread) : [];
     const known = knownEventsOf(thread, timeZone);
     const sent = localDateTime(message.sentAt, timeZone);
@@ -96,8 +97,16 @@ export function createExtraction(deps: ExtractionDeps) {
       if (!endpoint) return report;
       for (const message of await items.pendingMessages(batchSize)) {
         const bytes = await blobs.get(message.text);
-        const text = bytes ? new TextDecoder().decode(bytes) : "";
-        const result = await extractOne(message, text, endpoint);
+        if (!bytes) {
+          // Its text was deleted before it was read, so it states nothing.
+          await items.recordExtraction(
+            { messageId: message.id, familyId: message.familyId, sourceId: message.sourceId, at: clock.now(), revisions: [] },
+            project,
+          );
+          report.extracted.push(message.id);
+          continue;
+        }
+        const result = await extractOne(message, new TextDecoder().decode(bytes), endpoint);
         if (result.ok) {
           report.extracted.push(message.id);
           continue;
@@ -111,37 +120,6 @@ export function createExtraction(deps: ExtractionDeps) {
 }
 
 export type ExtractionAccess = ReturnType<typeof createExtraction>;
-
-export type MessageDetails = {
-  id: RawMessageId;
-  sentAt: Date;
-  /** The Origin attributes of the message, such as its sender. */
-  attributes: Record<string, string>;
-  /** Null once retention has deleted it. */
-  text: string | null;
-  attachments: { filename: string; contentType: string; size: number }[];
-};
-
-/** Raw messages, as an Admin opens them to check what a Source actually said. */
-export function createMessageAccess(deps: { items: ItemRepository; blobs: BlobStore }) {
-  const { items, blobs } = deps;
-  return {
-    async open(id: RawMessageId): Promise<MessageDetails | null> {
-      const message = await items.findMessage(id);
-      if (!message) return null;
-      const bytes = await blobs.get(message.text);
-      return {
-        id: message.id,
-        sentAt: message.sentAt,
-        attributes: message.attributes,
-        text: bytes ? new TextDecoder().decode(bytes) : null,
-        attachments: message.attachments.map(({ filename, contentType, size }) => ({ filename, contentType, size })),
-      };
-    },
-  };
-}
-
-export type MessageAccess = ReturnType<typeof createMessageAccess>;
 
 /** An Event of the thread as the model is told about it, with the Item it is. */
 type Known = KnownEvent & { itemKey: string; event: Event };
