@@ -483,7 +483,6 @@ export function createHttpApp(application: Application, options: HttpOptions) {
       ...entered,
       apiKey: field(form, "apiKey"),
       removeApiKey: field(form, "removeApiKey") === "yes",
-      vision: field(form, "vision") === "yes",
       thirdPartiesAcknowledged: field(form, "thirdPartiesAcknowledged") === "yes",
     });
     if (!result.ok) {

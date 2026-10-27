@@ -83,12 +83,13 @@ export function createExtraction(deps: ExtractionDeps) {
     if (scans.length > maximumScannedPages) {
       return { ok: false, message: `It has ${scans.length} scanned pages; at most ${maximumScannedPages} are read.` };
     }
-    if (scans.length > 0) {
-      const read = await readScans(bytes, scans, endpoint);
-      if (!read.ok) return read;
-      scans.forEach((number, index) => (pages[number - 1] = read.value[index] ?? ""));
-    }
-    return { ok: true, value: pages.map((page) => page.trim()).filter((page) => page !== "").join("\n\n") };
+    const scanned = scans.length > 0 ? await readScans(bytes, scans, endpoint) : ({ ok: true, value: [] } as const);
+    if (!scanned.ok) return scanned;
+    const text = pages.map((page, index) => {
+      const scan = scans.indexOf(index + 1);
+      return (scan >= 0 ? (scanned.value[scan] ?? "") : page).trim();
+    });
+    return { ok: true, value: text.filter((page) => page !== "").join("\n\n") };
   }
 
   async function readScans(pdf: Uint8Array, pages: number[], endpoint: LlmEndpoint): Promise<AttachmentReading<string[]>> {

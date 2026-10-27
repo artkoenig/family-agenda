@@ -42,7 +42,9 @@ export class CommandLineTextExtractor implements TextExtractor {
   pageImages(pdf: Uint8Array, pages: number[]): Promise<Conversion<Uint8Array[]>> {
     return this.withPdf(pdf, async (file, directory) => {
       const images: Uint8Array[] = [];
-      for (const page of pages) images.push(await this.render(file, directory, page, ["-r", String(imageDpi)]));
+      for (const page of pages) {
+        images.push(new Uint8Array(await readFile(await this.render(file, directory, page, ["-r", String(imageDpi)]))));
+      }
       return images;
     });
   }
@@ -51,18 +53,18 @@ export class CommandLineTextExtractor implements TextExtractor {
     return this.withPdf(pdf, async (file, directory) => {
       const texts: string[] = [];
       for (const page of pages) {
-        await this.render(file, directory, page, ["-r", String(ocrDpi), "-gray"]);
-        texts.push(await this.tool("tesseract", [join(directory, "page.png"), "-", "-l", "deu"]));
+        const image = await this.render(file, directory, page, ["-r", String(ocrDpi), "-gray"]);
+        texts.push(await this.tool("tesseract", [image, "-", "-l", "deu"]));
       }
       return texts;
     });
   }
 
-  /** Renders one page to `page.png` in the directory, and returns it. */
-  private async render(file: string, directory: string, page: number, options: string[]): Promise<Uint8Array> {
+  /** Renders one page to a PNG file in the directory, and returns its path. */
+  private async render(file: string, directory: string, page: number, options: string[]): Promise<string> {
     const prefix = join(directory, "page");
     await this.tool("pdftoppm", [...options, "-png", "-singlefile", "-f", String(page), "-l", String(page), file, prefix]);
-    return new Uint8Array(await readFile(`${prefix}.png`));
+    return `${prefix}.png`;
   }
 
   private async tool(command: string, args: string[]): Promise<string> {
@@ -71,15 +73,16 @@ export class CommandLineTextExtractor implements TextExtractor {
   }
 
   private async withPdf<T>(pdf: Uint8Array, convert: (file: string, directory: string) => Promise<T>): Promise<Conversion<T>> {
-    const directory = await mkdtemp(join(tmpdir(), "family-butler-pdf-"));
+    let directory: string | null = null;
     try {
+      directory = await mkdtemp(join(tmpdir(), "family-butler-pdf-"));
       const file = join(directory, "attachment.pdf");
       await writeFile(file, pdf, { mode: 0o600 });
       return { ok: true, value: await convert(file, directory) };
     } catch (error) {
       return { ok: false, message: reason(error) };
     } finally {
-      await rm(directory, { recursive: true, force: true });
+      if (directory) await rm(directory, { recursive: true, force: true });
     }
   }
 }

@@ -163,11 +163,21 @@ describe("the OpenAI-compatible Extractor", () => {
       server.answer(401, { error: { message: "invalid api key" } });
       expect(await extractor.transcribe(transcription([page(1)]))).toMatchObject({ ok: false, problem: "unauthorized" });
 
-      server.answer(400, { error: { message: "model does not support images" } });
+      server.answer(503, { error: { message: "loading model" } });
       expect(await extractor.transcribe(transcription([page(1)]))).toMatchObject({ ok: false, problem: "unreachable" });
 
       server.answer(200, { choices: [] });
       expect(await extractor.transcribe(transcription([page(1)]))).toMatchObject({ ok: false, problem: "invalid-output" });
+    });
+
+    it("takes a refused image for a problem with the page, so that a model without vision holds up no other mail", async () => {
+      server.answer(400, { error: { message: "model does not support images" } });
+
+      expect(await new OpenAiCompatibleExtractor().transcribe(transcription([page(1)]))).toEqual({
+        ok: false,
+        problem: "invalid-output",
+        message: "The LLM endpoint refused the page images (HTTP 400); its model may not read images.",
+      });
     });
   });
 });

@@ -482,7 +482,7 @@ export type TranscriptionRequest = { endpoint: LlmEndpoint; images: Uint8Array[]
 /** The text of each page, in order. */
 export type TranscriptionResult = { ok: true; pages: string[] } | EndpointFailure;
 
-/** Reads the Items a message states, through the Family's LLM endpoint. */
+/** Reads the Items a message states, and the words of scanned pages, through the Family's LLM endpoint. */
 export interface Extractor {
   extract(request: ExtractionRequest): Promise<ExtractionResult>;
   /** Reads the text of scanned pages, word for word, through a vision-capable endpoint. */
@@ -498,7 +498,7 @@ export interface TextExtractor {
   textLayer(pdf: Uint8Array): Promise<Conversion<string[]>>;
   /** The given pages, numbered from 1, as PNG images. */
   pageImages(pdf: Uint8Array, pages: number[]): Promise<Conversion<Uint8Array[]>>;
-  /** The German text OCR reads on each of the given pages, numbered from 1. */
+  /** The text OCR reads on each of the given pages, numbered from 1, in the Family's language. */
   ocr(pdf: Uint8Array, pages: number[]): Promise<Conversion<string[]>>;
 }
 
