@@ -75,6 +75,9 @@ export const en = {
     "ocr-language-selected": "OCR reads in this language. Remove it from the OCR languages first.",
     "ocr-language-bundled": "This model comes with Family Agenda and cannot be removed.",
     "invalid-interval": `The polling interval must be between ${pollIntervalRange.minSeconds / 60} minute and ${pollIntervalRange.maxSeconds / 86_400} days.`,
+  },
+  /** Problems that name what went wrong. */
+  problemsWith: {
     /** A Source that cannot be saved, naming the fields by their labels. */
     invalidConfig: (fields: string) => `Check ${fields}.`,
     downloadFailed: (message: string) => `The model could not be downloaded. ${message}`,
@@ -98,7 +101,7 @@ export const en = {
     password: `Password (at least ${minimumPasswordLength} characters)`,
     familyLanguage: "Family Language",
     familyLanguageHint:
-      "Family Agenda speaks it, writes dates in it, and reads scanned letters in it. You can change both in the settings.",
+      "Family Agenda speaks it, writes dates in it, and reads scanned letters in it. You can change it in the settings.",
     submit: "Create Admin",
   },
 

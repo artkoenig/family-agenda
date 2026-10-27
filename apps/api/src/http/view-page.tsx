@@ -9,7 +9,7 @@ import type {
 import { addDays, daysBetween, type FamilyMemberId, type LocalDate } from "@family-agenda/domain";
 import { raw } from "hono/html";
 import type { Catalogue } from "./i18n/en";
-import { useTranslation } from "./i18n/translation";
+import { useTranslation, type Translation } from "./i18n/translation";
 import { Layout } from "./layout";
 
 // The one View layout (ADR-0003): a vertical timeline that works on a phone, a desktop and a wall
@@ -227,7 +227,8 @@ function DayEntry(props: { page: ViewPage; day: ViewPage["days"][number] }) {
 /** One Event as a compact row of time and title, with its details on tap. */
 function EventRow(props: { row: TimelineEvent }) {
   const { row } = props;
-  const { t, locale } = useTranslation();
+  const translation = useTranslation();
+  const { t } = translation;
   const v = t.view;
   const classes = ["fam-event", row.cancelled ? "fam-event--cancelled" : "", row.earlier ? "fam-event--earlier" : ""]
     .filter(Boolean)
@@ -248,7 +249,7 @@ function EventRow(props: { row: TimelineEvent }) {
       </summary>
       <dl class="fam-event__details">
         <dt>{v.when}</dt>
-        <dd>{spanLabel(row.span, locale, t)}</dd>
+        <dd>{spanLabel(row.span, translation)}</dd>
         {row.place ? (
           <>
             <dt>{v.where}</dt>
@@ -293,8 +294,8 @@ function timeLabel(row: TimelineEvent, t: Catalogue): string {
   return t.view.allDay;
 }
 
-/** The whole span of an Event, as its details show it, its dates in `locale`. */
-export function spanLabel(span: TimelineEvent["span"], locale: string, t: Catalogue): string {
+/** The whole span of an Event, as its details show it, in the Translation's language. */
+export function spanLabel(span: TimelineEvent["span"], { t, locale }: Translation): string {
   const date = (day: LocalDate) => dateLabel(day, locale);
   if (span.allDay) {
     return span.firstDay === span.lastDay ? t.view.onAllDay(date(span.firstDay)) : `${date(span.firstDay)} – ${date(span.lastDay)}`;

@@ -39,7 +39,7 @@ export const de: Catalogue = {
     "own-account": "Dein eigenes Passwort kannst du hier nicht zurücksetzen.",
     "unknown-admin": "Diesen Admin gibt es nicht.",
     "invalid-language": "Wähle Englisch oder Deutsch als Familiensprache.",
-    "kit-not-saved": "Bestätige, dass du das Wiederherstellungs-Kit gesichert hast.",
+    "kit-not-saved": "Bestätige, dass du das Wiederherstellungs-Kit gespeichert hast.",
     "invalid-name": `Gib einen Namen mit höchstens ${maximumNameLength} Zeichen ein.`,
     "invalid-photo": `Das Foto muss eines dieser Formate haben: ${photoFormats}.`,
     "photo-too-large": `Das Foto darf höchstens ${maximumPhotoBytes / 1024 / 1024} MB groß sein.`,
@@ -62,6 +62,8 @@ export const de: Catalogue = {
     "ocr-language-selected": "Die Texterkennung liest in dieser Sprache. Entferne sie zuerst aus den OCR-Sprachen.",
     "ocr-language-bundled": "Dieses Modell gehört zu Family Agenda und kann nicht entfernt werden.",
     "invalid-interval": `Das Abrufintervall muss zwischen ${pollIntervalRange.minSeconds / 60} Minute und ${pollIntervalRange.maxSeconds / 86_400} Tagen liegen.`,
+  },
+  problemsWith: {
     invalidConfig: (fields) => `Prüfe ${fields}.`,
     downloadFailed: (message) => `Das Modell konnte nicht heruntergeladen werden. ${message}`,
   },
@@ -84,7 +86,7 @@ export const de: Catalogue = {
     password: `Passwort (mindestens ${minimumPasswordLength} Zeichen)`,
     familyLanguage: "Familiensprache",
     familyLanguageHint:
-      "Family Agenda spricht sie, schreibt Daten in ihr und liest eingescannte Briefe in ihr. Beides kannst du in den Einstellungen ändern.",
+      "Family Agenda spricht sie, schreibt Daten in ihr und liest eingescannte Briefe in ihr. Du kannst sie in den Einstellungen ändern.",
     submit: "Admin anlegen",
   },
 
@@ -109,8 +111,8 @@ export const de: Catalogue = {
     llmRemote: (model) => `${model}, außerhalb des Heimnetzes`,
     notSetUp: "Nicht eingerichtet",
     admins: (count) => plural(count, { one: `${count} Admin`, other: `${count} Admins` }),
-    saved: "Gesichert",
-    notSavedYet: "Noch nicht gesichert",
+    saved: "Gespeichert",
+    notSavedYet: "Noch nicht gespeichert",
   },
 
   admins: {
@@ -140,11 +142,11 @@ export const de: Catalogue = {
     masterKeyLine: "Hauptschlüssel:",
     print: "Drucken",
     download: "Als Textdatei herunterladen",
-    saved: "Gesichert",
+    saved: "Gespeichert",
     savedBody: "Ein Admin hat bestätigt, dass es ausgedruckt oder gespeichert wurde.",
     showMasterKey: "Hauptschlüssel zeigen",
     hideMasterKey: "Hauptschlüssel verbergen",
-    saveFirst: "Sichere es, bevor du weitermachst",
+    saveFirst: "Speichere es, bevor du weitermachst",
     saveFirstBody: "Drucke es aus oder lade es herunter. Jeder Admin kann es später wieder anzeigen.",
     masterKey: "Hauptschlüssel",
     confirm: "Ich habe das Wiederherstellungs-Kit ausgedruckt oder gespeichert.",
@@ -153,7 +155,7 @@ export const de: Catalogue = {
 
   members: {
     title: "Familienmitglieder",
-    description: "Wen Einträge betreffen können. Jedes behält eine Avatarfarbe; ein Foto ersetzt die Initiale.",
+    description: "Wen Einträge betreffen. Jedes behält eine Avatarfarbe; ein Foto ersetzt die Initiale.",
     add: "Familienmitglied hinzufügen",
     eyebrow: "Familie",
     dialogTitle: "Ein Familienmitglied hinzufügen",
@@ -184,7 +186,7 @@ export const de: Catalogue = {
     address: "Adresse",
     feed: "Kalender-Feed",
     preselected: "Vorausgewählte Familienmitglieder",
-    preselectedHint: "Der Schnellfilter beginnt mit ihnen; keine heißt alle.",
+    preselectedHint: "Der Schnellfilter beginnt mit ihnen; ohne Auswahl mit allen.",
     noMembers: "Noch keine Familienmitglieder.",
     horizon: "Zeitraum in Tagen",
     horizonHint: `Wie viele Tage sie auf einmal zeigt, heute eingeschlossen: ${horizonDaysRange.min} bis ${horizonDaysRange.max}.`,
@@ -244,7 +246,7 @@ export const de: Catalogue = {
     ],
     none: "Noch ist kein LLM-Endpunkt eingerichtet. Nachrichten warten, bis einer eingerichtet ist.",
     baseUrl: "Basis-URL der OpenAI-kompatiblen API",
-    baseUrlHint: "Etwa http://ollama:11434/v1 für Ollama in Compose, oder https://api.openai.com/v1.",
+    baseUrlHint: "Etwa http://ollama:11434/v1 für Ollama in Compose oder https://api.openai.com/v1.",
     model: "Modell",
     apiKey: "API-Schlüssel (optional)",
     removeApiKey: "Den gespeicherten API-Schlüssel entfernen",
@@ -263,7 +265,7 @@ export const de: Catalogue = {
     ocrLanguages: "OCR-Sprachen",
     ocrIntro:
       "Ohne einen LLM-Endpunkt, der Bilder liest, liest Tesseract eingescannte Seiten auf dieser Instanz, in diesen Sprachen zusammen, die erste zuerst. Nur Sprachen, deren Modell installiert ist, lassen sich wählen.",
-    tried: (position) => (position === 1 ? "Wird zuerst versucht" : `Wird als ${position}. versucht`),
+    tried: (position) => (position === 1 ? "Wird zuerst versucht" : `An ${position}. Stelle versucht`),
     notInstalled: "Nicht installiert",
     moveUp: "Nach oben",
     remove: "Entfernen",

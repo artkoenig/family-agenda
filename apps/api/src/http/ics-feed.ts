@@ -27,8 +27,8 @@ export function icsFeed(feed: ViewFeed, viewLink: string): string {
 
 function vevent(event: FeedEvent, stamp: string, viewLink: string, translation: Translation): string[] {
   const { span } = event;
-  const { t, locale } = translation;
-  const details = [spanLabel(event.when, locale, t), event.place, event.cancelled ? t.view.cancelled : null].filter(Boolean);
+  const { t } = translation;
+  const details = [spanLabel(event.when, translation), event.place, event.cancelled ? t.view.cancelled : null].filter(Boolean);
   return [
     "BEGIN:VEVENT",
     `UID:${event.itemId}@family-agenda`,

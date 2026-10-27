@@ -72,7 +72,7 @@ type Env = {
 };
 
 /** A problem a use case reports, as the catalogue words it. */
-type ProblemKey = { [K in keyof Catalogue["problems"]]: Catalogue["problems"][K] extends string ? K : never }[keyof Catalogue["problems"]];
+type ProblemKey = keyof Catalogue["problems"];
 
 /** A page or fragment rendered in the request's Translation. */
 const render = (c: Context<Env>, node: Child, status?: 200 | 400 | 401 | 413 | 429) =>
@@ -569,7 +569,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     if (!("fields" in result)) return problemIn(c, result.problem);
     const { t, text, list } = c.get("translation");
     const labels = new Map((await sources.forms()).flatMap((form) => form.fields.map((f) => [f.key, text(f.label)])));
-    return t.problems.invalidConfig(list(result.fields.map((key) => labels.get(key) ?? key)));
+    return t.problemsWith.invalidConfig(list(result.fields.map((key) => labels.get(key) ?? key)));
   };
 
   app.get("/admin/sources", (c) => sourcesPage(c));
@@ -647,7 +647,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     if (!result.ok) {
       const problem =
         result.problem === "download-failed"
-          ? c.get("translation").t.problems.downloadFailed(result.message)
+          ? c.get("translation").t.problemsWith.downloadFailed(result.message)
           : problemIn(c, result.problem);
       return languagePage(c, problem);
     }
