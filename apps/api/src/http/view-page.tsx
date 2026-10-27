@@ -7,6 +7,7 @@ import type {
   ViewPage,
 } from "@family-agenda/application";
 import { addDays, daysBetween, type FamilyMemberId, type LocalDate } from "@family-agenda/domain";
+import { raw } from "hono/html";
 import { Layout } from "./layout";
 
 // The one View layout (ADR-0003): a vertical timeline that works on a phone, a desktop and a wall
@@ -16,9 +17,46 @@ export function ViewPageDocument(props: { page: ViewPage }) {
   return (
     <Layout title="View" surface="view">
       <ViewTimeline page={props.page} />
+      <button type="button" id="back-to-today" class="fam-button fam-button--primary fam-button--pill fam-back-to-today" hidden>
+        <span class="fam-back-to-today__arrow" aria-hidden="true">↑</span>
+        Today
+      </button>
+      <script>{raw(backToToday)}</script>
     </Layout>
   );
 }
+
+/**
+ * Shows the button back to today while today is scrolled out of sight, below the top bar, with an
+ * arrow towards it. It sits outside the part htmx swaps, and watches today again after each swap,
+ * because a refresh or a quick filter change brings a new one.
+ */
+const backToToday = `
+const back = document.getElementById("back-to-today");
+const arrow = back.querySelector(".fam-back-to-today__arrow");
+const barHeight = () => document.querySelector(".fam-bar")?.offsetHeight ?? 0;
+let observer = null;
+let today = null;
+const watch = () => {
+  const next = document.querySelector(".fam-day--today");
+  if (next === today && observer) return;
+  observer?.disconnect();
+  today = next;
+  back.hidden = true;
+  if (!today) return;
+  observer = new IntersectionObserver(([entry]) => {
+    back.hidden = entry.isIntersecting;
+    arrow.textContent = entry.boundingClientRect.top < entry.rootBounds.top ? "↑" : "↓";
+  }, { rootMargin: "-" + barHeight() + "px 0px 0px 0px" });
+  observer.observe(today);
+};
+watch();
+document.body.addEventListener("htmx:afterSettle", watch);
+back.addEventListener("click", () => {
+  if (!today) return;
+  window.scrollTo({ top: today.getBoundingClientRect().top + window.scrollY - barHeight() - 16, behavior: "smooth" });
+});
+`;
 
 /**
  * The part of a View that htmx swaps: on a quick filter change, and every minute, so that a
