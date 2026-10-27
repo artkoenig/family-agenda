@@ -100,6 +100,26 @@ const problems = {
 
 const htmx = readFileSync(createRequire(import.meta.url).resolve("htmx.org/dist/htmx.min.js"));
 
+const resolve = createRequire(import.meta.url).resolve;
+
+/** The design system's stylesheets (`design/`), served as they are. */
+const stylesheets: Record<string, typeof htmx> = {
+  "tokens.css": readFileSync(new URL("./design/tokens.css", import.meta.url)),
+  "design.css": readFileSync(new URL("./design/design.css", import.meta.url)),
+};
+
+/** The font files `tokens.css` names, from their packages: the Instance serves them itself, as it runs offline. */
+const fonts: Record<string, typeof htmx> = Object.fromEntries(
+  ["atkinson-hyperlegible-next", "atkinson-hyperlegible-mono"].flatMap((family) =>
+    (family.endsWith("next") ? ["normal", "italic"] : ["normal"]).flatMap((style) =>
+      ["latin", "latin-ext"].map((subset) => {
+        const file = `${family}-${subset}-wght-${style}.woff2`;
+        return [file, readFileSync(resolve(`@fontsource-variable/${family}/files/${file}`))] as const;
+      }),
+    ),
+  ),
+);
+
 export function createHttpApp(application: Application, options: HttpOptions) {
   const { admins, recoveryKit, familyMembers, views, sourceTypes, sources, llmEndpoint, messages, timeZone } = application;
   const app = new Hono<Env>();
@@ -139,6 +159,18 @@ export function createHttpApp(application: Application, options: HttpOptions) {
       "cache-control": "public, max-age=86400",
     }),
   );
+
+  app.get("/static/:file{[a-z]+\\.css}", (c) => {
+    const css = stylesheets[c.req.param("file")];
+    if (!css) return c.notFound();
+    return c.body(css, 200, { "content-type": "text/css; charset=utf-8", "cache-control": "public, max-age=86400" });
+  });
+
+  app.get("/static/fonts/:file", (c) => {
+    const font = fonts[c.req.param("file")];
+    if (!font) return c.notFound();
+    return c.body(font, 200, { "content-type": "font/woff2", "cache-control": "public, max-age=604800" });
+  });
 
   app.get("/api/health", (c) => c.json({ status: "ok" } satisfies HealthResponse));
 

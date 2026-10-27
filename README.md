@@ -43,6 +43,8 @@ pnpm depcruise   # package boundaries of the Clean Architecture
 pnpm test
 ```
 
+The pages use the Family Agenda design system: `apps/api/src/http/design/tokens.css` is compiled from its tokens (light, and dark when the device prefers it), and `design.css` holds its component classes, all prefixed `fam-`. The fonts, Atkinson Hyperlegible Next and Mono, come from their `@fontsource-variable` packages, and the Instance serves them itself.
+
 After changing `packages/adapters/src/postgres/schema.ts`, generate a migration with `pnpm --filter @family-agenda/adapters exec drizzle-kit generate`. Migrations run when `api` or `worker` starts.
 
 ### Layout

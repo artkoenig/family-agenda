@@ -24,7 +24,7 @@ import { Avatar, viewUrl } from "./view-page";
 export function FirstAdminPage(props: { email?: string; problem?: string }) {
   return (
     <Layout title="Create the first Admin">
-      <h1>Create the first Admin</h1>
+      <h1 class="fam-title">Create the first Admin</h1>
       <p>This Instance has no Admin yet. Create your Admin account to protect the Admin area.</p>
       <Problem message={props.problem} />
       <form method="post" action="/setup">
@@ -41,7 +41,7 @@ export function FirstAdminPage(props: { email?: string; problem?: string }) {
 export function SignInPage(props: { email?: string; problem?: string }) {
   return (
     <Layout title="Sign in">
-      <h1>Sign in</h1>
+      <h1 class="fam-title">Sign in</h1>
       <Problem message={props.problem} />
       <form method="post" action="/admin/sign-in">
         <label for="email">Email</label>
@@ -57,29 +57,50 @@ export function SignInPage(props: { email?: string; problem?: string }) {
 /** The Admin a page is shown to, and whether the Admin area shows the new-Source-Types banner. */
 export type SignedInAdmin = AdminSummary & { newSourceTypes: boolean };
 
+/** The Admin area's pages, as the navigation links them. */
+const adminLinks = [
+  ["/admin/family-members", "Family Members"],
+  ["/admin/views", "Views"],
+  ["/admin/source-types", "Source Types"],
+  ["/admin/sources", "Sources"],
+  ["/admin/llm", "LLM endpoint"],
+  ["/admin/admins", "Admins"],
+  ["/admin/recovery-kit", "Recovery Kit"],
+] as const;
+
 function AdminLayout(props: { title: string; admin: SignedInAdmin; children: Child }) {
   return (
     <Layout title={props.title}>
-      <nav>
-        <a href="/admin">Admin area</a>
-        <a href="/admin/family-members">Family Members</a>
-        <a href="/admin/views">Views</a>
-        <a href="/admin/source-types">Source Types</a>
-        <a href="/admin/sources">Sources</a>
-        <a href="/admin/llm">LLM endpoint</a>
-        <a href="/admin/admins">Admins</a>
-        <a href="/admin/recovery-kit">Recovery Kit</a>
-        <span>{props.admin.email}</span>
-        <form method="post" action="/admin/sign-out">
-          <button type="submit">Sign out</button>
-        </form>
+      <nav class="fam-nav" aria-label="Admin area">
+        <a class="fam-nav__home" href="/admin" aria-current={props.title === "Admin area" ? "page" : undefined}>
+          Family Agenda
+        </a>
+        {adminLinks.map(([href, label]) => (
+          <a class="fam-nav__link" href={href} aria-current={props.title === label ? "page" : undefined}>
+            {label}
+          </a>
+        ))}
+        <span class="fam-nav__end">
+          <span class="fam-nav__who">{props.admin.email}</span>
+          <form method="post" action="/admin/sign-out">
+            <button type="submit" class="fam-button fam-button--quiet">
+              Sign out
+            </button>
+          </form>
+        </span>
       </nav>
       {props.admin.newSourceTypes ? (
-        <p class="banner">
-          New Source Types are available. <a href="/admin/source-types">Look at them</a>
-        </p>
+        <div class="fam-banner fam-banner--attention" role="status">
+          <span class="fam-banner__glyph" aria-hidden="true">
+            !
+          </span>
+          <span class="fam-banner__title">New Source Types are available</span>
+          <div class="fam-banner__body">
+            <a href="/admin/source-types">Look at them</a>
+          </div>
+        </div>
       ) : null}
-      <h1>{props.title}</h1>
+      <h1 class="fam-title">{props.title}</h1>
       {props.children}
     </Layout>
   );
@@ -128,7 +149,9 @@ export function AdminsPage(props: {
               <form method="post" action={`/admin/admins/${other.id}/password`}>
                 <label for={`password-${other.id}`}>New password</label>
                 <input id={`password-${other.id}`} name="password" type="password" required minlength={minimumPasswordLength} autocomplete="new-password" />
-                <button type="submit">Reset password</button>
+                <button type="submit" class="fam-button fam-button--secondary">
+                  Reset password
+                </button>
               </form>
             )}
           </li>
@@ -169,12 +192,14 @@ export function RecoveryKitPage(props: {
         <p>Print or save this Recovery Kit before you continue. Any Admin can show it again later.</p>
       )}
       <h2>Master key</h2>
-      <p class="secret">{props.kit.masterKey}</p>
+      <p class="fam-secret">{props.kit.masterKey}</p>
       {recoveryKitPurpose.map((sentence) => (
         <p>{sentence}</p>
       ))}
-      <p class="actions">
-        <button type="button" onclick="window.print()">Print</button>
+      <p class="fam-actions">
+        <button type="button" class="fam-button fam-button--secondary" onclick="window.print()">
+          Print
+        </button>
         <a href="/admin/recovery-kit/download">Download as a text file</a>
       </p>
       {props.confirmed ? null : (
@@ -199,7 +224,7 @@ export function FamilyMembersPage(props: {
   return (
     <AdminLayout title="Family Members" admin={props.admin}>
       <Problem message={props.problem} />
-      <ul class="entries">
+      <ul class="fam-entries">
         {props.members.map((member) => (
           <li>
             <form method="post" action={`/admin/family-members/${member.id}`} enctype="multipart/form-data">
@@ -216,7 +241,9 @@ export function FamilyMembersPage(props: {
               <button type="submit">Save</button>
             </form>
             <form method="post" action={`/admin/family-members/${member.id}/remove`}>
-              <button type="submit">Remove {member.name}</button>
+              <button type="submit" class="fam-button fam-button--danger">
+                Remove {member.name}
+              </button>
             </form>
           </li>
         ))}
@@ -247,7 +274,7 @@ export function ViewsPage(props: {
         starts with the preselected Family Members, or with everyone if none are.
       </p>
       <Problem message={props.problem} />
-      <ul class="entries">
+      <ul class="fam-entries">
         {props.views.map((view) => (
           <li>
             <p>
@@ -257,7 +284,9 @@ export function ViewsPage(props: {
             </p>
             <ViewSettingsForm action={`/admin/views/${view.id}`} members={props.members} view={view} submit="Save" />
             <form method="post" action={`/admin/views/${view.id}/remove`}>
-              <button type="submit">Remove View</button>
+              <button type="submit" class="fam-button fam-button--danger">
+                Remove View
+              </button>
             </form>
           </li>
         ))}
@@ -322,7 +351,7 @@ export function SourceTypesPage(props: {
       </p>
       <Problem message={props.problem} />
       {props.sourceTypes.length === 0 ? <p>No Source Types are installed.</p> : null}
-      <ul class="entries">
+      <ul class="fam-entries">
         {props.sourceTypes.map((type) => (
           <li>
             <h2>
@@ -333,17 +362,19 @@ export function SourceTypesPage(props: {
               Version {type.version}
               {type.needsLlm ? ". Its Sources need the LLM endpoint." : null}
             </p>
-            {type.notLoadable !== null ? <p class="problem">Not loadable: {type.notLoadable}</p> : null}
+            {type.notLoadable !== null ? <p class="fam-problem">Not loadable: {type.notLoadable}</p> : null}
             {type.enabled ? (
               <form method="post" action={`/admin/source-types/${type.id}/disable`}>
                 <p>Enabled. It can be disabled once it has no Sources.</p>
-                <button type="submit">Disable {type.displayName}</button>
+                <button type="submit" class="fam-button fam-button--secondary">
+                  Disable {type.displayName}
+                </button>
               </form>
             ) : type.notLoadable !== null ? null : (
               <form method="post" action={`/admin/source-types/${type.id}/enable`}>
                 {type.riskNotice !== null ? (
                   <>
-                    <p class="problem">{type.riskNotice}</p>
+                    <p class="fam-problem">{type.riskNotice}</p>
                     <label>
                       <input type="checkbox" name="riskAcknowledged" value="yes" required /> I understand the risk.
                     </label>
@@ -369,7 +400,7 @@ export function SourcesPage(props: {
   return (
     <AdminLayout title="Sources" admin={props.admin}>
       <Problem message={props.problem} />
-      <ul class="entries">
+      <ul class="fam-entries">
         {props.sources.map((source) => {
           const form = formOf(source.sourceTypeId);
           return (
@@ -381,11 +412,13 @@ export function SourcesPage(props: {
                   <button type="submit">Save</button>
                 </form>
               ) : (
-                <p class="problem">Its Source Type is not enabled or not installed, so it is not read.</p>
+                <p class="fam-problem">Its Source Type is not enabled or not installed, so it is not read.</p>
               )}
               <form method="post" action={`/admin/sources/${source.id}/remove`}>
                 <p>Removing a Source stops reading it. What it has brought in stays on the timeline.</p>
-                <button type="submit">Remove this {source.displayName}</button>
+                <button type="submit" class="fam-button fam-button--danger">
+                  Remove this {source.displayName}
+                </button>
               </form>
             </li>
           );
@@ -540,7 +573,7 @@ export function MessagePage(props: { admin: SignedInAdmin; message: MessageDetai
           </>
         ))}
       </dl>
-      {message.text === null ? <p>The text of this message has been deleted.</p> : <pre class="message">{message.text}</pre>}
+      {message.text === null ? <p>The text of this message has been deleted.</p> : <pre class="fam-message">{message.text}</pre>}
       {message.attachments.length > 0 ? (
         <>
           <h2>Attachments</h2>
@@ -549,7 +582,7 @@ export function MessagePage(props: { admin: SignedInAdmin; message: MessageDetai
               <li>
                 {attachment.filename} ({attachment.contentType}, {Math.ceil(attachment.size / 1024)} KB)
                 {attachment.conversionProblem !== null ? (
-                  <p class="problem">Could not be read for extraction: {attachment.conversionProblem}</p>
+                  <p class="fam-problem">Could not be read for extraction: {attachment.conversionProblem}</p>
                 ) : null}
               </li>
             ))}

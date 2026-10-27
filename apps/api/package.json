@@ -17,6 +17,8 @@
     "@family-agenda/contracts": "workspace:*",
     "@family-agenda/domain": "workspace:*",
     "@family-agenda/source-sdk": "workspace:*",
+    "@fontsource-variable/atkinson-hyperlegible-mono": "^5.3.0",
+    "@fontsource-variable/atkinson-hyperlegible-next": "^5.2.6",
     "@hono/node-server": "^2.1.5",
     "hono": "^4.13.14",
     "htmx.org": "^2.0.11",

@@ -9,76 +9,12 @@ import type {
 import { addDays, daysBetween, type FamilyMemberId, type LocalDate } from "@family-agenda/domain";
 import { Layout } from "./layout";
 
-// The one View layout (ADR-0003): a dark, vertical timeline that works on a phone, a desktop
-// and a wall tablet, after variant E of the View prototype.
-const viewStyles = `
-  :root { color-scheme: dark; font-family: system-ui, sans-serif; --bg: #0f1115; --line: #22262e;
-    --muted: #9ca3af; --ink: #f3f4f6; --now: #f87171; }
-  * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--ink); font-size: 15px; line-height: 1.4; }
-  .bar { position: sticky; top: 0; z-index: 1; background: #0f1115ee; backdrop-filter: blur(6px);
-    padding: 14px 16px 10px; border-bottom: 1px solid var(--line); }
-  .bar > * { max-width: 640px; margin: 0 auto; }
-  .clock { font-size: 28px; font-weight: 800; font-variant-numeric: tabular-nums; }
-  .clock .date { font-size: 15px; font-weight: 500; color: var(--muted); }
-  .top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-  .activity { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; }
-  .activity .spinner { flex: none; width: 14px; height: 14px; border-radius: 50%;
-    border: 2px solid var(--line); border-top-color: var(--muted); animation: spin 1s linear infinite; }
-  .activity progress { width: 64px; height: 4px; appearance: none; border: none; border-radius: 2px;
-    background: var(--line); overflow: hidden; }
-  .activity progress::-webkit-progress-bar { background: var(--line); }
-  .activity progress::-webkit-progress-value { background: var(--muted); }
-  .activity progress::-moz-progress-bar { background: var(--muted); }
-  @keyframes spin { to { transform: rotate(360deg); } }
-  @media (prefers-reduced-motion: reduce) { .activity .spinner { animation-duration: 3s; } }
-  .filters { display: flex; gap: 14px; margin-top: 10px; overflow-x: auto; }
-  .filter { display: flex; flex: none; flex-direction: column; align-items: center; gap: 4px;
-    color: var(--muted); font-size: 12px; font-weight: 600; text-decoration: none; }
-  .filter .av { width: 48px; height: 48px; font-size: 20px; border: 3px solid transparent; opacity: .45;
-    transition: opacity .15s, border-color .15s; }
-  .filter[aria-current] { color: var(--ink); }
-  .filter[aria-current] .av { border-color: var(--ink); opacity: 1; }
-  .filter:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; border-radius: 8px; }
-  .av { display: grid; place-items: center; flex: none; border-radius: 50%; overflow: hidden;
-    color: #fff; font-weight: 700; background: #475569; }
-  .av img { width: 100%; height: 100%; object-fit: cover; }
-  .days { list-style: none; max-width: 672px; margin: 0 auto; padding: 0 16px 48px; }
-  .day h2 { font-size: 13px; font-weight: 800; text-transform: uppercase; letter-spacing: .08em;
-    color: var(--muted); margin: 22px 0 6px; }
-  .day h2 .date { font-weight: 500; letter-spacing: normal; text-transform: none; }
-  .now { display: flex; align-items: center; gap: 8px; color: var(--now); font-size: 12px;
-    font-weight: 700; margin: 4px 0; text-transform: uppercase; }
-  .now::after { content: ""; flex: 1; height: 2px; background: var(--now); }
-  .more { display: flex; justify-content: center; padding: 16px 0; color: var(--muted); font-size: 13px; }
-  .more button { font: inherit; font-weight: 600; color: var(--ink); background: none; cursor: pointer;
-    border: 1px solid var(--line); border-radius: 999px; padding: 6px 16px; }
-  .more button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
-  .empty { color: #6b7280; margin: 6px 0; padding: 10px 4px; border-bottom: 1px solid var(--line); }
-  .event { border-bottom: 1px solid var(--line); }
-  .event summary { display: flex; gap: 12px; padding: 10px 4px; cursor: pointer; list-style: none; }
-  .event summary::-webkit-details-marker { display: none; }
-  .event .time { flex: none; min-width: 7.5em; color: var(--muted); font-variant-numeric: tabular-nums; }
-  .event .title { font-weight: 600; }
-  .event.earlier { opacity: .45; }
-  .event.cancelled .title { color: var(--muted); }
-  .event dl { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin: 0 4px 12px; color: var(--muted); }
-  .event dt { font-weight: 600; }
-  .event dd { margin: 0; color: var(--ink); }
-  .event a { color: #93c5fd; }
-  @media (min-width: 1000px) {
-    body { font-size: 18px; }
-    .bar > * { max-width: 820px; }
-    .days { max-width: 852px; }
-    .clock { font-size: 40px; }
-    .filter .av { width: 64px; height: 64px; font-size: 26px; }
-    .filter { font-size: 14px; }
-  }
-`;
+// The one View layout (ADR-0003): a vertical timeline that works on a phone, a desktop and a wall
+// tablet, in the Family Agenda design system (`design/design.css`).
 
 export function ViewPageDocument(props: { page: ViewPage }) {
   return (
-    <Layout title="View" styles={viewStyles}>
+    <Layout title="View" surface="view">
       <ViewTimeline page={props.page} />
     </Layout>
   );
@@ -102,23 +38,21 @@ export function ViewTimeline(props: { page: ViewPage }) {
     >
       <ShownDay side="from" date={page.days[0]?.date ?? page.now.date} />
       <ShownDay side="until" date={page.days.at(-1)?.date ?? page.now.date} />
-      <header class="bar">
-        <div class="top">
-          <div class="clock">
-            {page.now.time} <span class="date">{dateLabel(page.now.date)}</span>
+      <header class="fam-bar">
+        <div class="fam-bar__top">
+          <div class="fam-clock">
+            {page.now.time} <span class="fam-clock__date">{dateLabel(page.now.date)}</span>
           </div>
           <ActivityIndicator viewId={page.id} activity={page.activity} />
         </div>
-        <nav class="filters" aria-label="Quick filter" hx-boost="true" hx-target="#view" hx-swap="outerHTML">
-          <a class="filter" href={viewUrl(page.id, "all")} aria-current={page.showing === "all" ? "true" : undefined}>
-            <span class="av" aria-hidden="true">
-              👪
-            </span>
+        <nav class="fam-filter" aria-label="Quick filter" hx-boost="true" hx-target="#view" hx-swap="outerHTML">
+          <a class="fam-filter__item" href={viewUrl(page.id, "all")} aria-current={page.showing === "all" ? "true" : undefined}>
+            <span class="fam-avatar fam-avatar--all" aria-hidden="true"></span>
             All
           </a>
           {page.members.map((member) => (
             <a
-              class="filter"
+              class="fam-filter__item"
               href={viewUrl(page.id, toggled(page, member.id))}
               aria-current={page.showing !== "all" && page.showing.includes(member.id) ? "true" : undefined}
             >
@@ -128,7 +62,7 @@ export function ViewTimeline(props: { page: ViewPage }) {
           ))}
         </nav>
       </header>
-      <ol class="days">
+      <ol class="fam-days">
         <ViewDays page={page} earlier later />
       </ol>
     </main>
@@ -157,7 +91,7 @@ export function ActivityIndicator(props: { viewId: string; activity: CurrentActi
   return (
     <div
       id="activity"
-      class="activity"
+      class="fam-activity"
       role="status"
       hx-get={`/views/${viewId}/activity`}
       hx-trigger={activity ? activityPolling.busy : activityPolling.idle}
@@ -166,7 +100,7 @@ export function ActivityIndicator(props: { viewId: string; activity: CurrentActi
     >
       {activity ? (
         <>
-          <span class="spinner" aria-hidden="true"></span>
+          <span class="fam-activity__spinner" aria-hidden="true"></span>
           <span>
             {label} {Math.min(activity.done + 1, activity.total)}/{activity.total}
           </span>
@@ -203,9 +137,10 @@ export function ViewDays(props: { page: ViewPage; earlier?: boolean; later?: boo
   return (
     <>
       {props.earlier ? (
-        <li class="more">
+        <li class="fam-more">
           <button
             type="button"
+            class="fam-button fam-button--secondary fam-button--pill"
             hx-get={daysUrl(page, before, "earlier")}
             hx-target="closest li"
             hx-swap="outerHTML"
@@ -218,7 +153,7 @@ export function ViewDays(props: { page: ViewPage; earlier?: boolean; later?: boo
         <DayEntry page={page} day={day} />
       ))}
       {props.later ? (
-        <li class="more" hx-get={daysUrl(page, after, "later")} hx-trigger="revealed" hx-swap="outerHTML">
+        <li class="fam-more" hx-get={daysUrl(page, after, "later")} hx-trigger="revealed" hx-swap="outerHTML">
           Loading later days…
         </li>
       ) : null}
@@ -230,26 +165,21 @@ function DayEntry(props: { page: ViewPage; day: ViewPage["days"][number] }) {
   const { page, day } = props;
   const relative = relativeDays[String(daysBetween(page.now.date, day.date))];
   return (
-    <li class="day" data-date={day.date}>
-      <h2>
-        {relative ? (
-          <>
-            {relative} <span class="date">{dateLabel(day.date)}</span>
-          </>
-        ) : (
-          dateLabel(day.date)
-        )}
+    <li class={day.date === page.now.date ? "fam-day fam-day--today" : "fam-day"} data-date={day.date}>
+      <h2 class="fam-day__header">
+        <span class="fam-day__name">{relative ?? weekdayLabel(day.date)}</span>{" "}
+        <span class="fam-day__date">{relative ? dateLabel(day.date) : dayMonthLabel(day.date)}</span>
       </h2>
       {day.date === page.now.date ? (
         <>
           {day.items.filter((row) => row.earlier).map((row) => <EventRow row={row} />)}
-          <div class="now">Now {page.now.time}</div>
+          <div class="fam-now">Now {page.now.time}</div>
           {day.items.filter((row) => !row.earlier).map((row) => <EventRow row={row} />)}
         </>
       ) : (
         day.items.map((row) => <EventRow row={row} />)
       )}
-      {day.items.length === 0 ? <p class="empty">Nothing planned.</p> : null}
+      {day.items.length === 0 ? <p class="fam-empty">Nothing planned.</p> : null}
     </li>
   );
 }
@@ -257,14 +187,24 @@ function DayEntry(props: { page: ViewPage; day: ViewPage["days"][number] }) {
 /** One Event as a compact row of time and title, with its details on tap. */
 function EventRow(props: { row: TimelineEvent }) {
   const { row } = props;
-  const classes = ["event", row.cancelled ? "cancelled" : "", row.earlier ? "earlier" : ""].filter(Boolean).join(" ");
+  const classes = ["fam-event", row.cancelled ? "fam-event--cancelled" : "", row.earlier ? "fam-event--earlier" : ""]
+    .filter(Boolean)
+    .join(" ");
   return (
     <details class={classes}>
       <summary>
-        <span class="time">{timeLabel(row)}</span>
-        <span class="title">{row.cancelled ? <s>{row.title}</s> : row.title}</span>
+        <span class="fam-event__time">{timeLabel(row)}</span>
+        <span class="fam-event__title">
+          {row.cancelled ? (
+            <>
+              <s>{row.title}</s> <span class="fam-event__tag">Cancelled</span>
+            </>
+          ) : (
+            row.title
+          )}
+        </span>
       </summary>
-      <dl>
+      <dl class="fam-event__details">
         <dt>When</dt>
         <dd>{spanLabel(row.span)}</dd>
         {row.place ? (
@@ -304,7 +244,7 @@ function EventRow(props: { row: TimelineEvent }) {
 
 /** How the Event shows on its day: from and until, or all day. */
 function timeLabel(row: TimelineEvent): string {
-  if (row.from && row.until) return row.from === row.until ? row.from : `${row.from}–${row.until}`;
+  if (row.from && row.until) return row.from === row.until ? row.from : `${row.from} – ${row.until}`;
   if (row.from) return `from ${row.from}`;
   if (row.until) return `until ${row.until}`;
   return "All day";
@@ -323,15 +263,18 @@ export function spanLabel(span: TimelineEvent["span"]): string {
     : `${dateLabel(start.date)}, ${start.time} – ${dateLabel(end.date)}, ${end.time}`;
 }
 
-/** A round avatar: the photo, or the initial on a colour of its own. */
-export function Avatar(props: { member: FamilyMemberSummary }) {
+/** A round avatar: the photo, or the initial on one of the eight member colours. */
+export function Avatar(props: { member: FamilyMemberSummary; size?: "sm" | "lg" }) {
   const { member } = props;
+  const size = props.size ? ` fam-avatar--${props.size}` : "";
   return member.hasPhoto ? (
-    <span class="av">
+    <span class={`fam-avatar${size}`}>
       <img src={`/family-members/${member.id}/photo`} alt="" />
     </span>
   ) : (
-    <span class="av" style={`background: hsl(${hueOf(member.id)} 45% 38%)`} aria-hidden="true">{member.initial}</span>
+    <span class={`fam-avatar${size} fam-avatar--m${memberColourOf(member.id)}`} aria-hidden="true">
+      {member.initial}
+    </span>
   );
 }
 
@@ -358,6 +301,18 @@ function toggled(page: ViewPage, id: FamilyMemberId): Showing {
 /** How days near today are called, by how many days they lie after it. */
 const relativeDays: Record<string, string> = { "-1": "Yesterday", "0": "Today", "1": "Tomorrow" };
 
+/** A day further away, as its header names it: "Thursday". */
+function weekdayLabel(date: LocalDate): string {
+  return new Intl.DateTimeFormat("en-GB", { weekday: "long", timeZone: "UTC" }).format(new Date(`${date}T00:00:00Z`));
+}
+
+/** The date beside a day's name: "29 Oct". */
+function dayMonthLabel(date: LocalDate): string {
+  return new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", timeZone: "UTC" }).format(
+    new Date(`${date}T00:00:00Z`),
+  );
+}
+
 function dateLabel(date: LocalDate): string {
   return new Intl.DateTimeFormat("en-GB", {
     weekday: "short",
@@ -367,9 +322,9 @@ function dateLabel(date: LocalDate): string {
   }).format(new Date(`${date}T00:00:00Z`));
 }
 
-/** A stable hue per Family Member, so that their avatar keeps its colour. */
-function hueOf(id: string): number {
+/** Which of the eight member colours a Family Member has, stable by id, so that their avatar keeps it. */
+function memberColourOf(id: string): number {
   let hash = 0;
-  for (const char of id) hash = (hash * 31 + char.charCodeAt(0)) % 360;
-  return hash;
+  for (const char of id) hash = (hash * 31 + char.charCodeAt(0)) % 8;
+  return hash + 1;
 }
