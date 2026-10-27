@@ -20,6 +20,16 @@ const poll = () => {
     .catch((error: unknown) => {
       console.error("Polling Sources failed:", error);
     })
+    // Then the messages the Sources brought in, each once.
+    .then(() => worker.extraction.extractPending())
+    .then((report) => {
+      for (const failure of report.failed) {
+        console.warn(`Extracting message ${failure.messageId} failed (${failure.problem}): ${failure.message}`);
+      }
+    })
+    .catch((error: unknown) => {
+      console.error("Extracting messages failed:", error);
+    })
     .finally(() => {
       polling = null;
     });

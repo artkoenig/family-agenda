@@ -2,6 +2,8 @@ import {
   pollIntervalRange,
   type AdminSummary,
   type FamilyMemberSummary,
+  type LlmEndpointSummary,
+  type MessageDetails,
   type RecoveryKit,
   type SourceForm,
   type SourceSummary,
@@ -64,6 +66,7 @@ function AdminLayout(props: { title: string; admin: SignedInAdmin; children: Chi
         <a href="/admin/views">Views</a>
         <a href="/admin/source-types">Source Types</a>
         <a href="/admin/sources">Sources</a>
+        <a href="/admin/llm">LLM endpoint</a>
         <a href="/admin/admins">Admins</a>
         <a href="/admin/recovery-kit">Recovery Kit</a>
         <span>{props.admin.email}</span>
@@ -97,6 +100,9 @@ export function AdminHomePage(props: { admin: SignedInAdmin }) {
         </li>
         <li>
           <a href="/admin/sources">Sources</a>: the channels information arrives through, such as calendars.
+        </li>
+        <li>
+          <a href="/admin/llm">LLM endpoint</a>: the model that reads Events from mails and messages.
         </li>
       </ul>
     </AdminLayout>
@@ -453,5 +459,95 @@ function SourceFields(props: { form: SourceForm; prefix: string; source?: Source
         </>
       ) : null}
     </>
+  );
+}
+
+export function LlmEndpointPage(props: {
+  admin: SignedInAdmin;
+  endpoint: LlmEndpointSummary | null;
+  /** What the Admin entered, shown again with a problem. */
+  entered?: { baseUrl: string; model: string };
+  problem?: string;
+}) {
+  const { endpoint } = props;
+  const shown = props.entered ?? endpoint;
+  return (
+    <AdminLayout title="LLM endpoint" admin={props.admin}>
+      <p>
+        Sources such as mailboxes bring in messages, not Events. A language model reads the Events from each
+        message. Family Butler talks to any server with an OpenAI-compatible API: a local one such as Ollama,
+        llama.cpp or LM Studio, or a cloud provider with an API key.
+      </p>
+      {endpoint ? (
+        <p>
+          Messages are read by <strong>{endpoint.model}</strong> at {endpoint.baseUrl},{" "}
+          {endpoint.local ? "on your home network." : "outside your home network."}
+        </p>
+      ) : (
+        <p>No LLM endpoint is configured yet. Messages wait until one is.</p>
+      )}
+      <Problem message={props.problem} />
+      <form method="post" action="/admin/llm">
+        <label for="baseUrl">Base URL of the OpenAI-compatible API</label>
+        <small>Such as http://ollama:11434/v1 for Ollama in Compose, or https://api.openai.com/v1.</small>
+        <input id="baseUrl" name="baseUrl" type="url" required value={shown?.baseUrl} />
+        <label for="model">Model</label>
+        <input id="model" name="model" required value={shown?.model} />
+        <label for="apiKey">API key (optional)</label>
+        <input
+          id="apiKey"
+          name="apiKey"
+          type="password"
+          autocomplete="off"
+          placeholder={endpoint?.hasApiKey ? "Stored; leave empty to keep it" : undefined}
+        />
+        {endpoint?.hasApiKey ? (
+          <label>
+            <input type="checkbox" name="removeApiKey" value="yes" /> Remove the stored API key
+          </label>
+        ) : null}
+        <label>
+          <input type="checkbox" name="thirdPartiesAcknowledged" value="yes" /> If this server is outside my home
+          network: I understand that the text of messages from third parties, such as teachers' mails, is sent to it.
+        </label>
+        <button type="submit">Save</button>
+      </form>
+    </AdminLayout>
+  );
+}
+
+export function MessagePage(props: { admin: SignedInAdmin; message: MessageDetails; timeZone: string }) {
+  const { message } = props;
+  const sentAt = new Intl.DateTimeFormat("en-GB", {
+    dateStyle: "full",
+    timeStyle: "short",
+    timeZone: props.timeZone,
+  }).format(message.sentAt);
+  return (
+    <AdminLayout title="Message" admin={props.admin}>
+      <dl>
+        <dt>Sent</dt>
+        <dd>{sentAt}</dd>
+        {Object.entries(message.attributes).map(([key, value]) => (
+          <>
+            <dt>{key}</dt>
+            <dd>{value}</dd>
+          </>
+        ))}
+      </dl>
+      {message.text === null ? <p>The text of this message has been deleted.</p> : <pre class="message">{message.text}</pre>}
+      {message.attachments.length > 0 ? (
+        <>
+          <h2>Attachments</h2>
+          <ul>
+            {message.attachments.map((attachment) => (
+              <li>
+                {attachment.filename} ({attachment.contentType}, {Math.ceil(attachment.size / 1024)} KB)
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : null}
+    </AdminLayout>
   );
 }

@@ -3,13 +3,17 @@ import type {
   AdminRepository,
   AdminSession,
   AdminSessionRepository,
+  Extraction,
   FamilyMemberRepository,
   FamilyRepository,
   ItemProjection,
   ItemRepository,
+  LlmEndpointRepository,
   NewRevision,
+  PendingMessage,
   PlainConfig,
   ProjectedItem,
+  RawMessage,
   SecretRef,
   SignInFailureLog,
   Source,
@@ -17,6 +21,8 @@ import type {
   SourceRun,
   SourceTypeRecord,
   SourceTypeRepository,
+  StoredLlmEndpoint,
+  ThreadItem,
   ViewRepository,
 } from "@family-butler/application";
 import type {
@@ -31,12 +37,13 @@ import type {
   ItemId,
   ItemKind,
   PhotoType,
+  RawMessageId,
   SourceId,
   SourceTypeId,
   View,
   ViewId,
 } from "@family-butler/domain";
-import { and, asc, eq, gt, gte, inArray, isNotNull, lt, lte, sql, type SQL } from "drizzle-orm";
+import { and, asc, eq, gt, gte, inArray, isNotNull, isNull, lt, lte, sql, type SQL } from "drizzle-orm";
 import { uuidPattern } from "../uuid";
 import type { Database } from "./database";
 import {
@@ -46,7 +53,10 @@ import {
   familyMembers,
   itemKeys,
   items,
+  llmEndpoints,
+  messageAttachments,
   origins,
+  rawMessages,
   revisions,
   signInFailures,
   sources,
@@ -443,15 +453,15 @@ export class PostgresSourceRepository implements SourceRepository {
 
 type Transaction = Parameters<Parameters<Database["transaction"]>[0]>[0];
 
+type Recompute = (kind: ItemKind, revisions: FoldableRevision[]) => ItemProjection;
+
 export class PostgresItemRepository implements ItemRepository {
   constructor(private readonly db: Database) {}
 
-  async recordRun(
-    run: SourceRun,
-    recompute: (kind: ItemKind, revisions: FoldableRevision[]) => ItemProjection,
-  ): Promise<void> {
-    await this.db.transaction(async (tx) => {
+  async recordRun(run: SourceRun, recompute: Recompute): Promise<{ knownMessages: string[] }> {
+    return this.db.transaction(async (tx) => {
       const reached = new Map<ItemId, ItemKind>();
+      const knownMessages: string[] = [];
       for (const origin of run.origins) {
         const [row] = await tx
           .insert(origins)
@@ -471,50 +481,128 @@ export class PostgresItemRepository implements ItemRepository {
           })
           .returning({ id: origins.id });
         if (!row) throw new Error("recording the Origin returned no row");
-        for (const revision of origin.revisions) {
-          const item = await this.itemFor(tx, run, revision);
-          const appended = await tx
-            .insert(revisions)
+        const { message } = origin;
+        if (message) {
+          const id = randomUUID();
+          const inserted = await tx
+            .insert(rawMessages)
             .values({
-              id: randomUUID(),
+              id,
               familyId: run.familyId,
-              itemId: item.id,
               originId: row.id,
-              act: revision.act,
-              fields: revision.fields,
-              sourceTime: revision.sourceTime,
+              sourceId: run.sourceId,
+              thread: message.thread,
+              sentAt: origin.occurredAt,
+              textBlob: message.text.blob,
+              textSha256: message.text.sha256,
+              textSize: message.text.size,
               receivedAt: run.at,
-              accepted: revision.accepted,
-              fingerprint: fingerprintOf(revision),
             })
-            .onConflictDoNothing({ target: [revisions.originId, revisions.fingerprint] })
-            .returning({ id: revisions.id });
-          if (appended.length > 0) reached.set(item.id, item.kind);
+            .onConflictDoNothing({ target: rawMessages.originId })
+            .returning({ id: rawMessages.id });
+          if (inserted.length === 0) knownMessages.push(origin.externalId);
+          else if (message.attachments.length > 0) {
+            await tx.insert(messageAttachments).values(
+              message.attachments.map((attachment, position) => ({
+                id: randomUUID(),
+                rawMessageId: id,
+                position,
+                filename: attachment.filename,
+                contentType: attachment.contentType,
+                blob: attachment.blob,
+                sha256: attachment.sha256,
+                size: attachment.size,
+              })),
+            );
+          }
         }
+        await this.append(tx, { familyId: run.familyId, sourceId: run.sourceId, originId: row.id, at: run.at }, origin.revisions, reached);
       }
-      for (const [id, kind] of reached) {
-        const all = await tx
-          .select({
-            act: revisions.act,
-            fields: revisions.fields,
-            sourceTime: revisions.sourceTime,
-            sequence: revisions.sequence,
-            accepted: revisions.accepted,
-          })
-          .from(revisions)
-          .where(eq(revisions.itemId, id));
-        const projection = recompute(kind, all as FoldableRevision[]);
-        await tx
-          .update(items)
-          .set({
-            folded: projection.folded,
-            windowFrom: projection.window?.from ?? null,
-            windowTo: projection.window?.to ?? null,
-          })
-          .where(eq(items.id, id));
-      }
+      await this.recomputeAll(tx, reached, recompute);
       await tx.update(sources).set({ state: run.state, lastRunAt: run.at }).where(eq(sources.id, run.sourceId));
+      return { knownMessages };
     });
+  }
+
+  async pendingMessages(limit: number): Promise<PendingMessage[]> {
+    const rows = await this.db
+      .select({
+        id: rawMessages.id,
+        familyId: rawMessages.familyId,
+        sourceId: rawMessages.sourceId,
+        externalId: origins.externalId,
+        sentAt: rawMessages.sentAt,
+        thread: rawMessages.thread,
+        text: rawMessages.textBlob,
+      })
+      .from(rawMessages)
+      .innerJoin(origins, eq(origins.id, rawMessages.originId))
+      .where(isNull(rawMessages.extractedAt))
+      .orderBy(asc(rawMessages.receivedAt), asc(rawMessages.sentAt))
+      .limit(limit);
+    return rows.map((row) => ({
+      ...row,
+      id: row.id as RawMessageId,
+      familyId: row.familyId as FamilyId,
+      sourceId: row.sourceId as SourceId,
+      text: row.text as BlobRef,
+    }));
+  }
+
+  async itemsOfThread(sourceId: SourceId, thread: string): Promise<ThreadItem[]> {
+    const rows = await this.db
+      .selectDistinct({ itemKey: itemKeys.itemKey, kind: items.kind, folded: items.folded, createdAt: items.createdAt })
+      .from(rawMessages)
+      .innerJoin(revisions, eq(revisions.originId, rawMessages.originId))
+      .innerJoin(items, eq(items.id, revisions.itemId))
+      .innerJoin(itemKeys, and(eq(itemKeys.itemId, items.id), eq(itemKeys.sourceId, rawMessages.sourceId)))
+      .where(and(eq(rawMessages.sourceId, sourceId), eq(rawMessages.thread, thread)))
+      .orderBy(asc(items.createdAt), asc(itemKeys.itemKey));
+    return rows.map((row) => ({ itemKey: row.itemKey, kind: row.kind as ItemKind, folded: row.folded }));
+  }
+
+  async recordExtraction(extraction: Extraction, recompute: Recompute): Promise<void> {
+    await this.db.transaction(async (tx) => {
+      // Only the first successful extraction counts, should two runs overlap.
+      const [message] = await tx
+        .update(rawMessages)
+        .set({ extractedAt: extraction.at })
+        .where(and(eq(rawMessages.id, extraction.messageId), isNull(rawMessages.extractedAt)))
+        .returning({ originId: rawMessages.originId });
+      if (!message) return;
+      const reached = new Map<ItemId, ItemKind>();
+      const { familyId, sourceId, at } = extraction;
+      await this.append(tx, { familyId, sourceId, originId: message.originId, at }, extraction.revisions, reached);
+      await this.recomputeAll(tx, reached, recompute);
+    });
+  }
+
+  async findMessage(id: RawMessageId): Promise<RawMessage | null> {
+    if (!uuidPattern.test(id)) return null;
+    const [row] = await this.db
+      .select({ message: rawMessages, attributes: origins.attributes })
+      .from(rawMessages)
+      .innerJoin(origins, eq(origins.id, rawMessages.originId))
+      .where(eq(rawMessages.id, id));
+    if (!row) return null;
+    const attachments = await this.db
+      .select()
+      .from(messageAttachments)
+      .where(eq(messageAttachments.rawMessageId, id))
+      .orderBy(asc(messageAttachments.position));
+    return {
+      id,
+      sourceId: row.message.sourceId as SourceId,
+      sentAt: row.message.sentAt,
+      attributes: row.attributes,
+      text: row.message.textBlob as BlobRef,
+      attachments: attachments.map(({ filename, contentType, size, blob }) => ({
+        filename,
+        contentType,
+        size,
+        blob: blob as BlobRef,
+      })),
+    };
   }
 
   async overlapping(familyId: FamilyId, from: Date, to: Date | null): Promise<ProjectedItem[]> {
@@ -531,12 +619,20 @@ export class PostgresItemRepository implements ItemRepository {
       )
       .orderBy(asc(items.windowFrom), asc(items.createdAt));
     if (rows.length === 0) return [];
+    const ids = rows.map((row) => row.id);
     const links = await this.db
       .selectDistinct({ itemId: revisions.itemId, link: origins.link, firstSeenAt: origins.firstSeenAt })
       .from(revisions)
       .innerJoin(origins, eq(origins.id, revisions.originId))
-      .where(and(inArray(revisions.itemId, rows.map((row) => row.id)), isNotNull(origins.link)))
+      .where(and(inArray(revisions.itemId, ids), isNotNull(origins.link)))
       .orderBy(asc(origins.firstSeenAt));
+    const messages = await this.db
+      .selectDistinct({ itemId: revisions.itemId, id: rawMessages.id, sentAt: rawMessages.sentAt })
+      .from(revisions)
+      .innerJoin(rawMessages, eq(rawMessages.originId, revisions.originId))
+      // A message whose Revisions were all rejected said nothing that shows.
+      .where(and(inArray(revisions.itemId, ids), eq(revisions.accepted, true)))
+      .orderBy(asc(rawMessages.sentAt));
     return rows.flatMap((row) =>
       row.folded
         ? [
@@ -545,28 +641,116 @@ export class PostgresItemRepository implements ItemRepository {
               kind: row.kind as ItemKind,
               folded: row.folded,
               links: links.flatMap((link) => (link.itemId === row.id && link.link ? [link.link] : [])),
+              messages: messages.flatMap((message) => (message.itemId === row.id ? [message.id as RawMessageId] : [])),
             },
           ]
         : [],
     );
   }
 
+  /** Appends Revisions of one Origin, unless the same Revision is recorded; notes the Items they reach. */
+  private async append(
+    tx: Transaction,
+    origin: { familyId: FamilyId; sourceId: SourceId; originId: string; at: Date },
+    newRevisions: NewRevision[],
+    reached: Map<ItemId, ItemKind>,
+  ): Promise<void> {
+    for (const revision of newRevisions) {
+      const item = await this.itemFor(tx, origin, revision);
+      const appended = await tx
+        .insert(revisions)
+        .values({
+          id: randomUUID(),
+          familyId: origin.familyId,
+          itemId: item.id,
+          originId: origin.originId,
+          act: revision.act,
+          fields: revision.fields,
+          sourceTime: revision.sourceTime,
+          receivedAt: origin.at,
+          accepted: revision.accepted,
+          rejection: revision.rejection,
+          evidence: revision.evidence,
+          fingerprint: fingerprintOf(revision),
+        })
+        .onConflictDoNothing({ target: [revisions.originId, revisions.fingerprint] })
+        .returning({ id: revisions.id });
+      if (appended.length > 0) reached.set(item.id, item.kind);
+    }
+  }
+
+  /** Recomputes every reached Item from all its Revisions. */
+  private async recomputeAll(tx: Transaction, reached: Map<ItemId, ItemKind>, recompute: Recompute): Promise<void> {
+    for (const [id, kind] of reached) {
+      const all = await tx
+        .select({
+          act: revisions.act,
+          fields: revisions.fields,
+          sourceTime: revisions.sourceTime,
+          sequence: revisions.sequence,
+          accepted: revisions.accepted,
+        })
+        .from(revisions)
+        .where(eq(revisions.itemId, id));
+      const projection = recompute(kind, all as FoldableRevision[]);
+      await tx
+        .update(items)
+        .set({
+          folded: projection.folded,
+          windowFrom: projection.window?.from ?? null,
+          windowTo: projection.window?.to ?? null,
+        })
+        .where(eq(items.id, id));
+    }
+  }
+
   /** The Item the Source's key names, created on the first Revision about it. */
   private async itemFor(
     tx: Transaction,
-    run: SourceRun,
+    origin: { familyId: FamilyId; sourceId: SourceId; at: Date },
     revision: NewRevision,
   ): Promise<{ id: ItemId; kind: ItemKind }> {
     const [known] = await tx
       .select({ id: items.id, kind: items.kind })
       .from(itemKeys)
       .innerJoin(items, eq(items.id, itemKeys.itemId))
-      .where(and(eq(itemKeys.sourceId, run.sourceId), eq(itemKeys.itemKey, revision.itemKey)));
+      .where(and(eq(itemKeys.sourceId, origin.sourceId), eq(itemKeys.itemKey, revision.itemKey)));
     if (known) return { id: known.id as ItemId, kind: known.kind as ItemKind };
     const id = randomUUID() as ItemId;
-    await tx.insert(items).values({ id, familyId: run.familyId, kind: revision.itemKind, createdAt: run.at });
-    await tx.insert(itemKeys).values({ sourceId: run.sourceId, itemKey: revision.itemKey, itemId: id });
+    await tx.insert(items).values({ id, familyId: origin.familyId, kind: revision.itemKind, createdAt: origin.at });
+    await tx.insert(itemKeys).values({ sourceId: origin.sourceId, itemKey: revision.itemKey, itemId: id });
     return { id, kind: revision.itemKind };
+  }
+}
+
+export class PostgresLlmEndpointRepository implements LlmEndpointRepository {
+  constructor(private readonly db: Database) {}
+
+  async find(familyId: FamilyId): Promise<StoredLlmEndpoint | null> {
+    const [row] = await this.db.select().from(llmEndpoints).where(eq(llmEndpoints.familyId, familyId));
+    if (!row) return null;
+    return {
+      familyId,
+      baseUrl: row.baseUrl,
+      model: row.model,
+      apiKey: row.apiKeyRef as SecretRef | null,
+      acknowledgedAt: row.acknowledgedAt,
+      savedAt: row.savedAt,
+    };
+  }
+
+  async save(endpoint: StoredLlmEndpoint): Promise<void> {
+    const values = {
+      baseUrl: endpoint.baseUrl,
+      model: endpoint.model,
+      apiKeyRef: endpoint.apiKey,
+      acknowledgedAt: endpoint.acknowledgedAt,
+      savedAt: endpoint.savedAt,
+    };
+    await this.db
+      .insert(llmEndpoints)
+      .values({ familyId: endpoint.familyId, ...values })
+      .onConflictDoUpdate({ target: llmEndpoints.familyId, set: values });
   }
 }
 

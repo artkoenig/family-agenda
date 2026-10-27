@@ -17,8 +17,10 @@ This starts `api` (on port 8080, or `PORT`), `worker` and `postgres`. Open the I
 - **Source Types**: each kind of Source is a plugin. In the Admin area, under Source Types, enable the ones your Family uses; none is enabled on its own, not even after an update. When an update or an added plugin brings a new one, a banner says so until an Admin has looked at the list. To add a plugin to the stock image, put its package directory, with its `package.json` and code, into the `plugins` volume and restart. Such a plugin must be an ES module (`"type": "module"`) and imports `@family-butler/source-sdk` without shipping it: it gets the Instance's own SDK.
 - **Sources**: under Sources, add a Source of an enabled Source Type with the form its plugin declares; secret fields, such as a calendar's secret ICS address, are stored encrypted and never shown again. The `worker` checks each Source on its plugin's suggested interval, or on one you set. Its Events appear on every View. Removing a Source stops reading it, but what it brought in stays.
 - **ICS calendars**: add a calendar by its secret ICS address, such as Google Calendar's "Secret address in iCal format". Changed and cancelled Events follow on the next check; recurring Events are not read yet.
+- **LLM endpoint**: mailboxes bring in messages, not Events. Under LLM endpoint, set the base URL of an OpenAI-compatible server and a model, such as a local Ollama (`http://ollama:11434/v1`) or a cloud provider with its API key. The key is stored encrypted. Saving a server outside your home network needs your acknowledgement that the text of third parties' messages, such as teachers' mails, is sent to it. Messages wait until an endpoint is configured, and while it cannot be reached.
+- **IMAP mailboxes**: add a mailbox with its server, user name, an app password where the provider has them, and one folder. Use a folder your mail filters fill with school mail, or a mailbox only school mail is forwarded to: every mail in the folder is sent to the LLM endpoint. The plugin only reads; it never marks, moves or deletes a mail. Its first check reads the mails of the last 14 days. The `worker` has an Event extracted from each mail once; dates such as "tomorrow" count from when the mail was sent, an Event whose quote is not in the mail or whose weekday does not fit its date is rejected, and a reply in the same thread can move or cancel it. In a View, the Event's details link to the mail, which only Admins can open. Attachments are kept but not read yet.
 - **Time zone**: a View's days start at midnight in `TZ`, by default `Europe/Berlin`.
-- **Blobs**: photos are kept as files in the `blobs` volume, not in Postgres. Back it up with the database.
+- **Blobs**: photos, mails and their attachments are kept as files in the `blobs` volume, not in Postgres. Back it up with the database.
 
 - **HTTPS**: the Instance serves plain HTTP. Behind your own HTTPS reverse proxy, set `TRUST_PROXY=true`, so that session cookies become `Secure` and sign-in rate limiting sees each client's address. The proxy must set `X-Forwarded-Proto` and `X-Forwarded-For`.
 - **Forgotten password**: another Admin can reset it in the Admin area, or inside the container:
@@ -49,17 +51,18 @@ After changing `packages/adapters/src/postgres/schema.ts`, generate a migration 
 | --- | --- |
 | `packages/domain` | Plain TypeScript, imports nothing |
 | `packages/application` | Use cases and ports |
-| `packages/adapters` | Postgres (Drizzle), pg-boss, Argon2id, the master key file, the envelope-encrypting `SecretStore` and the file `BlobStore` |
+| `packages/adapters` | Postgres (Drizzle), pg-boss, Argon2id, the master key file, the envelope-encrypting `SecretStore`, the file `BlobStore` and the OpenAI-compatible `Extractor` |
 | `packages/contracts` | zod schemas for REST DTOs |
 | `packages/source-sdk` | The `SourcePlugin` contract and manifest, and its shared contract tests in `@family-butler/source-sdk/testing`; the only package a plugin may import |
 | `packages/source-ics` | The ICS calendar Source plugin, on `ical.js` |
+| `packages/source-imap` | The IMAP mailbox Source plugin, on `imapflow` and `mailparser` |
 | `apps/api` | Hono, the composition root with the `SourceRegistry`, HTML and the CLI |
-| `apps/worker` | Polls the Sources that are due, on the same composition root |
+| `apps/worker` | Polls the Sources that are due and extracts the messages they brought in, on the same composition root |
 
 ### Tests
 
-- **Use cases**: `apps/api/test/use-cases`, booted through the composition root against a throwaway Postgres database, master key file and blob directory, with a controllable `Clock` (`apps/api/test/support/boot.ts`). Pass `secretStore: new InMemorySecretStore()` to keep secrets in memory instead.
-- **Source plugin contracts**: each plugin calls `describeSourcePluginContract` from `@family-butler/source-sdk/testing` in its own tests.
+- **Use cases**: `apps/api/test/use-cases`, booted through the composition root against a throwaway Postgres database, master key file and blob directory, with a controllable `Clock` (`apps/api/test/support/boot.ts`). Pass `secretStore: new InMemorySecretStore()` or `blobStore: new InMemoryBlobStore()` to keep secrets or blobs in memory instead, and `extractor: new ScriptedExtractor()` to answer each message with canned Events instead of calling an LLM endpoint; `app.extraction.extractPending()` extracts the messages that wait, as the worker does.
+- **Source plugin contracts**: each plugin calls `describeSourcePluginContract` from `@family-butler/source-sdk/testing` in its own tests, against recorded responses or, for IMAP, a small IMAP server fixture that records every command.
 - **Source plugins in use cases**: `writeTestPluginPackage` (`apps/api/test/support/test-source-plugin.ts`) puts a test plugin into the Instance's workspace packages or `plugins/` directory; restart the Instance to discover it, or pass `sourcePlugins` to `bootForTest` to install it before the first boot. The plugin emits the Origins it is given, fails on demand, and records what it was run with. `app.polling.pollDue()` runs the Sources that are due, as the worker does.
 - **Domain**: `packages/domain/test`, pure tests where a table of cases is clearer, such as for folding Revisions.
 - **HTTP**: `apps/api/test/http`, in-process requests against the Hono app (`apps/api/test/support/http.ts`).

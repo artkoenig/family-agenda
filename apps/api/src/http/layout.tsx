@@ -10,6 +10,7 @@ const adminStyles = `
   .banner { border: 1px solid #8ab4f8; padding: .5rem; }
   nav { display: flex; gap: 1rem; align-items: center; }
   a { color: #8ab4f8; }
+  .message { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; }
   .secret { font-family: ui-monospace, monospace; font-size: 1.1rem; overflow-wrap: anywhere; }
   .actions { display: flex; gap: 1rem; align-items: center; }
   fieldset { display: grid; gap: .25rem; border: 1px solid #2c3138; }

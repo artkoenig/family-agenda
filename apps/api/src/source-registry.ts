@@ -188,7 +188,6 @@ async function run(ingest: () => Promise<IngestResult>): Promise<SourceRunResult
       occurredAt: origin.occurredAt,
       attributes: origin.attributes,
       link: origin.link ?? null,
-      // Raw messages are recorded as Origins only until extraction exists (#42).
       revisions:
         origin.content.kind === "revisions"
           ? origin.content.revisions.map(({ itemKind, itemKey, action, fields }) => ({
@@ -198,6 +197,10 @@ async function run(ingest: () => Promise<IngestResult>): Promise<SourceRunResult
               fields,
             }))
           : [],
+      message:
+        origin.content.kind === "raw-message"
+          ? { text: origin.content.text, attachments: origin.content.attachments, thread: origin.content.thread ?? null }
+          : null,
     })),
   };
 }
