@@ -466,7 +466,7 @@ export function LlmEndpointPage(props: {
   admin: SignedInAdmin;
   endpoint: LlmEndpointSummary | null;
   /** What the Admin entered, shown again with a problem. */
-  entered?: { baseUrl: string; model: string };
+  entered?: { baseUrl: string; model: string; vision: boolean };
   problem?: string;
 }) {
   const { endpoint } = props;
@@ -507,6 +507,11 @@ export function LlmEndpointPage(props: {
           </label>
         ) : null}
         <label>
+          <input type="checkbox" name="vision" value="yes" checked={shown?.vision} /> The model reads images.
+          Scanned PDF letters are sent to it as images of their pages; otherwise Tesseract reads them on this
+          Instance.
+        </label>
+        <label>
           <input type="checkbox" name="thirdPartiesAcknowledged" value="yes" /> If this server is outside my home
           network: I understand that the text of messages from third parties, such as teachers' mails, is sent to it.
         </label>
@@ -543,6 +548,9 @@ export function MessagePage(props: { admin: SignedInAdmin; message: MessageDetai
             {message.attachments.map((attachment) => (
               <li>
                 {attachment.filename} ({attachment.contentType}, {Math.ceil(attachment.size / 1024)} KB)
+                {attachment.conversionProblem !== null ? (
+                  <p class="problem">Could not be read for extraction: {attachment.conversionProblem}</p>
+                ) : null}
               </li>
             ))}
           </ul>

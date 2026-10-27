@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import {
   Argon2idPasswordHasher,
+  CommandLineTextExtractor,
   connectPostgres,
   createMasterKey,
   EnvelopeSecretStore,
@@ -50,6 +51,7 @@ import {
   type SourceAccess,
   type SourcePolling,
   type SourceTypeAccess,
+  type TextExtractor,
   type ViewAccess,
 } from "@family-butler/application";
 import { SourceRegistry } from "./source-registry";
@@ -80,6 +82,8 @@ export type ApplicationConfig = {
   blobStore?: BlobStore;
   /** Replaces the OpenAI-compatible Extractor, such as with a scripted one. */
   extractor?: Extractor;
+  /** Replaces the poppler and Tesseract command-line tools, such as with a fake. */
+  textExtractor?: TextExtractor;
 };
 
 export type Application = {
@@ -186,6 +190,7 @@ export async function bootApplication(config: ApplicationConfig): Promise<Applic
     items,
     blobs,
     extractor: config.extractor ?? new OpenAiCompatibleExtractor(),
+    textExtractor: config.textExtractor ?? new CommandLineTextExtractor(),
   });
   const messages = createMessageAccess({ items, blobs });
   try {

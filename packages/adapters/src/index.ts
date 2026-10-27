@@ -1,4 +1,5 @@
 export * from "./argon2-password-hasher";
+export * from "./command-line-text-extractor";
 export * from "./file-blob-store";
 export * from "./file-master-key";
 export * from "./openai-compatible-extractor";

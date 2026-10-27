@@ -15,6 +15,8 @@ export type LlmEndpointSummary = {
   hasApiKey: boolean;
   /** Whether it is on the home network, so that messages do not leave the house. */
   local: boolean;
+  /** Whether its model reads images, such as scanned letters. */
+  vision: boolean;
 };
 
 export type LlmEndpointInput = {
@@ -24,6 +26,8 @@ export type LlmEndpointInput = {
   /** Left empty, the stored key stays. */
   apiKey: string;
   removeApiKey?: boolean;
+  /** Whether its model reads images; scanned pages go to OCR otherwise. */
+  vision?: boolean;
   /** Needed to save an endpoint that is not on the home network. */
   thirdPartiesAcknowledged?: boolean;
 };
@@ -46,6 +50,7 @@ export function createLlmEndpointAccess(deps: LlmEndpointDeps) {
         model: stored.model,
         hasApiKey: stored.apiKey !== null,
         local: isLocalHost(new URL(stored.baseUrl).hostname),
+        vision: stored.vision,
       };
     },
 
@@ -74,6 +79,7 @@ export function createLlmEndpointAccess(deps: LlmEndpointDeps) {
         baseUrl: url.href.replace(/\/+$/, ""),
         model,
         apiKey,
+        vision: input.vision === true,
         acknowledgedAt: local ? null : now,
         savedAt: now,
       });
@@ -90,7 +96,7 @@ export async function llmEndpointOf(deps: Omit<LlmEndpointDeps, "clock">): Promi
   const stored = await deps.endpoints.find(await deps.families.theFamily());
   if (!stored) return null;
   const apiKey = stored.apiKey ? await deps.secrets.get(stored.apiKey) : null;
-  return { baseUrl: stored.baseUrl, model: stored.model, apiKey };
+  return { baseUrl: stored.baseUrl, model: stored.model, apiKey, vision: stored.vision };
 }
 
 /** An http or https URL without credentials, query or fragment, or null. */

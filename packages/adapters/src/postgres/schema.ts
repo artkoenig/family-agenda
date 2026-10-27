@@ -269,6 +269,8 @@ export const messageAttachments = pgTable(
     blob: text("blob").notNull(),
     sha256: text("sha256").notNull(),
     size: integer("size").notNull(),
+    /** Why it could not be turned into text when its message was extracted; null if it could, or was not read. */
+    conversionProblem: text("conversion_problem"),
   },
   (table) => [index("message_attachments_raw_message_id_idx").on(table.rawMessageId)],
 );
@@ -281,6 +283,8 @@ export const llmEndpoints = pgTable("llm_endpoints", {
   baseUrl: text("base_url").notNull(),
   model: text("model").notNull(),
   apiKeyRef: text("api_key_ref"),
+  /** Whether its model reads images, so that scanned pages are sent to it rather than to OCR. */
+  vision: boolean("vision").notNull().default(false),
   /** When an Admin acknowledged that third parties' messages are sent to it; null for a local one. */
   acknowledgedAt: timestamp("acknowledged_at", { withTimezone: true }),
   savedAt: timestamp("saved_at", { withTimezone: true }).notNull(),

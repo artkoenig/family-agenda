@@ -32,7 +32,18 @@ describe("the LLM endpoint", () => {
       model: "qwen3.5:9b",
       hasApiKey: false,
       local: true,
+      vision: false,
     });
+  });
+
+  it("remembers whether its model reads images, such as scanned letters", async () => {
+    const endpoint = { baseUrl: "http://ollama:11434/v1", model: "qwen3.5-vl:8b", apiKey: "" };
+
+    await instance.app.llmEndpoint.save({ ...endpoint, vision: true });
+    expect(await instance.app.llmEndpoint.current()).toMatchObject({ vision: true });
+
+    await instance.app.llmEndpoint.save(endpoint);
+    expect(await instance.app.llmEndpoint.current()).toMatchObject({ vision: false });
   });
 
   it("needs an acknowledgement that third parties' messages are sent to an endpoint outside the home network", async () => {

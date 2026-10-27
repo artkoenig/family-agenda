@@ -540,12 +540,25 @@ export class PostgresItemRepository implements ItemRepository {
       .where(isNull(rawMessages.extractedAt))
       .orderBy(asc(rawMessages.receivedAt), asc(rawMessages.sentAt))
       .limit(limit);
+    const attachments =
+      rows.length === 0
+        ? []
+        : await this.db
+            .select()
+            .from(messageAttachments)
+            .where(inArray(messageAttachments.rawMessageId, rows.map((row) => row.id)))
+            .orderBy(asc(messageAttachments.position));
     return rows.map((row) => ({
       ...row,
       id: row.id as RawMessageId,
       familyId: row.familyId as FamilyId,
       sourceId: row.sourceId as SourceId,
       text: row.text as BlobRef,
+      attachments: attachments.flatMap((attachment) =>
+        attachment.rawMessageId === row.id
+          ? [{ position: attachment.position, filename: attachment.filename, contentType: attachment.contentType, blob: attachment.blob as BlobRef }]
+          : [],
+      ),
     }));
   }
 
@@ -570,6 +583,12 @@ export class PostgresItemRepository implements ItemRepository {
         .where(and(eq(rawMessages.id, extraction.messageId), isNull(rawMessages.extractedAt)))
         .returning({ originId: rawMessages.originId });
       if (!message) return;
+      for (const { position, problem } of extraction.attachmentProblems) {
+        await tx
+          .update(messageAttachments)
+          .set({ conversionProblem: problem })
+          .where(and(eq(messageAttachments.rawMessageId, extraction.messageId), eq(messageAttachments.position, position)));
+      }
       const reached = new Map<ItemId, ItemKind>();
       const { familyId, sourceId, at } = extraction;
       await this.append(tx, { familyId, sourceId, originId: message.originId, at }, extraction.revisions, reached);
@@ -596,11 +615,12 @@ export class PostgresItemRepository implements ItemRepository {
       sentAt: row.message.sentAt,
       attributes: row.attributes,
       text: row.message.textBlob as BlobRef,
-      attachments: attachments.map(({ filename, contentType, size, blob }) => ({
+      attachments: attachments.map(({ filename, contentType, size, blob, conversionProblem }) => ({
         filename,
         contentType,
         size,
         blob: blob as BlobRef,
+        conversionProblem,
       })),
     };
   }
@@ -734,6 +754,7 @@ export class PostgresLlmEndpointRepository implements LlmEndpointRepository {
       baseUrl: row.baseUrl,
       model: row.model,
       apiKey: row.apiKeyRef as SecretRef | null,
+      vision: row.vision,
       acknowledgedAt: row.acknowledgedAt,
       savedAt: row.savedAt,
     };
@@ -744,6 +765,7 @@ export class PostgresLlmEndpointRepository implements LlmEndpointRepository {
       baseUrl: endpoint.baseUrl,
       model: endpoint.model,
       apiKeyRef: endpoint.apiKey,
+      vision: endpoint.vision,
       acknowledgedAt: endpoint.acknowledgedAt,
       savedAt: endpoint.savedAt,
     };

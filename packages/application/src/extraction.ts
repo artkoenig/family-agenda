@@ -15,8 +15,11 @@ import {
 } from "@family-butler/domain";
 import { llmEndpointOf } from "./llm-endpoint";
 import type {
+  AttachmentProblem,
   BlobStore,
   Clock,
+  Conversion,
+  EndpointFailure,
   ExtractedEvent,
   ExtractionResult,
   Extractor,
@@ -26,9 +29,11 @@ import type {
   LlmEndpoint,
   LlmEndpointRepository,
   NewRevision,
+  PendingAttachment,
   PendingMessage,
   Rejection,
   SecretStore,
+  TextExtractor,
   ThreadItem,
 } from "./ports";
 import { project } from "./revisions";
@@ -43,6 +48,7 @@ export type ExtractionDeps = {
   items: ItemRepository;
   blobs: BlobStore;
   extractor: Extractor;
+  textExtractor: TextExtractor;
 };
 
 export type ExtractionReport = {
@@ -61,9 +67,62 @@ const batchSize = 20;
  * message does not say.
  */
 export function createExtraction(deps: ExtractionDeps) {
-  const { clock, timeZone, items, blobs, extractor } = deps;
+  const { clock, timeZone, items, blobs, extractor, textExtractor } = deps;
 
-  async function extractOne(message: PendingMessage, text: string, endpoint: LlmEndpoint) {
+  /**
+   * The text of a PDF attachment: its text layer, and the pages that are scans read by a
+   * vision-capable endpoint, or by OCR. Fails when the endpoint fails, as extraction would.
+   */
+  async function textOf(attachment: PendingAttachment, endpoint: LlmEndpoint): Promise<AttachmentReading> {
+    const bytes = await blobs.get(attachment.blob);
+    if (!bytes) return { ok: false, message: "The file has been deleted." };
+    const layer = await textExtractor.textLayer(bytes);
+    if (!layer.ok) return layer;
+    const pages = layer.value;
+    const scans = pages.flatMap((page, index) => (isScan(page) ? [index + 1] : []));
+    if (scans.length > maximumScannedPages) {
+      return { ok: false, message: `It has ${scans.length} scanned pages; at most ${maximumScannedPages} are read.` };
+    }
+    const scanned = scans.length > 0 ? await readScans(bytes, scans, endpoint) : ({ ok: true, value: [] } as const);
+    if (!scanned.ok) return scanned;
+    const text = pages.map((page, index) => {
+      const scan = scans.indexOf(index + 1);
+      return (scan >= 0 ? (scanned.value[scan] ?? "") : page).trim();
+    });
+    return { ok: true, value: text.filter((page) => page !== "").join("\n\n") };
+  }
+
+  async function readScans(pdf: Uint8Array, pages: number[], endpoint: LlmEndpoint): Promise<AttachmentReading<string[]>> {
+    if (!endpoint.vision) return textExtractor.ocr(pdf, pages);
+    const images = await textExtractor.pageImages(pdf, pages);
+    if (!images.ok) return images;
+    const read = await extractor.transcribe({ endpoint, images: images.value });
+    if (read.ok) return { ok: true, value: read.pages };
+    // An answer that does not fit says something about this file; anything else about the endpoint.
+    return read.problem === "invalid-output" ? { ok: false, message: read.message } : { ok: false, endpointFailure: read };
+  }
+
+  /**
+   * The message's text followed by the text of its PDF attachments, which extraction reads as one,
+   * and the attachments that could not be read.
+   */
+  async function fullTextOf(message: PendingMessage, text: string, endpoint: LlmEndpoint) {
+    const parts = [text];
+    const problems: AttachmentProblem[] = [];
+    for (const attachment of message.attachments.filter(isPdf)) {
+      const read = await textOf(attachment, endpoint);
+      if (read.ok) {
+        if (read.value !== "") parts.push(`Attachment ${attachment.filename}:\n${read.value}`);
+      } else if ("endpointFailure" in read) {
+        return read.endpointFailure;
+      } else {
+        problems.push({ position: attachment.position, problem: read.message });
+      }
+    }
+    return { ok: true as const, text: parts.join("\n\n"), problems };
+  }
+
+  async function extractOne(message: PendingMessage, text: string, problems: AttachmentProblem[], endpoint: LlmEndpoint) {
     const thread = message.thread ? await items.itemsOfThread(message.sourceId, message.thread) : [];
     const known = knownEventsOf(thread, timeZone);
     const sent = localDateTime(message.sentAt, timeZone);
@@ -79,7 +138,14 @@ export function createExtraction(deps: ExtractionDeps) {
       return revision ? [revision] : [];
     });
     await items.recordExtraction(
-      { messageId: message.id, familyId: message.familyId, sourceId: message.sourceId, at: clock.now(), revisions },
+      {
+        messageId: message.id,
+        familyId: message.familyId,
+        sourceId: message.sourceId,
+        at: clock.now(),
+        revisions,
+        attachmentProblems: problems,
+      },
       project,
     );
     return result;
@@ -100,13 +166,21 @@ export function createExtraction(deps: ExtractionDeps) {
         if (!bytes) {
           // Its text was deleted before it was read, so it states nothing.
           await items.recordExtraction(
-            { messageId: message.id, familyId: message.familyId, sourceId: message.sourceId, at: clock.now(), revisions: [] },
+            {
+              messageId: message.id,
+              familyId: message.familyId,
+              sourceId: message.sourceId,
+              at: clock.now(),
+              revisions: [],
+              attachmentProblems: [],
+            },
             project,
           );
           report.extracted.push(message.id);
           continue;
         }
-        const result = await extractOne(message, new TextDecoder().decode(bytes), endpoint);
+        const full = await fullTextOf(message, new TextDecoder().decode(bytes), endpoint);
+        const result = full.ok ? await extractOne(message, full.text, full.problems, endpoint) : full;
         if (result.ok) {
           report.extracted.push(message.id);
           continue;
@@ -120,6 +194,24 @@ export function createExtraction(deps: ExtractionDeps) {
 }
 
 export type ExtractionAccess = ReturnType<typeof createExtraction>;
+
+/** What reading an attachment gave; a failing endpoint fails the message, which waits for the next run. */
+type AttachmentReading<T = string> = Conversion<T> | { ok: false; endpointFailure: EndpointFailure };
+
+/** How many scanned pages of one attachment are read at most, since each takes long or costs tokens. */
+const maximumScannedPages = 10;
+
+/** A page with fewer letters in its text layer is taken for a scan, such as one with only a page number. */
+const minimumLettersOfText = 20;
+
+function isScan(page: string): boolean {
+  return (page.match(/\p{L}/gu)?.length ?? 0) < minimumLettersOfText;
+}
+
+/** Whether an attachment is a PDF, which mailers sometimes send as an unknown type with a `.pdf` name. */
+function isPdf(attachment: PendingAttachment): boolean {
+  return attachment.contentType.toLowerCase() === "application/pdf" || /\.pdf$/i.test(attachment.filename);
+}
 
 /** An Event of the thread as the model is told about it, with the Item it is. */
 type Known = KnownEvent & { itemKey: string; event: Event };
