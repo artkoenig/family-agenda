@@ -171,7 +171,8 @@ function timeLabel(row: TimelineEvent): string {
   return "All day";
 }
 
-function spanLabel(span: TimelineEvent["span"]): string {
+/** The whole span of an Event, as its details show it. */
+export function spanLabel(span: TimelineEvent["span"]): string {
   if (span.allDay) {
     return span.firstDay === span.lastDay
       ? `${dateLabel(span.firstDay)}, all day`

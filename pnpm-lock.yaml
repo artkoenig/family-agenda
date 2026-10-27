@@ -63,6 +63,9 @@ importers:
       '@types/pg':
         specifier: ^8.23.1
         version: 8.23.1
+      ical.js:
+        specifier: ^2.2.1
+        version: 2.2.1
       pg:
         specifier: ^8.23.1
         version: 8.23.1

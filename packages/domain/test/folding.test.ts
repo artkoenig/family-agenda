@@ -86,6 +86,23 @@ describe("folding Revisions into an Item", () => {
       folded: { fields: { title: "Match" }, cancelled: false },
     },
     {
+      case: "rejecting the first Revision received removes the Item, and later ones do not bring it back",
+      revisions: [
+        revision("create", "01T10:00:00", { title: "Wrong" }, { sequence: 1, accepted: false }),
+        revision("change", "02T10:00:00", { title: "Match" }, { sequence: 2 }),
+        revision("create", "03T10:00:00", { title: "Match" }, { sequence: 3 }),
+      ],
+      folded: null,
+    },
+    {
+      case: "the first Revision received decides, even if its source time is later",
+      revisions: [
+        revision("change", "02T10:00:00", { place: "Field 4" }, { sequence: 1 }),
+        revision("create", "01T10:00:00", { title: "Wrong" }, { sequence: 2, accepted: false }),
+      ],
+      folded: { fields: { place: "Field 4" }, cancelled: false },
+    },
+    {
       case: "without accepted Revisions there is no Item",
       revisions: [revision("create", "01T10:00:00", { title: "Wrong" }, { accepted: false })],
       folded: null,

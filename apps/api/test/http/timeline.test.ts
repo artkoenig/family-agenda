@@ -1,5 +1,7 @@
 import type { Origin } from "@family-butler/source-sdk";
+import ICAL from "ical.js";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { createHttpApp } from "../../src/http/app";
 import { bootHttpForTest, type HttpTestInstance } from "../support/http";
 import { testPluginControls } from "../support/test-source-plugin";
 
@@ -83,5 +85,34 @@ describe("Events in a View over HTTP", () => {
     expect(page.indexOf("School breakfast")).toBeLessThan(page.indexOf("Now 09:10"));
     expect(page.indexOf("Now 09:10")).toBeLessThan(page.indexOf("Dentist"));
     expect(page).toContain("Nothing planned.");
+  });
+
+  it("serves the View's feed as a calendar, without signing in", async () => {
+    const place = "Großer Saal der Musikschule; Eingang über den Hof, zweite Tür links, dann die Treppe hinauf";
+    await arrive(
+      event("concert", {
+        title: "Concert, with \\ and ; and \nmore",
+        span: { allDay: false, start: "2026-09-15T14:00:00Z", end: "2026-09-15T15:00:00Z" },
+        place,
+      }),
+    );
+
+    const response = await instance.get(`${path}/feed.ics`);
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toBe("text/calendar; charset=utf-8");
+    const body = await response.text();
+    expect(body.split("\r\n").every((line) => new TextEncoder().encode(line).length <= 75)).toBe(true);
+    const [vevent] = new ICAL.Component(ICAL.parse(body) as unknown[]).getAllSubcomponents("vevent");
+    expect(vevent?.getFirstPropertyValue("summary")).toBe("Concert, with \\ and ; and \nmore");
+    expect(vevent?.getFirstPropertyValue("location")).toBe(place);
+    expect(vevent?.getFirstPropertyValue("url")).toBe(`http://localhost${path}`);
+  });
+
+  it("serves no feed for an unknown View or one the listener's policy refuses", async () => {
+    expect((await instance.get("/views/00000000-0000-4000-8000-000000000000/feed.ics")).status).toBe(404);
+
+    const refusing = createHttpApp(instance.app, { trustProxy: false, viewAccess: { mayOpen: () => Promise.resolve(false) } });
+    expect((await refusing.request(`${path}/feed.ics`)).status).toBe(404);
   });
 });
