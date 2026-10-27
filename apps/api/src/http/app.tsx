@@ -478,7 +478,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
 
   app.post("/admin/llm", async (c) => {
     const form = await c.req.parseBody();
-    const entered = { baseUrl: field(form, "baseUrl"), model: field(form, "model") };
+    const entered = { baseUrl: field(form, "baseUrl"), model: field(form, "model"), vision: field(form, "vision") === "yes" };
     const result = await llmEndpoint.save({
       ...entered,
       apiKey: field(form, "apiKey"),

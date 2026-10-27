@@ -8,7 +8,8 @@ export type MessageDetails = {
   attributes: Record<string, string>;
   /** Null once retention has deleted it. */
   text: string | null;
-  attachments: { filename: string; contentType: string; size: number }[];
+  /** Each with why it could not be turned into text for extraction, or null. */
+  attachments: { filename: string; contentType: string; size: number; conversionProblem: string | null }[];
 };
 
 /** Raw messages, as an Admin opens them to check what a Source actually said. */
@@ -24,7 +25,12 @@ export function createMessageAccess(deps: { items: ItemRepository; blobs: BlobSt
         sentAt: message.sentAt,
         attributes: message.attributes,
         text: bytes ? new TextDecoder().decode(bytes) : null,
-        attachments: message.attachments.map(({ filename, contentType, size }) => ({ filename, contentType, size })),
+        attachments: message.attachments.map(({ filename, contentType, size, conversionProblem }) => ({
+          filename,
+          contentType,
+          size,
+          conversionProblem,
+        })),
       };
     },
   };

@@ -1,5 +1,13 @@
-import type { ExtractedEvent, ExtractionRequest, ExtractionResult, Extractor } from "@family-butler/application";
+import type {
+  ExtractedEvent,
+  ExtractionRequest,
+  ExtractionResult,
+  Extractor,
+  TranscriptionRequest,
+  TranscriptionResult,
+} from "@family-butler/application";
 import type { DateMention } from "@family-butler/domain";
+import { scanImageText } from "./fake-text-extractor";
 
 const noDate = { day: null, month: null, year: null, weekday: null, daysAfter: null, weeksAfter: null };
 
@@ -22,10 +30,12 @@ export function extracted(
 
 /**
  * Answers with the canned output for the first script whose text the message contains, and with
- * no Events for any other message. Remembers every request.
+ * no Events for any other message. Reads the words of page images a `FakeTextExtractor` rendered.
+ * Remembers every request.
  */
 export class ScriptedExtractor implements Extractor {
   readonly requests: ExtractionRequest[] = [];
+  readonly transcriptions: TranscriptionRequest[] = [];
   private readonly scripts: { contains: string; result: ExtractionResult }[] = [];
 
   /** The Events a message containing `contains` yields. */
@@ -41,6 +51,13 @@ export class ScriptedExtractor implements Extractor {
   recover(): void {
     const failing = this.scripts.findIndex((script) => script.contains === "");
     if (failing >= 0) this.scripts.splice(failing, 1);
+  }
+
+  transcribe(request: TranscriptionRequest): Promise<TranscriptionResult> {
+    this.transcriptions.push(request);
+    const failing = this.scripts.find(({ contains, result }) => contains === "" && !result.ok);
+    if (failing && !failing.result.ok) return Promise.resolve(failing.result);
+    return Promise.resolve({ ok: true, pages: request.images.map(scanImageText) });
   }
 
   extract(request: ExtractionRequest): Promise<ExtractionResult> {

@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { BlobStore, Extractor, SecretStore } from "@family-butler/application";
+import type { BlobStore, Extractor, SecretStore, TextExtractor } from "@family-butler/application";
 import pg from "pg";
 import { bootApplication, type Application, type ApplicationConfig } from "../../src/composition-root";
 import { FakeClock } from "./fake-clock";
@@ -18,6 +18,8 @@ export type TestOptions = {
   blobStore?: BlobStore;
   /** Replaces the OpenAI-compatible Extractor, such as with a `ScriptedExtractor`. */
   extractor?: Extractor;
+  /** Replaces the poppler and Tesseract command-line tools, such as with a `FakeTextExtractor`. */
+  textExtractor?: TextExtractor;
   /** The application version the Instance runs, as an update would change it. */
   applicationVersion?: string;
   /** Test plugins installed as workspace packages before the first boot. */

@@ -1,0 +1,97 @@
+import { execFile } from "node:child_process";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { promisify } from "node:util";
+import type { Conversion, TextExtractor } from "@family-butler/application";
+
+const run = promisify(execFile);
+
+export type CommandLineTextExtractorOptions = {
+  /** How long one call of a tool may take; OCR of a page takes seconds on a small CPU. */
+  timeoutMs?: number;
+};
+
+/** Pages are rendered at this resolution for a vision-capable LLM endpoint: legible, yet small. */
+const imageDpi = 150;
+/** Tesseract reads best at about 300 dpi. */
+const ocrDpi = 300;
+
+/**
+ * The `TextExtractor` wrapping poppler's `pdftotext` and `pdftoppm` and Tesseract with its German
+ * model (`deu`), as installed in the image. Each call works on a copy of the PDF in its own
+ * temporary directory, removed afterwards.
+ */
+export class CommandLineTextExtractor implements TextExtractor {
+  private readonly timeoutMs: number;
+
+  constructor(options: CommandLineTextExtractorOptions = {}) {
+    this.timeoutMs = options.timeoutMs ?? 2 * 60 * 1000;
+  }
+
+  textLayer(pdf: Uint8Array): Promise<Conversion<string[]>> {
+    return this.withPdf(pdf, async (file) => {
+      const text = await this.tool("pdftotext", ["-enc", "UTF-8", "-q", file, "-"]);
+      // Each page ends with a form feed.
+      const pages = text.split("\f");
+      pages.pop();
+      return pages;
+    });
+  }
+
+  pageImages(pdf: Uint8Array, pages: number[]): Promise<Conversion<Uint8Array[]>> {
+    return this.withPdf(pdf, async (file, directory) => {
+      const images: Uint8Array[] = [];
+      for (const page of pages) {
+        images.push(new Uint8Array(await readFile(await this.render(file, directory, page, ["-r", String(imageDpi)]))));
+      }
+      return images;
+    });
+  }
+
+  ocr(pdf: Uint8Array, pages: number[]): Promise<Conversion<string[]>> {
+    return this.withPdf(pdf, async (file, directory) => {
+      const texts: string[] = [];
+      for (const page of pages) {
+        const image = await this.render(file, directory, page, ["-r", String(ocrDpi), "-gray"]);
+        texts.push(await this.tool("tesseract", [image, "-", "-l", "deu"]));
+      }
+      return texts;
+    });
+  }
+
+  /** Renders one page to a PNG file in the directory, and returns its path. */
+  private async render(file: string, directory: string, page: number, options: string[]): Promise<string> {
+    const prefix = join(directory, "page");
+    await this.tool("pdftoppm", [...options, "-png", "-singlefile", "-f", String(page), "-l", String(page), file, prefix]);
+    return `${prefix}.png`;
+  }
+
+  private async tool(command: string, args: string[]): Promise<string> {
+    const { stdout } = await run(command, args, { encoding: "utf8", timeout: this.timeoutMs, maxBuffer: 64 * 1024 * 1024 });
+    return stdout;
+  }
+
+  private async withPdf<T>(pdf: Uint8Array, convert: (file: string, directory: string) => Promise<T>): Promise<Conversion<T>> {
+    let directory: string | null = null;
+    try {
+      directory = await mkdtemp(join(tmpdir(), "family-butler-pdf-"));
+      const file = join(directory, "attachment.pdf");
+      await writeFile(file, pdf, { mode: 0o600 });
+      return { ok: true, value: await convert(file, directory) };
+    } catch (error) {
+      return { ok: false, message: reason(error) };
+    } finally {
+      if (directory) await rm(directory, { recursive: true, force: true });
+    }
+  }
+}
+
+/** What a failed tool said, without the command line that names the temporary file. */
+function reason(error: unknown): string {
+  const failed = error as { stderr?: unknown; killed?: boolean; code?: unknown; message?: string };
+  if (failed.killed) return "Converting it took too long.";
+  if (failed.code === "ENOENT") return `A tool to convert it is not installed: ${failed.message ?? ""}`.trim();
+  const stderr = typeof failed.stderr === "string" ? failed.stderr.trim().split("\n")[0] : "";
+  return stderr || "It could not be converted.";
+}
