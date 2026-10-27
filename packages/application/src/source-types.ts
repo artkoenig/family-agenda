@@ -1,4 +1,4 @@
-import type { SourceTypeId } from "@family-agenda/domain";
+import { textIn, type SourceTypeId } from "@family-agenda/domain";
 import type {
   Clock,
   InstalledSourceType,
@@ -59,7 +59,10 @@ export function createSourceTypeAccess(deps: SourceTypesDeps) {
           ? [{ ...installed, enabled: record.enabled, isNew: record.isNew, firstSeenIn: record.firstSeenIn }]
           : [];
       })
-      .sort((a, b) => Number(b.isNew) - Number(a.isNew) || a.displayName.localeCompare(b.displayName));
+      .sort(
+        (a, b) =>
+          Number(b.isNew) - Number(a.isNew) || textIn(a.displayName, "en").localeCompare(textIn(b.displayName, "en")),
+      );
   }
 
   return {

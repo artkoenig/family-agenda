@@ -30,3 +30,14 @@ export function ocrLanguageOf(language: FamilyLanguage): OcrLanguage {
 
 /** The Family Language and the ordered OCR languages, which Tesseract tries together. */
 export type FamilyLanguages = { language: FamilyLanguage; ocrLanguages: OcrLanguage[] };
+
+/**
+ * A text in one or more languages, keyed by language code, such as `{ en: "Calendar", de:
+ * "Kalender" }`; English is always there. A plain string is the same text in every language.
+ */
+export type MultilingualText = string | { en: string; [language: string]: string | undefined };
+
+/** The text in the given language, in English if it has none. */
+export function textIn(text: MultilingualText, language: FamilyLanguage): string {
+  return typeof text === "string" ? text : (text[language] ?? text.en);
+}

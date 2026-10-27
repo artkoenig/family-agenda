@@ -38,9 +38,9 @@ describe("the language settings over HTTP", () => {
   it("lists the Family Language and the OCR languages among the settings", async () => {
     const page = await get("/admin/language");
 
-    expect(entryOf(page, "Language")).toContain("German; OCR in German");
-    expect(entryOf(page, "Language")).toContain('aria-current="page"');
-    expect(page).toContain('<option value="de" selected="">Deutsch (German)</option>');
+    expect(entryOf(page, "Sprache")).toContain("Deutsch; OCR auf Deutsch");
+    expect(entryOf(page, "Sprache")).toContain('aria-current="page"');
+    expect(page).toContain('<option value="de" selected="">Deutsch</option>');
   });
 
   it("changes the Family Language", async () => {
@@ -57,7 +57,7 @@ describe("the language settings over HTTP", () => {
 
     await post("/admin/language/ocr", { ocrLanguages: "deu+eng" });
     const page = await get("/admin/language");
-    expect(entryOf(page, "Language")).toContain("German; OCR in German and English");
+    expect(entryOf(page, "Sprache")).toContain("Deutsch; OCR auf Deutsch und Englisch");
     const forms = formsOf(page);
     // English moves up before German, and either can be dropped while the other stays.
     expect(forms).toContain("/admin/language/ocr: ocrLanguages=eng+deu");
@@ -66,18 +66,18 @@ describe("the language settings over HTTP", () => {
 
     const refused = await post("/admin/language/ocr", { ocrLanguages: "deu+fra" });
     expect(refused.status).toBe(400);
-    expect(await refused.text()).toContain("Download its model first.");
+    expect(await refused.text()).toContain("Lade zuerst sein Modell herunter.");
   });
 
   it("downloads a model, offers it for OCR, and removes it once unselected", async () => {
     const offered = await get("/admin/language");
-    expect(offered).toContain('<option value="fra">French</option>');
+    expect(offered).toContain('<option value="fra">Französisch</option>');
 
     const installed = await post("/admin/language/models", { language: "fra" });
     expect(installed.status).toBe(303);
     let page = await get("/admin/language");
     expect(formsOf(page)).toContain("/admin/language/models/fra/remove:");
-    expect(page).not.toContain('<option value="fra">French</option>');
+    expect(page).not.toContain('<option value="fra">Französisch</option>');
 
     await post("/admin/language/ocr", { ocrLanguages: "deu+fra" });
     page = await get("/admin/language");
@@ -86,7 +86,7 @@ describe("the language settings over HTTP", () => {
 
     await post("/admin/language/ocr", { ocrLanguages: "deu" });
     expect((await post("/admin/language/models/fra/remove", {})).status).toBe(303);
-    expect(await get("/admin/language")).toContain('<option value="fra">French</option>');
+    expect(await get("/admin/language")).toContain('<option value="fra">Französisch</option>');
   });
 
   it("shows why a download failed", async () => {
@@ -105,8 +105,8 @@ describe("the language settings over HTTP", () => {
 
     const page = await get("/admin/language");
 
-    expect(entryOf(page, "Language")).toContain("fam-navitem__summary--attention");
-    expect(page).toContain("Not installed");
+    expect(entryOf(page, "Sprache")).toContain("fam-navitem__summary--attention");
+    expect(page).toContain("Nicht installiert");
     expect(formsOf(page)).toContain("/admin/language/models: language=fra");
   });
 });

@@ -46,6 +46,8 @@ const statements = (origins: Origin[]) =>
 describeSourcePluginContract(() => createIcsPlugin({ fetch: server(calendar(fixture("family-v1.ics")), calendar(fixture("family-v1.ics"))).fetch }), {
   config,
   now,
+  languages: ["de"],
+  packageJson: JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")),
 });
 
 describe("the ICS plugin", () => {

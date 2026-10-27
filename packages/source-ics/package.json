@@ -10,9 +10,15 @@
     "sourcePlugin": {
       "entry": "./src/index.ts",
       "sourceTypeId": "ics",
-      "displayName": "ICS calendar",
-      "sdkVersion": "0.2.0",
-      "description": "Reads the Events of a calendar from its secret ICS address, such as Google Calendar's private address in iCal format."
+      "displayName": {
+        "en": "ICS calendar",
+        "de": "ICS-Kalender"
+      },
+      "sdkVersion": "0.3.0",
+      "description": {
+        "en": "Reads the Events of a calendar from its secret ICS address, such as Google Calendar's private address in iCal format.",
+        "de": "Liest die Termine eines Kalenders über seine geheime ICS-Adresse, etwa die Privatadresse im iCal-Format von Google Kalender."
+      }
     }
   },
   "dependencies": {

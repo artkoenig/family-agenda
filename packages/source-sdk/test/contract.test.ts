@@ -166,6 +166,39 @@ describe("a manifest", () => {
     });
   });
 
+  it("takes its shown texts plain or per language, with English among them", () => {
+    const texts = {
+      displayName: { en: "Example", de: "Beispiel" },
+      description: { en: "Reads examples.", de: "Liest Beispiele." },
+      riskNotice: { en: "Against the terms of service.", de: "Gegen die Nutzungsbedingungen." },
+    };
+    const result = parseManifest(packageJson({ entry: "./src/index.ts", sourceTypeId: "example", sdkVersion, ...texts }));
+    expect(result).toMatchObject({
+      ok: true,
+      manifest: { identity: { displayName: texts.displayName }, description: texts.description, riskNotice: texts.riskNotice },
+    });
+
+    expect(
+      parseManifest(
+        packageJson({
+          entry: "./src/index.ts",
+          sourceTypeId: "example",
+          sdkVersion,
+          displayName: { de: "Beispiel" },
+          description: { en: "Reads examples.", de: 7 },
+        }),
+      ),
+    ).toEqual({
+      ok: false,
+      problem: "invalid-manifest",
+      sourceTypeId: "example",
+      details: [
+        'displayName is no text: give a string, or strings by language with "en" among them',
+        'description is no text: give a string, or strings by language with "en" among them',
+      ],
+    });
+  });
+
   it("makes a plugin not loadable unless it is an ES module", () => {
     const manifest = (entry: string, type?: string) => {
       const result = parseManifest({

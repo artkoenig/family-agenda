@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { SourceId, SourceTypeId } from "@family-agenda/domain";
+import { textIn, type MultilingualText, type SourceId, type SourceTypeId } from "@family-agenda/domain";
 import type {
   BlobStore,
   Clock,
@@ -28,7 +28,7 @@ export type SourceSummary = {
   id: SourceId;
   sourceTypeId: SourceTypeId;
   /** The Source Type's name, or its id if its plugin is no longer installed. */
-  displayName: string;
+  displayName: MultilingualText;
   plain: PlainConfig;
   /** The secret fields that have a value; the values never leave the SecretStore but to the plugin. */
   storedSecrets: string[];
@@ -41,7 +41,7 @@ export type SourceSummary = {
 /** What the Admin area renders a Source's form from, for an enabled Source Type. */
 export type SourceForm = {
   sourceTypeId: SourceTypeId;
-  displayName: string;
+  displayName: MultilingualText;
   fields: ConfigFieldSpec[];
   /** Null if its Sources are not polled. */
   suggestedIntervalSeconds: number | null;
@@ -143,7 +143,7 @@ export function createSourceAccess(deps: SourcesDeps) {
           suggestedIntervalSeconds: ingestion.mode === "polling" ? ingestion.suggestedIntervalSeconds : null,
         });
       }
-      return forms.sort((a, b) => a.displayName.localeCompare(b.displayName));
+      return forms.sort((a, b) => textIn(a.displayName, "en").localeCompare(textIn(b.displayName, "en")));
     },
 
     /** Adds a Source of an enabled Source Type, configured by the fields its plugin declares. */

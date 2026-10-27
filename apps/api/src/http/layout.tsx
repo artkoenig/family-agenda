@@ -1,5 +1,6 @@
 import type { Child } from "hono/jsx";
 import { raw } from "hono/html";
+import { useTranslation } from "./i18n/translation";
 
 /**
  * Opens a dialog the server rendered open as a modal one, so that the page behind it is inert
@@ -24,10 +25,11 @@ for (const dialog of document.querySelectorAll("dialog.fam-dialog[open]")) {
  */
 export function Layout(props: { title: string; surface?: "view" | "admin"; narrow?: boolean; children: Child }) {
   const view = props.surface === "view";
+  const { language } = useTranslation();
   return (
     <>
       {raw("<!DOCTYPE html>")}
-      <html lang="en">
+      <html lang={language}>
         <head>
           <meta charset="utf-8" />
           <meta name="viewport" content="width=device-width, initial-scale=1" />
