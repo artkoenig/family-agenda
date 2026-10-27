@@ -31,7 +31,6 @@ import { createMiddleware } from "hono/factory";
 import { sessionLifetimeMs, signInLimits } from "@family-agenda/application";
 import type { Application } from "../composition-root";
 import {
-  AdminHomePage,
   AdminsPage,
   FamilyMembersPage,
   FirstAdminPage,
@@ -43,7 +42,9 @@ import {
   SourcesPage,
   SourceTypesPage,
   ViewsPage,
+  type SettingsSummary,
   type SignedInAdmin,
+  type SourceAdding,
 } from "./pages";
 import { icsFeed } from "./ics-feed";
 import {
@@ -297,6 +298,20 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     return c.redirect("/admin", 303);
   });
 
+  /** What the settings list says about each section. */
+  const settings = async (): Promise<SettingsSummary> => {
+    const endpoint = await llmEndpoint.current();
+    return {
+      members: (await familyMembers.list()).map((member) => member.name),
+      views: (await views.list()).length,
+      sources: (await sources.list()).length,
+      enabledSourceTypes: (await sources.forms()).length,
+      llm: endpoint ? { model: endpoint.model, local: endpoint.local } : null,
+      admins: (await admins.listAdmins()).length,
+      kitSaved: await recoveryKit.isConfirmed(),
+    };
+  };
+
   const requireAdmin = createMiddleware<Env>(async (c, next) => {
     if (c.req.path === "/admin/sign-in") {
       await next();
@@ -305,7 +320,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     const token = getCookie(c, sessionCookie);
     const admin = token ? await admins.authenticate(token) : null;
     if (!admin) return c.redirect("/admin/sign-in");
-    c.set("admin", { ...admin, newSourceTypes: await sourceTypes.hasNew() });
+    c.set("admin", { ...admin, newSourceTypes: await sourceTypes.hasNew(), settings: await settings() });
     await next();
   });
   // Until an Admin confirms saving the Recovery Kit, the Admin area shows only the kit (ADR-0006).
@@ -353,29 +368,33 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     return c.redirect("/admin", 303);
   });
 
-  app.get("/admin", (c) => c.html(<AdminHomePage admin={c.get("admin")} />));
+  // The Admin area opens on its first section.
+  app.get("/admin", (c) => familyMembersPage(c));
 
-  const adminsPageWithProblem = async (c: Context<Env>, problem: string, email = "") => {
+  const adminsPage = async (
+    c: Context<Env>,
+    shown: { problem?: string; adding?: { email?: string; problem?: string } } = {},
+  ) => {
     const page = (
       <AdminsPage
         admin={c.get("admin")}
         admins={await admins.listAdmins()}
-        email={email}
-        problem={problem}
+        {...(shown.problem ? { problem: shown.problem } : {})}
+        {...(shown.adding ? { adding: shown.adding } : {})}
       />
     );
-    return c.html(page, 400);
+    return c.html(page, shown.problem || shown.adding?.problem ? 400 : 200);
   };
 
-  app.get("/admin/admins", async (c) =>
-    c.html(<AdminsPage admin={c.get("admin")} admins={await admins.listAdmins()} />),
-  );
+  app.get("/admin/admins", (c) => adminsPage(c));
+
+  app.get("/admin/admins/new", (c) => adminsPage(c, { adding: {} }));
 
   app.post("/admin/admins", async (c) => {
     const form = await c.req.parseBody();
     const email = field(form, "email");
     const result = await admins.createAdmin({ email, password: field(form, "password") });
-    if (!result.ok) return adminsPageWithProblem(c, problems[result.problem], email);
+    if (!result.ok) return adminsPage(c, { adding: { email, problem: problems[result.problem] } });
     return c.redirect("/admin/admins", 303);
   });
 
@@ -385,40 +404,47 @@ export function createHttpApp(application: Application, options: HttpOptions) {
       adminId: c.req.param("id") as AdminId,
       newPassword: field(form, "password"),
     });
-    if (!result.ok) return adminsPageWithProblem(c, problems[result.problem]);
+    if (!result.ok) return adminsPage(c, { problem: problems[result.problem] });
     return c.redirect("/admin/admins", 303);
   });
 
   const familyMembersPage = async (
     c: Context<Env>,
-    shown: { problem?: string; name?: string; status?: 200 | 400 | 413 } = {},
+    shown: { problem?: string; adding?: { name?: string; problem?: string }; status?: 200 | 400 | 413 } = {},
   ) => {
-    const { problem, name } = shown;
+    const { problem, adding } = shown;
     const page = (
       <FamilyMembersPage
         admin={c.get("admin")}
         members={await familyMembers.list()}
         {...(problem ? { problem } : {})}
-        {...(name ? { name } : {})}
+        {...(adding ? { adding } : {})}
       />
     );
-    return c.html(page, shown.status ?? (problem ? 400 : 200));
+    return c.html(page, shown.status ?? (problem || adding?.problem ? 400 : 200));
   };
 
   // A photo and the rest of the form; larger uploads are refused before they are read.
   const photoUpload = bodyLimit({
     maxSize: maximumPhotoBytes + 64 * 1024,
-    onError: (c: Context<Env>) => familyMembersPage(c, { problem: problems["photo-too-large"], status: 413 }),
+    onError: (c: Context<Env>) => {
+      const problem = problems["photo-too-large"];
+      // Adding shows the problem in its dialog, editing above the list.
+      const shown = c.req.path === "/admin/family-members" ? { adding: { problem } } : { problem };
+      return familyMembersPage(c, { ...shown, status: 413 });
+    },
   });
 
   app.get("/admin/family-members", (c) => familyMembersPage(c));
+
+  app.get("/admin/family-members/new", (c) => familyMembersPage(c, { adding: {} }));
 
   app.post("/admin/family-members", photoUpload, async (c) => {
     const form = await c.req.parseBody();
     const name = field(form, "name");
     const photo = await upload(form, "photo");
     const result = await familyMembers.add({ name, ...(photo ? { photo } : {}) });
-    if (!result.ok) return familyMembersPage(c, { problem: problems[result.problem], name });
+    if (!result.ok) return familyMembersPage(c, { adding: { name, problem: problems[result.problem] } });
     return c.redirect("/admin/family-members", 303);
   });
 
@@ -438,16 +464,17 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     return c.redirect("/admin/family-members", 303);
   });
 
-  const viewsPage = async (c: Context<Env>, problem?: string) => {
+  const viewsPage = async (c: Context<Env>, shown: { problem?: string; creating?: { problem?: string } } = {}) => {
     const page = (
       <ViewsPage
         admin={c.get("admin")}
         views={await views.list()}
         members={await familyMembers.list()}
-        {...(problem ? { problem } : {})}
+        {...(shown.problem ? { problem: shown.problem } : {})}
+        {...(shown.creating ? { creating: shown.creating } : {})}
       />
     );
-    return c.html(page, problem ? 400 : 200);
+    return c.html(page, shown.problem || shown.creating?.problem ? 400 : 200);
   };
 
   const viewSettingsOf = async (c: Context<Env>) => {
@@ -463,15 +490,17 @@ export function createHttpApp(application: Application, options: HttpOptions) {
 
   app.get("/admin/views", (c) => viewsPage(c));
 
+  app.get("/admin/views/new", (c) => viewsPage(c, { creating: {} }));
+
   app.post("/admin/views", async (c) => {
     const result = await views.create(await viewSettingsOf(c));
-    if (!result.ok) return viewsPage(c, problems[result.problem]);
+    if (!result.ok) return viewsPage(c, { creating: { problem: problems[result.problem] } });
     return c.redirect("/admin/views", 303);
   });
 
   app.post("/admin/views/:id", async (c) => {
     const result = await views.edit(c.req.param("id") as ViewId, await viewSettingsOf(c));
-    if (!result.ok) return viewsPage(c, problems[result.problem]);
+    if (!result.ok) return viewsPage(c, { problem: problems[result.problem] });
     return c.redirect("/admin/views", 303);
   });
 
@@ -510,17 +539,19 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     return c.redirect("/admin/source-types", 303);
   });
 
-  const sourcesPage = async (c: Context<Env>, problem?: string) => {
+  const sourcesPage = async (c: Context<Env>, shown: { problem?: string; adding?: SourceAdding } = {}) => {
     const forms = await sources.forms();
     const page = (
       <SourcesPage
         admin={c.get("admin")}
         sources={await sources.list()}
         forms={forms}
-        {...(problem ? { problem } : {})}
+        {...(shown.problem ? { problem: shown.problem } : {})}
+        {...(shown.adding ? { adding: shown.adding } : {})}
       />
     );
-    return c.html(page, problem ? 400 : 200);
+    const refused = shown.problem || (shown.adding?.step === "form" && shown.adding.problem);
+    return c.html(page, refused ? 400 : 200);
   };
 
   /** The message for a Source that cannot be saved, naming the fields by their labels. */
@@ -534,17 +565,39 @@ export function createHttpApp(application: Application, options: HttpOptions) {
 
   app.get("/admin/sources", (c) => sourcesPage(c));
 
+  // Adding a Source: choosing among the enabled Source Types, then that one's form.
+  app.get("/admin/sources/new", async (c) => {
+    const forms = await sources.forms();
+    const type = c.req.query("type") ?? (forms.length === 1 ? forms[0]?.sourceTypeId : undefined);
+    if (type === undefined) {
+      if (forms.length === 0) return c.redirect("/admin/sources");
+      return sourcesPage(c, { adding: { step: "choose" } });
+    }
+    const form = forms.find((candidate) => candidate.sourceTypeId === type);
+    if (!form) return c.redirect("/admin/sources/new");
+    return sourcesPage(c, { adding: { step: "form", form } });
+  });
+
   app.post("/admin/sources", async (c) => {
     const form = await c.req.parseBody();
-    const result = await sources.add({ sourceTypeId: field(form, "sourceTypeId"), ...sourceInputOf(form) });
-    if (!result.ok) return sourcesPage(c, await sourceProblem(result));
+    const sourceTypeId = field(form, "sourceTypeId");
+    const input = sourceInputOf(form);
+    const result = await sources.add({ sourceTypeId, ...input });
+    if (!result.ok) {
+      const problem = await sourceProblem(result);
+      const sourceForm = (await sources.forms()).find((candidate) => candidate.sourceTypeId === sourceTypeId);
+      if (!sourceForm) return sourcesPage(c, { problem });
+      const plain = Object.fromEntries(Object.entries(input.plain).map(([key, value]) => [key, String(value)]));
+      const entered = { plain, interval: field(form, "pollIntervalMinutes").trim() };
+      return sourcesPage(c, { adding: { step: "form", form: sourceForm, entered, problem } });
+    }
     return c.redirect("/admin/sources", 303);
   });
 
   app.post("/admin/sources/:id", async (c) => {
     const form = await c.req.parseBody();
     const result = await sources.edit(c.req.param("id") as SourceId, sourceInputOf(form));
-    if (!result.ok) return sourcesPage(c, await sourceProblem(result));
+    if (!result.ok) return sourcesPage(c, { problem: await sourceProblem(result) });
     return c.redirect("/admin/sources", 303);
   });
 

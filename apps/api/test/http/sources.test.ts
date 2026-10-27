@@ -24,8 +24,10 @@ describe("Sources in the Admin area", () => {
 
   it("adds a Source from the form its plugin declares, masking the secret", async () => {
     await instance.app.sourceTypes.enable("calendar");
-    const form = await page();
-    expect(form).toContain("Add a Calendar");
+    // With one Source Type enabled, adding goes straight to its form, in a dialog over the list.
+    const form = await (await instance.get("/admin/sources/new", { cookie })).text();
+    expect(form).toMatch(/<dialog open="" class="fam-dialog"/);
+    expect(form).toContain("Add Calendar");
     expect(form).toMatch(/<input[^>]*name="secret.password"[^>]*type="password"/);
     expect(form).toMatch(/<input[^>]*name="pollIntervalMinutes"[^>]*placeholder="10"/);
 
