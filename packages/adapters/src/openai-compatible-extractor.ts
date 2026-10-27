@@ -2,7 +2,7 @@ import {
   weekdays,
   type DateMention,
   type Weekday,
-} from "@family-butler/domain";
+} from "@family-agenda/domain";
 import type {
   EndpointFailure,
   ExtractedEvent,
@@ -12,7 +12,7 @@ import type {
   LlmEndpoint,
   TranscriptionRequest,
   TranscriptionResult,
-} from "@family-butler/application";
+} from "@family-agenda/application";
 
 export type OpenAiCompatibleExtractorOptions = {
   /** How long the endpoint may take to answer; a local model on a CPU is slow. */

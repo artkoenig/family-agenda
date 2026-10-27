@@ -1,4 +1,4 @@
-import type { Origin } from "@family-butler/source-sdk";
+import type { Origin } from "@family-agenda/source-sdk";
 import ICAL from "ical.js";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createHttpApp } from "../../src/http/app";

@@ -6,7 +6,7 @@ import {
   type Showing,
   type TimelineDays,
   type ViewAccessPolicy,
-} from "@family-butler/application";
+} from "@family-agenda/application";
 import {
   horizonDaysRange,
   isAcceptableTimelineRange,
@@ -20,15 +20,15 @@ import {
   type RawMessageId,
   type SourceId,
   type ViewId,
-} from "@family-butler/domain";
-import type { HealthResponse } from "@family-butler/contracts";
+} from "@family-agenda/domain";
+import type { HealthResponse } from "@family-agenda/contracts";
 import type { HttpBindings } from "@hono/node-server";
 import { Hono, type Context } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { csrf } from "hono/csrf";
 import { createMiddleware } from "hono/factory";
-import { sessionLifetimeMs, signInLimits } from "@family-butler/application";
+import { sessionLifetimeMs, signInLimits } from "@family-agenda/application";
 import type { Application } from "../composition-root";
 import {
   AdminHomePage,
@@ -310,7 +310,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
   app.get("/admin/recovery-kit/download", (c) =>
     c.text(recoveryKitText(recoveryKit.contents()), 200, {
       "cache-control": "no-store",
-      "content-disposition": 'attachment; filename="family-butler-recovery-kit.txt"',
+      "content-disposition": 'attachment; filename="family-agenda-recovery-kit.txt"',
     }),
   );
 

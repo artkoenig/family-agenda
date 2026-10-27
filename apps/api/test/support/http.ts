@@ -1,4 +1,4 @@
-import { openViewAccess } from "@family-butler/application";
+import { openViewAccess } from "@family-agenda/application";
 import { createHttpApp, type HttpOptions } from "../../src/http/app";
 import { bootForTest, type TestInstance, type TestOptions } from "./boot";
 

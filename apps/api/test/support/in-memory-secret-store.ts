@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { SecretRef, SecretStore } from "@family-butler/application";
+import type { SecretRef, SecretStore } from "@family-agenda/application";
 
 /** Keeps secrets in memory and in clear text, for use cases that do not care how they are kept. */
 export class InMemorySecretStore implements SecretStore {

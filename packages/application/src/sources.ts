@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { SourceId, SourceTypeId } from "@family-butler/domain";
+import type { SourceId, SourceTypeId } from "@family-agenda/domain";
 import type {
   Clock,
   ConfigFieldSpec,

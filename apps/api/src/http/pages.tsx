@@ -9,14 +9,14 @@ import {
   type SourceSummary,
   type SourceTypeSummary,
   type ViewSummary,
-} from "@family-butler/application";
+} from "@family-agenda/application";
 import {
   defaultHorizonDays,
   horizonDaysRange,
   maximumNameLength,
   minimumPasswordLength,
   photoTypes,
-} from "@family-butler/domain";
+} from "@family-agenda/domain";
 import type { Child } from "hono/jsx";
 import { Layout, Problem } from "./layout";
 import { Avatar, viewUrl } from "./view-page";
@@ -154,7 +154,7 @@ const recoveryKitPurpose = [
 
 /** The kit as a text file to download. */
 export function recoveryKitText(kit: RecoveryKit): string {
-  return ["Family Butler Recovery Kit", "", "Master key:", kit.masterKey, "", ...recoveryKitPurpose, ""].join("\n");
+  return ["Family Agenda Recovery Kit", "", "Master key:", kit.masterKey, "", ...recoveryKitPurpose, ""].join("\n");
 }
 
 export function RecoveryKitPage(props: {
@@ -475,7 +475,7 @@ export function LlmEndpointPage(props: {
     <AdminLayout title="LLM endpoint" admin={props.admin}>
       <p>
         Sources such as mailboxes bring in messages, not Events. A language model reads the Events from each
-        message. Family Butler talks to any server with an OpenAI-compatible API: a local one such as Ollama,
+        message. Family Agenda talks to any server with an OpenAI-compatible API: a local one such as Ollama,
         llama.cpp or LM Studio, or a cloud provider with an API key.
       </p>
       {endpoint ? (

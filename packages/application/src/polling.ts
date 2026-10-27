@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { SourceId } from "@family-butler/domain";
+import type { SourceId } from "@family-agenda/domain";
 import type { ActivityLog } from "./activity";
 import type {
   BlobStore,

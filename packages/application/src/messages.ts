@@ -1,4 +1,4 @@
-import type { RawMessageId } from "@family-butler/domain";
+import type { RawMessageId } from "@family-agenda/domain";
 import type { BlobStore, ItemRepository } from "./ports";
 
 export type MessageDetails = {

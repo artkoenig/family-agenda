@@ -1,4 +1,4 @@
-import type { SourceTypeId } from "@family-butler/domain";
+import type { SourceTypeId } from "@family-agenda/domain";
 import type {
   Clock,
   InstalledSourceType,
@@ -9,7 +9,7 @@ import type {
 
 export type SourceTypesDeps = {
   clock: Clock;
-  /** The version of Family Butler this Instance runs, which new Source Types are recorded with. */
+  /** The version of Family Agenda this Instance runs, which new Source Types are recorded with. */
   applicationVersion: string;
   registry: SourceTypeRegistry;
   sourceTypes: SourceTypeRepository;

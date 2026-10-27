@@ -8,7 +8,7 @@ import {
   type Origin,
   type RunContext,
   type SourcePlugin,
-} from "@family-butler/source-sdk";
+} from "@family-agenda/source-sdk";
 
 /** Source Type ids whose test plugin code has been loaded, in the order they were. */
 export const loadedTestPlugins: string[] = [];
@@ -89,10 +89,10 @@ export async function writeTestPluginPackage(directory: string, plugin: TestPlug
   await writeFile(
     join(packageDirectory, "package.json"),
     JSON.stringify({
-      name: `family-butler-source-${plugin.sourceTypeId}`,
+      name: `family-agenda-source-${plugin.sourceTypeId}`,
       version: plugin.version ?? "1.0.0",
       type: "module",
-      familyButler: {
+      familyAgenda: {
         sourcePlugin: {
           entry: "./index.ts",
           sourceTypeId: plugin.sourceTypeId,

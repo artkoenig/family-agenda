@@ -1,5 +1,5 @@
 {
-  "name": "@family-butler/api",
+  "name": "@family-agenda/api",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -12,11 +12,11 @@
     "cli": "node --import tsx src/cli.ts"
   },
   "dependencies": {
-    "@family-butler/adapters": "workspace:*",
-    "@family-butler/application": "workspace:*",
-    "@family-butler/contracts": "workspace:*",
-    "@family-butler/domain": "workspace:*",
-    "@family-butler/source-sdk": "workspace:*",
+    "@family-agenda/adapters": "workspace:*",
+    "@family-agenda/application": "workspace:*",
+    "@family-agenda/contracts": "workspace:*",
+    "@family-agenda/domain": "workspace:*",
+    "@family-agenda/source-sdk": "workspace:*",
     "@hono/node-server": "^2.1.5",
     "hono": "^4.13.14",
     "htmx.org": "^2.0.11",

@@ -1,7 +1,7 @@
 import { createServer, type IncomingMessage, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import type { ExtractionRequest } from "@family-butler/application";
-import type { LocalDate, LocalTime } from "@family-butler/domain";
+import type { ExtractionRequest } from "@family-agenda/application";
+import type { LocalDate, LocalTime } from "@family-agenda/domain";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { OpenAiCompatibleExtractor } from "../src";
 

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { AdminSummary } from "@family-butler/application";
+import type { AdminSummary } from "@family-agenda/application";
 import { bootForTest, type TestInstance } from "../support/boot";
 
 const password = "correct horse battery";

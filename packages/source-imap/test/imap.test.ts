@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { describeSourcePluginContract } from "@family-butler/source-sdk/testing";
-import { SourceError, type IngestResult, type Origin, type RunContext, type SourcePlugin } from "@family-butler/source-sdk";
+import { describeSourcePluginContract } from "@family-agenda/source-sdk/testing";
+import { SourceError, type IngestResult, type Origin, type RunContext, type SourcePlugin } from "@family-agenda/source-sdk";
 import { createImapPlugin } from "../src";
 import { ImapServerFixture } from "./imap-server";
 

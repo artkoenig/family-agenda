@@ -1,4 +1,4 @@
-import type { FamilyMemberId, ViewId } from "@family-butler/domain";
+import type { FamilyMemberId, ViewId } from "@family-agenda/domain";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { bootHttpForTest, sessionCookieOf, type HttpTestInstance } from "../support/http";
 import { photos } from "../support/photos";

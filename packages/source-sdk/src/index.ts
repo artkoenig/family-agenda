@@ -1,5 +1,5 @@
 /**
- * The contract a Source plugin implements (ADR-0010). It is the only Family Butler package a
+ * The contract a Source plugin implements (ADR-0010). It is the only Family Agenda package a
  * plugin may import.
  */
 export const sdkVersion = "0.2.0";
@@ -243,7 +243,7 @@ function isCompatible(version: string): boolean {
 }
 
 /**
- * What a plugin's `package.json` declares under `familyButler.sourcePlugin`, read without
+ * What a plugin's `package.json` declares under `familyAgenda.sourcePlugin`, read without
  * loading the plugin's code. The plugin's version is the package's.
  */
 export type SourcePluginManifest = {
@@ -269,8 +269,8 @@ export type ManifestResult =
 
 export function parseManifest(packageJson: unknown): ManifestResult {
   const pkg = isObject(packageJson) ? packageJson : {};
-  const familyButler = isObject(pkg.familyButler) ? pkg.familyButler : {};
-  const raw = familyButler.sourcePlugin;
+  const familyAgenda = isObject(pkg.familyAgenda) ? pkg.familyAgenda : {};
+  const raw = familyAgenda.sourcePlugin;
   if (!isObject(raw)) return { ok: false, problem: "no-manifest" };
 
   const details: string[] = [];

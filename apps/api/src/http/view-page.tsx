@@ -5,8 +5,8 @@ import type {
   TimelineDays,
   TimelineEvent,
   ViewPage,
-} from "@family-butler/application";
-import { addDays, daysBetween, type FamilyMemberId, type LocalDate } from "@family-butler/domain";
+} from "@family-agenda/application";
+import { addDays, daysBetween, type FamilyMemberId, type LocalDate } from "@family-agenda/domain";
 import { Layout } from "./layout";
 
 // The one View layout (ADR-0003): a dark, vertical timeline that works on a phone, a desktop

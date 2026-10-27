@@ -1,4 +1,4 @@
-import type { Conversion, TextExtractor } from "@family-butler/application";
+import type { Conversion, TextExtractor } from "@family-agenda/application";
 
 /** One page of a fake PDF: with a text layer, or a scan whose words only OCR or a model can read. */
 export type FakePage = { text: string } | { scan: string };

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
-import type { BlobStore } from "@family-butler/application";
-import type { BlobRef } from "@family-butler/domain";
+import type { BlobStore } from "@family-agenda/application";
+import type { BlobRef } from "@family-agenda/domain";
 
 /** Keeps blobs in memory, for use cases that do not care where files are kept. */
 export class InMemoryBlobStore implements BlobStore {

@@ -35,7 +35,7 @@ export function Layout(props: { title: string; styles?: string; children: Child 
         <head>
           <meta charset="utf-8" />
           <meta name="viewport" content="width=device-width, initial-scale=1" />
-          <title>{props.title} · Family Butler</title>
+          <title>{props.title} · Family Agenda</title>
           <style>{raw(props.styles ?? adminStyles)}</style>
           <script src="/static/htmx.min.js" defer></script>
         </head>

@@ -1,6 +1,6 @@
 # WhatsApp group ingestion: options and risks
 
-Research for [issue #3](https://github.com/artkoenig/family-buttler/issues/3). Question: how can a self-hosted Family Butler read messages, including images and PDFs, from WhatsApp groups an Admin belongs to (school class groups, sports clubs), and what does each option cost in effort, ban risk, legal exposure and maintenance?
+Research for [issue #3](https://github.com/artkoenig/family-buttler/issues/3). Question: how can a self-hosted Family Agenda read messages, including images and PDFs, from WhatsApp groups an Admin belongs to (school class groups, sports clubs), and what does each option cost in effort, ban risk, legal exposure and maintenance?
 
 Researched October 2026. Meta's developer docs and whatsapp.com were not directly fetchable from the research environment, so claims about them rest on search-indexed excerpts of those official pages. Re-check the linked pages before building.
 
@@ -47,7 +47,7 @@ All of these log in as an extra **linked device** of the Admin's own account (QR
 - **How:** Run a Cloud API number (option A) that only receives messages. The Admin forwards relevant group messages, images and PDFs to it. Cloud API webhooks deliver the message plus a media ID for download ([webhooks](https://developers.facebook.com/docs/whatsapp/cloud-api/guides/set-up-webhooks/), [messages reference](https://developers.facebook.com/docs/whatsapp/cloud-api/reference/messages/)).
 - **Reads:** Only what the Admin chooses to forward. A forward loses the original sender and group context, so the Source must be inferred or tagged, e.g. with a short caption.
 - **Effort / risk:** ToS-compliant, no risk to the personal account. Needs a second phone number (a Cloud API number cannot simultaneously be a normal WhatsApp Messenger account; unverified detail, check Meta docs) and a Meta business setup. The ongoing cost is human attention per message.
-- **Variant:** Forwarding to the Family Butler's **email** ingestion (share → mail) avoids Meta entirely and reuses the email Source.
+- **Variant:** Forwarding to the Family Agenda's **email** ingestion (share → mail) avoids Meta entirely and reuses the email Source.
 
 ## Legal (Germany / GDPR)
 
@@ -56,7 +56,7 @@ All of these log in as an extra **linked device** of the Admin's own account (QR
 - The exemption holds only while the data stays within the Family: no publishing, no sharing Views outside the household, no retention beyond need. Children's data warrants minimisation (e.g., store extracted Items, drop raw messages after extraction).
 - Option B adds contractual (ToS) exposure, not a GDPR problem per se. WhatsApp can disable the account; ToS violation is not itself unlawful for the user.
 
-## Implications for Family Butler
+## Implications for Family Agenda
 
 1. **Option A cannot satisfy the requirement.** The official API cannot read groups the family is merely a member of. Drop it as a primary Source.
 2. **Recommended path:** Treat WhatsApp as a **staged Source**:

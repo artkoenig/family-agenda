@@ -32,19 +32,19 @@ importers:
 
   apps/api:
     dependencies:
-      '@family-butler/adapters':
+      '@family-agenda/adapters':
         specifier: workspace:*
         version: link:../../packages/adapters
-      '@family-butler/application':
+      '@family-agenda/application':
         specifier: workspace:*
         version: link:../../packages/application
-      '@family-butler/contracts':
+      '@family-agenda/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
-      '@family-butler/domain':
+      '@family-agenda/domain':
         specifier: workspace:*
         version: link:../../packages/domain
-      '@family-butler/source-sdk':
+      '@family-agenda/source-sdk':
         specifier: workspace:*
         version: link:../../packages/source-sdk
       '@hono/node-server':
@@ -72,7 +72,7 @@ importers:
 
   apps/worker:
     dependencies:
-      '@family-butler/api':
+      '@family-agenda/api':
         specifier: workspace:*
         version: link:../api
       tsx:
@@ -81,10 +81,10 @@ importers:
 
   packages/adapters:
     dependencies:
-      '@family-butler/application':
+      '@family-agenda/application':
         specifier: workspace:*
         version: link:../application
-      '@family-butler/domain':
+      '@family-agenda/domain':
         specifier: workspace:*
         version: link:../domain
       '@node-rs/argon2':
@@ -109,7 +109,7 @@ importers:
 
   packages/application:
     dependencies:
-      '@family-butler/domain':
+      '@family-agenda/domain':
         specifier: workspace:*
         version: link:../domain
 
@@ -123,7 +123,7 @@ importers:
 
   packages/source-ics:
     dependencies:
-      '@family-butler/source-sdk':
+      '@family-agenda/source-sdk':
         specifier: workspace:*
         version: link:../source-sdk
       ical.js:
@@ -132,7 +132,7 @@ importers:
 
   packages/source-imap:
     dependencies:
-      '@family-butler/source-sdk':
+      '@family-agenda/source-sdk':
         specifier: workspace:*
         version: link:../source-sdk
       imapflow:

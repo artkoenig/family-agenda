@@ -12,7 +12,7 @@ import {
   type LocalDate,
   type RawMessageId,
   type TimeSpan,
-} from "@family-butler/domain";
+} from "@family-agenda/domain";
 import type { ActivityLog } from "./activity";
 import { llmEndpointOf } from "./llm-endpoint";
 import type {

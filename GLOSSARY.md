@@ -1,4 +1,4 @@
-# Family Butler
+# Family Agenda
 
 Gathers family-relevant information from many channels into one overview of who has to be where, when, with what.
 
@@ -85,19 +85,19 @@ _Avoid_: Message, info, announcement
 ### Operation
 
 **Instance**:
-One self-hosted installation of Family Butler, serving exactly one Family.
+One self-hosted installation of Family Agenda, serving exactly one Family.
 _Avoid_: Server, deployment, tenant
 
-**Butler Cloud**:
+**Agenda Cloud**:
 The paid services an Instance can subscribe to, such as Remote Access, push notifications, a hosted LLM endpoint and off-site backups; never a place where Items live.
 _Avoid_: Hosted version, SaaS, cloud edition
 
 **Remote Access**:
-Reaching an Instance from outside the home network through Butler Cloud.
+Reaching an Instance from outside the home network through Agenda Cloud.
 _Avoid_: Tunnel, relay, external access
 
 **Recovery Kit**:
-What an Admin prints or saves at first start to recover the Instance's master key: without it, a Backup cannot restore Source credentials; Backups to Butler Cloud are encrypted with a key derived from it.
+What an Admin prints or saves at first start to recover the Instance's master key: without it, a Backup cannot restore Source credentials; Backups to Agenda Cloud are encrypted with a key derived from it.
 _Avoid_: Recovery key, master key (for the document), backup code
 
 **View Link**:

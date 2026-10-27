@@ -1,4 +1,4 @@
-# Family Butler
+# Family Agenda
 
 All text in this repo (code, comments, docs, issues, commit messages) is written in English.
 

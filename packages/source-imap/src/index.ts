@@ -7,7 +7,7 @@ import {
   type Origin,
   type RunContext,
   type SourcePlugin,
-} from "@family-butler/source-sdk";
+} from "@family-agenda/source-sdk";
 
 export type ImapPluginOptions = {
   /**
