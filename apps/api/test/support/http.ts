@@ -21,13 +21,24 @@ export async function bootHttpForTest(
   testOptions: TestOptions = {},
 ): Promise<HttpTestInstance> {
   const instance = await bootForTest(testOptions);
-  const http = createHttpApp(instance.app, { trustProxy: false, viewAccess: openViewAccess, ...options });
+  // The app of the Instance as it runs now, booted again after a restart.
+  let booted = instance.app;
+  let current = createHttpApp(booted, { trustProxy: false, viewAccess: openViewAccess, ...options });
+  const http = {
+    request: (path: string, init: Parameters<typeof current.request>[1]) => {
+      if (instance.app !== booted) {
+        booted = instance.app;
+        current = createHttpApp(booted, { trustProxy: false, viewAccess: openViewAccess, ...options });
+      }
+      return current.request(path, init);
+    },
+  };
   const headersFor = (init?: RequestInit) => ({
     ...(init?.cookie ? { cookie: init.cookie } : {}),
     ...init?.headers,
   });
-  return {
-    ...instance,
+  // The same object, so that `app` stays the one running after a restart.
+  return Object.assign(instance, {
     get: async (path, init) => http.request(path, { headers: headersFor(init) }),
     request: async (path, init) =>
       http.request(path, {
@@ -45,7 +56,7 @@ export async function bootHttpForTest(
           ...headersFor(init),
         },
       }),
-  };
+  } satisfies Pick<HttpTestInstance, "get" | "request" | "post">);
 }
 
 /** The `name=value` pair of the session cookie a response sets, to send back. */

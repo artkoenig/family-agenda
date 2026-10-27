@@ -22,7 +22,8 @@ import type {
   SourceTypeRegistry,
   SourceTypeRepository,
 } from "./ports";
-import { enabledSourceType, runContextOf } from "./sources";
+import { enabledSourceType } from "./enabled-source-type";
+import { runContextOf } from "./sources";
 
 export type AttributionRulesDeps = {
   clock: Clock;

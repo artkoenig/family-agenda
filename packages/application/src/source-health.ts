@@ -1,0 +1,61 @@
+import { sourceStatus, type SourceStatus } from "@family-agenda/domain";
+import type { Clock, FamilyRepository, Source, SourceRepository, SourceTypeRegistry, SourceTypeRepository } from "./ports";
+import { enabledSourceType } from "./enabled-source-type";
+
+/** Why a Source is not OK, or why its last run failed. */
+export type HealthProblem =
+  | { kind: "run-failed"; message: string }
+  /** Its plugin was removed; its Origins and Revisions stay, and it resumes once reinstalled. */
+  | { kind: "not-installed" }
+  /** Installed, but its code cannot be loaded; `reason` is null when the registry gives none. */
+  | { kind: "not-loadable"; reason: string | null };
+
+export type SourceHealth = {
+  status: SourceStatus;
+  /** The last error of a Source whose last run failed, even while it is still OK; null otherwise. */
+  problem: HealthProblem | null;
+  lastSuccessAt: Date | null;
+};
+
+export type SourceHealthDeps = {
+  clock: Clock;
+  registry: SourceTypeRegistry;
+  sourceTypes: SourceTypeRepository;
+  sources: SourceRepository;
+};
+
+/** How a Source is doing, as the Admin area shows it (ADR-0010). */
+export async function healthOf(source: Source, deps: SourceHealthDeps): Promise<SourceHealth> {
+  const { lastSuccessAt, failure } = source;
+  const loaded = await enabledSourceType(source.sourceTypeId, deps);
+  if (!loaded) {
+    const installed = deps.registry.installed().find((type) => type.id === source.sourceTypeId);
+    const problem: HealthProblem = installed
+      ? { kind: "not-loadable", reason: installed.notLoadable }
+      : { kind: "not-installed" };
+    return { status: "failing", problem, lastSuccessAt };
+  }
+  const status = sourceStatus({
+    failure,
+    silentApplies: loaded.silentApplies,
+    lastNewOriginAt: source.lastNewOriginAt,
+    createdAt: source.createdAt,
+    now: deps.clock.now(),
+  });
+  return { status, problem: failure ? { kind: "run-failed", message: failure.message } : null, lastSuccessAt };
+}
+
+/** Whether the Family's Sources work, as every View hints at without detail. */
+export function createSourceHealth(deps: SourceHealthDeps & { families: FamilyRepository }) {
+  return {
+    /** Whether any of the Family's Sources is Failing. */
+    async anyFailing(): Promise<boolean> {
+      for (const source of await deps.sources.list(await deps.families.theFamily())) {
+        if ((await healthOf(source, deps)).status === "failing") return true;
+      }
+      return false;
+    },
+  };
+}
+
+export type SourceHealthCheck = ReturnType<typeof createSourceHealth>;

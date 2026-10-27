@@ -36,6 +36,10 @@ _Avoid_: Channel, integration, feed, connector
 The kind of channel a Source is, such as WebUntis, an ICS calendar, an IMAP mailbox or Matrix; each is provided by a plugin, and a Family can have several Sources of one type.
 _Avoid_: Source kind, provider, plugin (for the domain concept)
 
+**Source Status**:
+Whether a Source works: **OK**; **Failing** when it needs an Admin, at once on a definite error and after 6 hours of temporary ones; or **Silent** when a Source Type that declares it has brought no new Origin for 14 days.
+_Avoid_: Health state, broken, stale (for the status)
+
 **Messenger**:
 A chat network, such as WhatsApp, Signal or Telegram, that the Matrix Source Type reads through a bridge on the Instance; an Admin enables each one, and each Source of the Matrix type is one linked Messenger account.
 _Avoid_: Bridge (for the domain concept), network, chat app

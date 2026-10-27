@@ -42,6 +42,7 @@ import {
   createMessageAccess,
   createRecoveryKitAccess,
   createSourceAccess,
+  createSourceHealth,
   createSourcePolling,
   createSourceTypeAccess,
   createViewAccess,
@@ -176,6 +177,19 @@ export async function bootApplication(config: ApplicationConfig): Promise<Applic
   const items = new PostgresItemRepository(postgres.db);
   const rules = new PostgresAttributionRuleRepository(postgres.db);
   const activity = createActivityLog({ clock, families, activities: new PostgresActivityRepository(postgres.db) });
+  const registry = await SourceRegistry.discover([
+    config.workspacePackages ?? defaultWorkspacePackages,
+    config.pluginDirectory,
+  ]);
+  const sourceTypeRepository = new PostgresSourceTypeRepository(postgres.db);
+  const sourceRepository = new PostgresSourceRepository(postgres.db);
+  const sourceHealth = createSourceHealth({
+    clock,
+    families,
+    registry,
+    sourceTypes: sourceTypeRepository,
+    sources: sourceRepository,
+  });
   const views = createViewAccess({
     clock,
     timeZone,
@@ -185,14 +199,9 @@ export async function bootApplication(config: ApplicationConfig): Promise<Applic
     items,
     rules,
     activity,
+    sourceHealth,
   });
 
-  const registry = await SourceRegistry.discover([
-    config.workspacePackages ?? defaultWorkspacePackages,
-    config.pluginDirectory,
-  ]);
-  const sourceTypeRepository = new PostgresSourceTypeRepository(postgres.db);
-  const sourceRepository = new PostgresSourceRepository(postgres.db);
   const sourceTypes = createSourceTypeAccess({
     clock,
     applicationVersion: config.applicationVersion ?? packageVersion,

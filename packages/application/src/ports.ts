@@ -21,6 +21,8 @@ import type {
   OcrLanguage,
   OriginOf,
   RawMessageId,
+  RunError,
+  SourceFailure,
   SourceId,
   SourceTypeId,
   View,
@@ -157,6 +159,9 @@ export type ConfigFieldSpec = {
   description: MultilingualText | null;
 };
 
+/** An interactive step of a Source's form, as a plugin declares it. */
+export type SetupStepSpec = { id: string; title: MultilingualText; description: MultilingualText };
+
 /** What a plugin is given for one run of a Source. */
 export type SourceRunContext = {
   plain: PlainConfig;
@@ -211,11 +216,15 @@ export type LoadedSourceType = {
     version: number;
     fields: ConfigFieldSpec[];
   };
+  /** Interactive steps the form shows, such as pairing an account by QR code. */
+  setupSteps: SetupStepSpec[];
   /** The plain configuration of `fromVersion` migrated to the current version. */
   migrateConfig: (plain: PlainConfig, fromVersion: number) => PlainConfig;
   ingestion: PollingIngestion | { mode: "push" };
   /** What Attribution Rules can match on, such as a sender or a calendar. */
   originAttributes: OriginAttributeSpec[];
+  /** Whether its Sources count as Silent when no new Origin comes for a while. */
+  silentApplies: boolean;
 };
 
 /** An Origin attribute a plugin declares. */
@@ -271,8 +280,14 @@ export type Source = {
   pollIntervalSeconds: number | null;
   /** Whether its Items show on the timeline and in the feeds; a hidden Source is still read. */
   shown: boolean;
-  /** When the worker last ran it, successfully or not; null before its first run. */
+  /** When the worker last ran it, successfully or not; null before its first run, or after an Admin changed it. */
   lastRunAt: Date | null;
+  /** When it last ran successfully; null before then. */
+  lastSuccessAt: Date | null;
+  /** Its failed runs since the last successful one; null if the last run succeeded. */
+  failure: SourceFailure | null;
+  /** When its last Origin not seen before came; null before the first. */
+  lastNewOriginAt: Date | null;
   createdAt: Date;
 };
 
@@ -284,10 +299,16 @@ export interface SourceRepository {
   findById(id: SourceId): Promise<Source | null>;
   /** Stores a migrated plain configuration, unless the Source is no longer at `fromVersion`. */
   migrateConfig(id: SourceId, fromVersion: number, plain: PlainConfig, configVersion: number): Promise<void>;
-  /** Stores what an Admin edited: the configuration and the polling interval. */
+  /**
+   * Stores what an Admin edited: the configuration, the polling interval, and the time of the last
+   * run, which an edit clears so that the Source runs again on the next tick.
+   */
   update(source: Source): Promise<void>;
-  /** Records a run that failed, which keeps the state for the next one. */
-  recordFailedRun(id: SourceId, at: Date): Promise<void>;
+  /**
+   * Records a run that failed, which keeps the state for the next one. The Source fails since the
+   * first failed run after its last successful one, and definitely once any of them did.
+   */
+  recordFailedRun(id: SourceId, at: Date, error: RunError): Promise<void>;
   /** Shows or hides the Source's Items on the timeline and in the feeds. */
   setShown(id: SourceId, shown: boolean): Promise<void>;
   /**
