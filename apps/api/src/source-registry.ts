@@ -6,6 +6,8 @@ import type {
   InstalledSourceType,
   LoadedSourceType,
   PlainConfig,
+  SourceRunContext,
+  SourceRunResult,
   SourceTypeRegistry,
 } from "@family-butler/application";
 import type { SourceTypeId } from "@family-butler/domain";
@@ -13,6 +15,9 @@ import {
   parseManifest,
   problemsWith,
   problemsWithManifest,
+  problemsWithOrigin,
+  SourceError,
+  type IngestResult,
   type JsonObject,
   type SourcePlugin,
   type SourcePluginManifest,
@@ -124,12 +129,26 @@ function shareSdkWith(directories: string[]): void {
 }
 
 function loadedSourceType(plugin: SourcePlugin): LoadedSourceType {
-  const { configuration } = plugin;
+  const { configuration, ingestion } = plugin;
   return {
     configuration: {
       version: configuration.version,
-      fields: configuration.fields.map(({ key, secret, required }) => ({ key, secret, required })),
+      fields: configuration.fields.map(({ key, label, secret, required, description }) => ({
+        key,
+        label,
+        secret,
+        required,
+        description: description ?? null,
+      })),
     },
+    ingestion:
+      ingestion.mode === "polling"
+        ? {
+            mode: "polling",
+            suggestedIntervalSeconds: ingestion.suggestedIntervalSeconds,
+            poll: (context) => run(() => ingestion.poll(runContextOf(context))),
+          }
+        : { mode: "push" },
     migrateConfig(plain: PlainConfig, fromVersion: number): PlainConfig {
       let migrated = plain as JsonObject;
       for (let version = fromVersion; version < configuration.version; version++) {
@@ -139,6 +158,47 @@ function loadedSourceType(plugin: SourcePlugin): LoadedSourceType {
       }
       return migrated;
     },
+  };
+}
+
+function runContextOf(context: SourceRunContext) {
+  const { plain, secrets, state, now, timeZone } = context;
+  return { config: { plain: plain as JsonObject, secrets }, state, now, timeZone };
+}
+
+/** A plugin's run as the core sees it: what it emitted, or why it failed. */
+async function run(ingest: () => Promise<IngestResult>): Promise<SourceRunResult> {
+  let result: IngestResult;
+  try {
+    result = await ingest();
+  } catch (error) {
+    if (error instanceof SourceError) return { ok: false, kind: error.kind, message: error.message };
+    // An error the plugin did not expect may well be gone next time.
+    return { ok: false, kind: "temporary", message: error instanceof Error ? error.message : String(error) };
+  }
+  const problems = result.origins.flatMap(problemsWithOrigin);
+  if (problems.length > 0) {
+    return { ok: false, kind: "definite", message: `The plugin emitted invalid Origins: ${problems.join("; ")}` };
+  }
+  return {
+    ok: true,
+    state: result.state,
+    origins: result.origins.map((origin) => ({
+      externalId: origin.externalId,
+      occurredAt: origin.occurredAt,
+      attributes: origin.attributes,
+      link: origin.link ?? null,
+      // Raw messages are recorded as Origins only until extraction exists (#42).
+      revisions:
+        origin.content.kind === "revisions"
+          ? origin.content.revisions.map(({ itemKind, itemKey, action, fields }) => ({
+              itemKind,
+              itemKey,
+              act: action,
+              fields,
+            }))
+          : [],
+    })),
   };
 }
 

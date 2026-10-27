@@ -27,7 +27,7 @@ const examplePlugin = (overrides: Partial<SourcePlugin> = {}): SourcePlugin => (
     suggestedIntervalSeconds: 900,
     poll: ({ state }) =>
       Promise.resolve({
-        origins: [
+        origins: state !== null ? [] : [
           {
             externalId: "mail-1",
             occurredAt: new Date("2026-09-14T07:00:00Z"),
@@ -114,6 +114,14 @@ describe("Origins", () => {
     expect(
       problemsWithOrigin({ ...origin({ kind: "revisions", revisions: [] }), externalId: "" }),
     ).toEqual(["the Origin has no external id", "the Origin carries no Revisions"]);
+  });
+
+  it("link only to http or https addresses", () => {
+    const message = origin({ kind: "raw-message", text: "Hi", attachments: [] });
+    expect(problemsWithOrigin({ ...message, link: "https://calendar.example.org/e/1" })).toEqual([]);
+    expect(problemsWithOrigin({ ...message, link: "javascript:alert(1)" })).toEqual([
+      "the Origin's link is no http or https address",
+    ]);
   });
 });
 

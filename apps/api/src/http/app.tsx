@@ -1,6 +1,11 @@
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import type { Showing, ViewAccessPolicy } from "@family-butler/application";
+import {
+  pollIntervalRange,
+  type SourceInput,
+  type Showing,
+  type ViewAccessPolicy,
+} from "@family-butler/application";
 import {
   horizonDaysRange,
   maximumNameLength,
@@ -9,6 +14,7 @@ import {
   photoTypes,
   type AdminId,
   type FamilyMemberId,
+  type SourceId,
   type ViewId,
 } from "@family-butler/domain";
 import type { HealthResponse } from "@family-butler/contracts";
@@ -28,6 +34,7 @@ import {
   RecoveryKitPage,
   recoveryKitText,
   SignInPage,
+  SourcesPage,
   SourceTypesPage,
   ViewsPage,
   type SignedInAdmin,
@@ -67,12 +74,15 @@ const problems = {
   "not-loadable": "This Source Type cannot be loaded.",
   "risk-not-acknowledged": "Confirm that you understand the risk of this Source Type.",
   "has-sources": "Remove the Sources of this Source Type before disabling it.",
+  "source-type-not-enabled": "This Source Type is not enabled.",
+  "unknown-source": "This Source does not exist.",
+  "invalid-interval": `The polling interval must be between ${pollIntervalRange.minSeconds / 60} minute and ${pollIntervalRange.maxSeconds / 86_400} days.`,
 } satisfies Record<string, string>;
 
 const htmx = readFileSync(createRequire(import.meta.url).resolve("htmx.org/dist/htmx.min.js"));
 
 export function createHttpApp(application: Application, options: HttpOptions) {
-  const { admins, recoveryKit, familyMembers, views, sourceTypes } = application;
+  const { admins, recoveryKit, familyMembers, views, sourceTypes, sources } = application;
   const app = new Hono<Env>();
 
   const isHttps = (c: Context) =>
@@ -400,7 +410,66 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     return c.redirect("/admin/source-types", 303);
   });
 
+  const sourcesPage = async (c: Context<Env>, problem?: string) => {
+    const forms = await sources.forms();
+    const page = (
+      <SourcesPage
+        admin={c.get("admin")}
+        sources={await sources.list()}
+        forms={forms}
+        {...(problem ? { problem } : {})}
+      />
+    );
+    return c.html(page, problem ? 400 : 200);
+  };
+
+  /** The message for a Source that cannot be saved, naming the fields by their labels. */
+  const sourceProblem = async (
+    result: { problem: keyof typeof problems } | { problem: "invalid-config"; fields: string[] },
+  ) => {
+    if (!("fields" in result)) return problems[result.problem];
+    const labels = new Map((await sources.forms()).flatMap((form) => form.fields.map((f) => [f.key, f.label])));
+    return `Check ${result.fields.map((key) => labels.get(key) ?? key).join(", ")}.`;
+  };
+
+  app.get("/admin/sources", (c) => sourcesPage(c));
+
+  app.post("/admin/sources", async (c) => {
+    const form = await c.req.parseBody();
+    const result = await sources.add({ sourceTypeId: field(form, "sourceTypeId"), ...sourceInputOf(form) });
+    if (!result.ok) return sourcesPage(c, await sourceProblem(result));
+    return c.redirect("/admin/sources", 303);
+  });
+
+  app.post("/admin/sources/:id", async (c) => {
+    const form = await c.req.parseBody();
+    const result = await sources.edit(c.req.param("id") as SourceId, sourceInputOf(form));
+    if (!result.ok) return sourcesPage(c, await sourceProblem(result));
+    return c.redirect("/admin/sources", 303);
+  });
+
+  app.post("/admin/sources/:id/remove", async (c) => {
+    await sources.remove(c.req.param("id") as SourceId);
+    return c.redirect("/admin/sources", 303);
+  });
+
   return app;
+}
+
+/**
+ * A Source form's fields: `plain.<key>` and `secret.<key>` as the plugin declares them, and the
+ * polling interval in minutes, empty for the plugin's suggestion.
+ */
+function sourceInputOf(form: Record<string, unknown>): SourceInput {
+  const plain: Record<string, string> = {};
+  const secrets: Record<string, string> = {};
+  for (const [name, value] of Object.entries(form)) {
+    if (typeof value !== "string") continue;
+    if (name.startsWith("plain.")) plain[name.slice("plain.".length)] = value.trim();
+    if (name.startsWith("secret.")) secrets[name.slice("secret.".length)] = value.trim();
+  }
+  const minutes = field(form, "pollIntervalMinutes").trim();
+  return { plain, secrets, pollIntervalSeconds: minutes === "" ? null : Number(minutes) * 60 };
 }
 
 /** The quick filter's setting from the `show` query parameter: `all`, or ids separated by commas. */

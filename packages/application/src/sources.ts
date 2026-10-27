@@ -2,7 +2,9 @@ import { randomUUID } from "node:crypto";
 import type { SourceId, SourceTypeId } from "@family-butler/domain";
 import type {
   Clock,
+  ConfigFieldSpec,
   FamilyRepository,
+  LoadedSourceType,
   PlainConfig,
   SecretRef,
   SecretStore,
@@ -20,49 +22,132 @@ export type SourcesDeps = {
   secrets: SecretStore;
 };
 
-export type SourceSummary = { id: SourceId; sourceTypeId: SourceTypeId; plain: PlainConfig };
+export type SourceSummary = {
+  id: SourceId;
+  sourceTypeId: SourceTypeId;
+  /** The Source Type's name, or its id if its plugin is no longer installed. */
+  displayName: string;
+  plain: PlainConfig;
+  /** The secret fields that have a value; the values never leave the SecretStore but to the plugin. */
+  storedSecrets: string[];
+  /** As an Admin set it; null for the plugin's suggestion. */
+  pollIntervalSeconds: number | null;
+};
+
+/** What the Admin area renders a Source's form from, for an enabled Source Type. */
+export type SourceForm = {
+  sourceTypeId: SourceTypeId;
+  displayName: string;
+  fields: ConfigFieldSpec[];
+  /** Null if its Sources are not polled. */
+  suggestedIntervalSeconds: number | null;
+};
+
+/** How often an Admin may have a Source polled. */
+export const pollIntervalRange = { minSeconds: 60, maxSeconds: 7 * 24 * 60 * 60 };
+
+export type SourceInput = {
+  plain: PlainConfig;
+  /** A secret left empty keeps the stored one when editing. */
+  secrets: Record<string, string>;
+  /** Null or left out for the plugin's suggestion. */
+  pollIntervalSeconds?: number | null;
+};
+
+export type SourceProblem =
+  | { ok: false; problem: "invalid-interval" }
+  /** `fields` are the keys that are missing, unknown, or given as plain instead of secret. */
+  | { ok: false; problem: "invalid-config"; fields: string[] };
 
 export type AddSourceResult =
   | { ok: true; id: SourceId }
   | { ok: false; problem: "source-type-not-enabled" }
-  /** `fields` are the keys that are missing, unknown, or given as plain instead of secret. */
-  | { ok: false; problem: "invalid-config"; fields: string[] };
+  | SourceProblem;
+
+export type EditSourceResult =
+  | { ok: true }
+  | { ok: false; problem: "unknown-source" | "source-type-not-enabled" }
+  | SourceProblem;
 
 export function createSourceAccess(deps: SourcesDeps) {
   const { clock, families, registry, sourceTypes, sources, secrets } = deps;
 
+  /** The plugin of an enabled Source Type, or null. */
+  async function enabled(sourceTypeId: SourceTypeId): Promise<LoadedSourceType | null> {
+    const record = (await sourceTypes.list()).find((type) => type.id === sourceTypeId);
+    const loaded = record?.enabled ? await registry.load(sourceTypeId) : null;
+    return loaded?.ok ? loaded.sourceType : null;
+  }
+
+  /** Why the input does not fit the plugin's configuration; `stored` secrets count as given. */
+  function check(sourceType: LoadedSourceType, input: SourceInput, stored: string[] = []): SourceProblem | null {
+    const interval = input.pollIntervalSeconds;
+    if (
+      interval != null &&
+      !(Number.isInteger(interval) && interval >= pollIntervalRange.minSeconds && interval <= pollIntervalRange.maxSeconds)
+    ) {
+      return { ok: false, problem: "invalid-interval" };
+    }
+    const invalid = new Set<string>();
+    const given = (key: string, secret: boolean) => {
+      const value = secret ? input.secrets[key] : input.plain[key];
+      return value !== undefined && value !== null && value !== "";
+    };
+    for (const field of sourceType.configuration.fields) {
+      const present = given(field.key, field.secret) || (field.secret && stored.includes(field.key));
+      if (field.required && !present) invalid.add(field.key);
+      if (given(field.key, !field.secret)) invalid.add(field.key);
+    }
+    const declared = new Set(sourceType.configuration.fields.map((field) => field.key));
+    for (const key of [...Object.keys(input.plain), ...Object.keys(input.secrets)]) {
+      if (!declared.has(key)) invalid.add(key);
+    }
+    return invalid.size > 0 ? { ok: false, problem: "invalid-config", fields: [...invalid].sort() } : null;
+  }
+
+  /** Plain values left empty are not stored. */
+  function plainOf(input: SourceInput): PlainConfig {
+    return Object.fromEntries(Object.entries(input.plain).filter(([, value]) => value !== "" && value != null));
+  }
+
   return {
     async list(): Promise<SourceSummary[]> {
+      const installed = registry.installed();
       const all = await sources.list(await families.theFamily());
-      return all.map(({ id, sourceTypeId, plain }) => ({ id, sourceTypeId, plain }));
+      return all.map((source) => ({
+        id: source.id,
+        sourceTypeId: source.sourceTypeId,
+        displayName: installed.find((type) => type.id === source.sourceTypeId)?.displayName ?? source.sourceTypeId,
+        plain: source.plain,
+        storedSecrets: Object.keys(source.secrets).sort(),
+        pollIntervalSeconds: source.pollIntervalSeconds,
+      }));
+    },
+
+    /** The forms of the enabled Source Types, for adding and editing their Sources. */
+    async forms(): Promise<SourceForm[]> {
+      const forms: SourceForm[] = [];
+      for (const type of registry.installed()) {
+        const sourceType = await enabled(type.id);
+        if (!sourceType) continue;
+        const { ingestion } = sourceType;
+        forms.push({
+          sourceTypeId: type.id,
+          displayName: type.displayName,
+          fields: sourceType.configuration.fields,
+          suggestedIntervalSeconds: ingestion.mode === "polling" ? ingestion.suggestedIntervalSeconds : null,
+        });
+      }
+      return forms.sort((a, b) => a.displayName.localeCompare(b.displayName));
     },
 
     /** Adds a Source of an enabled Source Type, configured by the fields its plugin declares. */
-    async add(input: {
-      sourceTypeId: string;
-      plain: PlainConfig;
-      secrets: Record<string, string>;
-    }): Promise<AddSourceResult> {
+    async add(input: SourceInput & { sourceTypeId: string }): Promise<AddSourceResult> {
       const sourceTypeId = input.sourceTypeId as SourceTypeId;
-      const record = (await sourceTypes.list()).find((type) => type.id === sourceTypeId);
-      const loaded = record?.enabled ? await registry.load(sourceTypeId) : null;
-      if (!loaded?.ok) return { ok: false, problem: "source-type-not-enabled" };
-
-      const { configuration } = loaded.sourceType;
-      const invalid = new Set<string>();
-      const given = (key: string, secret: boolean) => {
-        const value = secret ? input.secrets[key] : input.plain[key];
-        return value !== undefined && value !== null && value !== "";
-      };
-      for (const field of configuration.fields) {
-        if (field.required && !given(field.key, field.secret)) invalid.add(field.key);
-        if (given(field.key, !field.secret)) invalid.add(field.key);
-      }
-      const declared = new Set(configuration.fields.map((field) => field.key));
-      for (const key of [...Object.keys(input.plain), ...Object.keys(input.secrets)]) {
-        if (!declared.has(key)) invalid.add(key);
-      }
-      if (invalid.size > 0) return { ok: false, problem: "invalid-config", fields: [...invalid].sort() };
+      const sourceType = await enabled(sourceTypeId);
+      if (!sourceType) return { ok: false, problem: "source-type-not-enabled" };
+      const problem = check(sourceType, input);
+      if (problem) return problem;
 
       const refs: Record<string, SecretRef> = {};
       for (const [key, value] of Object.entries(input.secrets)) {
@@ -73,16 +158,49 @@ export function createSourceAccess(deps: SourcesDeps) {
         id,
         familyId: await families.theFamily(),
         sourceTypeId,
-        plain: input.plain,
-        configVersion: configuration.version,
+        plain: plainOf(input),
+        configVersion: sourceType.configuration.version,
         secrets: refs,
         state: null,
+        pollIntervalSeconds: input.pollIntervalSeconds ?? null,
+        lastRunAt: null,
         createdAt: clock.now(),
       });
       return { ok: true, id };
     },
 
-    /** Removes the Source and its secrets. */
+    /**
+     * Changes a Source's configuration and polling interval. Its state stays, so that a calendar
+     * whose address an Admin fixes resumes where it was.
+     */
+    async edit(id: SourceId, input: SourceInput): Promise<EditSourceResult> {
+      const source = await sources.findById(id);
+      if (!source) return { ok: false, problem: "unknown-source" };
+      const sourceType = await enabled(source.sourceTypeId);
+      if (!sourceType) return { ok: false, problem: "source-type-not-enabled" };
+      const problem = check(sourceType, input, Object.keys(source.secrets));
+      if (problem) return problem;
+
+      const refs = { ...source.secrets };
+      const replaced: SecretRef[] = [];
+      for (const [key, value] of Object.entries(input.secrets)) {
+        if (value === "") continue;
+        const old = refs[key];
+        if (old) replaced.push(old);
+        refs[key] = await secrets.put(value);
+      }
+      await sources.update({
+        ...source,
+        plain: plainOf(input),
+        configVersion: sourceType.configuration.version,
+        secrets: refs,
+        pollIntervalSeconds: input.pollIntervalSeconds ?? null,
+      });
+      for (const ref of replaced) await secrets.remove(ref);
+      return { ok: true };
+    },
+
+    /** Removes the Source and its secrets; its Origins and Revisions stay, and so do its Items. */
     async remove(id: SourceId): Promise<void> {
       const source = await sources.findById(id);
       if (!source) return;

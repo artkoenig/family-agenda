@@ -10,7 +10,7 @@ describe("the test plugin", () => {
   const poll = (sourceTypeId: string, state: string | null) => {
     const { ingestion } = testSourcePlugin({ sourceTypeId });
     if (ingestion.mode !== "polling") throw new Error("the test plugin polls");
-    return ingestion.poll({ config, state });
+    return ingestion.poll({ config, state, now: new Date(), timeZone: "Europe/Berlin" });
   };
 
   it("emits the Origins it is given, once, and advances its state", async () => {

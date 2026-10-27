@@ -1,0 +1,22 @@
+{
+  "name": "@family-butler/source-ics",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "familyButler": {
+    "sourcePlugin": {
+      "entry": "./src/index.ts",
+      "sourceTypeId": "ics",
+      "displayName": "ICS calendar",
+      "sdkVersion": "0.1.0",
+      "description": "Reads the Events of a calendar from its secret ICS address, such as Google Calendar's private address in iCal format."
+    }
+  },
+  "dependencies": {
+    "@family-butler/source-sdk": "workspace:*",
+    "ical.js": "^2.2.1"
+  }
+}

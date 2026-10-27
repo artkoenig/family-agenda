@@ -1,4 +1,5 @@
 import type {
+  Act,
   Admin,
   BlobRef,
   AdminId,
@@ -6,6 +7,10 @@ import type {
   FamilyId,
   FamilyMember,
   FamilyMemberId,
+  FoldableRevision,
+  FoldedItem,
+  ItemId,
+  ItemKind,
   SourceId,
   SourceTypeId,
   View,
@@ -131,14 +136,63 @@ export type InstalledSourceType = {
 /** A plain configuration, as JSON. */
 export type PlainConfig = Record<string, unknown>;
 
+/** One field of a Source's configuration, as the Admin area renders it. */
+export type ConfigFieldSpec = {
+  key: string;
+  label: string;
+  secret: boolean;
+  required: boolean;
+  description: string | null;
+};
+
+/** What a plugin is given for one run of a Source. */
+export type SourceRunContext = {
+  plain: PlainConfig;
+  secrets: Record<string, string>;
+  state: string | null;
+  now: Date;
+  timeZone: string;
+};
+
+/** A Revision as a plugin states it, before the core has checked its fields. */
+export type IngestedRevision = {
+  itemKind: ItemKind;
+  itemKey: string;
+  act: Act;
+  fields: Record<string, unknown>;
+};
+
+/** An Origin as a plugin emits it; raw messages are recorded as Origins without Revisions. */
+export type IngestedOrigin = {
+  externalId: string;
+  /** The source time of its Revisions. */
+  occurredAt: Date;
+  attributes: Record<string, string>;
+  link: string | null;
+  revisions: IngestedRevision[];
+};
+
+export type SourceRunResult =
+  | { ok: true; origins: IngestedOrigin[]; state: string | null }
+  /** A definite error needs an Admin; a temporary one is retried. */
+  | { ok: false; kind: "definite" | "temporary"; message: string };
+
+export type PollingIngestion = {
+  mode: "polling";
+  suggestedIntervalSeconds: number;
+  /** Runs the plugin; a plugin that throws or emits invalid Origins fails the run. */
+  poll(context: SourceRunContext): Promise<SourceRunResult>;
+};
+
 /** What the core needs of a loaded plugin; it never asks which one it is. */
 export type LoadedSourceType = {
   configuration: {
     version: number;
-    fields: { key: string; secret: boolean; required: boolean }[];
+    fields: ConfigFieldSpec[];
   };
   /** The plain configuration of `fromVersion` migrated to the current version. */
   migrateConfig: (plain: PlainConfig, fromVersion: number) => PlainConfig;
+  ingestion: PollingIngestion | { mode: "push" };
 };
 
 /** The Source plugins discovered at startup (ADR-0010). */
@@ -179,6 +233,10 @@ export type Source = {
   secrets: Record<string, SecretRef>;
   /** The plugin's opaque state, such as a sync token, handed back on its next run. */
   state: string | null;
+  /** How often the worker polls it, as an Admin set it; null for the plugin's suggestion. */
+  pollIntervalSeconds: number | null;
+  /** When the worker last ran it, successfully or not; null before its first run. */
+  lastRunAt: Date | null;
   createdAt: Date;
 };
 
@@ -190,7 +248,58 @@ export interface SourceRepository {
   findById(id: SourceId): Promise<Source | null>;
   /** Stores a migrated plain configuration, unless the Source is no longer at `fromVersion`. */
   migrateConfig(id: SourceId, fromVersion: number, plain: PlainConfig, configVersion: number): Promise<void>;
+  /** Stores what an Admin edited: the configuration and the polling interval. */
+  update(source: Source): Promise<void>;
+  /** Records a run that failed, which keeps the state for the next one. */
+  recordFailedRun(id: SourceId, at: Date): Promise<void>;
+  /** Removes the Source; its Origins and Revisions stay. */
   remove(id: SourceId): Promise<void>;
+}
+
+/** A Revision ready to append, checked by the core. */
+export type NewRevision = {
+  itemKind: ItemKind;
+  itemKey: string;
+  act: Act;
+  fields: Record<string, unknown>;
+  sourceTime: Date;
+  /** False for a Revision rejected automatically, such as one with invalid fields. */
+  accepted: boolean;
+};
+
+/** One successful run of a Source, to record at once. */
+export type SourceRun = {
+  familyId: FamilyId;
+  sourceId: SourceId;
+  at: Date;
+  /** The plugin's state after the run. */
+  state: string | null;
+  origins: { externalId: string; attributes: Record<string, string>; link: string | null; revisions: NewRevision[] }[];
+};
+
+/** What an Item's Revisions add up to, as stored next to them. */
+export type ItemProjection = {
+  folded: FoldedItem | null;
+  /** Instants certainly before and after the Item's time, to find it by; null if it has none. */
+  window: { from: Date; to: Date } | null;
+};
+
+export type ProjectedItem = { id: ItemId; kind: ItemKind; folded: FoldedItem; links: string[] };
+
+/** Items, as projections of their append-only Revisions (ADR-0009). */
+export interface ItemRepository {
+  /**
+   * Records a run in one transaction: the Origins, their Revisions unless the same Revision is
+   * already recorded, and the Source's state. An Item is found by the Source and the Revision's
+   * Item key, or created; every Item a new Revision reached is recomputed with `recompute` from all
+   * its Revisions.
+   */
+  recordRun(
+    run: SourceRun,
+    recompute: (kind: ItemKind, revisions: FoldableRevision[]) => ItemProjection,
+  ): Promise<void>;
+  /** The Family's Items whose window overlaps the given time, with the links of their Origins. */
+  overlapping(familyId: FamilyId, from: Date, to: Date): Promise<ProjectedItem[]>;
 }
 
 export interface JobQueue {

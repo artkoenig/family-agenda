@@ -1,4 +1,4 @@
-import type { FamilyMemberSummary, Showing, ViewPage } from "@family-butler/application";
+import type { FamilyMemberSummary, Showing, TimelineEvent, ViewPage } from "@family-butler/application";
 import type { FamilyMemberId, LocalDate } from "@family-butler/domain";
 import { Layout } from "./layout";
 
@@ -33,6 +33,17 @@ const viewStyles = `
     font-weight: 700; margin: 4px 0; text-transform: uppercase; }
   .now::after { content: ""; flex: 1; height: 2px; background: var(--now); }
   .empty { color: #6b7280; margin: 6px 0; padding: 10px 4px; border-bottom: 1px solid var(--line); }
+  .event { border-bottom: 1px solid var(--line); }
+  .event summary { display: flex; gap: 12px; padding: 10px 4px; cursor: pointer; list-style: none; }
+  .event summary::-webkit-details-marker { display: none; }
+  .event .time { flex: none; min-width: 7.5em; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .event .title { font-weight: 600; }
+  .event.earlier { opacity: .45; }
+  .event.cancelled .title { color: var(--muted); }
+  .event dl { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin: 0 4px 12px; color: var(--muted); }
+  .event dt { font-weight: 600; }
+  .event dd { margin: 0; color: var(--ink); }
+  .event a { color: #93c5fd; }
   @media (min-width: 1000px) {
     body { font-size: 18px; }
     .bar > * { max-width: 820px; }
@@ -95,13 +106,81 @@ export function ViewTimeline(props: { page: ViewPage }) {
                 dateLabel(day.date)
               )}
             </h2>
-            {index === 0 ? <div class="now">Now {page.now.time}</div> : null}
-            <p class="empty">Nothing planned.</p>
+            {index === 0 ? (
+              <>
+                {day.items.filter((row) => row.earlier).map((row) => <EventRow row={row} />)}
+                <div class="now">Now {page.now.time}</div>
+                {day.items.filter((row) => !row.earlier).map((row) => <EventRow row={row} />)}
+              </>
+            ) : (
+              day.items.map((row) => <EventRow row={row} />)
+            )}
+            {day.items.length === 0 ? <p class="empty">Nothing planned.</p> : null}
           </li>
         ))}
       </ol>
     </main>
   );
+}
+
+/** One Event as a compact row of time and title, with its details on tap. */
+function EventRow(props: { row: TimelineEvent }) {
+  const { row } = props;
+  const classes = ["event", row.cancelled ? "cancelled" : "", row.earlier ? "earlier" : ""].filter(Boolean).join(" ");
+  return (
+    <details class={classes}>
+      <summary>
+        <span class="time">{timeLabel(row)}</span>
+        <span class="title">{row.cancelled ? <s>{row.title}</s> : row.title}</span>
+      </summary>
+      <dl>
+        <dt>When</dt>
+        <dd>{spanLabel(row.span)}</dd>
+        {row.place ? (
+          <>
+            <dt>Where</dt>
+            <dd>{row.place}</dd>
+          </>
+        ) : null}
+        {row.cancelled ? (
+          <>
+            <dt>Status</dt>
+            <dd>Cancelled</dd>
+          </>
+        ) : null}
+        {row.links.map((link) => (
+          <>
+            <dt>Original</dt>
+            <dd>
+              <a href={link} rel="noreferrer" target="_blank">
+                Open the original
+              </a>
+            </dd>
+          </>
+        ))}
+      </dl>
+    </details>
+  );
+}
+
+/** How the Event shows on its day: from and until, or all day. */
+function timeLabel(row: TimelineEvent): string {
+  if (row.from && row.until) return row.from === row.until ? row.from : `${row.from}–${row.until}`;
+  if (row.from) return `from ${row.from}`;
+  if (row.until) return `until ${row.until}`;
+  return "All day";
+}
+
+function spanLabel(span: TimelineEvent["span"]): string {
+  if (span.allDay) {
+    return span.firstDay === span.lastDay
+      ? `${dateLabel(span.firstDay)}, all day`
+      : `${dateLabel(span.firstDay)} – ${dateLabel(span.lastDay)}`;
+  }
+  const { start, end } = span;
+  return start.date === end.date
+    ? `${dateLabel(start.date)}, ${start.time} – ${end.time}`
+    : `${dateLabel(start.date)}, ${start.time} – ${dateLabel(end.date)}, ${end.time}`;
 }
 
 /** A round avatar: the photo, or the initial on a colour of its own. */

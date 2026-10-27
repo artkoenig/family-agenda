@@ -12,6 +12,7 @@ import {
   PostgresAdminSessionRepository,
   PostgresFamilyMemberRepository,
   PostgresFamilyRepository,
+  PostgresItemRepository,
   PostgresSignInFailureLog,
   PostgresSourceRepository,
   PostgresSourceTypeRepository,
@@ -26,6 +27,7 @@ import {
   createFamilyMemberAccess,
   createRecoveryKitAccess,
   createSourceAccess,
+  createSourcePolling,
   createSourceTypeAccess,
   createViewAccess,
   signInLimits,
@@ -36,6 +38,7 @@ import {
   type RecoveryKitAccess,
   type SecretStore,
   type SourceAccess,
+  type SourcePolling,
   type SourceTypeAccess,
   type ViewAccess,
 } from "@family-butler/application";
@@ -73,6 +76,8 @@ export type Application = {
   views: ViewAccess;
   sourceTypes: SourceTypeAccess;
   sources: SourceAccess;
+  /** Runs the Sources that are due; the worker does on each tick. */
+  polling: SourcePolling;
   close(): Promise<void>;
 };
 
@@ -112,12 +117,15 @@ export async function bootApplication(config: ApplicationConfig): Promise<Applic
     blobs: new FileBlobStore(config.blobDirectory),
   });
 
+  const timeZone = config.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const items = new PostgresItemRepository(postgres.db);
   const views = createViewAccess({
     clock,
-    timeZone: config.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
+    timeZone,
     families,
     members,
     views: new PostgresViewRepository(postgres.db),
+    items,
   });
 
   const registry = await SourceRegistry.discover([
@@ -141,6 +149,15 @@ export async function bootApplication(config: ApplicationConfig): Promise<Applic
     sources: sourceRepository,
     secrets,
   });
+  const polling = createSourcePolling({
+    clock,
+    timeZone,
+    registry,
+    sourceTypes: sourceTypeRepository,
+    sources: sourceRepository,
+    secrets,
+    items,
+  });
   try {
     await sourceTypes.start();
   } catch (error) {
@@ -156,6 +173,7 @@ export async function bootApplication(config: ApplicationConfig): Promise<Applic
     views,
     sourceTypes,
     sources,
+    polling,
     close: () => postgres.close(),
   };
 }

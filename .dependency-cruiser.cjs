@@ -10,7 +10,7 @@ module.exports = {
       name: "domain-imports-nothing",
       comment: "The domain is plain TypeScript: no npm packages, no Node.js modules, no other packages.",
       severity: "error",
-      from: { path: "^packages/domain/" },
+      from: { path: "^packages/domain/src/" },
       to: { pathNot: "^packages/domain/" },
     },
     {

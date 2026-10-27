@@ -6,6 +6,7 @@ import type { SecretStore } from "@family-butler/application";
 import pg from "pg";
 import { bootApplication, type Application, type ApplicationConfig } from "../../src/composition-root";
 import { FakeClock } from "./fake-clock";
+import { writeTestPluginPackage, type TestPluginPackage } from "./test-source-plugin";
 
 const serverUrl =
   process.env.TEST_DATABASE_URL ?? "postgres://postgres:postgres@localhost:5432/postgres";
@@ -15,6 +16,8 @@ export type TestOptions = {
   secretStore?: SecretStore;
   /** The application version the Instance runs, as an update would change it. */
   applicationVersion?: string;
+  /** Test plugins installed as workspace packages before the first boot. */
+  sourcePlugins?: TestPluginPackage[];
 };
 
 export type TestInstance = {
@@ -51,6 +54,8 @@ export async function bootForTest(options: TestOptions = {}): Promise<TestInstan
   const pluginDirectory = join(keyDirectory, "plugins");
   await mkdir(workspacePackages);
   await mkdir(pluginDirectory);
+  const { sourcePlugins = [], ...applicationOptions } = options;
+  for (const plugin of sourcePlugins) await writeTestPluginPackage(workspacePackages, plugin);
 
   const clock = new FakeClock(new Date("2026-09-14T07:00:00Z"));
   let config: ApplicationConfig = {
@@ -62,7 +67,7 @@ export async function bootForTest(options: TestOptions = {}): Promise<TestInstan
     applicationVersion: "1.0.0",
     timeZone: "Europe/Berlin",
     clock,
-    ...options,
+    ...applicationOptions,
   };
 
   const instance: TestInstance = {
