@@ -525,7 +525,7 @@ export class PostgresItemRepository implements ItemRepository {
         and(
           eq(items.familyId, familyId),
           isNotNull(items.folded),
-          to ? lte(items.windowFrom, to) : isNotNull(items.windowFrom),
+          to ? lte(items.windowFrom, to) : undefined,
           gte(items.windowTo, from),
         ),
       )

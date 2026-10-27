@@ -80,8 +80,8 @@ export type ViewPage = {
 };
 
 /**
- * An Event as an entry of a View's feed. Until there are Attribution Rules, every Event concerns
- * the whole Family, so the feed's filter to the preselected Family Members never drops it.
+ * An Event in a View's feed. Until there are Attribution Rules, every Event concerns the whole
+ * Family, so every feed carries it, whomever its View preselects, and without names in its title.
  */
 export type FeedEvent = {
   itemId: ItemId;
@@ -101,7 +101,7 @@ export type ViewFeed = {
 };
 
 /** How many days back a feed reaches, today not counted. */
-export const feedDaysBack = 30;
+const feedDaysBack = 30;
 
 /** Lets every View open, as on the local listener (ADR-0003). */
 export const openViewAccess: ViewAccessPolicy = { mayOpen: () => Promise.resolve(true) };
@@ -109,19 +109,27 @@ export const openViewAccess: ViewAccessPolicy = { mayOpen: () => Promise.resolve
 export function createViewAccess(deps: ViewsDeps) {
   const { clock, timeZone, families, members, views, items } = deps;
 
+  /**
+   * The Family's Events that may touch the days from `first` to `last`, or all later days if
+   * `last` is null; the caller decides by the Family's time zone.
+   */
+  async function eventsAround(familyId: FamilyId, first: LocalDate, last: LocalDate | null) {
+    // A day lasts at most 26 hours, and no time zone is more than 14 hours from UTC.
+    const day = 24 * 60 * 60 * 1000;
+    const from = new Date(new Date(`${first}T00:00:00Z`).getTime() - day);
+    const to = last ? new Date(new Date(`${addDays(last, 1)}T00:00:00Z`).getTime() + day) : null;
+    return (await items.overlapping(familyId, from, to)).flatMap((item) => {
+      const event = item.kind === "event" ? eventOf(item.folded) : null;
+      return event ? [{ id: item.id, event, links: item.links }] : [];
+    });
+  }
+
   /** The Family's Events on each of the days, in order of time. */
   async function timelineOf(familyId: FamilyId, dates: LocalDate[], now: Date): Promise<ViewPage["days"]> {
     const first = dates[0];
     const last = dates.at(-1);
     if (!first || !last) return [];
-    // A day lasts at most 26 hours, and no time zone is more than 14 hours from UTC.
-    const day = 24 * 60 * 60 * 1000;
-    const from = new Date(new Date(`${first}T00:00:00Z`).getTime() - day);
-    const to = new Date(new Date(`${addDays(last, 1)}T00:00:00Z`).getTime() + day);
-    const events = (await items.overlapping(familyId, from, to)).flatMap((item) => {
-      const event = item.kind === "event" ? eventOf(item.folded) : null;
-      return event ? [{ id: item.id, event, links: item.links }] : [];
-    });
+    const events = await eventsAround(familyId, first, last);
     return dates.map((date) => ({
       date,
       items: events
@@ -241,13 +249,10 @@ export function createViewAccess(deps: ViewsDeps) {
       if (!view || !(await input.access.mayOpen(view.id))) return null;
       const generatedAt = clock.now();
       const firstDay = addDays(localDateTime(generatedAt, timeZone).date, -feedDaysBack);
-      // No time zone is more than 14 hours from UTC.
-      const from = new Date(new Date(`${firstDay}T00:00:00Z`).getTime() - 24 * 60 * 60 * 1000);
-      const events = (await items.overlapping(view.familyId, from, null)).flatMap((item) => {
-        const event = item.kind === "event" ? eventOf(item.folded) : null;
-        if (!event || lastDayOf(event.span, timeZone) < firstDay) return [];
+      const events = (await eventsAround(view.familyId, firstDay, null)).flatMap(({ id: itemId, event }) => {
+        if (lastDayOf(event.span, timeZone) < firstDay) return [];
         const { title, span, place, cancelled } = event;
-        return [{ itemId: item.id, title, span, when: onClocks(span), place, cancelled }];
+        return [{ itemId, title, span, when: onClocks(span), place, cancelled }];
       });
       return { id: view.id, generatedAt, events: events.sort(byStart) };
     },
