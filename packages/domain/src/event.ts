@@ -57,11 +57,17 @@ export function spanOnDay(
   if (span.allDay) return span.firstDay <= day && day <= span.lastDay ? { from: null, until: null } : null;
   const start = localDateTime(span.start, timeZone);
   const end = localDateTime(span.end, timeZone);
-  // An end at midnight belongs to the day before, unless the Event has no duration.
-  const lastDay =
-    span.end > span.start ? localDateTime(new Date(span.end.getTime() - 1), timeZone).date : start.date;
+  const lastDay = lastDayOf(span, timeZone);
   if (day < start.date || day > lastDay) return null;
   return { from: day === start.date ? start.time : null, until: day === lastDay ? end.time : null };
+}
+
+/** The last day of the Family the span touches. */
+export function lastDayOf(span: TimeSpan, timeZone: string): LocalDate {
+  if (span.allDay) return span.lastDay;
+  // An end at midnight belongs to the day before, unless the Event has no duration.
+  const end = span.end > span.start ? new Date(span.end.getTime() - 1) : span.start;
+  return localDateTime(end, timeZone).date;
 }
 
 /**

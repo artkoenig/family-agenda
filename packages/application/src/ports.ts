@@ -298,8 +298,11 @@ export interface ItemRepository {
     run: SourceRun,
     recompute: (kind: ItemKind, revisions: FoldableRevision[]) => ItemProjection,
   ): Promise<void>;
-  /** The Family's Items whose window overlaps the given time, with the links of their Origins. */
-  overlapping(familyId: FamilyId, from: Date, to: Date): Promise<ProjectedItem[]>;
+  /**
+   * The Family's Items whose window overlaps the given time, with the links of their Origins; a
+   * `to` of null means all of the future.
+   */
+  overlapping(familyId: FamilyId, from: Date, to: Date | null): Promise<ProjectedItem[]>;
 }
 
 export interface JobQueue {

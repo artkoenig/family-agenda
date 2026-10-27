@@ -517,12 +517,17 @@ export class PostgresItemRepository implements ItemRepository {
     });
   }
 
-  async overlapping(familyId: FamilyId, from: Date, to: Date): Promise<ProjectedItem[]> {
+  async overlapping(familyId: FamilyId, from: Date, to: Date | null): Promise<ProjectedItem[]> {
     const rows = await this.db
       .select({ id: items.id, kind: items.kind, folded: items.folded })
       .from(items)
       .where(
-        and(eq(items.familyId, familyId), isNotNull(items.folded), lte(items.windowFrom, to), gte(items.windowTo, from)),
+        and(
+          eq(items.familyId, familyId),
+          isNotNull(items.folded),
+          to ? lte(items.windowFrom, to) : undefined,
+          gte(items.windowTo, from),
+        ),
       )
       .orderBy(asc(items.windowFrom), asc(items.createdAt));
     if (rows.length === 0) return [];

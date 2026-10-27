@@ -3,6 +3,7 @@ import {
   addDays,
   eventOf,
   isAcceptableHorizon,
+  lastDayOf,
   localDateTime,
   spanOnDay,
   type Event,
@@ -11,6 +12,7 @@ import {
   type ItemId,
   type LocalDate,
   type LocalTime,
+  type TimeSpan,
   type ViewId,
 } from "@family-butler/domain";
 import { summariseFamilyMember, type FamilyMemberSummary } from "./family-members";
@@ -77,25 +79,57 @@ export type ViewPage = {
   days: { date: LocalDate; items: TimelineEvent[] }[];
 };
 
+/**
+ * An Event in a View's feed. Until there are Attribution Rules, every Event concerns the whole
+ * Family, so every feed carries it, whomever its View preselects, and without names in its title.
+ */
+export type FeedEvent = {
+  itemId: ItemId;
+  title: string;
+  span: TimeSpan;
+  /** The span on the Family's clocks, for the details. */
+  when: TimelineEvent["span"];
+  place: string | null;
+  cancelled: boolean;
+};
+
+export type ViewFeed = {
+  id: ViewId;
+  generatedAt: Date;
+  /** Those of the last 30 days and all of the future, in order of time. */
+  events: FeedEvent[];
+};
+
+/** How many days back a feed reaches, today not counted. */
+const feedDaysBack = 30;
+
 /** Lets every View open, as on the local listener (ADR-0003). */
 export const openViewAccess: ViewAccessPolicy = { mayOpen: () => Promise.resolve(true) };
 
 export function createViewAccess(deps: ViewsDeps) {
   const { clock, timeZone, families, members, views, items } = deps;
 
+  /**
+   * The Family's Events that may touch the days from `first` to `last`, or all later days if
+   * `last` is null; the caller decides by the Family's time zone.
+   */
+  async function eventsAround(familyId: FamilyId, first: LocalDate, last: LocalDate | null) {
+    // A day lasts at most 26 hours, and no time zone is more than 14 hours from UTC.
+    const day = 24 * 60 * 60 * 1000;
+    const from = new Date(new Date(`${first}T00:00:00Z`).getTime() - day);
+    const to = last ? new Date(new Date(`${addDays(last, 1)}T00:00:00Z`).getTime() + day) : null;
+    return (await items.overlapping(familyId, from, to)).flatMap((item) => {
+      const event = item.kind === "event" ? eventOf(item.folded) : null;
+      return event ? [{ id: item.id, event, links: item.links }] : [];
+    });
+  }
+
   /** The Family's Events on each of the days, in order of time. */
   async function timelineOf(familyId: FamilyId, dates: LocalDate[], now: Date): Promise<ViewPage["days"]> {
     const first = dates[0];
     const last = dates.at(-1);
     if (!first || !last) return [];
-    // A day lasts at most 26 hours, and no time zone is more than 14 hours from UTC.
-    const day = 24 * 60 * 60 * 1000;
-    const from = new Date(new Date(`${first}T00:00:00Z`).getTime() - day);
-    const to = new Date(new Date(`${addDays(last, 1)}T00:00:00Z`).getTime() + day);
-    const events = (await items.overlapping(familyId, from, to)).flatMap((item) => {
-      const event = item.kind === "event" ? eventOf(item.folded) : null;
-      return event ? [{ id: item.id, event, links: item.links }] : [];
-    });
+    const events = await eventsAround(familyId, first, last);
     return dates.map((date) => ({
       date,
       items: events
@@ -119,14 +153,18 @@ export function createViewAccess(deps: ViewsDeps) {
       itemId,
       title: event.title,
       ...on,
-      span: span.allDay
-        ? span
-        : { allDay: false, start: localDateTime(span.start, timeZone), end: localDateTime(span.end, timeZone) },
+      span: onClocks(span),
       place: event.place,
       cancelled: event.cancelled,
       earlier: !span.allDay && span.end <= now,
       links,
     };
+  }
+
+  function onClocks(span: TimeSpan): TimelineEvent["span"] {
+    return span.allDay
+      ? span
+      : { allDay: false, start: localDateTime(span.start, timeZone), end: localDateTime(span.end, timeZone) };
   }
 
   /** The settings with the preselected Family Members in the Family's order, or a problem. */
@@ -200,6 +238,24 @@ export function createViewAccess(deps: ViewsDeps) {
         days: await timelineOf(view.familyId, dates, instant),
       };
     },
+
+    /**
+     * The View as a calendar feed, or null if there is no such View or `access` refuses it: the
+     * Events of the last 30 days and all of the future, cancelled ones included, whatever the
+     * View's horizon.
+     */
+    async feed(id: ViewId, input: { access: ViewAccessPolicy }): Promise<ViewFeed | null> {
+      const view = await views.findById(id);
+      if (!view || !(await input.access.mayOpen(view.id))) return null;
+      const generatedAt = clock.now();
+      const firstDay = addDays(localDateTime(generatedAt, timeZone).date, -feedDaysBack);
+      const events = (await eventsAround(view.familyId, firstDay, null)).flatMap(({ id: itemId, event }) => {
+        if (lastDayOf(event.span, timeZone) < firstDay) return [];
+        const { title, span, place, cancelled } = event;
+        return [{ itemId, title, span, when: onClocks(span), place, cancelled }];
+      });
+      return { id: view.id, generatedAt, events: events.sort(byStart) };
+    },
   };
 }
 
@@ -208,5 +264,11 @@ export type ViewAccess = ReturnType<typeof createViewAccess>;
 /** All-day rows first, then by the time they start on the day, earliest first. */
 function byTime(a: TimelineEvent, b: TimelineEvent): number {
   const key = (row: TimelineEvent) => (row.span.allDay ? "" : (row.from ?? "00:00"));
+  return key(a).localeCompare(key(b)) || a.title.localeCompare(b.title);
+}
+
+/** By the day and time they start, all-day ones first on their day. */
+function byStart(a: FeedEvent, b: FeedEvent): number {
+  const key = ({ when }: FeedEvent) => (when.allDay ? when.firstDay : `${when.start.date} ${when.start.time}`);
   return key(a).localeCompare(key(b)) || a.title.localeCompare(b.title);
 }
