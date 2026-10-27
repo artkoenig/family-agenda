@@ -40,6 +40,25 @@ describe("first Admin over HTTP", () => {
     ).toBe(404);
   });
 
+  it("asks for the Family Language, preselected from the browser's languages", async () => {
+    const selected = async (acceptLanguage?: string) => {
+      const page = await (await instance.get("/setup", acceptLanguage ? { headers: { "accept-language": acceptLanguage } } : {})).text();
+      return /<option value="(\w+)" selected=""/.exec(page)?.[1];
+    };
+
+    expect(await selected("de-DE,de;q=0.9,en;q=0.8")).toBe("de");
+    expect(await selected("fr-FR,fr;q=0.9,de;q=0.7,en;q=0.5")).toBe("de");
+    expect(await selected("en-US,de;q=0.5")).toBe("en");
+    expect(await selected("fr-FR")).toBe("en");
+    expect(await selected()).toBe("en");
+  });
+
+  it("sets the Family Language with the first Admin", async () => {
+    await instance.post("/setup", { email: "anna@example.org", password: "correct horse battery", language: "de" });
+
+    expect((await instance.app.languages.current()).language).toBe("de");
+  });
+
   it("shows what is wrong with the form", async () => {
     const response = await instance.post("/setup", { email: "anna@example.org", password: "short" });
 

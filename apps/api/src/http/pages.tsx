@@ -2,6 +2,7 @@ import {
   pollIntervalRange,
   type AdminSummary,
   type FamilyMemberSummary,
+  type LanguageSettings,
   type LlmEndpointSummary,
   type MessageDetails,
   type RecoveryKit,
@@ -12,16 +13,34 @@ import {
 } from "@family-agenda/application";
 import {
   defaultHorizonDays,
+  familyLanguages,
   horizonDaysRange,
+  localeOf,
   maximumNameLength,
   minimumPasswordLength,
   photoTypes,
+  type FamilyLanguage,
+  type OcrLanguage,
 } from "@family-agenda/domain";
 import type { Child } from "hono/jsx";
+import { familyLanguageInEnglish, familyLanguageNames, listed, ocrLanguageName } from "./language-names";
 import { Layout, Problem } from "./layout";
 import { Avatar, viewUrl } from "./view-page";
 
-export function FirstAdminPage(props: { email?: string; problem?: string }) {
+/** The Family Languages to choose from, the given one selected. */
+function FamilyLanguageOptions(props: { selected: FamilyLanguage }) {
+  return (
+    <>
+      {familyLanguages.map((language) => (
+        <option value={language} selected={language === props.selected}>
+          {familyLanguageNames[language]}
+        </option>
+      ))}
+    </>
+  );
+}
+
+export function FirstAdminPage(props: { language: FamilyLanguage; email?: string; problem?: string }) {
   return (
     <Layout title="Create the first Admin" narrow>
       <h1 class="fam-title">Create the first Admin</h1>
@@ -32,6 +51,11 @@ export function FirstAdminPage(props: { email?: string; problem?: string }) {
         <input id="email" name="email" type="email" required autocomplete="username" value={props.email} />
         <label for="password">Password (at least {minimumPasswordLength} characters)</label>
         <input id="password" name="password" type="password" required minlength={minimumPasswordLength} autocomplete="new-password" />
+        <label for="language">Family Language</label>
+        <select id="language" name="language">
+          <FamilyLanguageOptions selected={props.language} />
+        </select>
+        <small>Dates are written in it, and scanned letters are read in it. You can change both in the settings.</small>
         <button type="submit">Create Admin</button>
       </form>
     </Layout>
@@ -63,12 +87,14 @@ export type SettingsSummary = {
   llm: { model: string; local: boolean } | null;
   admins: number;
   kitSaved: boolean;
+  /** The Family Language, the OCR languages, and whether one of their models is missing. */
+  language: { family: FamilyLanguage; ocr: OcrLanguage[]; missing: boolean };
 };
 
 /** The Admin a page is shown to, whether the new-Source-Types banner shows, and the settings list. */
 export type SignedInAdmin = AdminSummary & { newSourceTypes: boolean; settings: SettingsSummary };
 
-type SectionId = "members" | "views" | "sources" | "source-types" | "llm" | "admins" | "recovery-kit";
+type SectionId = "members" | "views" | "language" | "sources" | "source-types" | "llm" | "admins" | "recovery-kit";
 
 type Summary = { text: string; tone?: "attention" };
 
@@ -90,6 +116,15 @@ const settingsGroups: { name: string; sections: { id: SectionId; href: string; l
         href: "/admin/views",
         label: "Views",
         summary: ({ settings }) => ({ text: settings.views > 0 ? `${plural(settings.views, "View", "Views")} on the home network` : "None yet" }),
+      },
+      {
+        id: "language",
+        href: "/admin/language",
+        label: "Language",
+        summary: ({ settings: { language } }) => ({
+          text: `${familyLanguageInEnglish(language.family)}; OCR in ${listed(language.ocr.map(ocrLanguageName))}`,
+          ...(language.missing ? { tone: "attention" as const } : {}),
+        }),
       },
     ],
   },
@@ -156,6 +191,12 @@ function SectionIcon(props: { id: SectionId }) {
       <>
         <rect x="3" y="4" width="18" height="13" rx="2.5"></rect>
         <path d="M9 21h6M12 17v4"></path>
+      </>
+    ),
+    language: (
+      <>
+        <circle cx="12" cy="12" r="9"></circle>
+        <path d="M3 12h18M12 3c2.5 2.6 3.7 5.6 3.7 9s-1.2 6.4-3.7 9c-2.5-2.6-3.7-5.6-3.7-9S9.5 5.6 12 3z"></path>
       </>
     ),
     sources: (
@@ -1011,9 +1052,156 @@ export function LlmEndpointPage(props: {
   );
 }
 
+/** OCR languages in Tesseract's notation, as the forms post them: `deu+eng`. */
+const ocrList = (languages: OcrLanguage[]) => languages.join("+");
+
+/** A form that saves the OCR languages as they would be after its one button. */
+function OcrLanguagesButton(props: { languages: OcrLanguage[]; label: string; quiet?: boolean }) {
+  return (
+    <form method="post" action="/admin/language/ocr" class="fam-entry__form">
+      <input type="hidden" name="ocrLanguages" value={ocrList(props.languages)} />
+      <button type="submit" class={`fam-button ${props.quiet ? "fam-button--quiet" : "fam-button--secondary"}`}>
+        {props.label}
+      </button>
+    </form>
+  );
+}
+
+/** Downloads one language's model. */
+function DownloadButton(props: { language: OcrLanguage }) {
+  return (
+    <form method="post" action="/admin/language/models" class="fam-entry__form">
+      <input type="hidden" name="language" value={props.language} />
+      <button type="submit" class="fam-button fam-button--secondary">
+        Download {ocrLanguageName(props.language)}
+      </button>
+    </form>
+  );
+}
+
+const byName = (a: OcrLanguage, b: OcrLanguage) => ocrLanguageName(a).localeCompare(ocrLanguageName(b), "en");
+
+export function LanguagePage(props: { admin: SignedInAdmin; languages: LanguageSettings; problem?: string }) {
+  const { languages } = props;
+  const selected = languages.ocrLanguages.map((ocr) => ocr.language);
+  const addable = languages.models.filter((model) => !model.selected).map((model) => model.language).sort(byName);
+  const without = (language: OcrLanguage) => selected.filter((other) => other !== language);
+  const movedUp = (index: number) => selected.toSpliced(index - 1, 2, ...selected.slice(index - 1, index + 1).reverse());
+  return (
+    <AdminLayout title="Language" admin={props.admin} current="language">
+      <SectionHeader
+        title="Language"
+        description="The Family Language decides how dates are written, on the Views and here. Scanned letters are read in the OCR languages."
+      />
+      <Problem message={props.problem} />
+      <h2>Family Language</h2>
+      <form method="post" action="/admin/language" class="fam-form-wide">
+        <div class="fam-field">
+          <label for="language">Family Language</label>
+          <select id="language" name="language">
+            <FamilyLanguageOptions selected={languages.language} />
+          </select>
+          <small>Changing it leaves the OCR languages as they are.</small>
+        </div>
+        <button type="submit">Save</button>
+      </form>
+
+      <h2>OCR languages</h2>
+      <p>
+        Without an LLM endpoint that reads images, Tesseract reads scanned pages on this Instance, in these languages
+        together, the first one first. Only languages whose model is installed can be chosen.
+      </p>
+      <ul class="fam-panel fam-entries">
+        {languages.ocrLanguages.map((ocr, index) => (
+          <li class="fam-entry fam-entry--wrap">
+            <span class="fam-entry__main">
+              <span class="fam-entry__name">{ocrLanguageName(ocr.language)}</span>
+              {ocr.installed ? (
+                <span class="fam-entry__meta">{index === 0 ? "Tried first" : `Tried ${ordinal(index + 1)}`}</span>
+              ) : (
+                <span class="fam-status fam-status--waiting">Not installed</span>
+              )}
+            </span>
+            {ocr.installed ? null : <DownloadButton language={ocr.language} />}
+            {index > 0 ? <OcrLanguagesButton languages={movedUp(index)} label="Move up" /> : null}
+            {selected.length > 1 ? <OcrLanguagesButton languages={without(ocr.language)} label="Remove" quiet /> : null}
+          </li>
+        ))}
+      </ul>
+      {languages.ocrLanguages.some((ocr) => !ocr.installed) ? (
+        <p class="fam-problem">
+          Scanned letters are not read while a model is missing; their mails say so. Download it, or remove the language.
+        </p>
+      ) : null}
+      {addable.length > 0 ? (
+        <form method="post" action="/admin/language/ocr" class="fam-form-wide">
+          <div class="fam-field">
+            <label for="add-ocr">Add an OCR language</label>
+            <select id="add-ocr" name="ocrLanguages">
+              {addable.map((language) => (
+                <option value={ocrList([...selected, language])}>{ocrLanguageName(language)}</option>
+              ))}
+            </select>
+          </div>
+          <button type="submit" class="fam-button fam-button--secondary">
+            Add
+          </button>
+        </form>
+      ) : null}
+
+      <h2>Language models</h2>
+      <p>
+        The models Tesseract reads with, in the <code>tessdata</code> volume. Others are downloaded from
+        tesseract-ocr/tessdata_fast and checked against the checksums shipped with Family Agenda. Without internet
+        access, put a <code>.traineddata</code> file into the volume.
+      </p>
+      <ul class="fam-panel fam-entries">
+        {languages.models.map((model) => (
+          <li class="fam-entry fam-entry--wrap">
+            <span class="fam-entry__main">
+              <span class="fam-entry__name">{ocrLanguageName(model.language)}</span>
+              <span class="fam-entry__meta">
+                {model.bundled ? "Comes with Family Agenda" : "Downloaded"}
+                {model.selected ? " · used for OCR" : null}
+              </span>
+            </span>
+            {model.bundled || model.selected ? null : (
+              <form method="post" action={`/admin/language/models/${model.language}/remove`} class="fam-entry__form">
+                <button type="submit" class="fam-button fam-button--danger">
+                  Remove {ocrLanguageName(model.language)}
+                </button>
+              </form>
+            )}
+          </li>
+        ))}
+      </ul>
+      {languages.downloadable.length > 0 ? (
+        <form method="post" action="/admin/language/models" class="fam-form-wide">
+          <div class="fam-field">
+            <label for="download">Download a model</label>
+            <select id="download" name="language">
+              {[...languages.downloadable].sort(byName).map((language) => (
+                <option value={language}>{ocrLanguageName(language)}</option>
+              ))}
+            </select>
+            <small>A model is a few megabytes and takes a moment to download.</small>
+          </div>
+          <button type="submit" class="fam-button fam-button--secondary">
+            Download
+          </button>
+        </form>
+      ) : null}
+    </AdminLayout>
+  );
+}
+
+function ordinal(position: number): string {
+  return position === 2 ? "second" : position === 3 ? "third" : `${position}th`;
+}
+
 export function MessagePage(props: { admin: SignedInAdmin; message: MessageDetails; timeZone: string }) {
   const { message } = props;
-  const sentAt = new Intl.DateTimeFormat("en-GB", {
+  const sentAt = new Intl.DateTimeFormat(localeOf(props.admin.settings.language.family), {
     dateStyle: "full",
     timeStyle: "short",
     timeZone: props.timeZone,

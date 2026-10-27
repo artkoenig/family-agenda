@@ -11,6 +11,7 @@ x-app: &app
     MASTER_KEY_FILE: /var/lib/family-agenda/master-key/master.key
     BLOB_DIRECTORY: /var/lib/family-agenda/blobs
     PLUGIN_DIRECTORY: /var/lib/family-agenda/plugins
+    TESSDATA_DIRECTORY: /var/lib/family-agenda/tessdata
     # The Family's time zone, which decides where a View's days start.
     TZ: ${TZ:-Europe/Berlin}
   volumes:
@@ -20,6 +21,9 @@ x-app: &app
     - blobs:/var/lib/family-agenda/blobs
     # Source plugins added to the stock image, one package directory each (ADR-0010).
     - plugins:/var/lib/family-agenda/plugins
+    # Tesseract models: the bundled ones linked on start, the ones Admins download, and any put
+    # here by hand as <code>.traineddata for an Instance without internet access (ADR-0012).
+    - tessdata:/var/lib/family-agenda/tessdata
   depends_on:
     postgres:
       condition: service_healthy
@@ -59,3 +63,4 @@ volumes:
   master-key:
   blobs:
   plugins:
+  tessdata:

@@ -103,5 +103,9 @@ describe("the LLM endpoint and mail over HTTP", () => {
     expect(message).toContain("lehrerin@schule.example.org");
     expect(message).toContain("plan.pdf");
     expect(message).toContain("Could not be read for extraction:");
+    expect(message).toContain("Monday, 14 September 2026 at 08:00");
+
+    await instance.app.languages.setLanguage("de");
+    expect(await (await instance.get(link!, { cookie })).text()).toContain("Montag, 14. September 2026 um 08:00");
   });
 });

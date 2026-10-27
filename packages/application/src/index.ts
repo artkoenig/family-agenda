@@ -2,6 +2,7 @@ export * from "./activity";
 export * from "./admin-access";
 export * from "./extraction";
 export * from "./family-members";
+export * from "./languages";
 export * from "./llm-endpoint";
 export * from "./messages";
 export * from "./polling";
