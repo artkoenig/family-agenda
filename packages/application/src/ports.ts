@@ -506,3 +506,16 @@ export interface JobQueue {
   send(name: string, data: object): Promise<void>;
   work(name: string, handler: (data: unknown) => Promise<void>): Promise<void>;
 }
+
+/** What the worker is busy with in the background: running Sources, or extracting messages. */
+export type ActivityKind = "polling" | "extracting";
+
+/** The worker's current activity, as far as it got: `done` of `total` Sources or messages. */
+export type BackgroundActivity = { kind: ActivityKind; done: number; total: number; updatedAt: Date };
+
+/** The Family's one current background activity, shared between the worker and the api. */
+export interface ActivityRepository {
+  find(familyId: FamilyId): Promise<BackgroundActivity | null>;
+  save(familyId: FamilyId, activity: BackgroundActivity): Promise<void>;
+  clear(familyId: FamilyId): Promise<void>;
+}

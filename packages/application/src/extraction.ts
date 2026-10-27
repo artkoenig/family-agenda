@@ -13,6 +13,7 @@ import {
   type RawMessageId,
   type TimeSpan,
 } from "@family-butler/domain";
+import type { ActivityLog } from "./activity";
 import { llmEndpointOf } from "./llm-endpoint";
 import type {
   AttachmentProblem,
@@ -49,6 +50,8 @@ export type ExtractionDeps = {
   blobs: BlobStore;
   extractor: Extractor;
   textExtractor: TextExtractor;
+  /** Where the run shows as the worker's activity. */
+  activity: ActivityLog;
 };
 
 export type ExtractionReport = {
@@ -67,7 +70,7 @@ const batchSize = 20;
  * message does not say.
  */
 export function createExtraction(deps: ExtractionDeps) {
-  const { clock, timeZone, items, blobs, extractor, textExtractor } = deps;
+  const { clock, timeZone, items, blobs, extractor, textExtractor, activity } = deps;
 
   /**
    * The text of a PDF attachment: its text layer, and the pages that are scans read by a
@@ -151,6 +154,29 @@ export function createExtraction(deps: ExtractionDeps) {
     return result;
   }
 
+  /** Extracts one message; the failure, if it failed. */
+  async function extractMessage(message: PendingMessage, endpoint: LlmEndpoint): Promise<ExtractionReport["failed"][number] | null> {
+    const bytes = await blobs.get(message.text);
+    if (!bytes) {
+      // Its text was deleted before it was read, so it states nothing.
+      await items.recordExtraction(
+        {
+          messageId: message.id,
+          familyId: message.familyId,
+          sourceId: message.sourceId,
+          at: clock.now(),
+          revisions: [],
+          attachmentProblems: [],
+        },
+        project,
+      );
+      return null;
+    }
+    const full = await fullTextOf(message, new TextDecoder().decode(bytes), endpoint);
+    const result = full.ok ? await extractOne(message, full.text, full.problems, endpoint) : full;
+    return result.ok ? null : { messageId: message.id, problem: result.problem, message: result.message };
+  }
+
   return {
     /**
      * Extracts the messages that wait for it, as the worker does on each tick. Without an LLM
@@ -161,32 +187,19 @@ export function createExtraction(deps: ExtractionDeps) {
       const report: ExtractionReport = { extracted: [], failed: [] };
       const endpoint = await llmEndpointOf(deps);
       if (!endpoint) return report;
-      for (const message of await items.pendingMessages(batchSize)) {
-        const bytes = await blobs.get(message.text);
-        if (!bytes) {
-          // Its text was deleted before it was read, so it states nothing.
-          await items.recordExtraction(
-            {
-              messageId: message.id,
-              familyId: message.familyId,
-              sourceId: message.sourceId,
-              at: clock.now(),
-              revisions: [],
-              attachmentProblems: [],
-            },
-            project,
-          );
-          report.extracted.push(message.id);
-          continue;
+      const pending = await items.pendingMessages(batchSize);
+      if (pending.length === 0) return report;
+      const progress = await activity.begin("extracting", pending.length);
+      try {
+        for (const message of pending) {
+          const failure = await extractMessage(message, endpoint);
+          if (failure) report.failed.push(failure);
+          else report.extracted.push(message.id);
+          await progress.advance();
+          if (failure && failure.problem !== "invalid-output") break;
         }
-        const full = await fullTextOf(message, new TextDecoder().decode(bytes), endpoint);
-        const result = full.ok ? await extractOne(message, full.text, full.problems, endpoint) : full;
-        if (result.ok) {
-          report.extracted.push(message.id);
-          continue;
-        }
-        report.failed.push({ messageId: message.id, problem: result.problem, message: result.message });
-        if (result.problem !== "invalid-output") break;
+      } finally {
+        await progress.end();
       }
       return report;
     },

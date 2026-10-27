@@ -1,3 +1,4 @@
+export * from "./activity";
 export * from "./admin-access";
 export * from "./extraction";
 export * from "./family-members";
