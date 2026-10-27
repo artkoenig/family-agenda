@@ -2,7 +2,7 @@
  * The contract a Source plugin implements (ADR-0010). It is the only Family Butler package a
  * plugin may import.
  */
-export const sdkVersion = "0.1.0";
+export const sdkVersion = "0.2.0";
 
 export type SourcePluginIdentity = {
   /** Stable id of the Source Type, such as `ics`. Never changes once released. */
@@ -115,7 +115,17 @@ export type Origin = {
   /** An `http` or `https` address where the Family can look at the original, if there is one. */
   link?: string;
   content:
-    | { kind: "raw-message"; text: string; attachments: Attachment[] }
+    | {
+        /** A message to extract Items from, such as a mail; its time is the send time. */
+        kind: "raw-message";
+        text: string;
+        attachments: Attachment[];
+        /**
+         * The conversation it belongs to within the Source, such as a mail thread, so that a later
+         * message can update the Items an earlier one stated.
+         */
+        thread?: string;
+      }
     | { kind: "revisions"; revisions: PluginRevision[] };
 };
 

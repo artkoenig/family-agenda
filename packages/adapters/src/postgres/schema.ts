@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
   bigserial,
   boolean,
@@ -209,6 +210,10 @@ export const revisions = pgTable(
     sourceTime: timestamp("source_time", { withTimezone: true }).notNull(),
     receivedAt: timestamp("received_at", { withTimezone: true }).notNull(),
     accepted: boolean("accepted").notNull(),
+    /** Why it was rejected automatically, such as an evidence quote not found in its message. */
+    rejection: text("rejection"),
+    /** The words of its message it was extracted from; null for a structured Source. */
+    evidence: text("evidence"),
     /** A hash of what the Revision states, so that a Source stating it again adds nothing. */
     fingerprint: text("fingerprint").notNull(),
   },
@@ -217,3 +222,66 @@ export const revisions = pgTable(
     unique("revisions_origin_fingerprint_unique").on(table.originId, table.fingerprint),
   ],
 );
+
+/**
+ * Messages to extract Items from, one per Origin. Their text and attachments are files in the
+ * BlobStore; Postgres keeps only where they are and a hash of them (ADR-0006).
+ */
+export const rawMessages = pgTable(
+  "raw_messages",
+  {
+    id: uuid("id").primaryKey(),
+    familyId: uuid("family_id")
+      .notNull()
+      .references(() => families.id),
+    originId: uuid("origin_id")
+      .notNull()
+      .unique()
+      .references(() => origins.id),
+    sourceId: uuid("source_id").notNull(),
+    /** The conversation within the Source, such as a mail thread. */
+    thread: text("thread"),
+    sentAt: timestamp("sent_at", { withTimezone: true }).notNull(),
+    textBlob: text("text_blob").notNull(),
+    textSha256: text("text_sha256").notNull(),
+    textSize: integer("text_size").notNull(),
+    receivedAt: timestamp("received_at", { withTimezone: true }).notNull(),
+    /** When it was extracted successfully, which happens once (ADR-0009); null while it waits. */
+    extractedAt: timestamp("extracted_at", { withTimezone: true }),
+  },
+  (table) => [
+    index("raw_messages_pending_idx").on(table.receivedAt).where(sql`${table.extractedAt} IS NULL`),
+    index("raw_messages_source_thread_idx").on(table.sourceId, table.thread),
+  ],
+);
+
+export const messageAttachments = pgTable(
+  "message_attachments",
+  {
+    id: uuid("id").primaryKey(),
+    rawMessageId: uuid("raw_message_id")
+      .notNull()
+      .references(() => rawMessages.id),
+    /** Its place among the message's attachments. */
+    position: integer("position").notNull(),
+    filename: text("filename").notNull(),
+    contentType: text("content_type").notNull(),
+    blob: text("blob").notNull(),
+    sha256: text("sha256").notNull(),
+    size: integer("size").notNull(),
+  },
+  (table) => [index("message_attachments_raw_message_id_idx").on(table.rawMessageId)],
+);
+
+/** The Family's one LLM endpoint; its API key is in the SecretStore. */
+export const llmEndpoints = pgTable("llm_endpoints", {
+  familyId: uuid("family_id")
+    .primaryKey()
+    .references(() => families.id),
+  baseUrl: text("base_url").notNull(),
+  model: text("model").notNull(),
+  apiKeyRef: text("api_key_ref"),
+  /** When an Admin acknowledged that third parties' messages are sent to it; null for a local one. */
+  acknowledgedAt: timestamp("acknowledged_at", { withTimezone: true }),
+  savedAt: timestamp("saved_at", { withTimezone: true }).notNull(),
+});

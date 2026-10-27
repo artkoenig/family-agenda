@@ -1,0 +1,27 @@
+{
+  "name": "@family-butler/source-imap",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "familyButler": {
+    "sourcePlugin": {
+      "entry": "./src/index.ts",
+      "sourceTypeId": "imap",
+      "displayName": "IMAP mailbox",
+      "sdkVersion": "0.2.0",
+      "description": "Reads the mails in one folder of a mailbox, such as a folder your mail filters fill with school mail, or a mailbox you forward school mail to. It only reads: it never marks, moves or deletes a mail.",
+      "needsLlm": true
+    }
+  },
+  "dependencies": {
+    "@family-butler/source-sdk": "workspace:*",
+    "imapflow": "2.4.0",
+    "mailparser": "3.9.38"
+  },
+  "devDependencies": {
+    "@types/mailparser": "^3.4.6"
+  }
+}

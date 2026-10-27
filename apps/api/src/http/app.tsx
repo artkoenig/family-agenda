@@ -14,6 +14,7 @@ import {
   photoTypes,
   type AdminId,
   type FamilyMemberId,
+  type RawMessageId,
   type SourceId,
   type ViewId,
 } from "@family-butler/domain";
@@ -31,6 +32,8 @@ import {
   AdminsPage,
   FamilyMembersPage,
   FirstAdminPage,
+  LlmEndpointPage,
+  MessagePage,
   RecoveryKitPage,
   recoveryKitText,
   SignInPage,
@@ -77,13 +80,17 @@ const problems = {
   "has-sources": "Remove the Sources of this Source Type before disabling it.",
   "source-type-not-enabled": "This Source Type is not enabled.",
   "unknown-source": "This Source does not exist.",
+  "invalid-endpoint-url": "Enter the base URL as an http or https address, such as http://ollama:11434/v1.",
+  "invalid-model": "Enter the name of the model.",
+  "third-parties-not-acknowledged":
+    "This server is outside your home network. Confirm that the text of third parties' messages is sent to it.",
   "invalid-interval": `The polling interval must be between ${pollIntervalRange.minSeconds / 60} minute and ${pollIntervalRange.maxSeconds / 86_400} days.`,
 } satisfies Record<string, string>;
 
 const htmx = readFileSync(createRequire(import.meta.url).resolve("htmx.org/dist/htmx.min.js"));
 
 export function createHttpApp(application: Application, options: HttpOptions) {
-  const { admins, recoveryKit, familyMembers, views, sourceTypes, sources } = application;
+  const { admins, recoveryKit, familyMembers, views, sourceTypes, sources, llmEndpoint, messages, timeZone } = application;
   const app = new Hono<Env>();
 
   const isHttps = (c: Context) =>
@@ -463,6 +470,41 @@ export function createHttpApp(application: Application, options: HttpOptions) {
   app.post("/admin/sources/:id/remove", async (c) => {
     await sources.remove(c.req.param("id") as SourceId);
     return c.redirect("/admin/sources", 303);
+  });
+
+  app.get("/admin/llm", async (c) =>
+    c.html(<LlmEndpointPage admin={c.get("admin")} endpoint={await llmEndpoint.current()} />),
+  );
+
+  app.post("/admin/llm", async (c) => {
+    const form = await c.req.parseBody();
+    const entered = { baseUrl: field(form, "baseUrl"), model: field(form, "model") };
+    const result = await llmEndpoint.save({
+      ...entered,
+      apiKey: field(form, "apiKey"),
+      removeApiKey: field(form, "removeApiKey") === "yes",
+      thirdPartiesAcknowledged: field(form, "thirdPartiesAcknowledged") === "yes",
+    });
+    if (!result.ok) {
+      const page = (
+        <LlmEndpointPage
+          admin={c.get("admin")}
+          endpoint={await llmEndpoint.current()}
+          entered={entered}
+          problem={problems[result.problem]}
+        />
+      );
+      return c.html(page, 400);
+    }
+    return c.redirect("/admin/llm", 303);
+  });
+
+  // Raw messages are third parties' words: only Admins open them, never a View.
+  app.get("/admin/messages/:id", async (c) => {
+    const message = await messages.open(c.req.param("id") as RawMessageId);
+    if (!message) return c.notFound();
+    c.header("cache-control", "no-store");
+    return c.html(<MessagePage admin={c.get("admin")} message={message} timeZone={timeZone} />);
   });
 
   return app;

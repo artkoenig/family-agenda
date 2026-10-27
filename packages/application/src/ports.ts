@@ -1,6 +1,7 @@
 import type {
   Act,
   Admin,
+  DateMention,
   BlobRef,
   AdminId,
   Email,
@@ -11,6 +12,9 @@ import type {
   FoldedItem,
   ItemId,
   ItemKind,
+  LocalDate,
+  LocalTime,
+  RawMessageId,
   SourceId,
   SourceTypeId,
   View,
@@ -162,14 +166,23 @@ export type IngestedRevision = {
   fields: Record<string, unknown>;
 };
 
-/** An Origin as a plugin emits it; raw messages are recorded as Origins without Revisions. */
+export type IngestedAttachment = { filename: string; contentType: string; bytes: Uint8Array };
+
+/** A message to extract Items from, as a plugin emits it. */
+export type IngestedMessage = { text: string; attachments: IngestedAttachment[]; thread: string | null };
+
+/**
+ * An Origin as a plugin emits it: structured Revisions, or a raw message whose Revisions
+ * extraction adds later.
+ */
 export type IngestedOrigin = {
   externalId: string;
-  /** The source time of its Revisions. */
+  /** The source time of its Revisions; for a message, the time it was sent. */
   occurredAt: Date;
   attributes: Record<string, string>;
   link: string | null;
   revisions: IngestedRevision[];
+  message: IngestedMessage | null;
 };
 
 export type SourceRunResult =
@@ -256,6 +269,9 @@ export interface SourceRepository {
   remove(id: SourceId): Promise<void>;
 }
 
+/** Why a Revision was rejected automatically (ADR-0009). */
+export type Rejection = "invalid-fields" | "evidence-not-found" | "weekday-mismatch" | "no-date";
+
 /** A Revision ready to append, checked by the core. */
 export type NewRevision = {
   itemKind: ItemKind;
@@ -265,6 +281,20 @@ export type NewRevision = {
   sourceTime: Date;
   /** False for a Revision rejected automatically, such as one with invalid fields. */
   accepted: boolean;
+  /** Why it was rejected; null if it was accepted. */
+  rejection: Rejection | null;
+  /** The words of its message it was extracted from; null for a structured Source. */
+  evidence: string | null;
+};
+
+/** A file of a raw message, kept in the BlobStore with a hash of its contents (ADR-0006). */
+export type StoredFile = { blob: BlobRef; sha256: string; size: number };
+
+/** A raw message as it is recorded, its text and attachments already in the BlobStore. */
+export type StoredMessage = {
+  text: StoredFile;
+  attachments: (StoredFile & { filename: string; contentType: string })[];
+  thread: string | null;
 };
 
 /** One successful run of a Source, to record at once. */
@@ -274,7 +304,49 @@ export type SourceRun = {
   at: Date;
   /** The plugin's state after the run. */
   state: string | null;
-  origins: { externalId: string; attributes: Record<string, string>; link: string | null; revisions: NewRevision[] }[];
+  origins: {
+    externalId: string;
+    /** When it was sent, for a message. */
+    occurredAt: Date;
+    attributes: Record<string, string>;
+    link: string | null;
+    revisions: NewRevision[];
+    message: StoredMessage | null;
+  }[];
+};
+
+/** A raw message waiting for its one successful extraction (ADR-0009). */
+export type PendingMessage = {
+  id: RawMessageId;
+  familyId: FamilyId;
+  sourceId: SourceId;
+  /** The Origin's id within its Source, which keys the Items extracted from it. */
+  externalId: string;
+  sentAt: Date;
+  thread: string | null;
+  text: BlobRef;
+};
+
+/** A raw message as an Admin opens it. */
+export type RawMessage = {
+  id: RawMessageId;
+  sourceId: SourceId;
+  sentAt: Date;
+  attributes: Record<string, string>;
+  text: BlobRef;
+  attachments: { filename: string; contentType: string; size: number; blob: BlobRef }[];
+};
+
+/** An Item that earlier messages of a thread stated, with the key a later one updates it by. */
+export type ThreadItem = { itemKey: string; kind: ItemKind; folded: FoldedItem | null };
+
+/** What one successful extraction of a message adds, to record at once. */
+export type Extraction = {
+  messageId: RawMessageId;
+  familyId: FamilyId;
+  sourceId: SourceId;
+  at: Date;
+  revisions: NewRevision[];
 };
 
 /** What an Item's Revisions add up to, as stored next to them. */
@@ -284,7 +356,14 @@ export type ItemProjection = {
   window: { from: Date; to: Date } | null;
 };
 
-export type ProjectedItem = { id: ItemId; kind: ItemKind; folded: FoldedItem; links: string[] };
+export type ProjectedItem = {
+  id: ItemId;
+  kind: ItemKind;
+  folded: FoldedItem;
+  links: string[];
+  /** The raw messages it was extracted from, oldest first. */
+  messages: RawMessageId[];
+};
 
 /** Items, as projections of their append-only Revisions (ADR-0009). */
 export interface ItemRepository {
@@ -297,12 +376,86 @@ export interface ItemRepository {
   recordRun(
     run: SourceRun,
     recompute: (kind: ItemKind, revisions: FoldableRevision[]) => ItemProjection,
+  ): Promise<{ knownMessages: string[] }>;
+  /** Raw messages not yet extracted successfully, oldest first. */
+  pendingMessages(limit: number): Promise<PendingMessage[]>;
+  /** The Items earlier messages of a thread in a Source stated, in the order they were created. */
+  itemsOfThread(sourceId: SourceId, thread: string): Promise<ThreadItem[]>;
+  /**
+   * Records a message's extraction in one transaction: its Revisions, appended to its Origin like
+   * those of a run, and the message as extracted, so that it is never extracted again.
+   */
+  recordExtraction(
+    extraction: Extraction,
+    recompute: (kind: ItemKind, revisions: FoldableRevision[]) => ItemProjection,
   ): Promise<void>;
+  findMessage(id: RawMessageId): Promise<RawMessage | null>;
   /**
    * The Family's Items whose window overlaps the given time, with the links of their Origins; a
    * `to` of null means all of the future.
    */
   overlapping(familyId: FamilyId, from: Date, to: Date | null): Promise<ProjectedItem[]>;
+}
+
+/** The one LLM endpoint of the Family, an OpenAI-compatible server. */
+export type LlmEndpoint = { baseUrl: string; model: string; apiKey: string | null };
+
+/** The LLM endpoint as stored, its API key in the SecretStore. */
+export type StoredLlmEndpoint = {
+  familyId: FamilyId;
+  baseUrl: string;
+  model: string;
+  apiKey: SecretRef | null;
+  /** When an Admin acknowledged that third parties' messages are sent to it; null for a local one. */
+  acknowledgedAt: Date | null;
+  savedAt: Date;
+};
+
+export interface LlmEndpointRepository {
+  find(familyId: FamilyId): Promise<StoredLlmEndpoint | null>;
+  save(endpoint: StoredLlmEndpoint): Promise<void>;
+}
+
+/** An Event a message states, as the model reads it; code resolves its date and checks it. */
+export type ExtractedEvent = {
+  /** The `ref` of a known Event of the thread the message changes, moves or cancels; null for a new one. */
+  updates: string | null;
+  cancelled: boolean;
+  /** Null for an update that does not rename it. */
+  title: string | null;
+  date: DateMention;
+  /** `HH:MM`, or null if none is stated. */
+  startTime: string | null;
+  endTime: string | null;
+  place: string | null;
+  /** The words of the message that state it, quoted verbatim. */
+  evidence: string;
+};
+
+/** An Event earlier messages of the thread stated, which the message may update. */
+export type KnownEvent = { ref: string; title: string; when: string; place: string | null };
+
+export type ExtractionRequest = {
+  endpoint: LlmEndpoint;
+  message: {
+    text: string;
+    /** When it was sent, on the Family's clocks, which relative dates are resolved against. */
+    sent: { date: LocalDate; time: LocalTime; weekday: string };
+  };
+  knownEvents: KnownEvent[];
+};
+
+export type ExtractionResult =
+  | { ok: true; events: ExtractedEvent[] }
+  /**
+   * The endpoint could not be reached or refused the key, which says nothing about the message;
+   * or it answered with output that does not fit the schema.
+   */
+  | { ok: false; problem: "unreachable" | "unauthorized" | "invalid-output"; message: string };
+
+/** Reads the Items a message states, through the Family's LLM endpoint. */
+export interface Extractor {
+  extract(request: ExtractionRequest): Promise<ExtractionResult>;
 }
 
 export interface JobQueue {

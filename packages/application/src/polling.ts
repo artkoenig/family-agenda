@@ -1,25 +1,20 @@
-import {
-  eventOf,
-  fold,
-  problemsWithEventRevision,
-  spanBounds,
-  type FoldableRevision,
-  type ItemKind,
-  type SourceId,
-} from "@family-butler/domain";
+import { createHash } from "node:crypto";
+import type { SourceId } from "@family-butler/domain";
 import type {
+  BlobStore,
   Clock,
-  IngestedRevision,
-  ItemProjection,
+  IngestedMessage,
   ItemRepository,
-  NewRevision,
   PollingIngestion,
   SecretStore,
   Source,
   SourceRepository,
   SourceTypeRegistry,
   SourceTypeRepository,
+  StoredFile,
+  StoredMessage,
 } from "./ports";
+import { checked, project } from "./revisions";
 
 export type PollingDeps = {
   clock: Clock;
@@ -30,6 +25,8 @@ export type PollingDeps = {
   sources: SourceRepository;
   secrets: SecretStore;
   items: ItemRepository;
+  /** Where raw messages and their attachments are kept, outside Postgres (ADR-0006). */
+  blobs: BlobStore;
 };
 
 export type PollReport = {
@@ -39,7 +36,25 @@ export type PollReport = {
 };
 
 export function createSourcePolling(deps: PollingDeps) {
-  const { clock, timeZone, registry, sourceTypes, sources, secrets, items } = deps;
+  const { clock, timeZone, registry, sourceTypes, sources, secrets, items, blobs } = deps;
+
+  async function store(contents: Uint8Array): Promise<StoredFile> {
+    const sha256 = createHash("sha256").update(contents).digest("hex");
+    return { blob: await blobs.put(contents), sha256, size: contents.byteLength };
+  }
+
+  /** Puts a message's text and attachments into the BlobStore. */
+  async function stored(message: IngestedMessage): Promise<StoredMessage> {
+    const attachments: StoredMessage["attachments"] = [];
+    for (const { filename, contentType, bytes } of message.attachments) {
+      attachments.push({ ...(await store(bytes)), filename, contentType });
+    }
+    return { text: await store(new TextEncoder().encode(message.text)), attachments, thread: message.thread };
+  }
+
+  async function removeBlobsOf(message: StoredMessage): Promise<void> {
+    for (const file of [message.text, ...message.attachments]) await blobs.remove(file.blob);
+  }
 
   /** Runs one Source and records what it emitted; the failure, if it failed. */
   async function run(source: Source, ingestion: PollingIngestion): Promise<PollReport["failed"][number] | null> {
@@ -54,21 +69,29 @@ export function createSourcePolling(deps: PollingDeps) {
       await sources.recordFailedRun(source.id, now);
       return { sourceId: source.id, kind: result.kind, message: result.message };
     }
-    await items.recordRun(
-      {
-        familyId: source.familyId,
-        sourceId: source.id,
-        at: now,
-        state: result.state,
-        origins: result.origins.map((origin) => ({
-          externalId: origin.externalId,
-          attributes: origin.attributes,
-          link: origin.link,
-          revisions: origin.revisions.map((revision) => checked(revision, origin.occurredAt)),
-        })),
-      },
-      project,
-    );
+    const origins = [];
+    for (const origin of result.origins) {
+      origins.push({
+        externalId: origin.externalId,
+        occurredAt: origin.occurredAt,
+        attributes: origin.attributes,
+        link: origin.link,
+        revisions: origin.revisions.map((revision) => checked(revision, origin.occurredAt)),
+        message: origin.message ? await stored(origin.message) : null,
+      });
+    }
+    let known: string[];
+    try {
+      ({ knownMessages: known } = await items.recordRun(
+        { familyId: source.familyId, sourceId: source.id, at: now, state: result.state, origins },
+        project,
+      ));
+    } catch (error) {
+      for (const origin of origins) if (origin.message) await removeBlobsOf(origin.message);
+      throw error;
+    }
+    // A message seen before keeps the files it was recorded with.
+    for (const origin of origins) if (origin.message && known.includes(origin.externalId)) await removeBlobsOf(origin.message);
     return null;
   }
 
@@ -100,20 +123,3 @@ export function createSourcePolling(deps: PollingDeps) {
 }
 
 export type SourcePolling = ReturnType<typeof createSourcePolling>;
-
-/**
- * A Revision as it is appended: rejected automatically if its fields cannot apply. Only Events
- * have their fields defined yet; the other kinds come with their own tickets.
- */
-function checked(revision: IngestedRevision, sourceTime: Date): NewRevision {
-  const accepted =
-    revision.itemKind !== "event" || problemsWithEventRevision(revision.act, revision.fields).length === 0;
-  return { ...revision, sourceTime, accepted };
-}
-
-/** What an Item's Revisions add up to, and the time it can be found by. */
-function project(kind: ItemKind, revisions: FoldableRevision[]): ItemProjection {
-  const folded = fold(revisions);
-  const event = kind === "event" ? eventOf(folded) : null;
-  return { folded, window: event ? spanBounds(event.span) : null };
-}

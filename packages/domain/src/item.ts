@@ -2,6 +2,9 @@ export type ItemId = string & { readonly __brand: "ItemId" };
 
 export type OriginId = string & { readonly __brand: "OriginId" };
 
+/** A message, such as a mail, kept with its attachments for extraction (ADR-0006). */
+export type RawMessageId = string & { readonly __brand: "RawMessageId" };
+
 export type ItemKind = "event" | "lesson" | "timetable-change" | "task" | "notice";
 
 /** What a Revision states about its Item (ADR-0009). */

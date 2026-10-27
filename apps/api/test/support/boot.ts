@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { SecretStore } from "@family-butler/application";
+import type { BlobStore, Extractor, SecretStore } from "@family-butler/application";
 import pg from "pg";
 import { bootApplication, type Application, type ApplicationConfig } from "../../src/composition-root";
 import { FakeClock } from "./fake-clock";
@@ -14,6 +14,10 @@ const serverUrl =
 export type TestOptions = {
   /** Replaces the envelope-encrypting SecretStore, such as with an `InMemorySecretStore`. */
   secretStore?: SecretStore;
+  /** Replaces the BlobStore in a temporary directory, such as with an `InMemoryBlobStore`. */
+  blobStore?: BlobStore;
+  /** Replaces the OpenAI-compatible Extractor, such as with a `ScriptedExtractor`. */
+  extractor?: Extractor;
   /** The application version the Instance runs, as an update would change it. */
   applicationVersion?: string;
   /** Test plugins installed as workspace packages before the first boot. */

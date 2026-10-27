@@ -12,6 +12,7 @@ import {
   type ItemId,
   type LocalDate,
   type LocalTime,
+  type RawMessageId,
   type TimeSpan,
   type ViewId,
 } from "@family-butler/domain";
@@ -67,6 +68,8 @@ export type TimelineEvent = {
   earlier: boolean;
   /** Where the original can be looked at. */
   links: string[];
+  /** The raw messages it was extracted from, which Admins can open. */
+  messages: RawMessageId[];
 };
 
 export type ViewPage = {
@@ -120,7 +123,7 @@ export function createViewAccess(deps: ViewsDeps) {
     const to = last ? new Date(new Date(`${addDays(last, 1)}T00:00:00Z`).getTime() + day) : null;
     return (await items.overlapping(familyId, from, to)).flatMap((item) => {
       const event = item.kind === "event" ? eventOf(item.folded) : null;
-      return event ? [{ id: item.id, event, links: item.links }] : [];
+      return event ? [{ id: item.id, event, links: item.links, messages: item.messages }] : [];
     });
   }
 
@@ -133,9 +136,9 @@ export function createViewAccess(deps: ViewsDeps) {
     return dates.map((date) => ({
       date,
       items: events
-        .flatMap(({ id, event, links }) => {
+        .flatMap(({ id, event, links, messages }) => {
           const on = spanOnDay(event.span, date, timeZone);
-          return on ? [row(id, event, links, on, now)] : [];
+          return on ? [row(id, event, { links, messages }, on, now)] : [];
         })
         .sort(byTime),
     }));
@@ -144,7 +147,7 @@ export function createViewAccess(deps: ViewsDeps) {
   function row(
     itemId: ItemId,
     event: Event,
-    links: string[],
+    originals: Pick<TimelineEvent, "links" | "messages">,
     on: { from: LocalTime | null; until: LocalTime | null },
     now: Date,
   ): TimelineEvent {
@@ -157,7 +160,7 @@ export function createViewAccess(deps: ViewsDeps) {
       place: event.place,
       cancelled: event.cancelled,
       earlier: !span.allDay && span.end <= now,
-      links,
+      ...originals,
     };
   }
 
