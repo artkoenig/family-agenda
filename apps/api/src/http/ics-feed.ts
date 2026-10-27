@@ -1,5 +1,5 @@
 import type { FeedEvent, ViewFeed } from "@family-agenda/application";
-import { addDays, type LocalDate } from "@family-agenda/domain";
+import { addDays, localeOf, type LocalDate } from "@family-agenda/domain";
 import { spanLabel } from "./view-page";
 
 /**
@@ -17,15 +17,15 @@ export function icsFeed(feed: ViewFeed, viewLink: string): string {
     "X-WR-CALNAME:Family Agenda",
     "REFRESH-INTERVAL;VALUE=DURATION:PT1H",
     "X-PUBLISHED-TTL:PT1H",
-    ...feed.events.flatMap((event) => vevent(event, stamp, viewLink)),
+    ...feed.events.flatMap((event) => vevent(event, stamp, viewLink, localeOf(feed.language))),
     "END:VCALENDAR",
   ];
   return lines.map(folded).join("\r\n") + "\r\n";
 }
 
-function vevent(event: FeedEvent, stamp: string, viewLink: string): string[] {
+function vevent(event: FeedEvent, stamp: string, viewLink: string, locale: string): string[] {
   const { span } = event;
-  const details = [spanLabel(event.when), event.place, event.cancelled ? "Cancelled" : null].filter(Boolean);
+  const details = [spanLabel(event.when, locale), event.place, event.cancelled ? "Cancelled" : null].filter(Boolean);
   return [
     "BEGIN:VEVENT",
     `UID:${event.itemId}@family-agenda`,

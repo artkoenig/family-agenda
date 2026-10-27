@@ -34,11 +34,13 @@ import type {
   BlobRef,
   Email,
   FamilyId,
+  FamilyLanguages,
   FamilyMember,
   FamilyMemberId,
   FoldableRevision,
   ItemId,
   ItemKind,
+  OcrLanguage,
   PhotoType,
   RawMessageId,
   SourceId,
@@ -46,6 +48,7 @@ import type {
   View,
   ViewId,
 } from "@family-agenda/domain";
+import { defaultFamilyLanguage, isFamilyLanguage } from "@family-agenda/domain";
 import { and, asc, eq, gt, gte, inArray, isNotNull, isNull, lt, lte, or, sql, type SQL } from "drizzle-orm";
 import { uuidPattern } from "../uuid";
 import type { Database } from "./database";
@@ -98,6 +101,25 @@ export class PostgresFamilyRepository implements FamilyRepository {
     await this.db
       .update(families)
       .set({ recoveryKitConfirmedAt: sql`coalesce(${families.recoveryKitConfirmedAt}, ${at})` })
+      .where(eq(families.id, id));
+  }
+
+  async languages(id: FamilyId): Promise<FamilyLanguages> {
+    const [row] = await this.db
+      .select({ language: families.language, ocrLanguages: families.ocrLanguages })
+      .from(families)
+      .where(eq(families.id, id));
+    if (!row) throw new Error(`no Family ${id}`);
+    return {
+      language: isFamilyLanguage(row.language) ? row.language : defaultFamilyLanguage,
+      ocrLanguages: row.ocrLanguages as OcrLanguage[],
+    };
+  }
+
+  async saveLanguages(id: FamilyId, languages: FamilyLanguages): Promise<void> {
+    await this.db
+      .update(families)
+      .set({ language: languages.language, ocrLanguages: languages.ocrLanguages })
       .where(eq(families.id, id));
   }
 }

@@ -8,14 +8,17 @@ import {
   type ViewAccessPolicy,
 } from "@family-agenda/application";
 import {
+  defaultFamilyLanguage,
   horizonDaysRange,
   isAcceptableTimelineRange,
+  isFamilyLanguage,
   isLocalDate,
   maximumNameLength,
   maximumPhotoBytes,
   minimumPasswordLength,
   photoTypes,
   type AdminId,
+  type FamilyLanguage,
   type FamilyMemberId,
   type RawMessageId,
   type SourceId,
@@ -34,6 +37,7 @@ import {
   AdminsPage,
   FamilyMembersPage,
   FirstAdminPage,
+  LanguagePage,
   LlmEndpointPage,
   MessagePage,
   RecoveryKitPage,
@@ -79,6 +83,7 @@ const problems = {
   "rate-limited": `Too many failed sign-ins. Wait ${signInLimits.windowMs / 60_000} minutes and try again.`,
   "own-account": "You cannot reset your own password here.",
   "unknown-admin": "This Admin does not exist.",
+  "invalid-language": "Choose English or German as the Family Language.",
   "kit-not-saved": "Confirm that you have saved the Recovery Kit.",
   "invalid-name": `Enter a name of at most ${maximumNameLength} characters.`,
   "invalid-photo": `The photo must be one of ${photoTypes.map((type) => type.replace("image/", "").toUpperCase()).join(", ")}.`,
@@ -96,6 +101,11 @@ const problems = {
   "invalid-model": "Enter the name of the model.",
   "third-parties-not-acknowledged":
     "This server is outside your home network. Confirm that the text of third parties' messages is sent to it.",
+  "no-ocr-language": "Keep at least one OCR language.",
+  "ocr-language-not-installed": "The model of that OCR language is not installed. Download its model first.",
+  "unknown-ocr-language": "No model can be downloaded for that language.",
+  "ocr-language-selected": "OCR reads in this language. Remove it from the OCR languages first.",
+  "ocr-language-bundled": "This model comes with Family Agenda and cannot be removed.",
   "invalid-interval": `The polling interval must be between ${pollIntervalRange.minSeconds / 60} minute and ${pollIntervalRange.maxSeconds / 86_400} days.`,
 } satisfies Record<string, string>;
 
@@ -122,7 +132,8 @@ const fonts: Record<string, typeof htmx> = Object.fromEntries(
 );
 
 export function createHttpApp(application: Application, options: HttpOptions) {
-  const { admins, recoveryKit, familyMembers, views, sourceTypes, sources, llmEndpoint, messages, timeZone } = application;
+  const { admins, recoveryKit, familyMembers, languages, views, sourceTypes, sources, llmEndpoint, messages, timeZone } =
+    application;
   const app = new Hono<Env>();
 
   const isHttps = (c: Context) =>
@@ -191,15 +202,21 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     await next();
   });
 
-  app.get("/setup", (c) => c.html(<FirstAdminPage />));
+  app.get("/setup", (c) => c.html(<FirstAdminPage language={preferredFamilyLanguage(c.req.header("accept-language"))} />));
 
   app.post("/setup", async (c) => {
     const form = await c.req.parseBody();
     const email = field(form, "email");
-    const result = await admins.createFirstAdmin({ email, password: field(form, "password") });
+    const language = field(form, "language");
+    const result = await admins.createFirstAdmin({
+      email,
+      password: field(form, "password"),
+      ...(language !== "" ? { language } : {}),
+    });
     if (!result.ok) {
       if (result.problem === "admin-exists") return c.notFound();
-      return c.html(<FirstAdminPage email={email} problem={problems[result.problem]} />, 400);
+      const shown = isFamilyLanguage(language) ? language : preferredFamilyLanguage(c.req.header("accept-language"));
+      return c.html(<FirstAdminPage language={shown} email={email} problem={problems[result.problem]} />, 400);
     }
     startSession(c, result.sessionToken);
     return c.redirect("/admin/recovery-kit", 303);
@@ -301,6 +318,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
   /** What the settings list says about each section. */
   const settings = async (): Promise<SettingsSummary> => {
     const endpoint = await llmEndpoint.current();
+    const language = await languages.current();
     return {
       members: (await familyMembers.list()).map((member) => member.name),
       views: (await views.list()).length,
@@ -309,6 +327,11 @@ export function createHttpApp(application: Application, options: HttpOptions) {
       llm: endpoint ? { model: endpoint.model, local: endpoint.local } : null,
       admins: (await admins.listAdmins()).length,
       kitSaved: await recoveryKit.isConfirmed(),
+      language: {
+        family: language.language,
+        ocr: language.ocrLanguages.map((ocr) => ocr.language),
+        missing: language.ocrLanguages.some((ocr) => !ocr.installed),
+      },
     };
   };
 
@@ -612,6 +635,42 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     return c.redirect("/admin/sources", 303);
   });
 
+  const languagePage = async (c: Context<Env>, problem?: string) => {
+    const page = <LanguagePage admin={c.get("admin")} languages={await languages.current()} {...(problem ? { problem } : {})} />;
+    return c.html(page, problem ? 400 : 200);
+  };
+
+  app.get("/admin/language", (c) => languagePage(c));
+
+  app.post("/admin/language", async (c) => {
+    const result = await languages.setLanguage(field(await c.req.parseBody(), "language"));
+    if (!result.ok) return languagePage(c, problems[result.problem]);
+    return c.redirect("/admin/language", 303);
+  });
+
+  // The OCR languages in Tesseract's notation, `deu+eng`, as each button of the page posts them.
+  app.post("/admin/language/ocr", async (c) => {
+    const chosen = field(await c.req.parseBody(), "ocrLanguages").split("+").filter((language) => language !== "");
+    const result = await languages.setOcrLanguages(chosen);
+    if (!result.ok) return languagePage(c, problems[result.problem]);
+    return c.redirect("/admin/language", 303);
+  });
+
+  app.post("/admin/language/models", async (c) => {
+    const result = await languages.install(field(await c.req.parseBody(), "language"));
+    if (!result.ok) {
+      const problem = result.problem === "download-failed" ? `The model could not be downloaded. ${result.message}` : problems[result.problem];
+      return languagePage(c, problem);
+    }
+    return c.redirect("/admin/language", 303);
+  });
+
+  app.post("/admin/language/models/:language/remove", async (c) => {
+    const result = await languages.remove(c.req.param("language"));
+    if (!result.ok) return languagePage(c, problems[result.problem]);
+    return c.redirect("/admin/language", 303);
+  });
+
   app.get("/admin/llm", async (c) =>
     c.html(<LlmEndpointPage admin={c.get("admin")} endpoint={await llmEndpoint.current()} />),
   );
@@ -664,6 +723,23 @@ function sourceInputOf(form: Record<string, unknown>): SourceInput {
   }
   const minutes = field(form, "pollIntervalMinutes").trim();
   return { plain, secrets, pollIntervalSeconds: minutes === "" ? null : Number(minutes) * 60 };
+}
+
+/**
+ * The Family Language the browser prefers most by its `Accept-Language` header, such as `de` for
+ * `fr-FR,fr;q=0.9,de;q=0.7`; English if it prefers neither.
+ */
+function preferredFamilyLanguage(acceptLanguage: string | undefined): FamilyLanguage {
+  const ranked = (acceptLanguage ?? "")
+    .split(",")
+    .map((entry) => {
+      const [tag = "", ...parameters] = entry.trim().split(";");
+      const quality = parameters.map((parameter) => /^\s*q=([\d.]+)\s*$/.exec(parameter)?.[1]).find(Boolean);
+      return { language: tag.split("-")[0]?.toLowerCase() ?? "", quality: quality ? Number(quality) : 1 };
+    })
+    .filter((entry) => entry.quality > 0)
+    .sort((a, b) => b.quality - a.quality);
+  return ranked.map((entry) => entry.language).find(isFamilyLanguage) ?? defaultFamilyLanguage;
 }
 
 /** The quick filter's setting from the `show` query parameter: `all`, or ids separated by commas. */

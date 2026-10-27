@@ -30,6 +30,7 @@ import type {
   LlmEndpoint,
   LlmEndpointRepository,
   NewRevision,
+  OcrModelStore,
   PendingAttachment,
   PendingMessage,
   Rejection,
@@ -50,6 +51,8 @@ export type ExtractionDeps = {
   blobs: BlobStore;
   extractor: Extractor;
   textExtractor: TextExtractor;
+  /** The Tesseract models OCR needs for the Family's OCR languages. */
+  ocrModels: OcrModelStore;
   /** Where the run shows as the worker's activity. */
   activity: ActivityLog;
 };
@@ -70,7 +73,7 @@ const batchSize = 20;
  * message does not say.
  */
 export function createExtraction(deps: ExtractionDeps) {
-  const { clock, timeZone, items, blobs, extractor, textExtractor, activity } = deps;
+  const { clock, timeZone, families, items, blobs, extractor, textExtractor, ocrModels, activity } = deps;
 
   /**
    * The text of a PDF attachment: its text layer, and the pages that are scans read by a
@@ -96,7 +99,14 @@ export function createExtraction(deps: ExtractionDeps) {
   }
 
   async function readScans(pdf: Uint8Array, pages: number[], endpoint: LlmEndpoint): Promise<AttachmentReading<string[]>> {
-    if (!endpoint.vision) return textExtractor.ocr(pdf, pages);
+    if (!endpoint.vision) {
+      const { ocrLanguages } = await families.languages(await families.theFamily());
+      // Without a chosen model OCR would read worse in the others, so the scan stays unread.
+      const installed = new Set((await ocrModels.installed()).map((model) => model.language));
+      const missing = ocrLanguages.find((language) => !installed.has(language));
+      if (missing) return { ok: false, message: `OCR language \`${missing}\` is not installed.` };
+      return textExtractor.ocr(pdf, pages, ocrLanguages);
+    }
     const images = await textExtractor.pageImages(pdf, pages);
     if (!images.ok) return images;
     const read = await extractor.transcribe({ endpoint, images: images.value });

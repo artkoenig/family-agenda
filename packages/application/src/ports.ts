@@ -6,6 +6,7 @@ import type {
   AdminId,
   Email,
   FamilyId,
+  FamilyLanguages,
   FamilyMember,
   FamilyMemberId,
   FoldableRevision,
@@ -14,6 +15,7 @@ import type {
   ItemKind,
   LocalDate,
   LocalTime,
+  OcrLanguage,
   RawMessageId,
   SourceId,
   SourceTypeId,
@@ -36,6 +38,8 @@ export interface FamilyRepository {
   recoveryKitConfirmed(id: FamilyId): Promise<boolean>;
   /** Keeps the first confirmation if there is one. */
   confirmRecoveryKit(id: FamilyId, at: Date): Promise<void>;
+  languages(id: FamilyId): Promise<FamilyLanguages>;
+  saveLanguages(id: FamilyId, languages: FamilyLanguages): Promise<void>;
 }
 
 export interface AdminRepository {
@@ -505,8 +509,27 @@ export interface TextExtractor {
   textLayer(pdf: Uint8Array): Promise<Conversion<string[]>>;
   /** The given pages, numbered from 1, as PNG images. */
   pageImages(pdf: Uint8Array, pages: number[]): Promise<Conversion<Uint8Array[]>>;
-  /** The text OCR reads on each of the given pages, numbered from 1, in the Family's language. */
-  ocr(pdf: Uint8Array, pages: number[]): Promise<Conversion<string[]>>;
+  /** The text OCR reads on each of the given pages, numbered from 1, in the given languages, in order. */
+  ocr(pdf: Uint8Array, pages: number[], languages: OcrLanguage[]): Promise<Conversion<string[]>>;
+}
+
+/** A Tesseract language model in the tessdata volume. */
+export type OcrModel = {
+  language: OcrLanguage;
+  /** Shipped with the image and linked into the volume, so that it cannot be removed. */
+  bundled: boolean;
+};
+
+/** The Tesseract language models of the Instance, which an Admin can download more of. */
+export interface OcrModelStore {
+  /** Every language a model can be downloaded for, installed or not. */
+  downloadable(): OcrLanguage[];
+  /** The models in the volume, bundled, downloaded or put there by hand. */
+  installed(): Promise<OcrModel[]>;
+  /** Downloads and checks a model; a failed download leaves nothing behind. */
+  install(language: OcrLanguage): Promise<Conversion<null>>;
+  /** Removes a model that is not bundled. */
+  remove(language: OcrLanguage): Promise<void>;
 }
 
 export interface JobQueue {

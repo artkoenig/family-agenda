@@ -20,6 +20,10 @@ export const families = pgTable("families", {
   id: uuid("id").primaryKey().defaultRandom(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   recoveryKitConfirmedAt: timestamp("recovery_kit_confirmed_at", { withTimezone: true }),
+  /** The Family Language, `en` or `de`, which dates are formatted in. */
+  language: text("language").notNull().default("en"),
+  /** The Tesseract codes OCR reads in, in order; by default the one of the Family Language. */
+  ocrLanguages: text("ocr_languages").array().notNull().default(sql`'{eng}'::text[]`),
 });
 
 export const admins = pgTable("admins", {

@@ -4,12 +4,15 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import type { Conversion, TextExtractor } from "@family-agenda/application";
+import type { OcrLanguage } from "@family-agenda/domain";
 
 const run = promisify(execFile);
 
 export type CommandLineTextExtractorOptions = {
   /** How long one call of a tool may take; OCR of a page takes seconds on a small CPU. */
   timeoutMs?: number;
+  /** Where Tesseract finds its models, the `tessdata` volume; by default where it was installed. */
+  tessdataDirectory?: string;
 };
 
 /** Pages are rendered at this resolution for a vision-capable LLM endpoint: legible, yet small. */
@@ -18,15 +21,17 @@ const imageDpi = 150;
 const ocrDpi = 300;
 
 /**
- * The `TextExtractor` wrapping poppler's `pdftotext` and `pdftoppm` and Tesseract with its German
- * model (`deu`), as installed in the image. Each call works on a copy of the PDF in its own
- * temporary directory, removed afterwards.
+ * The `TextExtractor` wrapping poppler's `pdftotext` and `pdftoppm` and Tesseract with the models
+ * of the `tessdata` volume (ADR-0012). Each call works on a copy of the PDF in its own temporary
+ * directory, removed afterwards.
  */
 export class CommandLineTextExtractor implements TextExtractor {
   private readonly timeoutMs: number;
+  private readonly tessdataDirectory: string | null;
 
   constructor(options: CommandLineTextExtractorOptions = {}) {
     this.timeoutMs = options.timeoutMs ?? 2 * 60 * 1000;
+    this.tessdataDirectory = options.tessdataDirectory ?? null;
   }
 
   textLayer(pdf: Uint8Array): Promise<Conversion<string[]>> {
@@ -49,12 +54,13 @@ export class CommandLineTextExtractor implements TextExtractor {
     });
   }
 
-  ocr(pdf: Uint8Array, pages: number[]): Promise<Conversion<string[]>> {
+  ocr(pdf: Uint8Array, pages: number[], languages: OcrLanguage[]): Promise<Conversion<string[]>> {
+    const models = this.tessdataDirectory ? ["--tessdata-dir", this.tessdataDirectory] : [];
     return this.withPdf(pdf, async (file, directory) => {
       const texts: string[] = [];
       for (const page of pages) {
         const image = await this.render(file, directory, page, ["-r", String(ocrDpi), "-gray"]);
-        texts.push(await this.tool("tesseract", [image, "-", "-l", "deu"]));
+        texts.push(await this.tool("tesseract", [image, "-", ...models, "-l", languages.join("+")]));
       }
       return texts;
     });

@@ -10,6 +10,10 @@ Gathers family-relevant information from many channels into one overview of who 
 The household the system serves; the unit that owns all Sources and Items.
 _Avoid_: Account, tenant, user group
 
+**Family Language**:
+The language the Instance speaks to the Family in and formats dates in, English or German; an Admin chooses it when setting up the Instance and can change it in the settings.
+_Avoid_: Locale, UI language, region
+
 **Family Member**:
 A person in the Family whom Items can concern, child or adult.
 _Avoid_: User, profile, kid

@@ -10,6 +10,7 @@ import {
   spanOnDay,
   type Event,
   type FamilyId,
+  type FamilyLanguage,
   type FamilyMemberId,
   type ItemId,
   type LocalDate,
@@ -78,6 +79,8 @@ export type TimelineEvent = {
 
 export type ViewPage = {
   id: ViewId;
+  /** The Family Language, which dates are formatted in. */
+  language: FamilyLanguage;
   now: LocalDateTime;
   /** Everyone in the Family, for the quick filter. */
   members: FamilyMemberSummary[];
@@ -112,6 +115,8 @@ export type FeedEvent = {
 
 export type ViewFeed = {
   id: ViewId;
+  /** The Family Language, which the details' dates are formatted in. */
+  language: FamilyLanguage;
   generatedAt: Date;
   /** Those of the last 30 days and all of the future, in order of time. */
   events: FeedEvent[];
@@ -258,6 +263,7 @@ export function createViewAccess(deps: ViewsDeps) {
       const dates = Array.from({ length: daysBetween(first, last) + 1 }, (_, day) => addDays(first, day));
       return {
         id: view.id,
+        language: (await families.languages(view.familyId)).language,
         now,
         members: family.map(summariseFamilyMember),
         showing: showing.length > 0 ? showing : "all",
@@ -292,7 +298,8 @@ export function createViewAccess(deps: ViewsDeps) {
         const { title, span, place, cancelled } = event;
         return [{ itemId, title, span, when: onClocks(span), place, cancelled }];
       });
-      return { id: view.id, generatedAt, events: events.sort(byStart) };
+      const { language } = await families.languages(view.familyId);
+      return { id: view.id, language, generatedAt, events: events.sort(byStart) };
     },
   };
 }

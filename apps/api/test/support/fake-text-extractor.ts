@@ -1,4 +1,5 @@
 import type { Conversion, TextExtractor } from "@family-agenda/application";
+import type { OcrLanguage } from "@family-agenda/domain";
 
 /** One page of a fake PDF: with a text layer, or a scan whose words only OCR or a model can read. */
 export type FakePage = { text: string } | { scan: string };
@@ -15,10 +16,11 @@ export function scanImageText(image: Uint8Array): string {
 
 /**
  * Reads PDFs made by `fakePdf`; any other file cannot be converted. Remembers which pages it read
- * with OCR and rendered as images.
+ * with OCR, in which languages, and which it rendered as images.
  */
 export class FakeTextExtractor implements TextExtractor {
   readonly ocrPages: number[][] = [];
+  readonly ocrLanguages: OcrLanguage[][] = [];
   readonly renderedPages: number[][] = [];
 
   textLayer(pdf: Uint8Array): Promise<Conversion<string[]>> {
@@ -32,8 +34,9 @@ export class FakeTextExtractor implements TextExtractor {
     );
   }
 
-  ocr(pdf: Uint8Array, numbers: number[]): Promise<Conversion<string[]>> {
+  ocr(pdf: Uint8Array, numbers: number[], languages: OcrLanguage[]): Promise<Conversion<string[]>> {
     this.ocrPages.push(numbers);
+    this.ocrLanguages.push(languages);
     return Promise.resolve(this.read(pdf, (pages) => numbers.map((number) => scanOf(pages[number - 1]))));
   }
 
