@@ -1,6 +1,8 @@
 import type {
   Act,
   Admin,
+  AttributionRule,
+  AttributionRuleId,
   DateMention,
   BlobRef,
   AdminId,
@@ -17,6 +19,7 @@ import type {
   LocalTime,
   MultilingualText,
   OcrLanguage,
+  OriginOf,
   RawMessageId,
   SourceId,
   SourceTypeId,
@@ -211,7 +214,20 @@ export type LoadedSourceType = {
   /** The plain configuration of `fromVersion` migrated to the current version. */
   migrateConfig: (plain: PlainConfig, fromVersion: number) => PlainConfig;
   ingestion: PollingIngestion | { mode: "push" };
+  /** What Attribution Rules can match on, such as a sender or a calendar. */
+  originAttributes: OriginAttributeSpec[];
 };
+
+/** An Origin attribute a plugin declares. */
+export type OriginAttributeSpec = {
+  key: string;
+  label: MultilingualText;
+  /** The values the plugin knows of, such as the senders of recent mail; none if asking it failed. */
+  knownValues(context: SourceRunContext): Promise<KnownValue[]>;
+};
+
+/** A value of an Origin attribute, with how the plugin names it. */
+export type KnownValue = { value: string; label: string };
 
 /** The Source plugins discovered at startup (ADR-0010). */
 export interface SourceTypeRegistry {
@@ -391,6 +407,8 @@ export type ProjectedItem = {
   links: string[];
   /** The raw messages it was extracted from, oldest first. */
   messages: RawMessageId[];
+  /** The Origins whose accepted Revisions it adds up to, which Attribution Rules match on. */
+  origins: OriginOf[];
 };
 
 /** Items, as projections of their append-only Revisions (ADR-0009). */
@@ -423,6 +441,23 @@ export interface ItemRepository {
    * `to` of null means all of the future. Items of a hidden Source are left out.
    */
   overlapping(familyId: FamilyId, from: Date, to: Date | null): Promise<ProjectedItem[]>;
+}
+
+/** The Family's Attribution Rules, an ordinary table beside the projected Items (ADR-0009). */
+export interface AttributionRuleRepository {
+  /** Returns false if the Source already has a rule for this attribute value. */
+  add(rule: AttributionRule): Promise<boolean>;
+  /**
+   * In the order they were created, each with its Family Members in the order those were added;
+   * Family Members removed since are no longer listed. A removed Source's rules are gone.
+   */
+  list(familyId: FamilyId): Promise<AttributionRule[]>;
+  findById(id: AttributionRuleId): Promise<AttributionRule | null>;
+  /** Stores a changed rule that was found before. Returns false if another rule has its value. */
+  update(rule: AttributionRule): Promise<boolean>;
+  remove(id: AttributionRuleId): Promise<void>;
+  /** The values of an Origin attribute that the Source's recorded Origins carry, sorted. */
+  seenValues(sourceId: SourceId, attribute: string): Promise<string[]>;
 }
 
 /** The one LLM endpoint of the Family, an OpenAI-compatible server. */

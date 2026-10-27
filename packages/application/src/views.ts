@@ -1,13 +1,16 @@
 import { randomUUID } from "node:crypto";
 import {
   addDays,
+  attributionOf,
   daysBetween,
   eventOf,
   isAcceptableHorizon,
   isAcceptableTimelineRange,
   lastDayOf,
   localDateTime,
+  isShownTo,
   spanOnDay,
+  type Attribution,
   type Event,
   type FamilyId,
   type FamilyLanguage,
@@ -22,6 +25,7 @@ import {
 import type { ActivityLog, CurrentActivity } from "./activity";
 import { summariseFamilyMember, type FamilyMemberSummary } from "./family-members";
 import type {
+  AttributionRuleRepository,
   Clock,
   FamilyMemberRepository,
   FamilyRepository,
@@ -38,6 +42,7 @@ export type ViewsDeps = {
   members: FamilyMemberRepository;
   views: ViewRepository;
   items: ItemRepository;
+  rules: AttributionRuleRepository;
   activity: ActivityLog;
 };
 
@@ -53,10 +58,7 @@ export type Showing = FamilyMemberId[] | "all";
 /** A date and time on the Family's clocks. */
 export type LocalDateTime = { date: LocalDate; time: LocalTime };
 
-/**
- * An Event as one row of a day. Until there are Attribution Rules, every Event concerns the
- * whole Family, so the quick filter never hides it.
- */
+/** An Event as one row of a day, shown while the quick filter shows someone it concerns. */
 export type TimelineEvent = {
   itemId: ItemId;
   title: string;
@@ -75,6 +77,8 @@ export type TimelineEvent = {
   links: string[];
   /** The raw messages it was extracted from, which Admins can open. */
   messages: RawMessageId[];
+  /** Whom it concerns, by the Attribution Rules, the Family Members in the Family's order. */
+  concerns: Attribution;
 };
 
 export type ViewPage = {
@@ -99,10 +103,7 @@ export type ViewPage = {
 /** Days of a timeline, from `first` to `last`, both included. */
 export type TimelineDays = { first: LocalDate; last: LocalDate };
 
-/**
- * An Event in a View's feed. Until there are Attribution Rules, every Event concerns the whole
- * Family, so every feed carries it, whomever its View preselects, and without names in its title.
- */
+/** An Event in a View's feed, which carries those concerning someone its View preselects. */
 export type FeedEvent = {
   itemId: ItemId;
   title: string;
@@ -129,35 +130,47 @@ const feedDaysBack = 30;
 export const openViewAccess: ViewAccessPolicy = { mayOpen: () => Promise.resolve(true) };
 
 export function createViewAccess(deps: ViewsDeps) {
-  const { clock, timeZone, families, members, views, items, activity } = deps;
+  const { clock, timeZone, families, members, views, items, rules, activity } = deps;
 
   /**
    * The Family's Events that may touch the days from `first` to `last`, or all later days if
-   * `last` is null; the caller decides by the Family's time zone.
+   * `last` is null, that concern someone `showing` shows; the caller decides by the Family's time
+   * zone. Attribution Rules apply as they are now, to every Item whenever it came.
    */
-  async function eventsAround(familyId: FamilyId, first: LocalDate, last: LocalDate | null) {
+  async function eventsAround(familyId: FamilyId, first: LocalDate, last: LocalDate | null, showing: Showing) {
     // A day lasts at most 26 hours, and no time zone is more than 14 hours from UTC.
     const day = 24 * 60 * 60 * 1000;
     const from = new Date(new Date(`${first}T00:00:00Z`).getTime() - day);
     const to = last ? new Date(new Date(`${addDays(last, 1)}T00:00:00Z`).getTime() + day) : null;
+    const familyRules = await rules.list(familyId);
+    const order = (await members.list(familyId)).map((member) => member.id);
     return (await items.overlapping(familyId, from, to)).flatMap((item) => {
       const event = item.kind === "event" ? eventOf(item.folded) : null;
-      return event ? [{ id: item.id, event, links: item.links, messages: item.messages }] : [];
+      if (!event) return [];
+      const attribution = attributionOf(item.origins, familyRules);
+      if (showing !== "all" && !isShownTo(attribution, showing)) return [];
+      const concerns = attribution === "whole-family" ? attribution : order.filter((id) => attribution.includes(id));
+      return [{ id: item.id, event, links: item.links, messages: item.messages, concerns }];
     });
   }
 
-  /** The Family's Events on each of the days, in order of time. */
-  async function timelineOf(familyId: FamilyId, dates: LocalDate[], now: Date): Promise<ViewPage["days"]> {
+  /** The Family's Events on each of the days that concern someone `showing` shows, in order of time. */
+  async function timelineOf(
+    familyId: FamilyId,
+    dates: LocalDate[],
+    showing: Showing,
+    now: Date,
+  ): Promise<ViewPage["days"]> {
     const first = dates[0];
     const last = dates.at(-1);
     if (!first || !last) return [];
-    const events = await eventsAround(familyId, first, last);
+    const events = await eventsAround(familyId, first, last, showing);
     return dates.map((date) => ({
       date,
       items: events
-        .flatMap(({ id, event, links, messages }) => {
+        .flatMap(({ id, event, links, messages, concerns }) => {
           const on = spanOnDay(event.span, date, timeZone);
-          return on ? [row(id, event, { links, messages }, on, now)] : [];
+          return on ? [row(id, event, { links, messages, concerns }, on, now)] : [];
         })
         .sort(byTime),
     }));
@@ -166,7 +179,7 @@ export function createViewAccess(deps: ViewsDeps) {
   function row(
     itemId: ItemId,
     event: Event,
-    originals: Pick<TimelineEvent, "links" | "messages">,
+    originals: Pick<TimelineEvent, "links" | "messages" | "concerns">,
     on: { from: LocalTime | null; until: LocalTime | null },
     now: Date,
   ): TimelineEvent {
@@ -256,7 +269,8 @@ export function createViewAccess(deps: ViewsDeps) {
       if (!view || !(await input.access.mayOpen(view.id))) return null;
       const family = await members.list(view.familyId);
       const show = input.show ?? view.preselected;
-      const showing = show === "all" ? [] : family.map((member) => member.id).filter((memberId) => show.includes(memberId));
+      const chosen = show === "all" ? [] : family.map((member) => member.id).filter((memberId) => show.includes(memberId));
+      const showing: Showing = chosen.length > 0 ? chosen : "all";
       const instant = clock.now();
       const now = localDateTime(instant, timeZone);
       const { first, last } = input.days ?? { first: now.date, last: addDays(now.date, view.horizonDays - 1) };
@@ -266,9 +280,9 @@ export function createViewAccess(deps: ViewsDeps) {
         language: (await families.languages(view.familyId)).language,
         now,
         members: family.map(summariseFamilyMember),
-        showing: showing.length > 0 ? showing : "all",
+        showing,
         horizonDays: view.horizonDays,
-        days: await timelineOf(view.familyId, dates, instant),
+        days: await timelineOf(view.familyId, dates, showing, instant),
         activity: await activity.current(),
       };
     },
@@ -286,14 +300,15 @@ export function createViewAccess(deps: ViewsDeps) {
     /**
      * The View as a calendar feed, or null if there is no such View or `access` refuses it: the
      * Events of the last 30 days and all of the future, cancelled ones included, whatever the
-     * View's horizon.
+     * View's horizon, that concern someone the View preselects, or all if it preselects no one.
      */
     async feed(id: ViewId, input: { access: ViewAccessPolicy }): Promise<ViewFeed | null> {
       const view = await views.findById(id);
       if (!view || !(await input.access.mayOpen(view.id))) return null;
       const generatedAt = clock.now();
       const firstDay = addDays(localDateTime(generatedAt, timeZone).date, -feedDaysBack);
-      const events = (await eventsAround(view.familyId, firstDay, null)).flatMap(({ id: itemId, event }) => {
+      const showing: Showing = view.preselected.length > 0 ? view.preselected : "all";
+      const events = (await eventsAround(view.familyId, firstDay, null, showing)).flatMap(({ id: itemId, event }) => {
         if (lastDayOf(event.span, timeZone) < firstDay) return [];
         const { title, span, place, cancelled } = event;
         return [{ itemId, title, span, when: onClocks(span), place, cancelled }];

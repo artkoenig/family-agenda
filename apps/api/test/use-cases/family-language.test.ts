@@ -6,6 +6,9 @@ import { fakeModel, FakeTessdataCatalog } from "../support/fake-tessdata-catalog
 
 const password = "correct horse battery";
 
+/** When the migration that added the Family Language was generated, as `drizzle/meta/_journal.json` records it. */
+const familyLanguagesMigration = 1793119678494;
+
 describe("the Family Language", () => {
   let instance: TestInstance;
   beforeEach(async () => {
@@ -49,9 +52,11 @@ describe("the Family Language", () => {
 
   it("keeps OCR in German on an Instance set up before there was a Family Language", async () => {
     await instance.app.admins.createFirstAdmin({ email: "anna@example.org", password, language: "en" });
-    // As before the migration that added the Family Language, which then runs again on restart.
+    // As before the migration that added the Family Language, which then runs again on restart, with
+    // the later ones undone too: only migrations newer than the last one recorded run.
+    await instance.query(`DROP TABLE attribution_rule_members, attribution_rules`);
     await instance.query(`ALTER TABLE families DROP COLUMN language, DROP COLUMN ocr_languages`);
-    await instance.query(`DELETE FROM drizzle.__drizzle_migrations WHERE id = (SELECT max(id) FROM drizzle.__drizzle_migrations)`);
+    await instance.query(`DELETE FROM drizzle.__drizzle_migrations WHERE created_at >= ${familyLanguagesMigration}`);
 
     await instance.restart();
 

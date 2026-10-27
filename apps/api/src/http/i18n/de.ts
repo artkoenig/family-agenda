@@ -1,6 +1,7 @@
 import { pollIntervalRange, signInLimits } from "@family-agenda/application";
 import {
   horizonDaysRange,
+  maximumAttributeValueLength,
   maximumNameLength,
   maximumPhotoBytes,
   minimumPasswordLength,
@@ -61,6 +62,11 @@ export const de: Catalogue = {
     "unknown-ocr-language": "Für diese Sprache lässt sich kein Modell herunterladen.",
     "ocr-language-selected": "Die Texterkennung liest in dieser Sprache. Entferne sie zuerst aus den OCR-Sprachen.",
     "ocr-language-bundled": "Dieses Modell gehört zu Family Agenda und kann nicht entfernt werden.",
+    "unknown-attribute": "Der Quellentyp dieser Quelle bietet nichts Derartiges zum Zuordnen an.",
+    "invalid-value": `Gib den Wert ein, auf den die Regel passt, höchstens ${maximumAttributeValueLength} Zeichen.`,
+    "no-one-concerned": "Wähle, wen sie betrifft: Familienmitglieder oder die ganze Familie.",
+    "rule-exists": "Diese Quelle hat schon eine Regel für diesen Wert.",
+    "unknown-rule": "Diese Zuordnungsregel gibt es nicht.",
     "invalid-interval": `Das Abrufintervall muss zwischen ${pollIntervalRange.minSeconds / 60} Minute und ${pollIntervalRange.maxSeconds / 86_400} Tagen liegen.`,
   },
   problemsWith: {
@@ -105,6 +111,8 @@ export const de: Catalogue = {
     views: (count) => plural(count, { one: `${count} Ansicht im Heimnetz`, other: `${count} Ansichten im Heimnetz` }),
     language: (family, ocr) => `${family}; OCR auf ${ocr}`,
     sources: (count) => plural(count, { one: `${count} Quelle`, other: `${count} Quellen` }),
+    rules: (count) => plural(count, { one: `${count} Regel`, other: `${count} Regeln` }),
+    noRules: "Alles betrifft die ganze Familie",
     newOnes: "Neue sind verfügbar",
     enabled: (count) => `${count} aktiviert`,
     llmLocal: (model) => `${model}, im Heimnetz`,
@@ -233,6 +241,29 @@ export const de: Catalogue = {
     hiddenMeta: "in der Zeitleiste verborgen",
     interval: "Alle … Minuten abrufen (optional)",
     intervalHint: (minutes) => `Leer für die vorgeschlagenen ${minutes}.`,
+  },
+
+  attribution: {
+    title: "Zuordnungsregeln",
+    description:
+      "Wen ein Eintrag betrifft, danach, woher er kam, etwa aus einem Kalender oder von einem Absender; nie danach, was er sagt. Regeln gelten auch für Einträge, die vor ihnen kamen. Ein Eintrag, auf den keine Regel passt, betrifft die ganze Familie, und einer, dessen Herkünfte auf mehrere Regeln passen, alle, die sie nennen.",
+    add: "Regel hinzufügen",
+    chooseEyebrow: "Regel hinzufügen · 1 von 2",
+    formEyebrow: "Regel hinzufügen · 2 von 2",
+    onlyFormEyebrow: "Regel hinzufügen",
+    editEyebrow: "Zuordnungsregel",
+    chooseTitle: "Worauf soll sie passen?",
+    chooseIntro: "Jede Quelle bietet an, was ihr Quellentyp darüber weiß, woher ein Eintrag kam.",
+    noTargets: (link) => ["Noch bietet keine Quelle etwas zum Zuordnen an. ", link("Füge zuerst eine Quelle hinzu"), "."],
+    none: "Noch keine Zuordnungsregeln. Jeder Eintrag betrifft die ganze Familie.",
+    valueHint:
+      "Einträge aus Herkünften mit genau diesem Wert bekommen die Familienmitglieder der Regel. Wähle einen bekannten Wert oder tippe einen ein.",
+    concerns: "Betrifft",
+    concernsHint: "Die ganze Familie umfasst alle und erscheint bei jedem Schnellfilter.",
+    wholeFamily: "Ganze Familie",
+    noOne: "Niemanden, daher passt sie auf nichts",
+    entry: (attribute, value) => `${attribute}: ${value}`,
+    remove: "Regel entfernen",
   },
 
   llm: {

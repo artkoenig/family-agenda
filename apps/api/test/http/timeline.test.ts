@@ -61,6 +61,24 @@ describe("Events in a View over HTTP", () => {
     expect(page.indexOf("Piano lesson")).toBeLessThan(page.indexOf("Class trip"));
   });
 
+  it("shows on each row the avatars of the Family Members it concerns, none for the whole Family", async () => {
+    const mia = await instance.app.familyMembers.add({ name: "Mia" });
+    if (!mia.ok) throw new Error("adding failed");
+    const [source] = await instance.app.sources.list();
+    if (!source) throw new Error("no Source");
+    await instance.app.attributionRules.create({ sourceId: source.id, attribute: "sender", value: "Music school", concerns: [mia.id] });
+    const span = { allDay: false, start: "2026-09-15T14:00:00Z", end: "2026-09-15T15:00:00Z" };
+    await arrive(
+      event("piano", { title: "Piano lesson", span }, { attributes: { sender: "Music school" } }),
+      event("fair", { title: "School fair", span }),
+    );
+
+    const page = await (await instance.get(path)).text();
+
+    expect(rowOf(page, "Piano lesson")).toMatch(/<summary>.*<span class="fam-event__who" aria-label="Mia" role="img">.*>M<\/span>.*<\/summary>/s);
+    expect(rowOf(page, "School fair")).not.toContain("fam-event__who");
+  });
+
   it("strikes cancelled Events through and dims those of today that are over", async () => {
     await arrive(
       event("breakfast", { title: "School breakfast", span: { allDay: false, start: "2026-09-14T05:30:00Z", end: "2026-09-14T06:30:00Z" } }),
