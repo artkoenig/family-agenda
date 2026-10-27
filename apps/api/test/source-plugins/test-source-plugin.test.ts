@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { describeSourcePluginContract } from "@family-butler/source-sdk/testing";
+import { describeSourcePluginContract } from "@family-agenda/source-sdk/testing";
 import { testPluginControls, testSourcePlugin } from "../support/test-source-plugin";
 
 const config = { plain: { url: "https://example.org" }, secrets: {} };

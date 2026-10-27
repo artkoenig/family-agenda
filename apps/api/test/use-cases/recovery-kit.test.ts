@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { readRecoveryKitKey } from "@family-butler/application";
+import { readRecoveryKitKey } from "@family-agenda/application";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { bootForTest, type TestInstance } from "../support/boot";
 

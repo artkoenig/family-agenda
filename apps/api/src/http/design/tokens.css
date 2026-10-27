@@ -1,0 +1,163 @@
+/* Family Agenda — tokens, compiled from the Family Agenda design system's tokens.json. */
+/* Light by default, dark when the device prefers it; data-theme on <html> fixes either. */
+
+:root, [data-theme="light"] {
+  color-scheme: light;
+  --surface: #faf6f0;
+  --surface-raised: #fffdf9;
+  --surface-sunken: #f1e9de;
+  --surface-bar: #faf6f0e6;
+  --line: #e6dccd;
+  --line-strong: #8c7a66;
+  --ink: #2b221b;
+  --ink-muted: #6b5c4e;
+  --hearth: #bb4f29;
+  --hearth-strong: #a6421d;
+  --on-hearth: #ffffff;
+  --hearth-tint: #f8e3d8;
+  --honey: #a8720f;
+  --honey-tint: #fbefd4;
+  --sage: #6f8f63;
+  --sage-strong: #466640;
+  --sage-tint: #e6eedf;
+  --danger: #a32622;
+  --danger-tint: #f9e1dd;
+  --focus: var(--hearth-strong);
+  --now: var(--hearth);
+  --on-member: #ffffff;
+  --member-1: #b5502b;
+  --member-2: #557548;
+  --member-3: #7b4d85;
+  --member-4: #2c6b74;
+  --member-5: #8a5e16;
+  --member-6: #4c5c91;
+  --member-7: #a24766;
+  --member-8: #6b5846;
+  --shadow-raised: 0 1px 2px rgba(74, 52, 30, 0.08), 0 4px 12px rgba(74, 52, 30, 0.06);
+  --shadow-bar: 0 1px 0 rgba(74, 52, 30, 0.06), 0 6px 16px rgba(74, 52, 30, 0.06);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --surface: #1c1814;
+    --surface-raised: #262019;
+    --surface-sunken: #15120f;
+    --surface-bar: #1c1814e6;
+    --line: #3a3129;
+    --line-strong: #857462;
+    --ink: #f5eee5;
+    --ink-muted: #b8a999;
+    --hearth: #e8875f;
+    --hearth-strong: #f0a07f;
+    --on-hearth: #1c1814;
+    --hearth-tint: #3b261c;
+    --honey: #e0ae4e;
+    --honey-tint: #352a17;
+    --sage: #8fb083;
+    --sage-strong: #a9c79d;
+    --sage-tint: #222b1e;
+    --danger: #ff9e8f;
+    --danger-tint: #3a1e1b;
+    --shadow-raised: 0 1px 2px rgba(0, 0, 0, 0.5), 0 4px 12px rgba(0, 0, 0, 0.3);
+    --shadow-bar: 0 1px 0 rgba(0, 0, 0, 0.4), 0 6px 16px rgba(0, 0, 0, 0.35);
+  }
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+  --surface: #1c1814;
+  --surface-raised: #262019;
+  --surface-sunken: #15120f;
+  --surface-bar: #1c1814e6;
+  --line: #3a3129;
+  --line-strong: #857462;
+  --ink: #f5eee5;
+  --ink-muted: #b8a999;
+  --hearth: #e8875f;
+  --hearth-strong: #f0a07f;
+  --on-hearth: #1c1814;
+  --hearth-tint: #3b261c;
+  --honey: #e0ae4e;
+  --honey-tint: #352a17;
+  --sage: #8fb083;
+  --sage-strong: #a9c79d;
+  --sage-tint: #222b1e;
+  --danger: #ff9e8f;
+  --danger-tint: #3a1e1b;
+  --shadow-raised: 0 1px 2px rgba(0, 0, 0, 0.5), 0 4px 12px rgba(0, 0, 0, 0.3);
+  --shadow-bar: 0 1px 0 rgba(0, 0, 0, 0.4), 0 6px 16px rgba(0, 0, 0, 0.35);
+}
+
+:root {
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+  --radius-full: 999px;
+  --avatar-sm: 32px;
+  --avatar-md: 48px;
+  --avatar-lg: 64px;
+  --control-height: 44px;
+  --content-width: 640px;
+  --content-width-wall: 820px;
+  --time-column: 7.5em;
+  --font-sans: "Atkinson Hyperlegible Next", system-ui, sans-serif;
+  --font-mono: "Atkinson Hyperlegible Mono", ui-monospace, monospace;
+}
+
+@font-face {
+  font-family: "Atkinson Hyperlegible Next";
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url("/static/fonts/atkinson-hyperlegible-next-latin-wght-normal.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Atkinson Hyperlegible Next";
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url("/static/fonts/atkinson-hyperlegible-next-latin-ext-wght-normal.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: "Atkinson Hyperlegible Next";
+  font-style: italic;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url("/static/fonts/atkinson-hyperlegible-next-latin-wght-italic.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Atkinson Hyperlegible Next";
+  font-style: italic;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url("/static/fonts/atkinson-hyperlegible-next-latin-ext-wght-italic.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: "Atkinson Hyperlegible Mono";
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url("/static/fonts/atkinson-hyperlegible-mono-latin-wght-normal.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Atkinson Hyperlegible Mono";
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url("/static/fonts/atkinson-hyperlegible-mono-latin-ext-wght-normal.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}

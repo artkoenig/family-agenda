@@ -5,7 +5,7 @@ import {
   type Admin,
   type AdminId,
   type Email,
-} from "@family-butler/domain";
+} from "@family-agenda/domain";
 import type {
   AdminRepository,
   AdminSessionRepository,

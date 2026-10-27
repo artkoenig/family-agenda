@@ -84,7 +84,7 @@ Recommendation: route an Item to the Review Inbox when **any rule fires**, verba
 
 ---
 
-## Implications for Family Butler
+## Implications for Family Agenda
 
 - **Recommendation: build extraction behind a thin `Extractor` adapter with two implementations: OpenAI-compatible chat (Ollama, llama.cpp, vLLM, LM Studio, OpenAI, Mistral) and native Anthropic.** Use one portable JSON schema (flat, all fields required and nullable, `additionalProperties:false`, internal `$defs` only) and validate every response client-side.
 - **Keep the LLM to reading, and do the reasoning in code.** The model returns Item type, title, verbatim date/time *mentions*, things to bring, Family Member *mentions* and an evidence quote. Deterministic code resolves dates against the mail's send date and the Bundesland holidays, and maps mentions to Family Members via a configured list of names, aliases and classes *(Superseded: attribution uses Attribution Rules on an Item's origin only, with no mention mapping. See [issue #8](https://github.com/artkoenig/family-buttler/issues/8).)*. This removes the two biggest failure modes from the model's hands and makes small local models viable.

@@ -1,12 +1,12 @@
 {
-  "name": "@family-butler/source-ics",
+  "name": "@family-agenda/source-ics",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "exports": {
     ".": "./src/index.ts"
   },
-  "familyButler": {
+  "familyAgenda": {
     "sourcePlugin": {
       "entry": "./src/index.ts",
       "sourceTypeId": "ics",
@@ -16,7 +16,7 @@
     }
   },
   "dependencies": {
-    "@family-butler/source-sdk": "workspace:*",
+    "@family-agenda/source-sdk": "workspace:*",
     "ical.js": "^2.2.1"
   }
 }

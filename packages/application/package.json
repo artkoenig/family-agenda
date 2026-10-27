@@ -1,5 +1,5 @@
 {
-  "name": "@family-butler/application",
+  "name": "@family-agenda/application",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -7,6 +7,6 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@family-butler/domain": "workspace:*"
+    "@family-agenda/domain": "workspace:*"
   }
 }

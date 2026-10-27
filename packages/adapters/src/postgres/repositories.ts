@@ -27,7 +27,7 @@ import type {
   StoredLlmEndpoint,
   ThreadItem,
   ViewRepository,
-} from "@family-butler/application";
+} from "@family-agenda/application";
 import type {
   Admin,
   AdminId,
@@ -45,7 +45,7 @@ import type {
   SourceTypeId,
   View,
   ViewId,
-} from "@family-butler/domain";
+} from "@family-agenda/domain";
 import { and, asc, eq, gt, gte, inArray, isNotNull, isNull, lt, lte, sql, type SQL } from "drizzle-orm";
 import { uuidPattern } from "../uuid";
 import type { Database } from "./database";

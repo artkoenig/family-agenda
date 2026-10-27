@@ -1,5 +1,5 @@
 {
-  "name": "@family-butler/worker",
+  "name": "@family-agenda/worker",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -7,7 +7,7 @@
     "start": "node --import tsx src/main.ts"
   },
   "dependencies": {
-    "@family-butler/api": "workspace:*",
+    "@family-agenda/api": "workspace:*",
     "tsx": "^4.23.15"
   }
 }

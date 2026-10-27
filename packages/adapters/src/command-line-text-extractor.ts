@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
-import type { Conversion, TextExtractor } from "@family-butler/application";
+import type { Conversion, TextExtractor } from "@family-agenda/application";
 
 const run = promisify(execFile);
 
@@ -75,7 +75,7 @@ export class CommandLineTextExtractor implements TextExtractor {
   private async withPdf<T>(pdf: Uint8Array, convert: (file: string, directory: string) => Promise<T>): Promise<Conversion<T>> {
     let directory: string | null = null;
     try {
-      directory = await mkdtemp(join(tmpdir(), "family-butler-pdf-"));
+      directory = await mkdtemp(join(tmpdir(), "family-agenda-pdf-"));
       const file = join(directory, "attachment.pdf");
       await writeFile(file, pdf, { mode: 0o600 });
       return { ok: true, value: await convert(file, directory) };

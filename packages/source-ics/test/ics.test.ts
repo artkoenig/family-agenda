@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { describeSourcePluginContract } from "@family-butler/source-sdk/testing";
-import type { IngestResult, Origin, RunContext, SourcePlugin } from "@family-butler/source-sdk";
+import { describeSourcePluginContract } from "@family-agenda/source-sdk/testing";
+import type { IngestResult, Origin, RunContext, SourcePlugin } from "@family-agenda/source-sdk";
 import { createIcsPlugin } from "../src";
 
 const fixture = (name: string) => readFileSync(new URL(`./fixtures/${name}`, import.meta.url), "utf8");

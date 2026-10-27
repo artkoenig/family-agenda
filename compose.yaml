@@ -1,25 +1,25 @@
-name: family-butler
+name: family-agenda
 
 x-app: &app
   build: .
-  image: family-butler:local
+  image: family-agenda:local
   restart: unless-stopped
   environment:
-    DATABASE_URL: postgres://family_butler:${POSTGRES_PASSWORD:-family_butler}@postgres:5432/family_butler
+    DATABASE_URL: postgres://family_agenda:${POSTGRES_PASSWORD:-family_agenda}@postgres:5432/family_agenda
     # Set to true behind your own HTTPS reverse proxy, so session cookies become Secure.
     TRUST_PROXY: ${TRUST_PROXY:-false}
-    MASTER_KEY_FILE: /var/lib/family-butler/master-key/master.key
-    BLOB_DIRECTORY: /var/lib/family-butler/blobs
-    PLUGIN_DIRECTORY: /var/lib/family-butler/plugins
+    MASTER_KEY_FILE: /var/lib/family-agenda/master-key/master.key
+    BLOB_DIRECTORY: /var/lib/family-agenda/blobs
+    PLUGIN_DIRECTORY: /var/lib/family-agenda/plugins
     # The Family's time zone, which decides where a View's days start.
     TZ: ${TZ:-Europe/Berlin}
   volumes:
     # The master key that Source credentials are encrypted with; never in Postgres (ADR-0006).
-    - master-key:/var/lib/family-butler/master-key
+    - master-key:/var/lib/family-agenda/master-key
     # Files such as Family Member photos, kept outside Postgres (ADR-0006).
-    - blobs:/var/lib/family-butler/blobs
+    - blobs:/var/lib/family-agenda/blobs
     # Source plugins added to the stock image, one package directory each (ADR-0010).
-    - plugins:/var/lib/family-butler/plugins
+    - plugins:/var/lib/family-agenda/plugins
   depends_on:
     postgres:
       condition: service_healthy
@@ -43,13 +43,13 @@ services:
     image: postgres:17
     restart: unless-stopped
     environment:
-      POSTGRES_USER: family_butler
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-family_butler}
-      POSTGRES_DB: family_butler
+      POSTGRES_USER: family_agenda
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-family_agenda}
+      POSTGRES_DB: family_agenda
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD", "pg_isready", "-U", "family_butler", "-d", "family_butler"]
+      test: ["CMD", "pg_isready", "-U", "family_agenda", "-d", "family_agenda"]
       interval: 5s
       timeout: 5s
       retries: 10

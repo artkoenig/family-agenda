@@ -8,7 +8,7 @@ import {
   type FamilyMemberId,
   type Photo,
   type PhotoType,
-} from "@family-butler/domain";
+} from "@family-agenda/domain";
 import type { BlobStore, Clock, FamilyMemberRepository, FamilyRepository } from "./ports";
 
 export type FamilyMembersDeps = {

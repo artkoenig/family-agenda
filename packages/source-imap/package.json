@@ -1,12 +1,12 @@
 {
-  "name": "@family-butler/source-imap",
+  "name": "@family-agenda/source-imap",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "exports": {
     ".": "./src/index.ts"
   },
-  "familyButler": {
+  "familyAgenda": {
     "sourcePlugin": {
       "entry": "./src/index.ts",
       "sourceTypeId": "imap",
@@ -17,7 +17,7 @@
     }
   },
   "dependencies": {
-    "@family-butler/source-sdk": "workspace:*",
+    "@family-agenda/source-sdk": "workspace:*",
     "imapflow": "2.4.0",
     "mailparser": "3.9.38"
   },

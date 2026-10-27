@@ -1,8 +1,8 @@
 import { rm } from "node:fs/promises";
 import { join } from "node:path";
-import type { Origin, PluginRevision } from "@family-butler/source-sdk";
-import { openViewAccess } from "@family-butler/application";
-import type { ViewId } from "@family-butler/domain";
+import type { Origin, PluginRevision } from "@family-agenda/source-sdk";
+import { openViewAccess } from "@family-agenda/application";
+import type { ViewId } from "@family-agenda/domain";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { bootForTest, type TestInstance } from "../support/boot";
 import { testPluginControls, writeTestPluginPackage } from "../support/test-source-plugin";

@@ -1,5 +1,5 @@
-import type { FamilyMemberId, ViewId } from "@family-butler/domain";
-import { openViewAccess, type ViewAccessPolicy } from "@family-butler/application";
+import type { FamilyMemberId, ViewId } from "@family-agenda/domain";
+import { openViewAccess, type ViewAccessPolicy } from "@family-agenda/application";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { bootForTest, type TestInstance } from "../support/boot";
 

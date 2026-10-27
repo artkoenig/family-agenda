@@ -5,8 +5,8 @@
  */
 import { pathToFileURL } from "node:url";
 import { join } from "node:path";
-import { SourceError, type SourcePlugin } from "@family-butler/source-sdk";
-import type { SourceTypeId } from "@family-butler/domain";
+import { SourceError, type SourcePlugin } from "@family-agenda/source-sdk";
+import type { SourceTypeId } from "@family-agenda/domain";
 import { SourceRegistry } from "../../src/source-registry";
 
 const [directory = "", packageName = "", sourceTypeId = ""] = process.argv.slice(2);

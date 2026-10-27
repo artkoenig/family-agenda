@@ -17,7 +17,7 @@ import {
   type RawMessageId,
   type TimeSpan,
   type ViewId,
-} from "@family-butler/domain";
+} from "@family-agenda/domain";
 import type { ActivityLog, CurrentActivity } from "./activity";
 import { summariseFamilyMember, type FamilyMemberSummary } from "./family-members";
 import type {

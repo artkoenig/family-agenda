@@ -1,4 +1,4 @@
-import type { FamilyMemberId, ViewId } from "@family-butler/domain";
+import type { FamilyMemberId, ViewId } from "@family-agenda/domain";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { bootHttpForTest, sessionCookieOf, type HttpTestInstance } from "../support/http";
 import { photos } from "../support/photos";
@@ -39,7 +39,7 @@ describe("Views over HTTP", () => {
 
   /** The quick filter's link for a Family Member, or for "All". */
   const filterLink = (page: string, label: string) =>
-    new RegExp(`<a[^>]*class="filter[^"]*"[^>]*>(?:(?!</a>).)*${label}</a>`, "s").exec(page)?.[0] ?? "";
+    new RegExp(`<a[^>]*class="fam-filter__item[^"]*"[^>]*>(?:(?!</a>).)*${label}</a>`, "s").exec(page)?.[0] ?? "";
 
   it("opens a View without a session, as an empty timeline from now to its horizon", async () => {
     const view = await createView([mia]);

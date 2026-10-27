@@ -1,7 +1,7 @@
 /**
  * Package boundaries of the Clean Architecture (ADR-0002, ADR-0010).
  * Workspace packages resolve to their real paths, so rules match on `packages/<name>/`; an
- * import of a package that is not declared as a dependency stays a bare `@family-butler/<name>`.
+ * import of a package that is not declared as a dependency stays a bare `@family-agenda/<name>`.
  * @type {import('dependency-cruiser').IConfiguration}
  */
 module.exports = {
@@ -34,18 +34,18 @@ module.exports = {
       to: { pathNot: ["^packages/contracts/", "/node_modules/zod/"] },
     },
     {
-      name: "source-sdk-imports-no-family-butler-package",
+      name: "source-sdk-imports-no-family-agenda-package",
       severity: "error",
       from: { path: "^packages/source-sdk/" },
-      to: { path: "^(apps/|packages/(?!source-sdk/)|@family-butler/(?!source-sdk$))" },
+      to: { path: "^(apps/|packages/(?!source-sdk/)|@family-agenda/(?!source-sdk$))" },
     },
     {
       name: "source-plugins-import-only-source-sdk",
-      comment: "The SDK is the only Family Butler package a plugin may import (ADR-0010).",
+      comment: "The SDK is the only Family Agenda package a plugin may import (ADR-0010).",
       severity: "error",
       from: { path: "^packages/(source-(?!sdk/)[^/]+)/" },
       to: {
-        path: "^(apps/|packages/|@family-butler/(?!source-sdk$))",
+        path: "^(apps/|packages/|@family-agenda/(?!source-sdk$))",
         pathNot: "^packages/($1|source-sdk)/",
       },
     },

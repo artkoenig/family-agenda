@@ -1,4 +1,4 @@
-import { isLocalHost } from "@family-butler/domain";
+import { isLocalHost } from "@family-agenda/domain";
 import type { Clock, FamilyRepository, LlmEndpoint, LlmEndpointRepository, SecretRef, SecretStore } from "./ports";
 
 export type LlmEndpointDeps = {

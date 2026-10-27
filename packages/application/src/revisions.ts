@@ -5,7 +5,7 @@ import {
   spanBounds,
   type FoldableRevision,
   type ItemKind,
-} from "@family-butler/domain";
+} from "@family-agenda/domain";
 import type { IngestedRevision, ItemProjection, NewRevision } from "./ports";
 
 /**
