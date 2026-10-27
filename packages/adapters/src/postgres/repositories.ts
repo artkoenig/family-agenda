@@ -1,8 +1,11 @@
 import { createHash, randomUUID } from "node:crypto";
 import type {
+  ActivityKind,
+  ActivityRepository,
   AdminRepository,
   AdminSession,
   AdminSessionRepository,
+  BackgroundActivity,
   Extraction,
   FamilyMemberRepository,
   FamilyRepository,
@@ -49,6 +52,7 @@ import type { Database } from "./database";
 import {
   admins,
   adminSessions,
+  backgroundActivities,
   families,
   familyMembers,
   itemKeys,
@@ -773,6 +777,27 @@ export class PostgresLlmEndpointRepository implements LlmEndpointRepository {
       .insert(llmEndpoints)
       .values({ familyId: endpoint.familyId, ...values })
       .onConflictDoUpdate({ target: llmEndpoints.familyId, set: values });
+  }
+}
+
+export class PostgresActivityRepository implements ActivityRepository {
+  constructor(private readonly db: Database) {}
+
+  async find(familyId: FamilyId): Promise<BackgroundActivity | null> {
+    const [row] = await this.db.select().from(backgroundActivities).where(eq(backgroundActivities.familyId, familyId));
+    if (!row) return null;
+    return { kind: row.kind as ActivityKind, done: row.done, total: row.total, updatedAt: row.updatedAt };
+  }
+
+  async save(familyId: FamilyId, activity: BackgroundActivity): Promise<void> {
+    await this.db
+      .insert(backgroundActivities)
+      .values({ familyId, ...activity })
+      .onConflictDoUpdate({ target: backgroundActivities.familyId, set: activity });
+  }
+
+  async clear(familyId: FamilyId): Promise<void> {
+    await this.db.delete(backgroundActivities).where(eq(backgroundActivities.familyId, familyId));
   }
 }
 

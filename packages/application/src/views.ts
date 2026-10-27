@@ -18,6 +18,7 @@ import {
   type TimeSpan,
   type ViewId,
 } from "@family-butler/domain";
+import type { ActivityLog, CurrentActivity } from "./activity";
 import { summariseFamilyMember, type FamilyMemberSummary } from "./family-members";
 import type {
   Clock,
@@ -36,6 +37,7 @@ export type ViewsDeps = {
   members: FamilyMemberRepository;
   views: ViewRepository;
   items: ItemRepository;
+  activity: ActivityLog;
 };
 
 export type ViewSettings = { preselected: FamilyMemberId[]; horizonDays: number };
@@ -87,6 +89,8 @@ export type ViewPage = {
    * days scrolled to.
    */
   days: { date: LocalDate; items: TimelineEvent[] }[];
+  /** What the worker is busy with, such as reading messages; null when it is idle. */
+  activity: CurrentActivity | null;
 };
 
 /** Days of a timeline, from `first` to `last`, both included. */
@@ -120,7 +124,7 @@ const feedDaysBack = 30;
 export const openViewAccess: ViewAccessPolicy = { mayOpen: () => Promise.resolve(true) };
 
 export function createViewAccess(deps: ViewsDeps) {
-  const { clock, timeZone, families, members, views, items } = deps;
+  const { clock, timeZone, families, members, views, items, activity } = deps;
 
   /**
    * The Family's Events that may touch the days from `first` to `last`, or all later days if
@@ -259,7 +263,18 @@ export function createViewAccess(deps: ViewsDeps) {
         showing: showing.length > 0 ? showing : "all",
         horizonDays: view.horizonDays,
         days: await timelineOf(view.familyId, dates, instant),
+        activity: await activity.current(),
       };
+    },
+
+    /**
+     * What the worker is busy with, for a View to show while it is; undefined if there is no
+     * such View or `access` refuses it.
+     */
+    async activity(id: ViewId, input: { access: ViewAccessPolicy }): Promise<CurrentActivity | null | undefined> {
+      const view = await views.findById(id);
+      if (!view || !(await input.access.mayOpen(view.id))) return undefined;
+      return activity.current();
     },
 
     /**

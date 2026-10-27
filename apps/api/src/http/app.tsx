@@ -46,7 +46,15 @@ import {
   type SignedInAdmin,
 } from "./pages";
 import { icsFeed } from "./ics-feed";
-import { ShownDay, ViewDays, ViewPageDocument, ViewTimeline, viewUrl } from "./view-page";
+import {
+  ActivityIndicator,
+  activityEnded,
+  ShownDay,
+  ViewDays,
+  ViewPageDocument,
+  ViewTimeline,
+  viewUrl,
+} from "./view-page";
 
 export type HttpOptions = {
   /** Whether a reverse proxy in front sets `X-Forwarded-For` and `X-Forwarded-Proto`. */
@@ -205,6 +213,17 @@ export function createHttpApp(application: Application, options: HttpOptions) {
         <ShownDay side={earlier ? "from" : "until"} date={earlier ? days.days.first : days.days.last} oob />
       </>,
     );
+  });
+
+  // What the worker is busy with, as a View's indicator asks for it while the View is open.
+  app.get("/views/:id/activity", async (c) => {
+    const id = c.req.param("id") as ViewId;
+    const activity = await views.activity(id, { access: options.viewAccess });
+    if (activity === undefined) return c.notFound();
+    c.header("cache-control", "no-store");
+    // Once the worker is done, the timeline refreshes to show what it brought.
+    if (!activity && c.req.query("was") === "busy") c.header("hx-trigger", activityEnded);
+    return c.html(<ActivityIndicator viewId={id} activity={activity} />);
   });
 
   // A View's feed follows the View's access, so that calendar apps can subscribe without a session.

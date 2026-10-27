@@ -1,4 +1,11 @@
-import type { FamilyMemberSummary, Showing, TimelineDays, TimelineEvent, ViewPage } from "@family-butler/application";
+import type {
+  CurrentActivity,
+  FamilyMemberSummary,
+  Showing,
+  TimelineDays,
+  TimelineEvent,
+  ViewPage,
+} from "@family-butler/application";
 import { addDays, daysBetween, type FamilyMemberId, type LocalDate } from "@family-butler/domain";
 import { Layout } from "./layout";
 
@@ -14,6 +21,17 @@ const viewStyles = `
   .bar > * { max-width: 640px; margin: 0 auto; }
   .clock { font-size: 28px; font-weight: 800; font-variant-numeric: tabular-nums; }
   .clock .date { font-size: 15px; font-weight: 500; color: var(--muted); }
+  .top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .activity { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; }
+  .activity .spinner { flex: none; width: 14px; height: 14px; border-radius: 50%;
+    border: 2px solid var(--line); border-top-color: var(--muted); animation: spin 1s linear infinite; }
+  .activity progress { width: 64px; height: 4px; appearance: none; border: none; border-radius: 2px;
+    background: var(--line); overflow: hidden; }
+  .activity progress::-webkit-progress-bar { background: var(--line); }
+  .activity progress::-webkit-progress-value { background: var(--muted); }
+  .activity progress::-moz-progress-bar { background: var(--muted); }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .activity .spinner { animation-duration: 3s; } }
   .filters { display: flex; gap: 14px; margin-top: 10px; overflow-x: auto; }
   .filter { display: flex; flex: none; flex-direction: column; align-items: center; gap: 4px;
     color: var(--muted); font-size: 12px; font-weight: 600; text-decoration: none; }
@@ -77,7 +95,7 @@ export function ViewTimeline(props: { page: ViewPage }) {
     <main
       id="view"
       hx-get={viewUrl(page.id, page.showing)}
-      hx-trigger="every 60s"
+      hx-trigger={`every 60s, ${activityEnded} from:body`}
       hx-swap="outerHTML"
       hx-include="#shown-from, #shown-until"
       hx-disinherit="hx-include"
@@ -85,8 +103,11 @@ export function ViewTimeline(props: { page: ViewPage }) {
       <ShownDay side="from" date={page.days[0]?.date ?? page.now.date} />
       <ShownDay side="until" date={page.days.at(-1)?.date ?? page.now.date} />
       <header class="bar">
-        <div class="clock">
-          {page.now.time} <span class="date">{dateLabel(page.now.date)}</span>
+        <div class="top">
+          <div class="clock">
+            {page.now.time} <span class="date">{dateLabel(page.now.date)}</span>
+          </div>
+          <ActivityIndicator viewId={page.id} activity={page.activity} />
         </div>
         <nav class="filters" aria-label="Quick filter" hx-boost="true" hx-target="#view" hx-swap="outerHTML">
           <a class="filter" href={viewUrl(page.id, "all")} aria-current={page.showing === "all" ? "true" : undefined}>
@@ -111,6 +132,48 @@ export function ViewTimeline(props: { page: ViewPage }) {
         <ViewDays page={page} earlier later />
       </ol>
     </main>
+  );
+}
+
+/** The event the indicator raises once the worker is done, so that the timeline shows what it brought. */
+export const activityEnded = "activity-ended";
+
+/** How often the indicator asks again: often while the worker is busy, rarely while it is idle. */
+const activityPolling = { busy: "every 3s", idle: "every 20s" };
+
+const activityLabels: Record<CurrentActivity["kind"], string> = {
+  polling: "Checking Sources",
+  extracting: "Reading messages",
+};
+
+/**
+ * What the worker is busy with, such as reading messages, with how far it got; empty while it is
+ * idle. It asks for itself again, and says while busy that it was, so that the answer once the
+ * worker is done can raise `activityEnded`.
+ */
+export function ActivityIndicator(props: { viewId: string; activity: CurrentActivity | null }) {
+  const { viewId, activity } = props;
+  const label = activity ? activityLabels[activity.kind] : "";
+  return (
+    <div
+      id="activity"
+      class="activity"
+      role="status"
+      hx-get={`/views/${viewId}/activity`}
+      hx-trigger={activity ? activityPolling.busy : activityPolling.idle}
+      hx-swap="outerHTML"
+      hx-vals={activity ? '{"was":"busy"}' : undefined}
+    >
+      {activity ? (
+        <>
+          <span class="spinner" aria-hidden="true"></span>
+          <span>
+            {label} {Math.min(activity.done + 1, activity.total)}/{activity.total}
+          </span>
+          <progress value={activity.done} max={activity.total} aria-label={label}></progress>
+        </>
+      ) : null}
+    </div>
   );
 }
 

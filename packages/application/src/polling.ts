@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import type { SourceId } from "@family-butler/domain";
+import type { ActivityLog } from "./activity";
 import type {
   BlobStore,
   Clock,
@@ -27,6 +28,8 @@ export type PollingDeps = {
   items: ItemRepository;
   /** Where raw messages and their attachments are kept, outside Postgres (ADR-0006). */
   blobs: BlobStore;
+  /** Where the run shows as the worker's activity. */
+  activity: ActivityLog;
 };
 
 export type PollReport = {
@@ -36,7 +39,7 @@ export type PollReport = {
 };
 
 export function createSourcePolling(deps: PollingDeps) {
-  const { clock, timeZone, registry, sourceTypes, sources, secrets, items, blobs } = deps;
+  const { clock, timeZone, registry, sourceTypes, sources, secrets, items, blobs, activity } = deps;
 
   async function store(contents: Uint8Array): Promise<StoredFile> {
     const sha256 = createHash("sha256").update(contents).digest("hex");
@@ -104,6 +107,7 @@ export function createSourcePolling(deps: PollingDeps) {
       const report: PollReport = { polled: [], failed: [] };
       const enabled = new Set((await sourceTypes.list()).filter((type) => type.enabled).map((type) => type.id));
       const now = clock.now().getTime();
+      const due: { source: Source; ingestion: PollingIngestion }[] = [];
       for (const type of enabled) {
         const loaded = await registry.load(type);
         if (!loaded.ok) continue;
@@ -112,10 +116,20 @@ export function createSourcePolling(deps: PollingDeps) {
         for (const source of await sources.listOfType(type)) {
           const interval = (source.pollIntervalSeconds ?? ingestion.suggestedIntervalSeconds) * 1000;
           if (source.lastRunAt && now - source.lastRunAt.getTime() < interval) continue;
+          due.push({ source, ingestion });
+        }
+      }
+      if (due.length === 0) return report;
+      const progress = await activity.begin("polling", due.length);
+      try {
+        for (const { source, ingestion } of due) {
           const failure = await run(source, ingestion);
           if (failure) report.failed.push(failure);
           else report.polled.push(source.id);
+          await progress.advance();
         }
+      } finally {
+        await progress.end();
       }
       return report;
     },

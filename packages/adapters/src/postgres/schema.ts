@@ -289,3 +289,15 @@ export const llmEndpoints = pgTable("llm_endpoints", {
   acknowledgedAt: timestamp("acknowledged_at", { withTimezone: true }),
   savedAt: timestamp("saved_at", { withTimezone: true }).notNull(),
 });
+
+/** What the worker is busy with, one row per Family while it is; read by the api for the Views. */
+export const backgroundActivities = pgTable("background_activities", {
+  familyId: uuid("family_id")
+    .primaryKey()
+    .references(() => families.id),
+  /** `polling` or `extracting`. */
+  kind: text("kind").notNull(),
+  done: integer("done").notNull(),
+  total: integer("total").notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
+});
