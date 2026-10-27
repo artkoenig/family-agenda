@@ -14,6 +14,8 @@ This starts `api` (on port 8080, or `PORT`), `worker` and `postgres`. Open the I
 
 - **Family Members and Views**: in the Admin area, add the Family Members and create Views. Each View has its own address, `/views/<id>`, which anyone on the home network opens without signing in, so guests on your Wi-Fi can see them too. Guest Wi-Fi isolation helps. Never expose the Instance to the internet without your own authentication in front of it.
 - **Source Types**: each kind of Source is a plugin. In the Admin area, under Source Types, enable the ones your Family uses; none is enabled on its own, not even after an update. When an update or an added plugin brings a new one, a banner says so until an Admin has looked at the list. To add a plugin to the stock image, put its package directory, with its `package.json` and code, into the `plugins` volume and restart. Such a plugin must be an ES module (`"type": "module"`) and imports `@family-butler/source-sdk` without shipping it: it gets the Instance's own SDK.
+- **Sources**: under Sources, add a Source of an enabled Source Type with the form its plugin declares; secret fields, such as a calendar's secret ICS address, are stored encrypted and never shown again. The `worker` checks each Source on its plugin's suggested interval, or on one you set. Its Events appear on every View. Removing a Source stops reading it, but what it brought in stays.
+- **ICS calendars**: add a calendar by its secret ICS address, such as Google Calendar's "Secret address in iCal format". Changed and cancelled Events follow on the next check; recurring Events are not read yet.
 - **Time zone**: a View's days start at midnight in `TZ`, by default `Europe/Berlin`.
 - **Blobs**: photos are kept as files in the `blobs` volume, not in Postgres. Back it up with the database.
 
@@ -49,12 +51,14 @@ After changing `packages/adapters/src/postgres/schema.ts`, generate a migration 
 | `packages/adapters` | Postgres (Drizzle), pg-boss, Argon2id, the master key file, the envelope-encrypting `SecretStore` and the file `BlobStore` |
 | `packages/contracts` | zod schemas for REST DTOs |
 | `packages/source-sdk` | The `SourcePlugin` contract and manifest, and its shared contract tests in `@family-butler/source-sdk/testing`; the only package a plugin may import |
+| `packages/source-ics` | The ICS calendar Source plugin, on `ical.js` |
 | `apps/api` | Hono, the composition root with the `SourceRegistry`, HTML and the CLI |
-| `apps/worker` | pg-boss jobs, on the same composition root |
+| `apps/worker` | Polls the Sources that are due, on the same composition root |
 
 ### Tests
 
 - **Use cases**: `apps/api/test/use-cases`, booted through the composition root against a throwaway Postgres database, master key file and blob directory, with a controllable `Clock` (`apps/api/test/support/boot.ts`). Pass `secretStore: new InMemorySecretStore()` to keep secrets in memory instead.
 - **Source plugin contracts**: each plugin calls `describeSourcePluginContract` from `@family-butler/source-sdk/testing` in its own tests.
-- **Source plugins in use cases**: `writeTestPluginPackage` (`apps/api/test/support/test-source-plugin.ts`) puts a test plugin into the Instance's workspace packages or `plugins/` directory; restart the Instance to discover it. The plugin emits the Origins it is given and fails on demand.
+- **Source plugins in use cases**: `writeTestPluginPackage` (`apps/api/test/support/test-source-plugin.ts`) puts a test plugin into the Instance's workspace packages or `plugins/` directory; restart the Instance to discover it, or pass `sourcePlugins` to `bootForTest` to install it before the first boot. The plugin emits the Origins it is given, fails on demand, and records what it was run with. `app.polling.pollDue()` runs the Sources that are due, as the worker does.
+- **Domain**: `packages/domain/test`, pure tests where a table of cases is clearer, such as for folding Revisions.
 - **HTTP**: `apps/api/test/http`, in-process requests against the Hono app (`apps/api/test/support/http.ts`).

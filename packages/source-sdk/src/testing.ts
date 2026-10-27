@@ -4,6 +4,8 @@ import { problemsWith, problemsWithOrigin, type RunContext, type SourcePlugin } 
 export type ContractOptions = {
   /** A configuration to run the plugin with once; without it, the plugin is not run. */
   config?: RunContext["config"];
+  /** The time of that run; by default the current time. */
+  now?: Date;
 };
 
 /**
@@ -34,18 +36,20 @@ export function describeSourcePluginContract(
       }
     });
 
-    const { config } = options;
+    const { config, now = new Date() } = options;
     if (config) {
       it("emits valid Origins and state for a Source", async () => {
         const plugin = createPlugin();
         if (plugin.ingestion.mode !== "polling") return;
         const known = new Set(plugin.originAttributes.map((attribute) => attribute.key));
-        const result = await plugin.ingestion.poll({ config, state: null });
+        const result = await plugin.ingestion.poll({ config, state: null, now, timeZone: "Europe/Berlin" });
         for (const origin of result.origins) {
           expect(problemsWithOrigin(origin)).toEqual([]);
           for (const key of Object.keys(origin.attributes)) expect(known).toContain(key);
         }
         expect(result.state === null || typeof result.state === "string").toBe(true);
+        const again = await plugin.ingestion.poll({ config, state: result.state, now, timeZone: "Europe/Berlin" });
+        expect(again.origins, "a second run with the state of the first emits no Origin again").toEqual([]);
       });
     }
   });

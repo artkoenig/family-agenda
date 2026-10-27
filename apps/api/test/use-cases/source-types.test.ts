@@ -2,8 +2,10 @@ import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { bootForTest, type TestInstance } from "../support/boot";
+import type { SourceId } from "@family-butler/domain";
 import {
   loadedTestPlugins,
+  testPluginControls,
   writeTestPluginPackage,
   type TestPluginPackage,
 } from "../support/test-source-plugin";
@@ -176,7 +178,14 @@ describe("Sources", () => {
     if (!added.ok) throw new Error(`adding failed: ${added.problem}`);
 
     expect(await instance.app.sources.list()).toEqual([
-      { id: added.id, sourceTypeId: "school-portal", plain: { url: "https://school.example.org" } },
+      {
+        id: added.id,
+        sourceTypeId: "school-portal",
+        displayName: "school-portal",
+        plain: { url: "https://school.example.org" },
+        storedSecrets: ["password"],
+        pollIntervalSeconds: null,
+      },
     ]);
     const [row] = await instance.query("SELECT config, secret_refs::text AS refs, state FROM sources");
     expect(row?.config).toEqual({ url: "https://school.example.org" });
@@ -222,10 +231,108 @@ describe("Sources", () => {
     await rm(join(instance.workspacePackages, "school-portal"), { recursive: true });
     await instance.restart();
 
-    expect(await instance.app.sources.list()).toEqual([
-      { id: added.id, sourceTypeId: "school-portal", plain: { address: "https://school.example.org" } },
+    expect((await instance.app.sources.list()).map(({ id, plain }) => ({ id, plain }))).toEqual([
+      { id: added.id, plain: { address: "https://school.example.org" } },
     ]);
     await instance.restart();
     expect((await instance.app.sources.list())[0]?.plain).toEqual({ address: "https://school.example.org" });
+  });
+
+  const add = async (input: { pollIntervalSeconds?: number | null } = {}) => {
+    const added = await instance.app.sources.add({
+      sourceTypeId: "school-portal",
+      plain: { url: "https://school.example.org" },
+      secrets: { password: "hunter2" },
+      ...input,
+    });
+    if (!added.ok) throw new Error(`adding failed: ${added.problem}`);
+    return added.id;
+  };
+
+  /** What the plugin was run with last time. */
+  const lastRun = () => {
+    const run = testPluginControls.runs("school-portal").at(-1);
+    return run && { config: run.config, state: run.state };
+  };
+
+  it("offers the enabled Source Types with the form their plugin declares", async () => {
+    expect(await instance.app.sources.forms()).toEqual([
+      {
+        sourceTypeId: "school-portal",
+        displayName: "school-portal",
+        fields: [
+          { key: "url", label: "URL", secret: false, required: true, description: null },
+          { key: "password", label: "Password", secret: true, required: false, description: null },
+        ],
+        suggestedIntervalSeconds: 600,
+      },
+    ]);
+  });
+
+  it("are edited, keeping a secret left empty and replacing one given anew", async () => {
+    const id = await add();
+
+    expect(
+      await instance.app.sources.edit(id, { plain: { url: "https://new.example.org" }, secrets: { password: "" } }),
+    ).toEqual({ ok: true });
+    await instance.app.polling.pollDue();
+    expect(lastRun()).toEqual({
+      config: { plain: { url: "https://new.example.org" }, secrets: { password: "hunter2" } },
+      state: null,
+    });
+
+    await instance.app.sources.edit(id, { plain: { url: "https://new.example.org" }, secrets: { password: "s3cret" } });
+    instance.clock.advance(10 * 60 * 1000);
+    await instance.app.polling.pollDue();
+    expect(lastRun()).toEqual({
+      config: { plain: { url: "https://new.example.org" }, secrets: { password: "s3cret" } },
+      state: "1",
+    });
+  });
+
+  it("refuses an edit that leaves out a required field or names an unknown Source", async () => {
+    const id = await add();
+
+    expect(await instance.app.sources.edit(id, { plain: {}, secrets: {} })).toEqual({
+      ok: false,
+      problem: "invalid-config",
+      fields: ["url"],
+    });
+    expect(
+      await instance.app.sources.edit("3f0b2a52-0000-4000-8000-000000000000" as SourceId, { plain: {}, secrets: {} }),
+    ).toEqual({ ok: false, problem: "unknown-source" });
+  });
+
+  it("are polled on the interval an Admin sets, or on the plugin's suggestion", async () => {
+    const id = await add({ pollIntervalSeconds: 60 * 60 });
+    const runs = () => testPluginControls.runs("school-portal").length;
+    const start = runs();
+
+    await instance.app.polling.pollDue();
+    instance.clock.advance(30 * 60 * 1000);
+    await instance.app.polling.pollDue();
+    expect(runs() - start).toBe(1);
+
+    await instance.app.sources.edit(id, {
+      plain: { url: "https://school.example.org" },
+      secrets: {},
+      pollIntervalSeconds: null,
+    });
+    await instance.app.polling.pollDue();
+    expect(runs() - start).toBe(2);
+    expect((await instance.app.sources.list())[0]?.pollIntervalSeconds).toBeNull();
+  });
+
+  it("refuse a polling interval under a minute or over a week", async () => {
+    for (const pollIntervalSeconds of [30, 8 * 24 * 60 * 60, 90.5]) {
+      expect(
+        await instance.app.sources.add({
+          sourceTypeId: "school-portal",
+          plain: { url: "x" },
+          secrets: {},
+          pollIntervalSeconds,
+        }),
+      ).toEqual({ ok: false, problem: "invalid-interval" });
+    }
   });
 });

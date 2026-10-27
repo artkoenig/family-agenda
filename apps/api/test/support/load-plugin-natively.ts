@@ -19,7 +19,7 @@ if (loaded.ok) {
   const entry = pathToFileURL(join(directory, packageName, "index.ts")).href;
   const plugin = ((await import(entry)) as { default: SourcePlugin }).default;
   if (plugin.ingestion.mode === "polling") {
-    error = await plugin.ingestion.poll({ config: { plain: {}, secrets: {} }, state: null }).catch((e: unknown) => e);
+    error = await plugin.ingestion.poll({ config: { plain: {}, secrets: {} }, state: null, now: new Date(), timeZone: "UTC" }).catch((e: unknown) => e);
   }
 }
 console.log(JSON.stringify({ loaded: loaded.ok, notLoadable, isCoreSourceError: error instanceof SourceError }));

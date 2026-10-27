@@ -48,6 +48,10 @@ export type RunContext = {
   config: { plain: JsonObject; secrets: Record<string, string> };
   /** The opaque state the plugin returned last time for this Source, such as a sync token. */
   state: string | null;
+  /** The time of the run, as the Instance's clock tells it. */
+  now: Date;
+  /** The IANA time zone the Family lives in, for times a Source gives without one. */
+  timeZone: string;
 };
 
 export type IngestResult = { origins: Origin[]; state: string | null };
@@ -67,16 +71,39 @@ export type Ingestion =
 
 export type Attachment = { filename: string; contentType: string; bytes: Uint8Array };
 
-export type ItemKind = "event" | "lesson" | "timetable-change" | "task" | "notice";
+export const itemKinds = ["event", "lesson", "timetable-change", "task", "notice"] as const;
 
-/** One statement about an Item from a structured Source (ADR-0009). */
+export type ItemKind = (typeof itemKinds)[number];
+
+export const revisionActions = ["create", "change", "move", "cancel"] as const;
+
+/**
+ * One statement about an Item from a structured Source (ADR-0009), made at the time of its
+ * Origin. A create states the Item exists (again), a change or move states some of its fields,
+ * and a cancel cancels it. The core folds an Item's Revisions field by field, newest first.
+ */
 export type PluginRevision = {
   itemKind: ItemKind;
   /** Identifies the Item within the Source, so that later Revisions reach the same Item. */
   itemKey: string;
-  action: "create" | "change" | "move" | "cancel";
+  action: (typeof revisionActions)[number];
+  /** The Item kind's fields this Revision states, such as `EventFields` for an Event. */
   fields: JsonObject;
 };
+
+/**
+ * When an Event takes place: between two ISO 8601 instants, or on whole days given as
+ * `YYYY-MM-DD` in the Family's time zone, both days included.
+ */
+export type EventSpan =
+  | { allDay: false; start: string; end: string }
+  | { allDay: true; firstDay: string; lastDay: string };
+
+/**
+ * The fields of an Event. A create states `title` and `span`, a move states `span`; a change
+ * states any of them. A Revision with other fields, or invalid ones, is rejected.
+ */
+export type EventFields = { title?: string; span?: EventSpan; place?: string | null };
 
 /** One appearance of an Item in a Source. */
 export type Origin = {
@@ -85,6 +112,8 @@ export type Origin = {
   occurredAt: Date;
   /** Values of the plugin's Origin attributes, which Attribution Rules match on. */
   attributes: Record<string, string>;
+  /** An `http` or `https` address where the Family can look at the original, if there is one. */
+  link?: string;
   content:
     | { kind: "raw-message"; text: string; attachments: Attachment[] }
     | { kind: "revisions"; revisions: PluginRevision[] };
@@ -174,8 +203,20 @@ export function problemsWithOrigin(origin: Origin): string[] {
   const problems: string[] = [];
   if (origin.externalId === "") problems.push("the Origin has no external id");
   if (Number.isNaN(origin.occurredAt.getTime())) problems.push("the Origin has no valid time");
-  if (origin.content.kind === "revisions" && origin.content.revisions.length === 0) {
-    problems.push("the Origin carries no Revisions");
+  if (origin.content.kind === "revisions") {
+    if (origin.content.revisions.length === 0) problems.push("the Origin carries no Revisions");
+    for (const revision of origin.content.revisions) {
+      if (!(itemKinds as readonly string[]).includes(revision.itemKind)) {
+        problems.push(`"${revision.itemKind}" is no Item kind`);
+      }
+      if (!(revisionActions as readonly string[]).includes(revision.action)) {
+        problems.push(`"${revision.action}" is no Revision action`);
+      }
+      if (revision.itemKey === "") problems.push("a Revision has no Item key");
+    }
+  }
+  if (origin.link !== undefined && !/^https?:\/\//i.test(origin.link)) {
+    problems.push("the Origin's link is no http or https address");
   }
   return problems;
 }

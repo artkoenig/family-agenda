@@ -1,9 +1,12 @@
-import type {
-  AdminSummary,
-  FamilyMemberSummary,
-  RecoveryKit,
-  SourceTypeSummary,
-  ViewSummary,
+import {
+  pollIntervalRange,
+  type AdminSummary,
+  type FamilyMemberSummary,
+  type RecoveryKit,
+  type SourceForm,
+  type SourceSummary,
+  type SourceTypeSummary,
+  type ViewSummary,
 } from "@family-butler/application";
 import {
   defaultHorizonDays,
@@ -60,6 +63,7 @@ function AdminLayout(props: { title: string; admin: SignedInAdmin; children: Chi
         <a href="/admin/family-members">Family Members</a>
         <a href="/admin/views">Views</a>
         <a href="/admin/source-types">Source Types</a>
+        <a href="/admin/sources">Sources</a>
         <a href="/admin/admins">Admins</a>
         <a href="/admin/recovery-kit">Recovery Kit</a>
         <span>{props.admin.email}</span>
@@ -90,6 +94,9 @@ export function AdminHomePage(props: { admin: SignedInAdmin }) {
         </li>
         <li>
           <a href="/admin/source-types">Source Types</a>: the kinds of channels the Family's Sources can be.
+        </li>
+        <li>
+          <a href="/admin/sources">Sources</a>: the channels information arrives through, such as calendars.
         </li>
       </ul>
     </AdminLayout>
@@ -343,5 +350,108 @@ export function SourceTypesPage(props: {
         ))}
       </ul>
     </AdminLayout>
+  );
+}
+
+export function SourcesPage(props: {
+  admin: SignedInAdmin;
+  sources: SourceSummary[];
+  forms: SourceForm[];
+  problem?: string;
+}) {
+  const formOf = (id: string) => props.forms.find((form) => form.sourceTypeId === id);
+  return (
+    <AdminLayout title="Sources" admin={props.admin}>
+      <Problem message={props.problem} />
+      <ul class="entries">
+        {props.sources.map((source) => {
+          const form = formOf(source.sourceTypeId);
+          return (
+            <li>
+              <h2>{source.displayName}</h2>
+              {form ? (
+                <form method="post" action={`/admin/sources/${source.id}`}>
+                  <SourceFields form={form} prefix={source.id} source={source} />
+                  <button type="submit">Save</button>
+                </form>
+              ) : (
+                <p class="problem">Its Source Type is not enabled or not installed, so it is not read.</p>
+              )}
+              <form method="post" action={`/admin/sources/${source.id}/remove`}>
+                <p>Removing a Source stops reading it. What it has brought in stays on the timeline.</p>
+                <button type="submit">Remove this {source.displayName}</button>
+              </form>
+            </li>
+          );
+        })}
+      </ul>
+      {props.forms.length === 0 ? (
+        <p>
+          No Source Type is enabled. <a href="/admin/source-types">Enable one</a> to add a Source.
+        </p>
+      ) : null}
+      {props.forms.map((form) => (
+        <>
+          <h2>Add a {form.displayName}</h2>
+          <form method="post" action="/admin/sources">
+            <input type="hidden" name="sourceTypeId" value={form.sourceTypeId} />
+            <SourceFields form={form} prefix={`new-${form.sourceTypeId}`} />
+            <button type="submit">Add {form.displayName}</button>
+          </form>
+        </>
+      ))}
+    </AdminLayout>
+  );
+}
+
+/** The fields a plugin declares; a secret is never shown, only whether one is stored. */
+function SourceFields(props: { form: SourceForm; prefix: string; source?: SourceSummary }) {
+  const { form, prefix, source } = props;
+  const id = (key: string) => `${prefix}-${key}`;
+  const plainValue = (key: string) => {
+    const value = source?.plain[key];
+    return typeof value === "string" || typeof value === "number" ? String(value) : undefined;
+  };
+  return (
+    <>
+      {form.fields.map((field) => {
+        const stored = field.secret && source?.storedSecrets.includes(field.key);
+        return (
+          <>
+            <label for={id(field.key)}>
+              {field.label}
+              {field.required ? null : " (optional)"}
+            </label>
+            {field.description ? <small>{field.description}</small> : null}
+            {field.secret ? (
+              <input
+                id={id(field.key)}
+                name={`secret.${field.key}`}
+                type="password"
+                autocomplete="off"
+                required={field.required && !stored}
+                placeholder={stored ? "Stored; leave empty to keep it" : undefined}
+              />
+            ) : (
+              <input id={id(field.key)} name={`plain.${field.key}`} required={field.required} value={plainValue(field.key)} />
+            )}
+          </>
+        );
+      })}
+      {form.suggestedIntervalSeconds !== null ? (
+        <>
+          <label for={id("interval")}>Check every … minutes (empty for the suggested {form.suggestedIntervalSeconds / 60})</label>
+          <input
+            id={id("interval")}
+            name="pollIntervalMinutes"
+            type="number"
+            min={pollIntervalRange.minSeconds / 60}
+            max={pollIntervalRange.maxSeconds / 60}
+            placeholder={String(form.suggestedIntervalSeconds / 60)}
+            value={source?.pollIntervalSeconds != null ? String(source.pollIntervalSeconds / 60) : undefined}
+          />
+        </>
+      ) : null}
+    </>
   );
 }

@@ -9,6 +9,7 @@ import {
   primaryKey,
   text,
   timestamp,
+  unique,
   uuid,
 } from "drizzle-orm/pg-core";
 
@@ -124,7 +125,95 @@ export const sources = pgTable(
     secretRefs: jsonb("secret_refs").$type<Record<string, string>>().notNull(),
     /** The plugin's opaque state, handed back on its next run. */
     state: text("state"),
+    /** As an Admin set it; null for the plugin's suggestion. */
+    pollIntervalSeconds: integer("poll_interval_seconds"),
+    lastRunAt: timestamp("last_run_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
   },
   (table) => [index("sources_source_type_id_idx").on(table.sourceTypeId)],
+);
+
+/**
+ * Appearances of Items in Sources (ADR-0009). They outlive their Source, so `source_id` has no
+ * foreign key: removing a Source keeps its Origins and Revisions.
+ */
+export const origins = pgTable(
+  "origins",
+  {
+    id: uuid("id").primaryKey(),
+    familyId: uuid("family_id")
+      .notNull()
+      .references(() => families.id),
+    sourceId: uuid("source_id").notNull(),
+    /** The Origin's id within its Source, such as a calendar entry's UID. */
+    externalId: text("external_id").notNull(),
+    attributes: jsonb("attributes").$type<Record<string, string>>().notNull(),
+    link: text("link"),
+    firstSeenAt: timestamp("first_seen_at", { withTimezone: true }).notNull(),
+  },
+  (table) => [unique("origins_source_external_id_unique").on(table.sourceId, table.externalId)],
+);
+
+/**
+ * Items as projections of their Revisions: `folded` and the window are recomputed whenever one of
+ * their Revisions arrives, and never written otherwise.
+ */
+export const items = pgTable(
+  "items",
+  {
+    id: uuid("id").primaryKey(),
+    familyId: uuid("family_id")
+      .notNull()
+      .references(() => families.id),
+    kind: text("kind").notNull(),
+    folded: jsonb("folded").$type<{ fields: Record<string, unknown>; cancelled: boolean }>(),
+    /** Instants certainly before and after the Item's time, to find it by. */
+    windowFrom: timestamp("window_from", { withTimezone: true }),
+    windowTo: timestamp("window_to", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+  },
+  (table) => [index("items_family_window_idx").on(table.familyId, table.windowFrom, table.windowTo)],
+);
+
+/** Which Item a Source's own key for it, such as a calendar UID, belongs to. */
+export const itemKeys = pgTable(
+  "item_keys",
+  {
+    sourceId: uuid("source_id").notNull(),
+    itemKey: text("item_key").notNull(),
+    itemId: uuid("item_id")
+      .notNull()
+      .references(() => items.id),
+  },
+  (table) => [primaryKey({ columns: [table.sourceId, table.itemKey] })],
+);
+
+/** Append-only statements about Items (ADR-0009). */
+export const revisions = pgTable(
+  "revisions",
+  {
+    id: uuid("id").primaryKey(),
+    /** The order Revisions were received in, which decides between equal source times. */
+    sequence: bigserial("sequence", { mode: "number" }).notNull(),
+    familyId: uuid("family_id")
+      .notNull()
+      .references(() => families.id),
+    itemId: uuid("item_id")
+      .notNull()
+      .references(() => items.id),
+    originId: uuid("origin_id")
+      .notNull()
+      .references(() => origins.id),
+    act: text("act").notNull(),
+    fields: jsonb("fields").$type<Record<string, unknown>>().notNull(),
+    sourceTime: timestamp("source_time", { withTimezone: true }).notNull(),
+    receivedAt: timestamp("received_at", { withTimezone: true }).notNull(),
+    accepted: boolean("accepted").notNull(),
+    /** A hash of what the Revision states, so that a Source stating it again adds nothing. */
+    fingerprint: text("fingerprint").notNull(),
+  },
+  (table) => [
+    index("revisions_item_id_idx").on(table.itemId),
+    unique("revisions_origin_fingerprint_unique").on(table.originId, table.fingerprint),
+  ],
 );
