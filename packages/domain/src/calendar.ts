@@ -31,3 +31,13 @@ export function addDays(date: LocalDate, days: number): LocalDate {
   next.setUTCDate(next.getUTCDate() + days);
   return next.toISOString().slice(0, 10) as LocalDate;
 }
+
+/** How many calendar days `to` lies after `from`; negative if before. */
+export function daysBetween(from: LocalDate, to: LocalDate): number {
+  return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / (24 * 60 * 60 * 1000));
+}
+
+/** Whether a string is a real calendar date as `YYYY-MM-DD`. */
+export function isLocalDate(value: string): value is LocalDate {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value) && new Date(`${value}T00:00:00Z`).toISOString().startsWith(value);
+}

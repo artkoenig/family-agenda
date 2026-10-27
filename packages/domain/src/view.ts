@@ -1,3 +1,4 @@
+import { daysBetween, type LocalDate } from "./calendar";
 import type { FamilyId } from "./family";
 import type { FamilyMemberId } from "./family-member";
 
@@ -20,4 +21,13 @@ export const defaultHorizonDays = 7;
 
 export function isAcceptableHorizon(days: number): boolean {
   return Number.isInteger(days) && days >= horizonDaysRange.min && days <= horizonDaysRange.max;
+}
+
+/** At most how many days one timeline page shows, when scrolled past its horizon. */
+export const maxTimelineDays = 366;
+
+/** Whether the days from `first` to `last`, both included, can be shown as one timeline page. */
+export function isAcceptableTimelineRange(first: LocalDate, last: LocalDate): boolean {
+  const days = daysBetween(first, last) + 1;
+  return days >= 1 && days <= maxTimelineDays;
 }

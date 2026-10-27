@@ -87,6 +87,50 @@ describe("Events in a View over HTTP", () => {
     expect(page).toContain("Nothing planned.");
   });
 
+  it("scrolls into the past and the future, one horizon at a time", async () => {
+    await arrive(
+      event("swim", { title: "Swimming", span: { allDay: false, start: "2026-09-10T14:00:00Z", end: "2026-09-10T15:00:00Z" } }),
+      event("fair", { title: "School fair", span: { allDay: true, firstDay: "2026-09-18", lastDay: "2026-09-18" } }),
+    );
+
+    const page = await (await instance.get(path)).text();
+    expect(page).not.toContain("Swimming");
+    expect(page).not.toContain("School fair");
+    const earlierUrl = `${path}/days?show=all&amp;from=2026-09-11&amp;until=2026-09-13&amp;then=earlier`;
+    const laterUrl = `${path}/days?show=all&amp;from=2026-09-17&amp;until=2026-09-19&amp;then=later`;
+    expect(page).toContain(`hx-get="${earlierUrl}"`);
+    expect(page).toMatch(new RegExp(`hx-get="${laterUrl.replaceAll("?", "\\?")}" hx-trigger="revealed"`));
+
+    const later = await (await instance.get(laterUrl.replaceAll("&amp;", "&"))).text();
+    expect(later).toContain("School fair");
+    expect(later).toContain(`from=2026-09-20&amp;until=2026-09-22&amp;then=later`);
+    expect(later).not.toContain("Earlier days");
+    expect(later).toContain('<input type="hidden" id="shown-until" name="until" value="2026-09-19" hx-swap-oob="true"/>');
+
+    const earlier = await (await instance.get(earlierUrl.replaceAll("&amp;", "&"))).text();
+    expect(earlier).toContain('data-date="2026-09-13"');
+    expect(earlier).toContain("Yesterday");
+    expect(earlier).toContain(`from=2026-09-08&amp;until=2026-09-10&amp;then=earlier`);
+    expect(earlier).not.toContain("Now ");
+    expect(earlier).toContain('<input type="hidden" id="shown-from" name="from" value="2026-09-11" hx-swap-oob="true"/>');
+    const further = await (await instance.get(`${path}/days?show=all&from=2026-09-08&until=2026-09-10&then=earlier`)).text();
+    expect(rowOf(further, "Swimming")).toContain('class="event earlier"');
+  });
+
+  it("refreshes the days scrolled to, and refuses days it cannot show", async () => {
+    const refreshed = await (await instance.get(`${path}?show=all&from=2026-09-11&until=2026-09-19`)).text();
+    expect(refreshed).toContain('data-date="2026-09-11"');
+    expect(refreshed).toContain('data-date="2026-09-19"');
+    expect(refreshed.indexOf("Today")).toBeGreaterThan(refreshed.indexOf('data-date="2026-09-13"'));
+    expect(refreshed).toContain("Now 09:00");
+
+    for (const query of ["from=2026-09-11", "from=2026-02-30&until=2026-03-01", "from=2026-09-19&until=2026-09-11", "from=2026-01-01&until=2027-12-31"]) {
+      expect((await instance.get(`${path}?${query}`)).status).toBe(400);
+    }
+    expect((await instance.get(`${path}/days?from=2026-09-11&until=2026-09-13`)).status).toBe(400);
+    expect((await instance.get("/views/00000000-0000-4000-8000-000000000000/days?from=2026-09-11&until=2026-09-13&then=later")).status).toBe(404);
+  });
+
   it("serves the View's feed as a calendar, without signing in", async () => {
     const place = "Großer Saal der Musikschule; Eingang über den Hof, zweite Tür links, dann die Treppe hinauf";
     await arrive(
