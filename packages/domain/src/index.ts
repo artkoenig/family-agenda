@@ -9,3 +9,4 @@ export * from "./item";
 export * from "./event";
 export * from "./mention";
 export * from "./network";
+export * from "./language";

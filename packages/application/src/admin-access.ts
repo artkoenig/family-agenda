@@ -1,6 +1,8 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import {
   isAcceptablePassword,
+  isFamilyLanguage,
+  ocrLanguageOf,
   parseEmail,
   type Admin,
   type AdminId,
@@ -39,7 +41,7 @@ export type AccountProblem = "invalid-email" | "password-too-short";
 
 export type CreateFirstAdminResult =
   | { ok: true; sessionToken: string }
-  | { ok: false; problem: AccountProblem | "admin-exists" };
+  | { ok: false; problem: AccountProblem | "admin-exists" | "invalid-language" };
 
 export type SignInResult =
   | { ok: true; sessionToken: string }
@@ -90,14 +92,21 @@ export function createAdminAccess(deps: AdminAccessDeps) {
       return !(await admins.exists());
     },
 
+    /** Sets up the Family too: its Family Language, if given, and OCR in that language. */
     async createFirstAdmin(input: {
       email: string;
       password: string;
+      language?: string;
     }): Promise<CreateFirstAdminResult> {
       if (await admins.exists()) return { ok: false, problem: "admin-exists" };
+      const { language } = input;
+      if (language !== undefined && !isFamilyLanguage(language)) return { ok: false, problem: "invalid-language" };
       const result = await newAdmin(input.email, input.password);
       if (!result.ok) return result;
       if (!(await admins.addFirst(result.admin))) return { ok: false, problem: "admin-exists" };
+      if (language !== undefined) {
+        await families.saveLanguages(result.admin.familyId, { language, ocrLanguages: [ocrLanguageOf(language)] });
+      }
       return { ok: true, sessionToken: await startSession(result.admin.id) };
     },
 

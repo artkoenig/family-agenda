@@ -1,7 +1,8 @@
 import { randomBytes } from "node:crypto";
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { TessdataCatalog } from "@family-agenda/adapters";
 import type { BlobStore, Extractor, SecretStore, TextExtractor } from "@family-agenda/application";
 import pg from "pg";
 import { bootApplication, type Application, type ApplicationConfig } from "../../src/composition-root";
@@ -20,6 +21,8 @@ export type TestOptions = {
   extractor?: Extractor;
   /** Replaces the poppler and Tesseract command-line tools, such as with a `FakeTextExtractor`. */
   textExtractor?: TextExtractor;
+  /** Replaces downloading Tesseract models, such as with a `FakeTessdataCatalog`. */
+  tessdataCatalog?: TessdataCatalog;
   /** The application version the Instance runs, as an update would change it. */
   applicationVersion?: string;
   /** Test plugins installed as workspace packages before the first boot. */
@@ -35,6 +38,8 @@ export type TestInstance = {
   workspacePackages: string;
   /** The `plugins/` volume, empty at first. */
   pluginDirectory: string;
+  /** The `tessdata` volume, holding links to the bundled `deu`, `eng` and `osd` models at first. */
+  tessdataDirectory: string;
   /** Runs SQL against the Instance's database, to look at what it stores. */
   query(sql: string): Promise<Record<string, unknown>[]>;
   /**
@@ -60,6 +65,12 @@ export async function bootForTest(options: TestOptions = {}): Promise<TestInstan
   const pluginDirectory = join(keyDirectory, "plugins");
   await mkdir(workspacePackages);
   await mkdir(pluginDirectory);
+  // The models the image ships, as stand-ins: the use cases never run Tesseract.
+  const bundledTessdataDirectory = join(keyDirectory, "bundled-tessdata");
+  await mkdir(bundledTessdataDirectory);
+  for (const model of ["deu", "eng", "osd"]) {
+    await writeFile(join(bundledTessdataDirectory, `${model}.traineddata`), `bundled ${model} model`);
+  }
   const { sourcePlugins = [], ...applicationOptions } = options;
   for (const plugin of sourcePlugins) await writeTestPluginPackage(workspacePackages, plugin);
 
@@ -70,6 +81,8 @@ export async function bootForTest(options: TestOptions = {}): Promise<TestInstan
     blobDirectory: join(keyDirectory, "blobs"),
     workspacePackages,
     pluginDirectory,
+    tessdataDirectory: join(keyDirectory, "tessdata"),
+    bundledTessdataDirectory,
     applicationVersion: "1.0.0",
     timeZone: "Europe/Berlin",
     clock,
@@ -82,6 +95,7 @@ export async function bootForTest(options: TestOptions = {}): Promise<TestInstan
     masterKeyFile: config.masterKeyFile,
     workspacePackages,
     pluginDirectory,
+    tessdataDirectory: config.tessdataDirectory,
     async query(sql) {
       const client = new pg.Client({ connectionString: config.databaseUrl });
       await client.connect();

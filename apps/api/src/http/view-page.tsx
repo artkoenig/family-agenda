@@ -6,7 +6,7 @@ import type {
   TimelineEvent,
   ViewPage,
 } from "@family-agenda/application";
-import { addDays, daysBetween, type FamilyMemberId, type LocalDate } from "@family-agenda/domain";
+import { addDays, daysBetween, localeOf, type FamilyMemberId, type LocalDate } from "@family-agenda/domain";
 import { raw } from "hono/html";
 import { Layout } from "./layout";
 
@@ -79,7 +79,7 @@ export function ViewTimeline(props: { page: ViewPage }) {
       <header class="fam-bar">
         <div class="fam-bar__top">
           <div class="fam-clock">
-            {page.now.time} <span class="fam-clock__date">{dateLabel(page.now.date)}</span>
+            {page.now.time} <span class="fam-clock__date">{dateLabel(page.now.date, localeOf(page.language))}</span>
           </div>
           <ActivityIndicator viewId={page.id} activity={page.activity} />
         </div>
@@ -202,28 +202,29 @@ export function ViewDays(props: { page: ViewPage; earlier?: boolean; later?: boo
 function DayEntry(props: { page: ViewPage; day: ViewPage["days"][number] }) {
   const { page, day } = props;
   const relative = relativeDays[String(daysBetween(page.now.date, day.date))];
+  const locale = localeOf(page.language);
   return (
     <li class={day.date === page.now.date ? "fam-day fam-day--today" : "fam-day"} data-date={day.date}>
       <h2 class="fam-day__header">
-        <span class="fam-day__name">{relative ?? weekdayLabel(day.date)}</span>{" "}
-        <span class="fam-day__date">{relative ? dateLabel(day.date) : dayMonthLabel(day.date)}</span>
+        <span class="fam-day__name">{relative ?? weekdayLabel(day.date, locale)}</span>{" "}
+        <span class="fam-day__date">{relative ? dateLabel(day.date, locale) : dayMonthLabel(day.date, locale)}</span>
       </h2>
       {day.date === page.now.date ? (
         <>
-          {day.items.filter((row) => row.earlier).map((row) => <EventRow row={row} />)}
+          {day.items.filter((row) => row.earlier).map((row) => <EventRow row={row} locale={locale} />)}
           <div class="fam-now">Now {page.now.time}</div>
-          {day.items.filter((row) => !row.earlier).map((row) => <EventRow row={row} />)}
+          {day.items.filter((row) => !row.earlier).map((row) => <EventRow row={row} locale={locale} />)}
         </>
       ) : (
-        day.items.map((row) => <EventRow row={row} />)
+        day.items.map((row) => <EventRow row={row} locale={locale} />)
       )}
       {day.items.length === 0 ? <p class="fam-empty">Nothing planned.</p> : null}
     </li>
   );
 }
 
-/** One Event as a compact row of time and title, with its details on tap. */
-function EventRow(props: { row: TimelineEvent }) {
+/** One Event as a compact row of time and title, with its details on tap; its dates in `locale`. */
+function EventRow(props: { row: TimelineEvent; locale: string }) {
   const { row } = props;
   const classes = ["fam-event", row.cancelled ? "fam-event--cancelled" : "", row.earlier ? "fam-event--earlier" : ""]
     .filter(Boolean)
@@ -244,7 +245,7 @@ function EventRow(props: { row: TimelineEvent }) {
       </summary>
       <dl class="fam-event__details">
         <dt>When</dt>
-        <dd>{spanLabel(row.span)}</dd>
+        <dd>{spanLabel(row.span, props.locale)}</dd>
         {row.place ? (
           <>
             <dt>Where</dt>
@@ -288,17 +289,16 @@ function timeLabel(row: TimelineEvent): string {
   return "All day";
 }
 
-/** The whole span of an Event, as its details show it. */
-export function spanLabel(span: TimelineEvent["span"]): string {
+/** The whole span of an Event, as its details show it, its dates in `locale`. */
+export function spanLabel(span: TimelineEvent["span"], locale: string): string {
+  const date = (day: LocalDate) => dateLabel(day, locale);
   if (span.allDay) {
-    return span.firstDay === span.lastDay
-      ? `${dateLabel(span.firstDay)}, all day`
-      : `${dateLabel(span.firstDay)} – ${dateLabel(span.lastDay)}`;
+    return span.firstDay === span.lastDay ? `${date(span.firstDay)}, all day` : `${date(span.firstDay)} – ${date(span.lastDay)}`;
   }
   const { start, end } = span;
   return start.date === end.date
-    ? `${dateLabel(start.date)}, ${start.time} – ${end.time}`
-    : `${dateLabel(start.date)}, ${start.time} – ${dateLabel(end.date)}, ${end.time}`;
+    ? `${date(start.date)}, ${start.time} – ${end.time}`
+    : `${date(start.date)}, ${start.time} – ${date(end.date)}, ${end.time}`;
 }
 
 /** A round avatar: the photo, or the initial on one of the eight member colours. */
@@ -339,20 +339,20 @@ function toggled(page: ViewPage, id: FamilyMemberId): Showing {
 /** How days near today are called, by how many days they lie after it. */
 const relativeDays: Record<string, string> = { "-1": "Yesterday", "0": "Today", "1": "Tomorrow" };
 
-/** A day further away, as its header names it: "Thursday". */
-function weekdayLabel(date: LocalDate): string {
-  return new Intl.DateTimeFormat("en-GB", { weekday: "long", timeZone: "UTC" }).format(new Date(`${date}T00:00:00Z`));
+/** A day further away, as its header names it: "Thursday", or "Donnerstag" in `de-DE`. */
+function weekdayLabel(date: LocalDate, locale: string): string {
+  return new Intl.DateTimeFormat(locale, { weekday: "long", timeZone: "UTC" }).format(new Date(`${date}T00:00:00Z`));
 }
 
-/** The date beside a day's name: "29 Oct". */
-function dayMonthLabel(date: LocalDate): string {
-  return new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", timeZone: "UTC" }).format(
+/** The date beside a day's name: "29 Oct", or "29. Okt." in `de-DE`. */
+function dayMonthLabel(date: LocalDate, locale: string): string {
+  return new Intl.DateTimeFormat(locale, { day: "numeric", month: "short", timeZone: "UTC" }).format(
     new Date(`${date}T00:00:00Z`),
   );
 }
 
-function dateLabel(date: LocalDate): string {
-  return new Intl.DateTimeFormat("en-GB", {
+function dateLabel(date: LocalDate, locale: string): string {
+  return new Intl.DateTimeFormat(locale, {
     weekday: "short",
     day: "numeric",
     month: "short",

@@ -8,3 +8,5 @@ export * from "./postgres/database";
 export * from "./postgres/envelope-secret-store";
 export * from "./postgres/repositories";
 export * from "./system-clock";
+export * from "./tessdata-directory";
+export * from "./tessdata-fast-catalog";

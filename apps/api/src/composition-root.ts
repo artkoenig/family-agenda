@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { mkdir } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import {
   Argon2idPasswordHasher,
@@ -24,13 +25,17 @@ import {
   readMasterKey,
   runMigrations,
   SystemClock,
+  TessdataDirectory,
+  tessdataFastCatalog,
   type PostgresConnection,
+  type TessdataCatalog,
 } from "@family-agenda/adapters";
 import {
   createActivityLog,
   createAdminAccess,
   createExtraction,
   createFamilyMemberAccess,
+  createLanguageAccess,
   createLlmEndpointAccess,
   createMessageAccess,
   createRecoveryKitAccess,
@@ -45,6 +50,7 @@ import {
   type Extractor,
   type FamilyMemberAccess,
   type Clock,
+  type LanguageAccess,
   type JobQueue,
   type LlmEndpointAccess,
   type MessageAccess,
@@ -72,6 +78,12 @@ export type ApplicationConfig = {
   blobDirectory: string;
   /** The `plugins/` volume, for Source plugins an operator adds to a stock image. */
   pluginDirectory: string;
+  /** The `tessdata` volume of Tesseract models, bundled and downloaded (ADR-0012). */
+  tessdataDirectory: string;
+  /** Where the image keeps the Tesseract models it ships, linked into the volume on start. */
+  bundledTessdataDirectory: string | null;
+  /** Replaces downloading from `tessdata_fast`, such as with canned models and their checksums. */
+  tessdataCatalog?: TessdataCatalog;
   /** Where the Source plugins shipped with Family Agenda are; by default the workspace's packages. */
   workspacePackages?: string;
   /** The version of Family Agenda, which new Source Types are recorded with. */
@@ -95,6 +107,8 @@ export type Application = {
   secrets: SecretStore;
   recoveryKit: RecoveryKitAccess;
   familyMembers: FamilyMemberAccess;
+  /** The Family Language and the OCR languages. */
+  languages: LanguageAccess;
   views: ViewAccess;
   sourceTypes: SourceTypeAccess;
   sources: SourceAccess;
@@ -138,6 +152,20 @@ export async function bootApplication(config: ApplicationConfig): Promise<Applic
   const blobs = config.blobStore ?? new FileBlobStore(config.blobDirectory);
   const members = new PostgresFamilyMemberRepository(postgres.db);
   const familyMembers = createFamilyMemberAccess({ clock, families, members, blobs });
+
+  const ocrModels = new TessdataDirectory({
+    directory: config.tessdataDirectory,
+    bundledDirectory: config.bundledTessdataDirectory,
+    catalog: config.tessdataCatalog ?? tessdataFastCatalog(),
+  });
+  try {
+    await mkdir(config.tessdataDirectory, { recursive: true });
+    await ocrModels.linkBundled();
+  } catch (error) {
+    await postgres.close();
+    throw error;
+  }
+  const languages = createLanguageAccess({ families, ocrModels });
 
   const timeZone = config.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
   const items = new PostgresItemRepository(postgres.db);
@@ -196,7 +224,8 @@ export async function bootApplication(config: ApplicationConfig): Promise<Applic
     items,
     blobs,
     extractor: config.extractor ?? new OpenAiCompatibleExtractor(),
-    textExtractor: config.textExtractor ?? new CommandLineTextExtractor(),
+    textExtractor: config.textExtractor ?? new CommandLineTextExtractor({ tessdataDirectory: config.tessdataDirectory }),
+    ocrModels,
     activity,
   });
   const messages = createMessageAccess({ items, blobs });
@@ -213,6 +242,7 @@ export async function bootApplication(config: ApplicationConfig): Promise<Applic
     secrets,
     recoveryKit,
     familyMembers,
+    languages,
     views,
     sourceTypes,
     sources,

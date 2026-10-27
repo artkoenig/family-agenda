@@ -1,9 +1,12 @@
+import { rm } from "node:fs/promises";
+import { join } from "node:path";
 import type { Origin } from "@family-agenda/source-sdk";
 import { openViewAccess } from "@family-agenda/application";
 import type { ViewId } from "@family-agenda/domain";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { bootForTest, type TestInstance } from "../support/boot";
 import { fakePdf, FakeTextExtractor } from "../support/fake-text-extractor";
+import { FakeTessdataCatalog } from "../support/fake-tessdata-catalog";
 import { InMemoryBlobStore } from "../support/in-memory-blob-store";
 import { extracted, ScriptedExtractor } from "../support/scripted-extractor";
 import { testPluginControls, writeTestPluginPackage } from "../support/test-source-plugin";
@@ -45,7 +48,7 @@ describe("Events extracted from PDF attachments", () => {
     extractor = new ScriptedExtractor();
     textExtractor = new FakeTextExtractor();
     blobs = new InMemoryBlobStore();
-    instance = await bootForTest({ extractor, textExtractor, blobStore: blobs });
+    instance = await bootForTest({ extractor, textExtractor, blobStore: blobs, tessdataCatalog: new FakeTessdataCatalog() });
     await writeTestPluginPackage(instance.workspacePackages, { sourceTypeId: "mailbox", needsLlm: true });
     await instance.restart();
     await instance.app.sourceTypes.enable("mailbox");
@@ -114,6 +117,7 @@ describe("Events extracted from PDF attachments", () => {
     await arrive(mail("m1", covering, [pdf("scan.pdf", scanned)]));
 
     expect(textExtractor.ocrPages).toEqual([[2]]);
+    expect(textExtractor.ocrLanguages).toEqual([["eng"]]);
     expect(textExtractor.renderedPages).toEqual([]);
     expect(await timeline()).toEqual({ "2026-09-25": ["08:00-08:00 Wandertag"] });
     expect(extractor.requests[0]?.message.text).toContain("Allgemeine Hinweise zur Klassenfahrt.");
@@ -188,5 +192,32 @@ describe("Events extracted from PDF attachments", () => {
     expect(textExtractor.ocrPages).toEqual([]);
     const message = await instance.app.messages.open(report.extracted[0]!);
     expect(message?.attachments[0]?.conversionProblem).toBe("It has 11 scanned pages; at most 10 are read.");
+  });
+
+  it("reads scanned pages with OCR in the Family's OCR languages, in their order", async () => {
+    await instance.app.languages.setOcrLanguages(["deu", "eng"]);
+    extractor.script("Wandertag der Klasse 5b", [hikingDay]);
+
+    await arrive(mail("m1", covering, [pdf("scan.pdf", fakePdf({ scan: letter }))]));
+
+    expect(textExtractor.ocrLanguages).toEqual([["deu", "eng"]]);
+    expect(await timeline()).toEqual({ "2026-09-25": ["08:00-08:00 Wandertag"] });
+  });
+
+  it("does not read a scan when a chosen OCR language is not installed, and shows why on the message", async () => {
+    await instance.app.languages.install("fra");
+    await instance.app.languages.setOcrLanguages(["deu", "fra"]);
+    await rm(join(instance.tessdataDirectory, "fra.traineddata"));
+
+    const report = await arrive(
+      mail("m1", covering, [pdf("scan.pdf", fakePdf({ scan: letter })), pdf("brief.pdf", fakePdf({ text: letter }))]),
+    );
+
+    expect(textExtractor.ocrPages).toEqual([]);
+    const message = await instance.app.messages.open(report.extracted[0]!);
+    expect(message?.attachments.map((attachment) => attachment.conversionProblem)).toEqual([
+      "OCR language `fra` is not installed.",
+      null,
+    ]);
   });
 });
