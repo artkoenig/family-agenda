@@ -68,7 +68,7 @@ describe("the OpenAI-compatible Extractor", () => {
   });
 
   const request = (apiKey: string | null = "sk-test"): ExtractionRequest => ({
-    endpoint: { baseUrl: server.baseUrl, model: "qwen3.5:9b", apiKey },
+    endpoint: { baseUrl: server.baseUrl, model: "qwen3.5:9b", apiKey, vision: false },
     message: {
       text: "Der Elternabend am Donnerstag, 17.09., um 19:30 Uhr findet in Raum 104 statt.",
       sent: { date: "2026-09-14" as LocalDate, time: "08:12" as LocalTime, weekday: "monday" },
@@ -128,5 +128,46 @@ describe("the OpenAI-compatible Extractor", () => {
 
     server.answer(200, completion(JSON.stringify({ events: [event] }).slice(0, 40), "length"));
     expect(await extractor.extract(request())).toMatchObject({ ok: false, problem: "invalid-output" });
+  });
+
+  describe("reading scanned pages", () => {
+    const page = (marker: number) => new Uint8Array([0x89, 0x50, 0x4e, 0x47, marker]);
+    const transcription = (images: Uint8Array[]) => ({
+      endpoint: { baseUrl: server.baseUrl, model: "qwen3.5-vl", apiKey: "sk-test", vision: true },
+      images,
+    });
+
+    it("sends each page as an image and reads its text word for word", async () => {
+      const extractor = new OpenAiCompatibleExtractor();
+      server.answer(200, completion("Der Wandertag findet am Freitag, 25.09., statt."));
+
+      const result = await extractor.transcribe(transcription([page(1), page(2)]));
+
+      expect(result).toEqual({
+        ok: true,
+        pages: ["Der Wandertag findet am Freitag, 25.09., statt.", "Der Wandertag findet am Freitag, 25.09., statt."],
+      });
+      expect(server.received).toHaveLength(2);
+      const [first] = server.received;
+      expect(first?.path).toBe("/v1/chat/completions");
+      expect(first?.headers.authorization).toBe("Bearer sk-test");
+      expect(first?.body).toMatchObject({ model: "qwen3.5-vl" });
+      expect(first?.body.response_format).toBeUndefined();
+      expect(JSON.stringify(first?.body.messages)).toContain(
+        `"image_url":{"url":"data:image/png;base64,${Buffer.from(page(1)).toString("base64")}"}`,
+      );
+    });
+
+    it("tells a refused key and an endpoint that cannot be reached from an answer without text", async () => {
+      const extractor = new OpenAiCompatibleExtractor();
+      server.answer(401, { error: { message: "invalid api key" } });
+      expect(await extractor.transcribe(transcription([page(1)]))).toMatchObject({ ok: false, problem: "unauthorized" });
+
+      server.answer(400, { error: { message: "model does not support images" } });
+      expect(await extractor.transcribe(transcription([page(1)]))).toMatchObject({ ok: false, problem: "unreachable" });
+
+      server.answer(200, { choices: [] });
+      expect(await extractor.transcribe(transcription([page(1)]))).toMatchObject({ ok: false, problem: "invalid-output" });
+    });
   });
 });

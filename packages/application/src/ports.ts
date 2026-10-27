@@ -325,7 +325,12 @@ export type PendingMessage = {
   sentAt: Date;
   thread: string | null;
   text: BlobRef;
+  /** In the order the message has them. */
+  attachments: PendingAttachment[];
 };
+
+/** A file of a raw message, which extraction reads too if it is a PDF. */
+export type PendingAttachment = { position: number; filename: string; contentType: string; blob: BlobRef };
 
 /** A raw message as an Admin opens it. */
 export type RawMessage = {
@@ -334,7 +339,14 @@ export type RawMessage = {
   sentAt: Date;
   attributes: Record<string, string>;
   text: BlobRef;
-  attachments: { filename: string; contentType: string; size: number; blob: BlobRef }[];
+  attachments: {
+    filename: string;
+    contentType: string;
+    size: number;
+    blob: BlobRef;
+    /** Why it could not be turned into text when the message was extracted; null if it could, or was not read. */
+    conversionProblem: string | null;
+  }[];
 };
 
 /** An Item that earlier messages of a thread stated, with the key a later one updates it by. */
@@ -347,7 +359,11 @@ export type Extraction = {
   sourceId: SourceId;
   at: Date;
   revisions: NewRevision[];
+  /** The attachments that could not be turned into text, by position, and why. */
+  attachmentProblems: AttachmentProblem[];
 };
+
+export type AttachmentProblem = { position: number; problem: string };
 
 /** What an Item's Revisions add up to, as stored next to them. */
 export type ItemProjection = {
@@ -398,7 +414,13 @@ export interface ItemRepository {
 }
 
 /** The one LLM endpoint of the Family, an OpenAI-compatible server. */
-export type LlmEndpoint = { baseUrl: string; model: string; apiKey: string | null };
+export type LlmEndpoint = {
+  baseUrl: string;
+  model: string;
+  apiKey: string | null;
+  /** Whether its model reads images, so that scanned pages are sent to it rather than to OCR. */
+  vision: boolean;
+};
 
 /** The LLM endpoint as stored, its API key in the SecretStore. */
 export type StoredLlmEndpoint = {
@@ -406,6 +428,7 @@ export type StoredLlmEndpoint = {
   baseUrl: string;
   model: string;
   apiKey: SecretRef | null;
+  vision: boolean;
   /** When an Admin acknowledged that third parties' messages are sent to it; null for a local one. */
   acknowledgedAt: Date | null;
   savedAt: Date;
@@ -445,17 +468,38 @@ export type ExtractionRequest = {
   knownEvents: KnownEvent[];
 };
 
-export type ExtractionResult =
-  | { ok: true; events: ExtractedEvent[] }
-  /**
-   * The endpoint could not be reached or refused the key, which says nothing about the message;
-   * or it answered with output that does not fit the schema.
-   */
-  | { ok: false; problem: "unreachable" | "unauthorized" | "invalid-output"; message: string };
+/**
+ * The endpoint could not be reached or refused the key, which says nothing about the message;
+ * or it answered with output that does not fit the schema.
+ */
+export type EndpointFailure = { ok: false; problem: "unreachable" | "unauthorized" | "invalid-output"; message: string };
+
+export type ExtractionResult = { ok: true; events: ExtractedEvent[] } | EndpointFailure;
+
+/** Scanned pages of an attachment, as PNG images, for a vision-capable endpoint to read. */
+export type TranscriptionRequest = { endpoint: LlmEndpoint; images: Uint8Array[] };
+
+/** The text of each page, in order. */
+export type TranscriptionResult = { ok: true; pages: string[] } | EndpointFailure;
 
 /** Reads the Items a message states, through the Family's LLM endpoint. */
 export interface Extractor {
   extract(request: ExtractionRequest): Promise<ExtractionResult>;
+  /** Reads the text of scanned pages, word for word, through a vision-capable endpoint. */
+  transcribe(request: TranscriptionRequest): Promise<TranscriptionResult>;
+}
+
+/** What converting a file gave, or why it could not be converted. */
+export type Conversion<T> = { ok: true; value: T } | { ok: false; message: string };
+
+/** Turns PDF attachments into text: their text layer, images of their pages, or OCR of a scan. */
+export interface TextExtractor {
+  /** The text layer of each page, in order; an empty string for a page without one, such as a scan. */
+  textLayer(pdf: Uint8Array): Promise<Conversion<string[]>>;
+  /** The given pages, numbered from 1, as PNG images. */
+  pageImages(pdf: Uint8Array, pages: number[]): Promise<Conversion<Uint8Array[]>>;
+  /** The German text OCR reads on each of the given pages, numbered from 1. */
+  ocr(pdf: Uint8Array, pages: number[]): Promise<Conversion<string[]>>;
 }
 
 export interface JobQueue {

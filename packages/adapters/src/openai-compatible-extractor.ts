@@ -3,7 +3,16 @@ import {
   type DateMention,
   type Weekday,
 } from "@family-butler/domain";
-import type { ExtractedEvent, ExtractionRequest, ExtractionResult, Extractor } from "@family-butler/application";
+import type {
+  EndpointFailure,
+  ExtractedEvent,
+  ExtractionRequest,
+  ExtractionResult,
+  Extractor,
+  LlmEndpoint,
+  TranscriptionRequest,
+  TranscriptionResult,
+} from "@family-butler/application";
 
 export type OpenAiCompatibleExtractorOptions = {
   /** How long the endpoint may take to answer; a local model on a CPU is slow. */
@@ -61,6 +70,7 @@ const instructions = `You read messages a family receives, such as school mails,
 Rules:
 - List every such event, each once. List nothing for a message that only informs and has nothing to attend; then "events" is empty.
 - Do not list deadlines, things to do or bring, or timetable changes; only events.
+- The message may be followed by the text of its attachments, each after a line "Attachment <file name>:". Read them as part of the message.
 - "evidence" is the shortest passage of the message that states the event and its date, copied character for character. Never rephrase, translate or shorten words inside it.
 - "title" is short, in the language of the message, without the date.
 - Never compute dates. Fill in only the date parts the message states, and leave the others null:
@@ -72,10 +82,15 @@ Rules:
 - "place" as written, or null.
 - When the message changes, moves or cancels one of the known events listed below, set "updates" to its id (such as "E1"), "cancelled" to true for a cancellation, and fill in only what changes: "title" null unless it is renamed, a new date or times if it moves. Otherwise "updates" is null and "cancelled" false.`;
 
+const transcriptionInstructions = `You transcribe scanned pages of letters a family receives, such as school letters.
+
+Answer with the text of the page only, character for character and in its language, line by line as printed. Never translate, summarise, correct or comment. Leave out what cannot be read.`;
+
 /**
  * The `Extractor` for any OpenAI-compatible server, such as Ollama, llama.cpp, vLLM, LM Studio,
  * OpenAI or Mistral: one chat completion per message with JSON-schema structured output, and the
- * answer checked against the schema here, since some runtimes skip parts of it silently.
+ * answer checked against the schema here, since some runtimes skip parts of it silently. A
+ * vision-capable model also reads scanned pages, one chat completion per page.
  */
 export class OpenAiCompatibleExtractor implements Extractor {
   private readonly timeoutMs: number;
@@ -85,7 +100,52 @@ export class OpenAiCompatibleExtractor implements Extractor {
   }
 
   async extract(request: ExtractionRequest): Promise<ExtractionResult> {
-    const { endpoint } = request;
+    const answer = await this.complete(request.endpoint, {
+      messages: [
+        { role: "system", content: instructions },
+        { role: "user", content: promptOf(request) },
+      ],
+      response_format: {
+        type: "json_schema",
+        json_schema: { name: "events", strict: true, schema: extractionSchema },
+      },
+    });
+    if (!answer.ok) return answer;
+    let output: unknown;
+    try {
+      output = JSON.parse(answer.content);
+    } catch {
+      return { ok: false, problem: "invalid-output", message: "The answer is no JSON." };
+    }
+    const events = eventsOf(output);
+    if (!events) return { ok: false, problem: "invalid-output", message: "The answer does not fit the schema." };
+    return { ok: true, events };
+  }
+
+  /** Reads each page in a chat completion of its own, so that no page is skipped or merged. */
+  async transcribe(request: TranscriptionRequest): Promise<TranscriptionResult> {
+    const pages: string[] = [];
+    for (const image of request.images) {
+      const answer = await this.complete(request.endpoint, {
+        messages: [
+          { role: "system", content: transcriptionInstructions },
+          {
+            role: "user",
+            content: [
+              { type: "text", text: "Transcribe this page." },
+              { type: "image_url", image_url: { url: `data:image/png;base64,${Buffer.from(image).toString("base64")}` } },
+            ],
+          },
+        ],
+      });
+      if (!answer.ok) return answer;
+      pages.push(answer.content);
+    }
+    return { ok: true, pages };
+  }
+
+  /** The text of a chat completion, complete and not cut off at the token limit. */
+  private async complete(endpoint: LlmEndpoint, body: object): Promise<{ ok: true; content: string } | EndpointFailure> {
     let response: Response;
     try {
       response = await fetch(`${endpoint.baseUrl}/chat/completions`, {
@@ -94,17 +154,7 @@ export class OpenAiCompatibleExtractor implements Extractor {
           "content-type": "application/json",
           ...(endpoint.apiKey ? { authorization: `Bearer ${endpoint.apiKey}` } : {}),
         },
-        body: JSON.stringify({
-          model: endpoint.model,
-          messages: [
-            { role: "system", content: instructions },
-            { role: "user", content: promptOf(request) },
-          ],
-          response_format: {
-            type: "json_schema",
-            json_schema: { name: "events", strict: true, schema: extractionSchema },
-          },
-        }),
+        body: JSON.stringify({ model: endpoint.model, ...body }),
         signal: AbortSignal.timeout(this.timeoutMs),
       });
     } catch (error) {
@@ -117,28 +167,20 @@ export class OpenAiCompatibleExtractor implements Extractor {
       // A request the endpoint cannot handle, such as an unknown model, fails every message alike.
       return { ok: false, problem: "unreachable", message: `The LLM endpoint answered with HTTP ${response.status}.` };
     }
-    let body: unknown;
+    let answer: unknown;
     try {
-      body = await response.json();
+      answer = await response.json();
     } catch (error) {
       return { ok: false, problem: "unreachable", message: `The LLM endpoint answered with no JSON: ${reason(error)}` };
     }
-    const choice = (body as { choices?: { finish_reason?: string; message?: { content?: unknown } }[] }).choices?.[0];
+    const choice = (answer as { choices?: { finish_reason?: string; message?: { content?: unknown } }[] }).choices?.[0];
     if (typeof choice?.message?.content !== "string") {
       return { ok: false, problem: "invalid-output", message: "The LLM endpoint answered without a message." };
     }
     if (choice.finish_reason === "length") {
       return { ok: false, problem: "invalid-output", message: "The answer was cut off at the token limit." };
     }
-    let output: unknown;
-    try {
-      output = JSON.parse(choice.message.content);
-    } catch {
-      return { ok: false, problem: "invalid-output", message: "The answer is no JSON." };
-    }
-    const events = eventsOf(output);
-    if (!events) return { ok: false, problem: "invalid-output", message: "The answer does not fit the schema." };
-    return { ok: true, events };
+    return { ok: true, content: choice.message.content };
   }
 }
 

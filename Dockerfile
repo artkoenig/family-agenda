@@ -1,6 +1,10 @@
 FROM node:24-bookworm-slim
 
 ENV NODE_ENV=production
+# poppler and Tesseract with its German model turn PDF attachments into text.
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends poppler-utils tesseract-ocr tesseract-ocr-deu \
+  && rm -rf /var/lib/apt/lists/*
 RUN corepack enable
 WORKDIR /app
 
