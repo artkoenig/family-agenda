@@ -1,5 +1,5 @@
-import type { FamilyMemberSummary, Showing, TimelineEvent, ViewPage } from "@family-butler/application";
-import type { FamilyMemberId, LocalDate } from "@family-butler/domain";
+import type { FamilyMemberSummary, Showing, TimelineDays, TimelineEvent, ViewPage } from "@family-butler/application";
+import { addDays, daysBetween, type FamilyMemberId, type LocalDate } from "@family-butler/domain";
 import { Layout } from "./layout";
 
 // The one View layout (ADR-0003): a dark, vertical timeline that works on a phone, a desktop
@@ -32,6 +32,10 @@ const viewStyles = `
   .now { display: flex; align-items: center; gap: 8px; color: var(--now); font-size: 12px;
     font-weight: 700; margin: 4px 0; text-transform: uppercase; }
   .now::after { content: ""; flex: 1; height: 2px; background: var(--now); }
+  .more { display: flex; justify-content: center; padding: 16px 0; color: var(--muted); font-size: 13px; }
+  .more button { font: inherit; font-weight: 600; color: var(--ink); background: none; cursor: pointer;
+    border: 1px solid var(--line); border-radius: 999px; padding: 6px 16px; }
+  .more button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
   .empty { color: #6b7280; margin: 6px 0; padding: 10px 4px; border-bottom: 1px solid var(--line); }
   .event { border-bottom: 1px solid var(--line); }
   .event summary { display: flex; gap: 12px; padding: 10px 4px; cursor: pointer; list-style: none; }
@@ -64,13 +68,22 @@ export function ViewPageDocument(props: { page: ViewPage }) {
 
 /**
  * The part of a View that htmx swaps: on a quick filter change, and every minute, so that a
- * wall tablet keeps its clock and "now" line current.
+ * wall tablet keeps its clock and "now" line current. The refresh asks for the days scrolled to,
+ * which loading more days keeps up to date, so that it neither drops them nor moves the page.
  */
 export function ViewTimeline(props: { page: ViewPage }) {
   const { page } = props;
-  const url = viewUrl(page.id, page.showing);
   return (
-    <main id="view" hx-get={url} hx-trigger="every 60s" hx-swap="outerHTML">
+    <main
+      id="view"
+      hx-get={viewUrl(page.id, page.showing)}
+      hx-trigger="every 60s"
+      hx-swap="outerHTML"
+      hx-include="#shown-from, #shown-until"
+      hx-disinherit="hx-include"
+    >
+      <ShownDay side="from" date={page.days[0]?.date ?? page.now.date} />
+      <ShownDay side="until" date={page.days.at(-1)?.date ?? page.now.date} />
       <header class="bar">
         <div class="clock">
           {page.now.time} <span class="date">{dateLabel(page.now.date)}</span>
@@ -95,31 +108,86 @@ export function ViewTimeline(props: { page: ViewPage }) {
         </nav>
       </header>
       <ol class="days">
-        {page.days.map((day, index) => (
-          <li class="day">
-            <h2>
-              {index < relativeDays.length ? (
-                <>
-                  {relativeDays[index]} <span class="date">{dateLabel(day.date)}</span>
-                </>
-              ) : (
-                dateLabel(day.date)
-              )}
-            </h2>
-            {index === 0 ? (
-              <>
-                {day.items.filter((row) => row.earlier).map((row) => <EventRow row={row} />)}
-                <div class="now">Now {page.now.time}</div>
-                {day.items.filter((row) => !row.earlier).map((row) => <EventRow row={row} />)}
-              </>
-            ) : (
-              day.items.map((row) => <EventRow row={row} />)
-            )}
-            {day.items.length === 0 ? <p class="empty">Nothing planned.</p> : null}
-          </li>
-        ))}
+        <ViewDays page={page} earlier later />
       </ol>
     </main>
+  );
+}
+
+/** The first or last day on the page, for the refresh; `oob` when more days loaded replace it. */
+export function ShownDay(props: { side: "from" | "until"; date: LocalDate; oob?: boolean }) {
+  return (
+    <input
+      type="hidden"
+      id={`shown-${props.side}`}
+      name={props.side}
+      value={props.date}
+      hx-swap-oob={props.oob ? "true" : undefined}
+    />
+  );
+}
+
+/**
+ * The days of a page, with a button to load the days before them and, at the end, a marker that
+ * loads the days after them once it scrolls into sight; one horizon at a time each.
+ */
+export function ViewDays(props: { page: ViewPage; earlier?: boolean; later?: boolean }) {
+  const { page } = props;
+  const first = page.days[0]?.date ?? page.now.date;
+  const last = page.days.at(-1)?.date ?? page.now.date;
+  const before = { first: addDays(first, -page.horizonDays), last: addDays(first, -1) };
+  const after = { first: addDays(last, 1), last: addDays(last, page.horizonDays) };
+  return (
+    <>
+      {props.earlier ? (
+        <li class="more">
+          <button
+            type="button"
+            hx-get={daysUrl(page, before, "earlier")}
+            hx-target="closest li"
+            hx-swap="outerHTML"
+          >
+            Earlier days
+          </button>
+        </li>
+      ) : null}
+      {page.days.map((day) => (
+        <DayEntry page={page} day={day} />
+      ))}
+      {props.later ? (
+        <li class="more" hx-get={daysUrl(page, after, "later")} hx-trigger="revealed" hx-swap="outerHTML">
+          Loading later days…
+        </li>
+      ) : null}
+    </>
+  );
+}
+
+function DayEntry(props: { page: ViewPage; day: ViewPage["days"][number] }) {
+  const { page, day } = props;
+  const relative = relativeDays[String(daysBetween(page.now.date, day.date))];
+  return (
+    <li class="day" data-date={day.date}>
+      <h2>
+        {relative ? (
+          <>
+            {relative} <span class="date">{dateLabel(day.date)}</span>
+          </>
+        ) : (
+          dateLabel(day.date)
+        )}
+      </h2>
+      {day.date === page.now.date ? (
+        <>
+          {day.items.filter((row) => row.earlier).map((row) => <EventRow row={row} />)}
+          <div class="now">Now {page.now.time}</div>
+          {day.items.filter((row) => !row.earlier).map((row) => <EventRow row={row} />)}
+        </>
+      ) : (
+        day.items.map((row) => <EventRow row={row} />)
+      )}
+      {day.items.length === 0 ? <p class="empty">Nothing planned.</p> : null}
+    </li>
   );
 }
 
@@ -209,6 +277,12 @@ export function viewUrl(id: string, showing?: Showing): string {
   return `/views/${id}?show=${showing === "all" ? "all" : showing.join(",")}`;
 }
 
+/** Where htmx loads more days of a View, with the marker to go on with on the given side. */
+export function daysUrl(page: ViewPage, days: TimelineDays, then: "earlier" | "later"): string {
+  const show = page.showing === "all" ? "all" : page.showing.join(",");
+  return `/views/${page.id}/days?show=${show}&from=${days.first}&until=${days.last}&then=${then}`;
+}
+
 /** What the quick filter shows after tapping a Family Member: added, or taken out again. */
 function toggled(page: ViewPage, id: FamilyMemberId): Showing {
   if (page.showing === "all") return [id];
@@ -218,7 +292,8 @@ function toggled(page: ViewPage, id: FamilyMemberId): Showing {
   return next.length > 0 ? next : "all";
 }
 
-const relativeDays = ["Today", "Tomorrow"];
+/** How days near today are called, by how many days they lie after it. */
+const relativeDays: Record<string, string> = { "-1": "Yesterday", "0": "Today", "1": "Tomorrow" };
 
 function dateLabel(date: LocalDate): string {
   return new Intl.DateTimeFormat("en-GB", {

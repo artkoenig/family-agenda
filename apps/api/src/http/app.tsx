@@ -4,10 +4,13 @@ import {
   pollIntervalRange,
   type SourceInput,
   type Showing,
+  type TimelineDays,
   type ViewAccessPolicy,
 } from "@family-butler/application";
 import {
   horizonDaysRange,
+  isAcceptableTimelineRange,
+  isLocalDate,
   maximumNameLength,
   maximumPhotoBytes,
   minimumPasswordLength,
@@ -43,7 +46,7 @@ import {
   type SignedInAdmin,
 } from "./pages";
 import { icsFeed } from "./ics-feed";
-import { ViewPageDocument, ViewTimeline, viewUrl } from "./view-page";
+import { ShownDay, ViewDays, ViewPageDocument, ViewTimeline, viewUrl } from "./view-page";
 
 export type HttpOptions = {
   /** Whether a reverse proxy in front sets `X-Forwarded-For` and `X-Forwarded-Proto`. */
@@ -165,9 +168,12 @@ export function createHttpApp(application: Application, options: HttpOptions) {
 
   // Views open without signing in, as far as the listener's ViewAccessPolicy allows.
   app.get("/views/:id", async (c) => {
+    const days = timelineDaysOf(c.req.query("from"), c.req.query("until"));
+    if (days === "invalid") return c.text("Unacceptable days", 400);
     const page = await views.open(c.req.param("id") as ViewId, {
       access: options.viewAccess,
       ...showingOf(c.req.query("show")),
+      ...days,
     });
     if (!page) return c.notFound();
     c.header("cache-control", "no-store");
@@ -175,6 +181,30 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     // htmx asks for the whole page when it restores history it has not cached.
     const fragment = c.req.header("hx-request") === "true" && !c.req.header("hx-history-restore-request");
     return c.html(fragment ? <ViewTimeline page={page} /> : <ViewPageDocument page={page} />);
+  });
+
+  // More days of a timeline, as htmx loads them while scrolling into the past or the future.
+  app.get("/views/:id/days", async (c) => {
+    const days = timelineDaysOf(c.req.query("from"), c.req.query("until"));
+    const then = c.req.query("then");
+    if (days === "invalid" || !days.days || (then !== "earlier" && then !== "later")) {
+      return c.text("Unacceptable days", 400);
+    }
+    const page = await views.open(c.req.param("id") as ViewId, {
+      access: options.viewAccess,
+      ...showingOf(c.req.query("show")),
+      ...days,
+    });
+    if (!page) return c.notFound();
+    c.header("cache-control", "no-store");
+    // The page's refresh asks for the loaded days too, so the side they extend moves with them.
+    const earlier = then === "earlier";
+    return c.html(
+      <>
+        <ViewDays page={page} earlier={earlier} later={!earlier} />
+        <ShownDay side={earlier ? "from" : "until"} date={earlier ? days.days.first : days.days.last} oob />
+      </>,
+    );
   });
 
   // A View's feed follows the View's access, so that calendar apps can subscribe without a session.
@@ -531,6 +561,13 @@ function showingOf(show: string | undefined): { show?: Showing } {
   if (show === undefined) return {};
   if (show === "all") return { show: "all" };
   return { show: show.split(",").map((id) => id as FamilyMemberId) };
+}
+
+/** The days a timeline was scrolled to, none for the horizon from today, or "invalid". */
+function timelineDaysOf(from: string | undefined, until: string | undefined): { days?: TimelineDays } | "invalid" {
+  if (from === undefined && until === undefined) return {};
+  if (from === undefined || until === undefined || !isLocalDate(from) || !isLocalDate(until)) return "invalid";
+  return isAcceptableTimelineRange(from, until) ? { days: { first: from, last: until } } : "invalid";
 }
 
 /** An uploaded file's contents, or undefined if none was chosen. */
