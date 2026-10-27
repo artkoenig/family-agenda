@@ -212,21 +212,25 @@ function DayEntry(props: { page: ViewPage; day: ViewPage["days"][number] }) {
       </h2>
       {day.date === page.now.date ? (
         <>
-          {day.items.filter((row) => row.earlier).map((row) => <EventRow row={row} />)}
+          {day.items.filter((row) => row.earlier).map((row) => <EventRow row={row} members={page.members} />)}
           <div class="fam-now">{t.view.now(page.now.time)}</div>
-          {day.items.filter((row) => !row.earlier).map((row) => <EventRow row={row} />)}
+          {day.items.filter((row) => !row.earlier).map((row) => <EventRow row={row} members={page.members} />)}
         </>
       ) : (
-        day.items.map((row) => <EventRow row={row} />)
+        day.items.map((row) => <EventRow row={row} members={page.members} />)
       )}
       {day.items.length === 0 ? <p class="fam-empty">{t.view.nothingPlanned}</p> : null}
     </li>
   );
 }
 
-/** One Event as a compact row of time and title, with its details on tap. */
-function EventRow(props: { row: TimelineEvent }) {
+/**
+ * One Event as a compact row of time, title and the avatars of the Family Members it concerns,
+ * none if it concerns the whole Family, with its details on tap.
+ */
+function EventRow(props: { row: TimelineEvent; members: FamilyMemberSummary[] }) {
   const { row } = props;
+  const concerned = row.concerns === "whole-family" ? [] : props.members.filter((member) => row.concerns.includes(member.id));
   const translation = useTranslation();
   const { t } = translation;
   const v = t.view;
@@ -246,6 +250,15 @@ function EventRow(props: { row: TimelineEvent }) {
             row.title
           )}
         </span>
+        {concerned.length > 0 ? (
+          <span class="fam-event__who" aria-label={concerned.map((member) => member.name).join(", ")} role="img">
+            <span class="fam-avatars">
+              {concerned.map((member) => (
+                <Avatar member={member} size="sm" />
+              ))}
+            </span>
+          </span>
+        ) : null}
       </summary>
       <dl class="fam-event__details">
         <dt>{v.when}</dt>

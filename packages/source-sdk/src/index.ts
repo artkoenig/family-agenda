@@ -145,7 +145,7 @@ export type Origin = {
 export type OriginAttribute = {
   key: string;
   label: PluginText;
-  /** The values seen so far, for the wizard's rule suggestions. */
+  /** The values the plugin knows of, such as recent senders, offered in the Attribution Rule form. */
   knownValues(context: RunContext): Promise<{ value: string; label: string }[]>;
 };
 

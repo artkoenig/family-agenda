@@ -1,6 +1,7 @@
 import { pollIntervalRange, signInLimits } from "@family-agenda/application";
 import {
   horizonDaysRange,
+  maximumAttributeValueLength,
   maximumNameLength,
   maximumPhotoBytes,
   minimumPasswordLength,
@@ -74,6 +75,11 @@ export const en = {
     "unknown-ocr-language": "No model can be downloaded for that language.",
     "ocr-language-selected": "OCR reads in this language. Remove it from the OCR languages first.",
     "ocr-language-bundled": "This model comes with Family Agenda and cannot be removed.",
+    "unknown-attribute": "The Source's Source Type offers nothing like this to match on.",
+    "invalid-value": `Enter the value to match, up to ${maximumAttributeValueLength} characters.`,
+    "no-one-concerned": "Choose whom it concerns: Family Members, or the whole Family.",
+    "rule-exists": "This Source already has a rule for this value.",
+    "unknown-rule": "This Attribution Rule does not exist.",
     "invalid-interval": `The polling interval must be between ${pollIntervalRange.minSeconds / 60} minute and ${pollIntervalRange.maxSeconds / 86_400} days.`,
   },
   /** Problems that name what went wrong. */
@@ -121,6 +127,8 @@ export const en = {
       plural(count, { one: `${count} View on the home network`, other: `${count} Views on the home network` }),
     language: (family: string, ocr: string) => `${family}; OCR in ${ocr}`,
     sources: (count: number) => plural(count, { one: `${count} Source`, other: `${count} Sources` }),
+    rules: (count: number) => plural(count, { one: `${count} rule`, other: `${count} rules` }),
+    noRules: "All concern the whole Family",
     newOnes: "New ones are available",
     enabled: (count: number) => `${count} enabled`,
     llmLocal: (model: string) => `${model}, on the home network`,
@@ -246,6 +254,28 @@ export const en = {
     hiddenMeta: "hidden from the timeline",
     interval: "Check every … minutes (optional)",
     intervalHint: (minutes: number) => `Empty for the suggested ${minutes}.`,
+  },
+
+  attribution: {
+    title: "Attribution Rules",
+    description:
+      "Whom an Item concerns, by where it came from, such as a calendar or a sender; never by what it says. Rules apply to Items that came before them too. An Item no rule matches concerns the whole Family, and one whose Origins match several rules concerns everyone they name.",
+    add: "Add rule",
+    chooseEyebrow: "Add a rule · 1 of 2",
+    formEyebrow: "Add a rule · 2 of 2",
+    onlyFormEyebrow: "Add a rule",
+    editEyebrow: "Attribution Rule",
+    chooseTitle: "What should it match on?",
+    chooseIntro: "Each Source offers what its Source Type knows about where an Item came from.",
+    noTargets: (link: Wrap): Child[] => ["No Source offers anything to match on yet. ", link("Add a Source"), " first."],
+    none: "No Attribution Rules yet. Every Item concerns the whole Family.",
+    valueHint: "Items from Origins with exactly this value get the rule's Family Members. Choose a known value or type one.",
+    concerns: "Concerns",
+    concernsHint: "The whole Family covers everyone and shows under every quick filter.",
+    wholeFamily: "Whole Family",
+    noOne: "No one, so it matches nothing",
+    entry: (attribute: string, value: string) => `${attribute}: ${value}`,
+    remove: "Remove rule",
   },
 
   llm: {

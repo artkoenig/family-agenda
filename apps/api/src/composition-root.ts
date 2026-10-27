@@ -14,6 +14,7 @@ import {
   PostgresActivityRepository,
   PostgresAdminRepository,
   PostgresAdminSessionRepository,
+  PostgresAttributionRuleRepository,
   PostgresFamilyMemberRepository,
   PostgresFamilyRepository,
   PostgresItemRepository,
@@ -33,6 +34,7 @@ import {
 import {
   createActivityLog,
   createAdminAccess,
+  createAttributionRuleAccess,
   createExtraction,
   createFamilyMemberAccess,
   createLanguageAccess,
@@ -45,6 +47,7 @@ import {
   createViewAccess,
   signInLimits,
   type AdminAccess,
+  type AttributionRuleAccess,
   type BlobStore,
   type ExtractionAccess,
   type Extractor,
@@ -112,6 +115,8 @@ export type Application = {
   views: ViewAccess;
   sourceTypes: SourceTypeAccess;
   sources: SourceAccess;
+  /** Which Family Members the Items of a Source's Origins concern. */
+  attributionRules: AttributionRuleAccess;
   /** Runs the Sources that are due; the worker does on each tick. */
   polling: SourcePolling;
   llmEndpoint: LlmEndpointAccess;
@@ -169,6 +174,7 @@ export async function bootApplication(config: ApplicationConfig): Promise<Applic
 
   const timeZone = config.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
   const items = new PostgresItemRepository(postgres.db);
+  const rules = new PostgresAttributionRuleRepository(postgres.db);
   const activity = createActivityLog({ clock, families, activities: new PostgresActivityRepository(postgres.db) });
   const views = createViewAccess({
     clock,
@@ -177,6 +183,7 @@ export async function bootApplication(config: ApplicationConfig): Promise<Applic
     members,
     views: new PostgresViewRepository(postgres.db),
     items,
+    rules,
     activity,
   });
 
@@ -201,6 +208,17 @@ export async function bootApplication(config: ApplicationConfig): Promise<Applic
     sources: sourceRepository,
     secrets,
     blobs,
+  });
+  const attributionRules = createAttributionRuleAccess({
+    clock,
+    timeZone,
+    families,
+    members,
+    registry,
+    sourceTypes: sourceTypeRepository,
+    sources: sourceRepository,
+    secrets,
+    rules,
   });
   const polling = createSourcePolling({
     clock,
@@ -246,6 +264,7 @@ export async function bootApplication(config: ApplicationConfig): Promise<Applic
     views,
     sourceTypes,
     sources,
+    attributionRules,
     polling,
     llmEndpoint,
     extraction,

@@ -16,6 +16,7 @@ import type {
   StoredMessage,
 } from "./ports";
 import { checked, project } from "./revisions";
+import { runContextOf } from "./sources";
 
 export type PollingDeps = {
   clock: Clock;
@@ -62,12 +63,7 @@ export function createSourcePolling(deps: PollingDeps) {
   /** Runs one Source and records what it emitted; the failure, if it failed. */
   async function run(source: Source, ingestion: PollingIngestion): Promise<PollReport["failed"][number] | null> {
     const now = clock.now();
-    const secretValues: Record<string, string> = {};
-    for (const [key, ref] of Object.entries(source.secrets)) {
-      const value = await secrets.get(ref);
-      if (value !== null) secretValues[key] = value;
-    }
-    const result = await ingestion.poll({ plain: source.plain, secrets: secretValues, state: source.state, now, timeZone });
+    const result = await ingestion.poll(await runContextOf(source, { secrets, now, timeZone }));
     if (!result.ok) {
       await sources.recordFailedRun(source.id, now);
       return { sourceId: source.id, kind: result.kind, message: result.message };
