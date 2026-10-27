@@ -47,6 +47,19 @@ describe("the Family Language", () => {
     expect(settings.ocrLanguages).toEqual([{ language: "eng", installed: true }]);
   });
 
+  it("keeps OCR in German on an Instance set up before there was a Family Language", async () => {
+    await instance.app.admins.createFirstAdmin({ email: "anna@example.org", password, language: "en" });
+    // As before the migration that added the Family Language, which then runs again on restart.
+    await instance.query(`ALTER TABLE families DROP COLUMN language, DROP COLUMN ocr_languages`);
+    await instance.query(`DELETE FROM drizzle.__drizzle_migrations WHERE id = (SELECT max(id) FROM drizzle.__drizzle_migrations)`);
+
+    await instance.restart();
+
+    const settings = await instance.app.languages.current();
+    expect(settings.language).toBe("en");
+    expect(settings.ocrLanguages).toEqual([{ language: "deu", installed: true }]);
+  });
+
   it("survives a restart", async () => {
     await instance.app.languages.setLanguage("de");
 
