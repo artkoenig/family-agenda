@@ -86,33 +86,53 @@ export function createImapPlugin(options: ImapPluginOptions = {}): SourcePlugin 
   }
 
   return {
-    identity: { sourceTypeId: "imap", displayName: "IMAP mailbox", version: "0.1.0", sdkVersion },
+    identity: { sourceTypeId: "imap", displayName: { en: "IMAP mailbox", de: "IMAP-Postfach" }, version: "0.1.0", sdkVersion },
     configuration: {
       version: 1,
       fields: [
-        { key: "host", label: "Mail server", secret: false, required: true, description: "Such as imap.gmx.net or imap.gmail.com." },
+        {
+          key: "host",
+          label: { en: "Mail server", de: "Mailserver" },
+          secret: false,
+          required: true,
+          description: { en: "Such as imap.gmx.net or imap.gmail.com.", de: "Etwa imap.gmx.net oder imap.gmail.com." },
+        },
         {
           key: "port",
-          label: "Port",
+          label: { en: "Port", de: "Port" },
           secret: false,
           required: false,
-          description: "Optional; 993 by default. On another port the server has to offer STARTTLS.",
+          description: {
+            en: "Optional; 993 by default. On another port the server has to offer STARTTLS.",
+            de: "Optional; sonst 993. Auf einem anderen Port muss der Server STARTTLS anbieten.",
+          },
         },
-        { key: "username", label: "User name", secret: false, required: true, description: "Usually the mail address." },
+        {
+          key: "username",
+          label: { en: "User name", de: "Benutzername" },
+          secret: false,
+          required: true,
+          description: { en: "Usually the mail address.", de: "Meist die Mailadresse." },
+        },
         {
           key: "password",
-          label: "Password",
+          label: { en: "Password", de: "Passwort" },
           secret: true,
           required: true,
-          description: "An app password where the provider has them, such as for Gmail with 2-Step Verification.",
+          description: {
+            en: "An app password where the provider has them, such as for Gmail with 2-Step Verification.",
+            de: "Ein App-Passwort, wo der Anbieter welche hat, etwa bei Gmail mit Bestätigung in zwei Schritten.",
+          },
         },
         {
           key: "folder",
-          label: "Folder",
+          label: { en: "Folder", de: "Ordner" },
           secret: false,
           required: false,
-          description:
-            "Optional; INBOX by default. Use a folder your mail filters fill with school mail, or a mailbox only school mail is forwarded to: every mail in it is sent to the LLM endpoint.",
+          description: {
+            en: "Optional; INBOX by default. Use a folder your mail filters fill with school mail, or a mailbox only school mail is forwarded to: every mail in it is sent to the LLM endpoint.",
+            de: "Optional; sonst INBOX. Nimm einen Ordner, den deine Mailfilter mit Schulmails füllen, oder ein Postfach, an das nur Schulmails weitergeleitet werden: Jede Mail darin geht an den LLM-Endpunkt.",
+          },
         },
       ],
     },
@@ -147,7 +167,7 @@ export function createImapPlugin(options: ImapPluginOptions = {}): SourcePlugin 
     originAttributes: [
       {
         key: "sender",
-        label: "Sender address",
+        label: { en: "Sender address", de: "Absenderadresse" },
         knownValues: (context) =>
           withFolder(context, async (client) => {
             const since = new Date(context.now.getTime() - senderDays * 24 * 60 * 60 * 1000);

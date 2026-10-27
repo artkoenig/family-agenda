@@ -1,5 +1,6 @@
 import type { FeedEvent, ViewFeed } from "@family-agenda/application";
-import { addDays, localeOf, type LocalDate } from "@family-agenda/domain";
+import { addDays, type LocalDate } from "@family-agenda/domain";
+import { translationFor, type Translation } from "./i18n/translation";
 import { spanLabel } from "./view-page";
 
 /**
@@ -8,6 +9,7 @@ import { spanLabel } from "./view-page";
  */
 export function icsFeed(feed: ViewFeed, viewLink: string): string {
   const stamp = instant(feed.generatedAt);
+  const translation = translationFor(feed.language);
   const lines = [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",
@@ -17,15 +19,16 @@ export function icsFeed(feed: ViewFeed, viewLink: string): string {
     "X-WR-CALNAME:Family Agenda",
     "REFRESH-INTERVAL;VALUE=DURATION:PT1H",
     "X-PUBLISHED-TTL:PT1H",
-    ...feed.events.flatMap((event) => vevent(event, stamp, viewLink, localeOf(feed.language))),
+    ...feed.events.flatMap((event) => vevent(event, stamp, viewLink, translation)),
     "END:VCALENDAR",
   ];
   return lines.map(folded).join("\r\n") + "\r\n";
 }
 
-function vevent(event: FeedEvent, stamp: string, viewLink: string, locale: string): string[] {
+function vevent(event: FeedEvent, stamp: string, viewLink: string, translation: Translation): string[] {
   const { span } = event;
-  const details = [spanLabel(event.when, locale), event.place, event.cancelled ? "Cancelled" : null].filter(Boolean);
+  const { t, locale } = translation;
+  const details = [spanLabel(event.when, locale, t), event.place, event.cancelled ? t.view.cancelled : null].filter(Boolean);
   return [
     "BEGIN:VEVENT",
     `UID:${event.itemId}@family-agenda`,

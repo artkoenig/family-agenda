@@ -61,24 +61,29 @@ export function createIcsPlugin(options: IcsPluginOptions = {}): SourcePlugin {
   }
 
   return {
-    identity: { sourceTypeId: "ics", displayName: "ICS calendar", version: "0.1.0", sdkVersion },
+    identity: { sourceTypeId: "ics", displayName: { en: "ICS calendar", de: "ICS-Kalender" }, version: "0.1.0", sdkVersion },
     configuration: {
       version: 1,
       fields: [
         {
           key: "url",
-          label: "Secret ICS address",
+          label: { en: "Secret ICS address", de: "Geheime ICS-Adresse" },
           secret: true,
           required: true,
-          description:
-            'Such as Google Calendar\'s "Secret address in iCal format". Anyone with it can read the calendar.',
+          description: {
+            en: 'Such as Google Calendar\'s "Secret address in iCal format". Anyone with it can read the calendar.',
+            de: "Etwa die „Privatadresse im iCal-Format“ von Google Kalender. Wer sie kennt, kann den Kalender lesen.",
+          },
         },
         {
           key: "name",
-          label: "Calendar name",
+          label: { en: "Calendar name", de: "Name des Kalenders" },
           secret: false,
           required: false,
-          description: "Optional; by default the name the calendar gives itself.",
+          description: {
+            en: "Optional; by default the name the calendar gives itself.",
+            de: "Optional; sonst der Name, den der Kalender sich selbst gibt.",
+          },
         },
       ],
     },
@@ -128,7 +133,7 @@ export function createIcsPlugin(options: IcsPluginOptions = {}): SourcePlugin {
     originAttributes: [
       {
         key: "calendar",
-        label: "Calendar",
+        label: { en: "Calendar", de: "Kalender" },
         async knownValues(context) {
           const downloaded = await download(context, null);
           const name = nameOf(context, downloaded ? parseCalendar(downloaded.body, context.timeZone).name : null);

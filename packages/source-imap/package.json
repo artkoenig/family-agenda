@@ -10,9 +10,15 @@
     "sourcePlugin": {
       "entry": "./src/index.ts",
       "sourceTypeId": "imap",
-      "displayName": "IMAP mailbox",
+      "displayName": {
+        "en": "IMAP mailbox",
+        "de": "IMAP-Postfach"
+      },
       "sdkVersion": "0.2.0",
-      "description": "Reads the mails in one folder of a mailbox, such as a folder your mail filters fill with school mail, or a mailbox you forward school mail to. It only reads: it never marks, moves or deletes a mail.",
+      "description": {
+        "en": "Reads the mails in one folder of a mailbox, such as a folder your mail filters fill with school mail, or a mailbox you forward school mail to. It only reads: it never marks, moves or deletes a mail.",
+        "de": "Liest die Mails in einem Ordner eines Postfachs, etwa einem Ordner, den deine Mailfilter mit Schulmails füllen, oder einem Postfach, an das du Schulmails weiterleitest. Es liest nur: Es markiert, verschiebt oder löscht nie eine Mail."
+      },
       "needsLlm": true
     }
   },

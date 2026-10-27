@@ -6,20 +6,23 @@ import type {
   TimelineEvent,
   ViewPage,
 } from "@family-agenda/application";
-import { addDays, daysBetween, localeOf, type FamilyMemberId, type LocalDate } from "@family-agenda/domain";
+import { addDays, daysBetween, type FamilyMemberId, type LocalDate } from "@family-agenda/domain";
 import { raw } from "hono/html";
+import type { Catalogue } from "./i18n/en";
+import { useTranslation } from "./i18n/translation";
 import { Layout } from "./layout";
 
 // The one View layout (ADR-0003): a vertical timeline that works on a phone, a desktop and a wall
 // tablet, in the Family Agenda design system (`design/design.css`).
 
 export function ViewPageDocument(props: { page: ViewPage }) {
+  const { t } = useTranslation();
   return (
-    <Layout title="View" surface="view">
+    <Layout title={t.view.title} surface="view">
       <ViewTimeline page={props.page} />
       <button type="button" id="back-to-today" class="fam-button fam-button--primary fam-button--pill fam-back-to-today" hidden>
         <span class="fam-back-to-today__arrow" aria-hidden="true">↑</span>
-        Today
+        {t.view.today}
       </button>
       <script>{raw(backToToday)}</script>
     </Layout>
@@ -65,6 +68,7 @@ back.addEventListener("click", () => {
  */
 export function ViewTimeline(props: { page: ViewPage }) {
   const { page } = props;
+  const { t, locale } = useTranslation();
   return (
     <main
       id="view"
@@ -79,14 +83,14 @@ export function ViewTimeline(props: { page: ViewPage }) {
       <header class="fam-bar">
         <div class="fam-bar__top">
           <div class="fam-clock">
-            {page.now.time} <span class="fam-clock__date">{dateLabel(page.now.date, localeOf(page.language))}</span>
+            {page.now.time} <span class="fam-clock__date">{dateLabel(page.now.date, locale)}</span>
           </div>
           <ActivityIndicator viewId={page.id} activity={page.activity} />
         </div>
-        <nav class="fam-filter" aria-label="Quick filter" hx-boost="true" hx-target="#view" hx-swap="outerHTML">
+        <nav class="fam-filter" aria-label={t.view.quickFilter} hx-boost="true" hx-target="#view" hx-swap="outerHTML">
           <a class="fam-filter__item" href={viewUrl(page.id, "all")} aria-current={page.showing === "all" ? "true" : undefined}>
             <span class="fam-avatar fam-avatar--all" aria-hidden="true"></span>
-            All
+            {t.view.all}
           </a>
           {page.members.map((member) => (
             <a
@@ -113,11 +117,6 @@ export const activityEnded = "activity-ended";
 /** How often the indicator asks again: often while the worker is busy, rarely while it is idle. */
 const activityPolling = { busy: "every 3s", idle: "every 20s" };
 
-const activityLabels: Record<CurrentActivity["kind"], string> = {
-  polling: "Checking Sources",
-  extracting: "Reading messages",
-};
-
 /**
  * What the worker is busy with, such as reading messages, with how far it got; empty while it is
  * idle. It asks for itself again, and says while busy that it was, so that the answer once the
@@ -125,7 +124,8 @@ const activityLabels: Record<CurrentActivity["kind"], string> = {
  */
 export function ActivityIndicator(props: { viewId: string; activity: CurrentActivity | null }) {
   const { viewId, activity } = props;
-  const label = activity ? activityLabels[activity.kind] : "";
+  const { t } = useTranslation();
+  const label = activity ? t.view.activity[activity.kind] : "";
   return (
     <div
       id="activity"
@@ -168,6 +168,7 @@ export function ShownDay(props: { side: "from" | "until"; date: LocalDate; oob?:
  */
 export function ViewDays(props: { page: ViewPage; earlier?: boolean; later?: boolean }) {
   const { page } = props;
+  const { t } = useTranslation();
   const first = page.days[0]?.date ?? page.now.date;
   const last = page.days.at(-1)?.date ?? page.now.date;
   const before = { first: addDays(first, -page.horizonDays), last: addDays(first, -1) };
@@ -183,7 +184,7 @@ export function ViewDays(props: { page: ViewPage; earlier?: boolean; later?: boo
             hx-target="closest li"
             hx-swap="outerHTML"
           >
-            Earlier days
+            {t.view.earlierDays}
           </button>
         </li>
       ) : null}
@@ -192,7 +193,7 @@ export function ViewDays(props: { page: ViewPage; earlier?: boolean; later?: boo
       ))}
       {props.later ? (
         <li class="fam-more" hx-get={daysUrl(page, after, "later")} hx-trigger="revealed" hx-swap="outerHTML">
-          Loading later days…
+          {t.view.loadingLaterDays}
         </li>
       ) : null}
     </>
@@ -201,8 +202,8 @@ export function ViewDays(props: { page: ViewPage; earlier?: boolean; later?: boo
 
 function DayEntry(props: { page: ViewPage; day: ViewPage["days"][number] }) {
   const { page, day } = props;
-  const relative = relativeDays[String(daysBetween(page.now.date, day.date))];
-  const locale = localeOf(page.language);
+  const { t, locale } = useTranslation();
+  const relative = t.view.relativeDays[String(daysBetween(page.now.date, day.date))];
   return (
     <li class={day.date === page.now.date ? "fam-day fam-day--today" : "fam-day"} data-date={day.date}>
       <h2 class="fam-day__header">
@@ -211,32 +212,34 @@ function DayEntry(props: { page: ViewPage; day: ViewPage["days"][number] }) {
       </h2>
       {day.date === page.now.date ? (
         <>
-          {day.items.filter((row) => row.earlier).map((row) => <EventRow row={row} locale={locale} />)}
-          <div class="fam-now">Now {page.now.time}</div>
-          {day.items.filter((row) => !row.earlier).map((row) => <EventRow row={row} locale={locale} />)}
+          {day.items.filter((row) => row.earlier).map((row) => <EventRow row={row} />)}
+          <div class="fam-now">{t.view.now(page.now.time)}</div>
+          {day.items.filter((row) => !row.earlier).map((row) => <EventRow row={row} />)}
         </>
       ) : (
-        day.items.map((row) => <EventRow row={row} locale={locale} />)
+        day.items.map((row) => <EventRow row={row} />)
       )}
-      {day.items.length === 0 ? <p class="fam-empty">Nothing planned.</p> : null}
+      {day.items.length === 0 ? <p class="fam-empty">{t.view.nothingPlanned}</p> : null}
     </li>
   );
 }
 
-/** One Event as a compact row of time and title, with its details on tap; its dates in `locale`. */
-function EventRow(props: { row: TimelineEvent; locale: string }) {
+/** One Event as a compact row of time and title, with its details on tap. */
+function EventRow(props: { row: TimelineEvent }) {
   const { row } = props;
+  const { t, locale } = useTranslation();
+  const v = t.view;
   const classes = ["fam-event", row.cancelled ? "fam-event--cancelled" : "", row.earlier ? "fam-event--earlier" : ""]
     .filter(Boolean)
     .join(" ");
   return (
     <details class={classes}>
       <summary>
-        <span class="fam-event__time">{timeLabel(row)}</span>
+        <span class="fam-event__time">{timeLabel(row, t)}</span>
         <span class="fam-event__title">
           {row.cancelled ? (
             <>
-              <s>{row.title}</s> <span class="fam-event__tag">Cancelled</span>
+              <s>{row.title}</s> <span class="fam-event__tag">{v.cancelled}</span>
             </>
           ) : (
             row.title
@@ -244,35 +247,36 @@ function EventRow(props: { row: TimelineEvent; locale: string }) {
         </span>
       </summary>
       <dl class="fam-event__details">
-        <dt>When</dt>
-        <dd>{spanLabel(row.span, props.locale)}</dd>
+        <dt>{v.when}</dt>
+        <dd>{spanLabel(row.span, locale, t)}</dd>
         {row.place ? (
           <>
-            <dt>Where</dt>
+            <dt>{v.where}</dt>
             <dd>{row.place}</dd>
           </>
         ) : null}
         {row.cancelled ? (
           <>
-            <dt>Status</dt>
-            <dd>Cancelled</dd>
+            <dt>{v.status}</dt>
+            <dd>{v.cancelled}</dd>
           </>
         ) : null}
         {row.links.map((link) => (
           <>
-            <dt>Original</dt>
+            <dt>{v.original}</dt>
             <dd>
               <a href={link} rel="noreferrer" target="_blank">
-                Open the original
+                {v.openOriginal}
               </a>
             </dd>
           </>
         ))}
         {row.messages.map((id) => (
           <>
-            <dt>Original</dt>
+            <dt>{v.original}</dt>
             <dd>
-              <a href={`/admin/messages/${id}`}>Open the message</a> (Admins only)
+              <a href={`/admin/messages/${id}`}>{v.openMessage}</a>
+              {v.adminsOnly}
             </dd>
           </>
         ))}
@@ -282,18 +286,18 @@ function EventRow(props: { row: TimelineEvent; locale: string }) {
 }
 
 /** How the Event shows on its day: from and until, or all day. */
-function timeLabel(row: TimelineEvent): string {
+function timeLabel(row: TimelineEvent, t: Catalogue): string {
   if (row.from && row.until) return row.from === row.until ? row.from : `${row.from} – ${row.until}`;
-  if (row.from) return `from ${row.from}`;
-  if (row.until) return `until ${row.until}`;
-  return "All day";
+  if (row.from) return t.view.from(row.from);
+  if (row.until) return t.view.until(row.until);
+  return t.view.allDay;
 }
 
 /** The whole span of an Event, as its details show it, its dates in `locale`. */
-export function spanLabel(span: TimelineEvent["span"], locale: string): string {
+export function spanLabel(span: TimelineEvent["span"], locale: string, t: Catalogue): string {
   const date = (day: LocalDate) => dateLabel(day, locale);
   if (span.allDay) {
-    return span.firstDay === span.lastDay ? `${date(span.firstDay)}, all day` : `${date(span.firstDay)} – ${date(span.lastDay)}`;
+    return span.firstDay === span.lastDay ? t.view.onAllDay(date(span.firstDay)) : `${date(span.firstDay)} – ${date(span.lastDay)}`;
   }
   const { start, end } = span;
   return start.date === end.date
@@ -335,9 +339,6 @@ function toggled(page: ViewPage, id: FamilyMemberId): Showing {
     .filter((memberId) => (memberId === id) !== page.showing.includes(memberId));
   return next.length > 0 ? next : "all";
 }
-
-/** How days near today are called, by how many days they lie after it. */
-const relativeDays: Record<string, string> = { "-1": "Yesterday", "0": "Today", "1": "Tomorrow" };
 
 /** A day further away, as its header names it: "Thursday", or "Donnerstag" in `de-DE`. */
 function weekdayLabel(date: LocalDate, locale: string): string {

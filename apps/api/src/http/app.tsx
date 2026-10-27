@@ -1,7 +1,6 @@
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import {
-  pollIntervalRange,
   type SourceInput,
   type Showing,
   type TimelineDays,
@@ -9,14 +8,10 @@ import {
 } from "@family-agenda/application";
 import {
   defaultFamilyLanguage,
-  horizonDaysRange,
   isAcceptableTimelineRange,
   isFamilyLanguage,
   isLocalDate,
-  maximumNameLength,
   maximumPhotoBytes,
-  minimumPasswordLength,
-  photoTypes,
   type AdminId,
   type FamilyLanguage,
   type FamilyMemberId,
@@ -27,12 +22,15 @@ import {
 import type { HealthResponse } from "@family-agenda/contracts";
 import type { HttpBindings } from "@hono/node-server";
 import { Hono, type Context } from "hono";
+import type { Child } from "hono/jsx";
 import { bodyLimit } from "hono/body-limit";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { csrf } from "hono/csrf";
 import { createMiddleware } from "hono/factory";
-import { sessionLifetimeMs, signInLimits } from "@family-agenda/application";
+import { sessionLifetimeMs } from "@family-agenda/application";
 import type { Application } from "../composition-root";
+import type { Catalogue } from "./i18n/en";
+import { TranslationContext, translationFor, type Translation } from "./i18n/translation";
 import {
   AdminsPage,
   FamilyMembersPage,
@@ -70,44 +68,20 @@ export type HttpOptions = {
 
 type Env = {
   Bindings: HttpBindings;
-  Variables: { admin: SignedInAdmin };
+  Variables: { admin: SignedInAdmin; translation: Translation };
 };
 
-const sessionCookie = "fb_session";
+/** A problem a use case reports, as the catalogue words it. */
+type ProblemKey = { [K in keyof Catalogue["problems"]]: Catalogue["problems"][K] extends string ? K : never }[keyof Catalogue["problems"]];
 
-const problems = {
-  "invalid-email": "Enter a valid email address.",
-  "password-too-short": `The password must have at least ${minimumPasswordLength} characters.`,
-  "email-taken": "This email already has an Admin account.",
-  "invalid-credentials": "Wrong email or password.",
-  "rate-limited": `Too many failed sign-ins. Wait ${signInLimits.windowMs / 60_000} minutes and try again.`,
-  "own-account": "You cannot reset your own password here.",
-  "unknown-admin": "This Admin does not exist.",
-  "invalid-language": "Choose English or German as the Family Language.",
-  "kit-not-saved": "Confirm that you have saved the Recovery Kit.",
-  "invalid-name": `Enter a name of at most ${maximumNameLength} characters.`,
-  "invalid-photo": `The photo must be one of ${photoTypes.map((type) => type.replace("image/", "").toUpperCase()).join(", ")}.`,
-  "photo-too-large": `The photo must be at most ${maximumPhotoBytes / 1024 / 1024} MB.`,
-  "unknown-member": "This Family Member does not exist.",
-  "invalid-horizon": `The horizon must be between ${horizonDaysRange.min} and ${horizonDaysRange.max} days.`,
-  "unknown-view": "This View does not exist.",
-  "unknown-source-type": "This Source Type is not installed.",
-  "not-loadable": "This Source Type cannot be loaded.",
-  "risk-not-acknowledged": "Confirm that you understand the risk of this Source Type.",
-  "has-sources": "Remove the Sources of this Source Type before disabling it.",
-  "source-type-not-enabled": "This Source Type is not enabled.",
-  "unknown-source": "This Source does not exist.",
-  "invalid-endpoint-url": "Enter the base URL as an http or https address, such as http://ollama:11434/v1.",
-  "invalid-model": "Enter the name of the model.",
-  "third-parties-not-acknowledged":
-    "This server is outside your home network. Confirm that the text of third parties' messages is sent to it.",
-  "no-ocr-language": "Keep at least one OCR language.",
-  "ocr-language-not-installed": "The model of that OCR language is not installed. Download its model first.",
-  "unknown-ocr-language": "No model can be downloaded for that language.",
-  "ocr-language-selected": "OCR reads in this language. Remove it from the OCR languages first.",
-  "ocr-language-bundled": "This model comes with Family Agenda and cannot be removed.",
-  "invalid-interval": `The polling interval must be between ${pollIntervalRange.minSeconds / 60} minute and ${pollIntervalRange.maxSeconds / 86_400} days.`,
-} satisfies Record<string, string>;
+/** A page or fragment rendered in the request's Translation. */
+const render = (c: Context<Env>, node: Child, status?: 200 | 400 | 401 | 413 | 429) =>
+  c.html(<TranslationContext.Provider value={c.get("translation")}>{node}</TranslationContext.Provider>, status);
+
+/** What the catalogue of the request's Translation says about a problem. */
+const problemIn = (c: Context<Env>, problem: ProblemKey): string => c.get("translation").t.problems[problem];
+
+const sessionCookie = "fb_session";
 
 const htmx = readFileSync(createRequire(import.meta.url).resolve("htmx.org/dist/htmx.min.js"));
 
@@ -202,7 +176,15 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     await next();
   });
 
-  app.get("/setup", (c) => c.html(<FirstAdminPage language={preferredFamilyLanguage(c.req.header("accept-language"))} />));
+  // The pages speak the Family Language; the setup speaks the one the browser prefers until one is chosen.
+  app.use(async (c, next) => {
+    const language =
+      c.req.path === "/setup" ? preferredFamilyLanguage(c.req.header("accept-language")) : await languages.familyLanguage();
+    c.set("translation", translationFor(language));
+    await next();
+  });
+
+  app.get("/setup", (c) => render(c, <FirstAdminPage language={c.get("translation").language} />));
 
   app.post("/setup", async (c) => {
     const form = await c.req.parseBody();
@@ -215,8 +197,9 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     });
     if (!result.ok) {
       if (result.problem === "admin-exists") return c.notFound();
-      const shown = isFamilyLanguage(language) ? language : preferredFamilyLanguage(c.req.header("accept-language"));
-      return c.html(<FirstAdminPage language={shown} email={email} problem={problems[result.problem]} />, 400);
+      if (isFamilyLanguage(language)) c.set("translation", translationFor(language));
+      const page = <FirstAdminPage language={c.get("translation").language} email={email} problem={problemIn(c, result.problem)} />;
+      return render(c, page, 400);
     }
     startSession(c, result.sessionToken);
     return c.redirect("/admin/recovery-kit", 303);
@@ -238,7 +221,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     c.header("vary", "HX-Request");
     // htmx asks for the whole page when it restores history it has not cached.
     const fragment = c.req.header("hx-request") === "true" && !c.req.header("hx-history-restore-request");
-    return c.html(fragment ? <ViewTimeline page={page} /> : <ViewPageDocument page={page} />);
+    return render(c, fragment ? <ViewTimeline page={page} /> : <ViewPageDocument page={page} />);
   });
 
   // More days of a timeline, as htmx loads them while scrolling into the past or the future.
@@ -257,7 +240,8 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     c.header("cache-control", "no-store");
     // The page's refresh asks for the loaded days too, so the side they extend moves with them.
     const earlier = then === "earlier";
-    return c.html(
+    return render(
+      c,
       <>
         <ViewDays page={page} earlier={earlier} later={!earlier} />
         <ShownDay side={earlier ? "from" : "until"} date={earlier ? days.days.first : days.days.last} oob />
@@ -273,7 +257,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     c.header("cache-control", "no-store");
     // Once the worker is done, the timeline refreshes to show what it brought.
     if (!activity && c.req.query("was") === "busy") c.header("hx-trigger", activityEnded);
-    return c.html(<ActivityIndicator viewId={id} activity={activity} />);
+    return render(c, <ActivityIndicator viewId={id} activity={activity} />);
   });
 
   // A View's feed follows the View's access, so that calendar apps can subscribe without a session.
@@ -297,7 +281,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     });
   });
 
-  app.get("/admin/sign-in", (c) => c.html(<SignInPage />));
+  app.get("/admin/sign-in", (c) => render(c, <SignInPage />));
 
   app.post("/admin/sign-in", async (c) => {
     const form = await c.req.parseBody();
@@ -309,7 +293,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     });
     if (!result.ok) {
       const status = result.problem === "rate-limited" ? 429 : 401;
-      return c.html(<SignInPage email={email} problem={problems[result.problem]} />, status);
+      return render(c, <SignInPage email={email} problem={problemIn(c, result.problem)} />, status);
     }
     startSession(c, result.sessionToken);
     return c.redirect("/admin", 303);
@@ -372,13 +356,13 @@ export function createHttpApp(application: Application, options: HttpOptions) {
         problem={problem}
       />
     );
-    return c.html(page, problem ? 400 : 200);
+    return render(c, page, problem ? 400 : 200);
   };
 
   app.get("/admin/recovery-kit", (c) => recoveryKitPage(c));
 
   app.get("/admin/recovery-kit/download", (c) =>
-    c.text(recoveryKitText(recoveryKit.contents()), 200, {
+    c.text(recoveryKitText(recoveryKit.contents(), c.get("translation").t), 200, {
       "cache-control": "no-store",
       "content-disposition": 'attachment; filename="family-agenda-recovery-kit.txt"',
     }),
@@ -386,7 +370,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
 
   app.post("/admin/recovery-kit/confirm", async (c) => {
     const form = await c.req.parseBody();
-    if (field(form, "saved") !== "yes") return recoveryKitPage(c, problems["kit-not-saved"]);
+    if (field(form, "saved") !== "yes") return recoveryKitPage(c, problemIn(c, "kit-not-saved"));
     await recoveryKit.confirm();
     return c.redirect("/admin", 303);
   });
@@ -406,7 +390,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
         {...(shown.adding ? { adding: shown.adding } : {})}
       />
     );
-    return c.html(page, shown.problem || shown.adding?.problem ? 400 : 200);
+    return render(c, page, shown.problem || shown.adding?.problem ? 400 : 200);
   };
 
   app.get("/admin/admins", (c) => adminsPage(c));
@@ -417,7 +401,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     const form = await c.req.parseBody();
     const email = field(form, "email");
     const result = await admins.createAdmin({ email, password: field(form, "password") });
-    if (!result.ok) return adminsPage(c, { adding: { email, problem: problems[result.problem] } });
+    if (!result.ok) return adminsPage(c, { adding: { email, problem: problemIn(c, result.problem) } });
     return c.redirect("/admin/admins", 303);
   });
 
@@ -427,7 +411,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
       adminId: c.req.param("id") as AdminId,
       newPassword: field(form, "password"),
     });
-    if (!result.ok) return adminsPage(c, { problem: problems[result.problem] });
+    if (!result.ok) return adminsPage(c, { problem: problemIn(c, result.problem) });
     return c.redirect("/admin/admins", 303);
   });
 
@@ -444,14 +428,14 @@ export function createHttpApp(application: Application, options: HttpOptions) {
         {...(adding ? { adding } : {})}
       />
     );
-    return c.html(page, shown.status ?? (problem || adding?.problem ? 400 : 200));
+    return render(c, page, shown.status ?? (problem || adding?.problem ? 400 : 200));
   };
 
   // A photo and the rest of the form; larger uploads are refused before they are read.
   const photoUpload = bodyLimit({
     maxSize: maximumPhotoBytes + 64 * 1024,
     onError: (c: Context<Env>) => {
-      const problem = problems["photo-too-large"];
+      const problem = problemIn(c, "photo-too-large");
       // Adding shows the problem in its dialog, editing above the list.
       const shown = c.req.path === "/admin/family-members" ? { adding: { problem } } : { problem };
       return familyMembersPage(c, { ...shown, status: 413 });
@@ -467,7 +451,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     const name = field(form, "name");
     const photo = await upload(form, "photo");
     const result = await familyMembers.add({ name, ...(photo ? { photo } : {}) });
-    if (!result.ok) return familyMembersPage(c, { adding: { name, problem: problems[result.problem] } });
+    if (!result.ok) return familyMembersPage(c, { adding: { name, problem: problemIn(c, result.problem) } });
     return c.redirect("/admin/family-members", 303);
   });
 
@@ -478,7 +462,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
       name: field(form, "name"),
       ...(photo !== undefined ? { photo } : {}),
     });
-    if (!result.ok) return familyMembersPage(c, { problem: problems[result.problem] });
+    if (!result.ok) return familyMembersPage(c, { problem: problemIn(c, result.problem) });
     return c.redirect("/admin/family-members", 303);
   });
 
@@ -497,7 +481,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
         {...(shown.creating ? { creating: shown.creating } : {})}
       />
     );
-    return c.html(page, shown.problem || shown.creating?.problem ? 400 : 200);
+    return render(c, page, shown.problem || shown.creating?.problem ? 400 : 200);
   };
 
   const viewSettingsOf = async (c: Context<Env>) => {
@@ -517,13 +501,13 @@ export function createHttpApp(application: Application, options: HttpOptions) {
 
   app.post("/admin/views", async (c) => {
     const result = await views.create(await viewSettingsOf(c));
-    if (!result.ok) return viewsPage(c, { creating: { problem: problems[result.problem] } });
+    if (!result.ok) return viewsPage(c, { creating: { problem: problemIn(c, result.problem) } });
     return c.redirect("/admin/views", 303);
   });
 
   app.post("/admin/views/:id", async (c) => {
     const result = await views.edit(c.req.param("id") as ViewId, await viewSettingsOf(c));
-    if (!result.ok) return viewsPage(c, { problem: problems[result.problem] });
+    if (!result.ok) return viewsPage(c, { problem: problemIn(c, result.problem) });
     return c.redirect("/admin/views", 303);
   });
 
@@ -542,7 +526,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
         {...(problem ? { problem } : {})}
       />
     );
-    return c.html(page, problem ? 400 : 200);
+    return render(c, page, problem ? 400 : 200);
   };
 
   app.get("/admin/source-types", (c) => sourceTypesPage(c));
@@ -552,13 +536,13 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     const result = await sourceTypes.enable(c.req.param("id"), {
       riskAcknowledged: field(form, "riskAcknowledged") === "yes",
     });
-    if (!result.ok) return sourceTypesPage(c, problems[result.problem]);
+    if (!result.ok) return sourceTypesPage(c, problemIn(c, result.problem));
     return c.redirect("/admin/source-types", 303);
   });
 
   app.post("/admin/source-types/:id/disable", async (c) => {
     const result = await sourceTypes.disable(c.req.param("id"));
-    if (!result.ok) return sourceTypesPage(c, problems[result.problem]);
+    if (!result.ok) return sourceTypesPage(c, problemIn(c, result.problem));
     return c.redirect("/admin/source-types", 303);
   });
 
@@ -574,16 +558,18 @@ export function createHttpApp(application: Application, options: HttpOptions) {
       />
     );
     const refused = shown.problem || (shown.adding?.step === "form" && shown.adding.problem);
-    return c.html(page, refused ? 400 : 200);
+    return render(c, page, refused ? 400 : 200);
   };
 
   /** The message for a Source that cannot be saved, naming the fields by their labels. */
   const sourceProblem = async (
-    result: { problem: keyof typeof problems } | { problem: "invalid-config"; fields: string[] },
+    c: Context<Env>,
+    result: { problem: ProblemKey } | { problem: "invalid-config"; fields: string[] },
   ) => {
-    if (!("fields" in result)) return problems[result.problem];
-    const labels = new Map((await sources.forms()).flatMap((form) => form.fields.map((f) => [f.key, f.label])));
-    return `Check ${result.fields.map((key) => labels.get(key) ?? key).join(", ")}.`;
+    if (!("fields" in result)) return problemIn(c, result.problem);
+    const { t, text, list } = c.get("translation");
+    const labels = new Map((await sources.forms()).flatMap((form) => form.fields.map((f) => [f.key, text(f.label)])));
+    return t.problems.invalidConfig(list(result.fields.map((key) => labels.get(key) ?? key)));
   };
 
   app.get("/admin/sources", (c) => sourcesPage(c));
@@ -607,7 +593,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     const input = sourceInputOf(form);
     const result = await sources.add({ sourceTypeId, ...input });
     if (!result.ok) {
-      const problem = await sourceProblem(result);
+      const problem = await sourceProblem(c, result);
       const sourceForm = (await sources.forms()).find((candidate) => candidate.sourceTypeId === sourceTypeId);
       if (!sourceForm) return sourcesPage(c, { problem });
       const plain = Object.fromEntries(Object.entries(input.plain).map(([key, value]) => [key, String(value)]));
@@ -620,7 +606,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
   app.post("/admin/sources/:id", async (c) => {
     const form = await c.req.parseBody();
     const result = await sources.edit(c.req.param("id") as SourceId, sourceInputOf(form));
-    if (!result.ok) return sourcesPage(c, { problem: await sourceProblem(result) });
+    if (!result.ok) return sourcesPage(c, { problem: await sourceProblem(c, result) });
     return c.redirect("/admin/sources", 303);
   });
 
@@ -637,14 +623,14 @@ export function createHttpApp(application: Application, options: HttpOptions) {
 
   const languagePage = async (c: Context<Env>, problem?: string) => {
     const page = <LanguagePage admin={c.get("admin")} languages={await languages.current()} {...(problem ? { problem } : {})} />;
-    return c.html(page, problem ? 400 : 200);
+    return render(c, page, problem ? 400 : 200);
   };
 
   app.get("/admin/language", (c) => languagePage(c));
 
   app.post("/admin/language", async (c) => {
     const result = await languages.setLanguage(field(await c.req.parseBody(), "language"));
-    if (!result.ok) return languagePage(c, problems[result.problem]);
+    if (!result.ok) return languagePage(c, problemIn(c, result.problem));
     return c.redirect("/admin/language", 303);
   });
 
@@ -652,14 +638,17 @@ export function createHttpApp(application: Application, options: HttpOptions) {
   app.post("/admin/language/ocr", async (c) => {
     const chosen = field(await c.req.parseBody(), "ocrLanguages").split("+").filter((language) => language !== "");
     const result = await languages.setOcrLanguages(chosen);
-    if (!result.ok) return languagePage(c, problems[result.problem]);
+    if (!result.ok) return languagePage(c, problemIn(c, result.problem));
     return c.redirect("/admin/language", 303);
   });
 
   app.post("/admin/language/models", async (c) => {
     const result = await languages.install(field(await c.req.parseBody(), "language"));
     if (!result.ok) {
-      const problem = result.problem === "download-failed" ? `The model could not be downloaded. ${result.message}` : problems[result.problem];
+      const problem =
+        result.problem === "download-failed"
+          ? c.get("translation").t.problems.downloadFailed(result.message)
+          : problemIn(c, result.problem);
       return languagePage(c, problem);
     }
     return c.redirect("/admin/language", 303);
@@ -667,12 +656,12 @@ export function createHttpApp(application: Application, options: HttpOptions) {
 
   app.post("/admin/language/models/:language/remove", async (c) => {
     const result = await languages.remove(c.req.param("language"));
-    if (!result.ok) return languagePage(c, problems[result.problem]);
+    if (!result.ok) return languagePage(c, problemIn(c, result.problem));
     return c.redirect("/admin/language", 303);
   });
 
   app.get("/admin/llm", async (c) =>
-    c.html(<LlmEndpointPage admin={c.get("admin")} endpoint={await llmEndpoint.current()} />),
+    render(c, <LlmEndpointPage admin={c.get("admin")} endpoint={await llmEndpoint.current()} />),
   );
 
   app.post("/admin/llm", async (c) => {
@@ -690,10 +679,10 @@ export function createHttpApp(application: Application, options: HttpOptions) {
           admin={c.get("admin")}
           endpoint={await llmEndpoint.current()}
           entered={entered}
-          problem={problems[result.problem]}
+          problem={problemIn(c, result.problem)}
         />
       );
-      return c.html(page, 400);
+      return render(c, page, 400);
     }
     return c.redirect("/admin/llm", 303);
   });
@@ -703,7 +692,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     const message = await messages.open(c.req.param("id") as RawMessageId);
     if (!message) return c.notFound();
     c.header("cache-control", "no-store");
-    return c.html(<MessagePage admin={c.get("admin")} message={message} timeZone={timeZone} />);
+    return render(c, <MessagePage admin={c.get("admin")} message={message} timeZone={timeZone} />);
   });
 
   return app;

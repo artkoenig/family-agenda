@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { describeSourcePluginContract } from "@family-agenda/source-sdk/testing";
 import { SourceError, type IngestResult, type Origin, type RunContext, type SourcePlugin } from "@family-agenda/source-sdk";
@@ -76,7 +77,12 @@ const message = (origin: Origin | undefined) => {
   return origin.content;
 };
 
-describeSourcePluginContract(plugin, { config: config(), now });
+describeSourcePluginContract(plugin, {
+  config: config(),
+  now,
+  languages: ["de"],
+  packageJson: JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")),
+});
 
 afterAll(async () => {
   await server.stop();
