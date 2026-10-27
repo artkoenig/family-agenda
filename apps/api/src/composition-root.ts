@@ -7,12 +7,14 @@ import {
   EnvelopeSecretStore,
   FileBlobStore,
   holdsSecrets,
+  OpenAiCompatibleExtractor,
   PgBossJobQueue,
   PostgresAdminRepository,
   PostgresAdminSessionRepository,
   PostgresFamilyMemberRepository,
   PostgresFamilyRepository,
   PostgresItemRepository,
+  PostgresLlmEndpointRepository,
   PostgresSignInFailureLog,
   PostgresSourceRepository,
   PostgresSourceTypeRepository,
@@ -24,7 +26,10 @@ import {
 } from "@family-butler/adapters";
 import {
   createAdminAccess,
+  createExtraction,
   createFamilyMemberAccess,
+  createLlmEndpointAccess,
+  createMessageAccess,
   createRecoveryKitAccess,
   createSourceAccess,
   createSourcePolling,
@@ -32,9 +37,14 @@ import {
   createViewAccess,
   signInLimits,
   type AdminAccess,
+  type BlobStore,
+  type ExtractionAccess,
+  type Extractor,
   type FamilyMemberAccess,
   type Clock,
   type JobQueue,
+  type LlmEndpointAccess,
+  type MessageAccess,
   type RecoveryKitAccess,
   type SecretStore,
   type SourceAccess,
@@ -66,9 +76,15 @@ export type ApplicationConfig = {
   timeZone?: string;
   clock?: Clock;
   secretStore?: SecretStore;
+  /** Replaces the BlobStore in the blob directory, such as with an in-memory one. */
+  blobStore?: BlobStore;
+  /** Replaces the OpenAI-compatible Extractor, such as with a scripted one. */
+  extractor?: Extractor;
 };
 
 export type Application = {
+  /** The IANA time zone the Family lives in. */
+  timeZone: string;
   admins: AdminAccess;
   secrets: SecretStore;
   recoveryKit: RecoveryKitAccess;
@@ -78,6 +94,10 @@ export type Application = {
   sources: SourceAccess;
   /** Runs the Sources that are due; the worker does on each tick. */
   polling: SourcePolling;
+  llmEndpoint: LlmEndpointAccess;
+  /** Extracts Items from the raw messages that wait for it; the worker does on each tick. */
+  extraction: ExtractionAccess;
+  messages: MessageAccess;
   close(): Promise<void>;
 };
 
@@ -109,13 +129,9 @@ export async function bootApplication(config: ApplicationConfig): Promise<Applic
 
   const recoveryKit = createRecoveryKitAccess({ clock, families, masterKey });
 
+  const blobs = config.blobStore ?? new FileBlobStore(config.blobDirectory);
   const members = new PostgresFamilyMemberRepository(postgres.db);
-  const familyMembers = createFamilyMemberAccess({
-    clock,
-    families,
-    members,
-    blobs: new FileBlobStore(config.blobDirectory),
-  });
+  const familyMembers = createFamilyMemberAccess({ clock, families, members, blobs });
 
   const timeZone = config.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
   const items = new PostgresItemRepository(postgres.db);
@@ -157,7 +173,21 @@ export async function bootApplication(config: ApplicationConfig): Promise<Applic
     sources: sourceRepository,
     secrets,
     items,
+    blobs,
   });
+  const endpoints = new PostgresLlmEndpointRepository(postgres.db);
+  const llmEndpoint = createLlmEndpointAccess({ clock, families, endpoints, secrets });
+  const extraction = createExtraction({
+    clock,
+    timeZone,
+    families,
+    endpoints,
+    secrets,
+    items,
+    blobs,
+    extractor: config.extractor ?? new OpenAiCompatibleExtractor(),
+  });
+  const messages = createMessageAccess({ items, blobs });
   try {
     await sourceTypes.start();
   } catch (error) {
@@ -166,6 +196,7 @@ export async function bootApplication(config: ApplicationConfig): Promise<Applic
   }
 
   return {
+    timeZone,
     admins,
     secrets,
     recoveryKit,
@@ -174,6 +205,9 @@ export async function bootApplication(config: ApplicationConfig): Promise<Applic
     sourceTypes,
     sources,
     polling,
+    llmEndpoint,
+    extraction,
+    messages,
     close: () => postgres.close(),
   };
 }

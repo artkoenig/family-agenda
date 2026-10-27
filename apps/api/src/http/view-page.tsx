@@ -158,6 +158,14 @@ function EventRow(props: { row: TimelineEvent }) {
             </dd>
           </>
         ))}
+        {row.messages.map((id) => (
+          <>
+            <dt>Original</dt>
+            <dd>
+              <a href={`/admin/messages/${id}`}>Open the message</a> (Admins only)
+            </dd>
+          </>
+        ))}
       </dl>
     </details>
   );

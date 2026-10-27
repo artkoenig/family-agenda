@@ -1,0 +1,192 @@
+import { createServer, type Server, type Socket } from "node:net";
+import type { AddressInfo } from "node:net";
+
+export type FixtureMessage = { uid: number; internalDate: Date; raw: string };
+
+export type FixtureMailbox = { uidValidity: number; messages: FixtureMessage[] };
+
+/**
+ * A small IMAP server for the plugin's contract tests: one account, folders of fixed messages, and
+ * only the commands a reading client needs. It records every command, so that a test can show the
+ * plugin never changes the mailbox.
+ */
+export class ImapServerFixture {
+  /** Every command received, without its tag, passwords masked. */
+  readonly commands: string[] = [];
+  readonly folders = new Map<string, FixtureMailbox>();
+  private server: Server | null = null;
+  private readonly sockets = new Set<Socket>();
+
+  constructor(private readonly account: { user: string; password: string }) {}
+
+  get port(): number {
+    return (this.server?.address() as AddressInfo).port;
+  }
+
+  async start(): Promise<void> {
+    this.server = createServer((socket) => {
+      this.sockets.add(socket);
+      socket.on("close", () => this.sockets.delete(socket));
+      this.serve(socket);
+    });
+    await new Promise<void>((resolve) => this.server?.listen(0, "127.0.0.1", resolve));
+  }
+
+  async stop(): Promise<void> {
+    for (const socket of this.sockets) socket.destroy();
+    const { server } = this;
+    if (!server) return;
+    await new Promise<void>((resolve) => {
+      server.close(() => {
+        resolve();
+      });
+    });
+  }
+
+  /** Adds a message to a folder with the next UID. */
+  deliver(folder: string, raw: string, internalDate: Date): number {
+    const mailbox = this.folders.get(folder) ?? { uidValidity: 1, messages: [] };
+    this.folders.set(folder, mailbox);
+    const uid = (mailbox.messages.at(-1)?.uid ?? 0) + 1;
+    mailbox.messages.push({ uid, internalDate, raw: raw.replace(/\r?\n/g, "\r\n") });
+    return uid;
+  }
+
+  private serve(socket: Socket): void {
+    let buffer = "";
+    let selected: FixtureMailbox | null = null;
+    let authenticated = false;
+    const send = (line: string) => socket.write(`${line}\r\n`);
+    send("* OK [CAPABILITY IMAP4rev1] Fixture ready");
+
+    socket.on("data", (chunk: Buffer) => {
+      buffer += chunk.toString("utf8");
+      let end: number;
+      while ((end = buffer.indexOf("\r\n")) >= 0) {
+        const line = buffer.slice(0, end);
+        buffer = buffer.slice(end + 2);
+        const match = /^(\S+) (\S+)(?: (.*))?$/.exec(line);
+        if (!match) continue;
+        const [, tag, rawCommand, args = ""] = match as unknown as [string, string, string, string?];
+        let command = rawCommand.toUpperCase();
+        let rest = args;
+        if (command === "UID") {
+          const [sub, ...more] = rest.split(" ");
+          command = `UID ${sub?.toUpperCase()}`;
+          rest = more.join(" ");
+        }
+        this.commands.push(command === "LOGIN" ? "LOGIN ***" : `${command}${rest ? ` ${rest}` : ""}`);
+        const ok = (text = `${command} completed`) => send(`${tag} OK ${text}`);
+
+        switch (command) {
+          case "CAPABILITY":
+            send("* CAPABILITY IMAP4rev1");
+            ok();
+            break;
+          case "NOOP":
+            ok();
+            break;
+          case "LOGIN": {
+            const [user, password] = atoms(rest);
+            authenticated = user === this.account.user && password === this.account.password;
+            if (authenticated) ok("[CAPABILITY IMAP4rev1] LOGIN completed");
+            else send(`${tag} NO [AUTHENTICATIONFAILED] Invalid credentials`);
+            break;
+          }
+          case "LIST": {
+            const [, pattern = ""] = atoms(rest);
+            if (pattern === "") send('* LIST (\\Noselect) "/" ""');
+            for (const name of this.folders.keys()) {
+              if (pattern === "*" || pattern === name) send(`* LIST (\\HasNoChildren) "/" "${name}"`);
+            }
+            ok();
+            break;
+          }
+          case "SELECT":
+          case "EXAMINE": {
+            const [name = ""] = atoms(rest);
+            const mailbox = authenticated ? this.folders.get(name) : undefined;
+            if (!mailbox) {
+              send(`${tag} NO [NONEXISTENT] Unknown mailbox`);
+              break;
+            }
+            selected = mailbox;
+            send("* FLAGS (\\Answered \\Flagged \\Deleted \\Seen \\Draft)");
+            send(`* ${mailbox.messages.length} EXISTS`);
+            send("* 0 RECENT");
+            send(`* OK [UIDVALIDITY ${mailbox.uidValidity}] UIDs valid`);
+            send(`* OK [UIDNEXT ${(mailbox.messages.at(-1)?.uid ?? 0) + 1}] Predicted next UID`);
+            ok(command === "EXAMINE" ? "[READ-ONLY] EXAMINE completed" : "[READ-WRITE] SELECT completed");
+            break;
+          }
+          case "UID SEARCH": {
+            if (!selected) {
+              send(`${tag} BAD No mailbox selected`);
+              break;
+            }
+            const since = /SINCE (\d{1,2}-\w{3}-\d{4})/i.exec(rest)?.[1];
+            const from = since ? new Date(`${since} 00:00:00 UTC`) : null;
+            const uids = selected.messages.filter((message) => !from || message.internalDate >= from).map((m) => m.uid);
+            send(`* SEARCH${uids.map((uid) => ` ${uid}`).join("")}`);
+            ok();
+            break;
+          }
+          case "UID FETCH": {
+            if (!selected) {
+              send(`${tag} BAD No mailbox selected`);
+              break;
+            }
+            const [range = "", ...items] = rest.split(" ");
+            const wanted = items.join(" ").toUpperCase();
+            const messages = selected.messages;
+            const matching = inRange(range, messages.map((message) => message.uid));
+            messages.forEach((message, index) => {
+              if (!matching.includes(message.uid)) return;
+              const parts = [`UID ${message.uid}`];
+              let literal = "";
+              if (wanted.includes("BODY.PEEK[HEADER.FIELDS (FROM)]")) {
+                const header = (/^From:.*$/im.exec(message.raw)?.[0] ?? "") + "\r\n\r\n";
+                parts.push(`BODY[HEADER.FIELDS (FROM)] {${Buffer.byteLength(header)}}`);
+                literal = header;
+              } else if (wanted.includes("BODY.PEEK[]") || wanted.includes("BODY[]")) {
+                parts.push(`BODY[] {${Buffer.byteLength(message.raw)}}`);
+                literal = message.raw;
+              }
+              if (literal) socket.write(`* ${index + 1} FETCH (${parts.join(" ")}\r\n${literal})\r\n`);
+              else send(`* ${index + 1} FETCH (${parts.join(" ")})`);
+            });
+            ok();
+            break;
+          }
+          case "LOGOUT":
+            send("* BYE Logging out");
+            ok();
+            socket.end();
+            break;
+          default:
+            send(`${tag} BAD ${command} is not supported here`);
+        }
+      }
+    });
+  }
+}
+
+/** The quoted strings and atoms of a command's arguments. */
+function atoms(text: string): string[] {
+  return [...text.matchAll(/"((?:[^"\\]|\\.)*)"|(\S+)/g)].map((match) =>
+    match[1] !== undefined ? match[1].replace(/\\(.)/g, "$1") : (match[2] ?? ""),
+  );
+}
+
+/** The UIDs a sequence set such as `5:*` or `1,3:4` names, of those there are. */
+function inRange(range: string, uids: number[]): number[] {
+  const highest = uids.at(-1) ?? 0;
+  const value = (text: string) => (text === "*" ? highest : Number(text));
+  return uids.filter((uid) =>
+    range.split(",").some((part) => {
+      const [first = "", last = first] = part.split(":");
+      const [low, high] = [value(first), value(last)].sort((a, b) => a - b) as [number, number];
+      return uid >= low && uid <= high;
+    }),
+  );
+}
