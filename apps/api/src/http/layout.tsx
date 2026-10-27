@@ -2,11 +2,27 @@ import type { Child } from "hono/jsx";
 import { raw } from "hono/html";
 
 /**
+ * Opens a dialog the server rendered open as a modal one, so that the page behind it is inert
+ * and Escape closes it, by going back to the address in its `data-close`. Without JavaScript the
+ * dialog still shows, over the page.
+ */
+const modalDialogs = `
+for (const dialog of document.querySelectorAll("dialog.fam-dialog[open]")) {
+  dialog.close();
+  dialog.showModal();
+  dialog.addEventListener("cancel", (event) => {
+    event.preventDefault();
+    location.href = dialog.dataset.close;
+  });
+}
+`;
+
+/**
  * A page in the Family Agenda design system: its tokens and component classes come from
  * `/static/tokens.css` and `/static/design.css` (`design/`). A View is the Family's timeline; every
- * other page belongs to the Admin area.
+ * other page belongs to the Admin area, `narrow` for signing in.
  */
-export function Layout(props: { title: string; surface?: "view" | "admin"; children: Child }) {
+export function Layout(props: { title: string; surface?: "view" | "admin"; narrow?: boolean; children: Child }) {
   const view = props.surface === "view";
   return (
     <>
@@ -22,7 +38,12 @@ export function Layout(props: { title: string; surface?: "view" | "admin"; child
           <script src="/static/htmx.min.js" defer></script>
         </head>
         <body class={view ? "fam-page fam-view" : "fam-page"}>
-          {view ? props.children : <div class="fam-admin">{props.children}</div>}
+          {view ? (
+            props.children
+          ) : (
+            <div class={props.narrow ? "fam-admin fam-admin--narrow" : "fam-admin"}>{props.children}</div>
+          )}
+          {view ? null : <script>{raw(modalDialogs)}</script>}
         </body>
       </html>
     </>
