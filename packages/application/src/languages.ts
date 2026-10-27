@@ -16,7 +16,9 @@ export type LanguageSettings = {
   downloadable: OcrLanguage[];
 };
 
-export type OcrLanguagesProblem = "no-ocr-language" | "ocr-language-not-installed";
+export type SetLanguageResult = { ok: true } | { ok: false; problem: "invalid-language" };
+
+export type SetOcrLanguagesResult = { ok: true } | { ok: false; problem: "no-ocr-language" | "ocr-language-not-installed" };
 
 export type InstallResult =
   | { ok: true }
@@ -50,7 +52,7 @@ export function createLanguageAccess(deps: LanguagesDeps) {
     },
 
     /** Changes the language dates are formatted in; the OCR languages stay as they are. */
-    async setLanguage(language: string): Promise<{ ok: true } | { ok: false; problem: "invalid-language" }> {
+    async setLanguage(language: string): Promise<SetLanguageResult> {
       if (!isFamilyLanguage(language)) return { ok: false, problem: "invalid-language" };
       const { familyId, ocrLanguages } = await stored();
       await families.saveLanguages(familyId, { language, ocrLanguages });
@@ -58,13 +60,14 @@ export function createLanguageAccess(deps: LanguagesDeps) {
     },
 
     /** Chooses the OCR languages in the order Tesseract tries them; each needs its model installed. */
-    async setOcrLanguages(languages: string[]): Promise<{ ok: true } | { ok: false; problem: OcrLanguagesProblem }> {
+    async setOcrLanguages(languages: string[]): Promise<SetOcrLanguagesResult> {
       const chosen = [...new Set(languages)];
       if (chosen.length === 0) return { ok: false, problem: "no-ocr-language" };
-      const installed = new Set((await ocrModels.installed()).map((model) => model.language as string));
-      if (!chosen.every((ocr) => installed.has(ocr))) return { ok: false, problem: "ocr-language-not-installed" };
+      const installed = new Set<string>((await ocrModels.installed()).map((model) => model.language));
+      const ocrLanguages = chosen.filter(isOcrLanguage).filter((ocr) => installed.has(ocr));
+      if (ocrLanguages.length < chosen.length) return { ok: false, problem: "ocr-language-not-installed" };
       const { familyId, language } = await stored();
-      await families.saveLanguages(familyId, { language, ocrLanguages: chosen as OcrLanguage[] });
+      await families.saveLanguages(familyId, { language, ocrLanguages });
       return { ok: true };
     },
 
