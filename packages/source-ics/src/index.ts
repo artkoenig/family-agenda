@@ -8,7 +8,7 @@ import {
   type PluginRevision,
   type RunContext,
   type SourcePlugin,
-} from "@family-butler/source-sdk";
+} from "@family-agenda/source-sdk";
 
 export type IcsPluginOptions = {
   /** How the plugin reaches the calendar; recorded responses in tests. */

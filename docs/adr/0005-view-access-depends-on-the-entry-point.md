@@ -14,10 +14,10 @@ Admins always sign in, on both listeners. On the remote listener, password sign-
 ## Consequences
 
 - The policy is chosen by which listener accepted the connection. It is never decided from the `Host` header, `X-Forwarded-For` or the client IP.
-- An operator who exposes the Instance without Butler Cloud, through their own reverse proxy, points it at the remote listener and gets the same protection.
+- An operator who exposes the Instance without Agenda Cloud, through their own reverse proxy, points it at the remote listener and gets the same protection.
 - Ticking a Task done through a View Link is allowed, as it is locally ([artkoenig/family-buttler#13](https://github.com/artkoenig/family-buttler/issues/13)).
 - The ICS feed follows the same rule. Over Remote Access it needs its own secret URL, and then external calendars such as Google Calendar can subscribe to it.
-- With Remote Access the Instance has a secure context, so a PWA with Web Push becomes possible for Butler Cloud subscribers. ADR-0003's reasons for having no PWA still hold for a LAN-only Instance.
+- With Remote Access the Instance has a secure context, so a PWA with Web Push becomes possible for Agenda Cloud subscribers. ADR-0003's reasons for having no PWA still hold for a LAN-only Instance.
 
 ## Considered Options
 

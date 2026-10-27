@@ -1,6 +1,6 @@
-import type { Origin, PluginRevision } from "@family-butler/source-sdk";
-import { openViewAccess } from "@family-butler/application";
-import type { ViewId } from "@family-butler/domain";
+import type { Origin, PluginRevision } from "@family-agenda/source-sdk";
+import { openViewAccess } from "@family-agenda/application";
+import type { ViewId } from "@family-agenda/domain";
 import ICAL from "ical.js";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { icsFeed } from "../../src/http/ics-feed";
@@ -66,7 +66,7 @@ describe("the ICS feed of a View", () => {
   const feed = async (id: ViewId = view) => {
     const found = await instance.app.views.feed(id, { access: openViewAccess });
     if (!found) return null;
-    const text = icsFeed(found, `http://butler.local/views/${id}`);
+    const text = icsFeed(found, `http://agenda.local/views/${id}`);
     const calendar = new ICAL.Component(ICAL.parse(text) as unknown[]);
     return calendar.getAllSubcomponents("vevent").map((vevent) => {
       const start = vevent.getFirstPropertyValue("dtstart") as ICAL.Time;
@@ -102,7 +102,7 @@ describe("the ICS feed of a View", () => {
         end: "2026-09-15T15:00:00.000Z",
         location: "Music school",
         status: null,
-        description: `Tue 15 Sept, 16:00 – 17:00\nMusic school\n\nhttp://butler.local/views/${view}`,
+        description: `Tue 15 Sept, 16:00 – 17:00\nMusic school\n\nhttp://agenda.local/views/${view}`,
       },
       {
         summary: "Class trip",
@@ -110,7 +110,7 @@ describe("the ICS feed of a View", () => {
         end: "2026-09-18",
         location: null,
         status: null,
-        description: `Wed 16 Sept – Thu 17 Sept\n\nhttp://butler.local/views/${view}`,
+        description: `Wed 16 Sept – Thu 17 Sept\n\nhttp://agenda.local/views/${view}`,
       },
     ]);
   });
@@ -205,7 +205,7 @@ describe("the ICS feed of a View", () => {
       expect.objectContaining({
         summary: "Piano lesson",
         status: "CANCELLED",
-        description: `Tue 15 Sept, 16:00 – 17:00\nMusic school\nCancelled\n\nhttp://butler.local/views/${view}`,
+        description: `Tue 15 Sept, 16:00 – 17:00\nMusic school\nCancelled\n\nhttp://agenda.local/views/${view}`,
       }),
     ]);
   });

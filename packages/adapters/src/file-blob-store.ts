@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { BlobStore } from "@family-butler/application";
-import type { BlobRef } from "@family-butler/domain";
+import type { BlobStore } from "@family-agenda/application";
+import type { BlobRef } from "@family-agenda/domain";
 import { uuidPattern } from "./uuid";
 
 /** Keeps each blob as a file named by its reference, in the blob volume (ADR-0006). */

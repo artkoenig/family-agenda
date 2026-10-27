@@ -134,10 +134,10 @@ describe("errors", () => {
 
 describe("a manifest", () => {
   const packageJson = (sourcePlugin: unknown) => ({
-    name: "family-butler-source-example",
+    name: "family-agenda-source-example",
     version: "1.2.0",
     type: "module",
-    familyButler: { sourcePlugin },
+    familyAgenda: { sourcePlugin },
   });
 
   it("is read from package.json, with the package version as the plugin's", () => {
@@ -171,7 +171,7 @@ describe("a manifest", () => {
       const result = parseManifest({
         version: "1.0.0",
         ...(type ? { type } : {}),
-        familyButler: { sourcePlugin: { entry, sourceTypeId: "example", displayName: "Example", sdkVersion, description: "Reads examples." } },
+        familyAgenda: { sourcePlugin: { entry, sourceTypeId: "example", displayName: "Example", sdkVersion, description: "Reads examples." } },
       });
       if (!result.ok) throw new Error("the manifest is invalid");
       return result.manifest;

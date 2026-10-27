@@ -1,5 +1,5 @@
 import { serve } from "@hono/node-server";
-import { openViewAccess } from "@family-butler/application";
+import { openViewAccess } from "@family-agenda/application";
 import { bootApplication } from "./composition-root";
 import { readConfig } from "./config";
 import { createHttpApp } from "./http/app";
@@ -13,7 +13,7 @@ const server = serve(
       viewAccess: openViewAccess,
     }).fetch, port: config.port },
   (info) => {
-    console.log(`Family Butler listening on port ${info.port}`);
+    console.log(`Family Agenda listening on port ${info.port}`);
   },
 );
 

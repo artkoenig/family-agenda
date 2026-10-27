@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { readFile, rm, writeFile } from "node:fs/promises";
 import { afterEach, describe, expect, it } from "vitest";
-import type { SecretRef } from "@family-butler/application";
+import type { SecretRef } from "@family-agenda/application";
 import { bootForTest, type TestInstance } from "../support/boot";
 import { InMemorySecretStore } from "../support/in-memory-secret-store";
 

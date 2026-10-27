@@ -1,4 +1,4 @@
-import type { Clock } from "@family-butler/application";
+import type { Clock } from "@family-agenda/application";
 
 export class SystemClock implements Clock {
   now(): Date {

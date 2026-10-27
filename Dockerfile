@@ -10,11 +10,11 @@ WORKDIR /app
 
 COPY . .
 RUN pnpm install --frozen-lockfile --prod \
-  && printf '#!/bin/sh\ncd /app/apps/api && exec node --import tsx src/cli.ts "$@"\n' > /usr/local/bin/family-butler \
-  && chmod +x /usr/local/bin/family-butler \
-  && mkdir -p /var/lib/family-butler/master-key /var/lib/family-butler/blobs /var/lib/family-butler/plugins \
-  && chown node:node /var/lib/family-butler/master-key /var/lib/family-butler/blobs /var/lib/family-butler/plugins \
-  && chmod 700 /var/lib/family-butler/master-key /var/lib/family-butler/blobs
+  && printf '#!/bin/sh\ncd /app/apps/api && exec node --import tsx src/cli.ts "$@"\n' > /usr/local/bin/family-agenda \
+  && chmod +x /usr/local/bin/family-agenda \
+  && mkdir -p /var/lib/family-agenda/master-key /var/lib/family-agenda/blobs /var/lib/family-agenda/plugins \
+  && chown node:node /var/lib/family-agenda/master-key /var/lib/family-agenda/blobs /var/lib/family-agenda/plugins \
+  && chmod 700 /var/lib/family-agenda/master-key /var/lib/family-agenda/blobs
 
 USER node
 WORKDIR /app/apps/api

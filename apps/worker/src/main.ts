@@ -1,11 +1,11 @@
-import { bootWorker } from "@family-butler/api/composition-root";
-import { readConfig } from "@family-butler/api/config";
+import { bootWorker } from "@family-agenda/api/composition-root";
+import { readConfig } from "@family-agenda/api/config";
 
 /** How often the worker looks for Sources whose polling interval has passed. */
 const tickMs = 30_000;
 
 const worker = await bootWorker(readConfig());
-console.log("Family Butler worker started");
+console.log("Family Agenda worker started");
 
 let polling: Promise<void> | null = null;
 const poll = () => {

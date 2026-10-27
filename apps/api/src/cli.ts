@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { bootApplication } from "./composition-root";
 import { readConfig } from "./config";
 
-const usage = "Usage: family-butler reset-admin-password <email>";
+const usage = "Usage: family-agenda reset-admin-password <email>";
 
 const [command, email] = process.argv.slice(2);
 if (command !== "reset-admin-password" || !email) {

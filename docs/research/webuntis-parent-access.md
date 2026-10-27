@@ -93,7 +93,7 @@ If a needed piece (for example messages to the child) is missing, the fallback i
 
 A community protocol write-up of both APIs is [SafeMemoryZone/webuntis-api-docs](https://github.com/SafeMemoryZone/webuntis-api-docs/blob/master/WEBUNTIS_API.md). It is useful as a map, but it is not authoritative.
 
-## Implications for Family Butler
+## Implications for Family Agenda
 
 - **Use one WebUntis Source per Family, not one per Family Member.** Authenticate once with the parent's QR secret (TOTP), enumerate the children (`getUserData2017.children` or REST `app/data.user.students`), and let the Admin map each child id to a Family Member.
 - **Prefer the QR-secret/TOTP login over the password.** It survives school SSO and 2FA, stores no password, and the Admin can revoke it by regenerating the key.

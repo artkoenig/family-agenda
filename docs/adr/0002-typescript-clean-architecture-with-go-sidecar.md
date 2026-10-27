@@ -1,6 +1,6 @@
 # TypeScript backend in Clean Architecture, with a Go sidecar for WhatsApp
 
-Family Butler is a TypeScript monorepo on Node.js LTS that follows Clean Architecture. Go is used only in a small WhatsApp sidecar, because whatsmeow is a Go library. Python had the strongest libraries for PDF, OCR and ICS recurrence. We still chose TypeScript, so that the backend, the REST API and the React frontend share one language and their contracts, and we close the library gaps with the poppler and tesseract command-line tools and `ical.js`.
+Family Agenda is a TypeScript monorepo on Node.js LTS that follows Clean Architecture. Go is used only in a small WhatsApp sidecar, because whatsmeow is a Go library. Python had the strongest libraries for PDF, OCR and ICS recurrence. We still chose TypeScript, so that the backend, the REST API and the React frontend share one language and their contracts, and we close the library gaps with the poppler and tesseract command-line tools and `ical.js`.
 
 The dependency rule is enforced by workspace package boundaries and dependency-cruiser, not by convention:
 

@@ -19,7 +19,7 @@ import type {
   SourceTypeId,
   View,
   ViewId,
-} from "@family-butler/domain";
+} from "@family-agenda/domain";
 
 export interface Clock {
   now(): Date;

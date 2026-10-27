@@ -1,6 +1,6 @@
-import type { Origin } from "@family-butler/source-sdk";
-import { openViewAccess, type CurrentActivity, type ExtractionRequest, type ExtractionResult } from "@family-butler/application";
-import type { ViewId } from "@family-butler/domain";
+import type { Origin } from "@family-agenda/source-sdk";
+import { openViewAccess, type CurrentActivity, type ExtractionRequest, type ExtractionResult } from "@family-agenda/application";
+import type { ViewId } from "@family-agenda/domain";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { bootForTest, type TestInstance } from "../support/boot";
 import { InMemoryBlobStore } from "../support/in-memory-blob-store";

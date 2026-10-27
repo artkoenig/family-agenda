@@ -1,5 +1,5 @@
-import type { FeedEvent, ViewFeed } from "@family-butler/application";
-import { addDays, type LocalDate } from "@family-butler/domain";
+import type { FeedEvent, ViewFeed } from "@family-agenda/application";
+import { addDays, type LocalDate } from "@family-agenda/domain";
 import { spanLabel } from "./view-page";
 
 /**
@@ -11,10 +11,10 @@ export function icsFeed(feed: ViewFeed, viewLink: string): string {
   const lines = [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",
-    "PRODID:-//Family Butler//View feed//EN",
+    "PRODID:-//Family Agenda//View feed//EN",
     "CALSCALE:GREGORIAN",
     "METHOD:PUBLISH",
-    "X-WR-CALNAME:Family Butler",
+    "X-WR-CALNAME:Family Agenda",
     "REFRESH-INTERVAL;VALUE=DURATION:PT1H",
     "X-PUBLISHED-TTL:PT1H",
     ...feed.events.flatMap((event) => vevent(event, stamp, viewLink)),
@@ -28,7 +28,7 @@ function vevent(event: FeedEvent, stamp: string, viewLink: string): string[] {
   const details = [spanLabel(event.when), event.place, event.cancelled ? "Cancelled" : null].filter(Boolean);
   return [
     "BEGIN:VEVENT",
-    `UID:${event.itemId}@family-butler`,
+    `UID:${event.itemId}@family-agenda`,
     `DTSTAMP:${stamp}`,
     ...(span.allDay
       ? [`DTSTART;VALUE=DATE:${date(span.firstDay)}`, `DTEND;VALUE=DATE:${date(addDays(span.lastDay, 1))}`]

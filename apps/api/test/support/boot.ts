@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { BlobStore, Extractor, SecretStore, TextExtractor } from "@family-butler/application";
+import type { BlobStore, Extractor, SecretStore, TextExtractor } from "@family-agenda/application";
 import pg from "pg";
 import { bootApplication, type Application, type ApplicationConfig } from "../../src/composition-root";
 import { FakeClock } from "./fake-clock";
@@ -50,11 +50,11 @@ export type TestInstance = {
  * Postgres database and master key file, with a controllable Clock.
  */
 export async function bootForTest(options: TestOptions = {}): Promise<TestInstance> {
-  const databaseName = `family_butler_test_${randomBytes(6).toString("hex")}`;
+  const databaseName = `family_agenda_test_${randomBytes(6).toString("hex")}`;
   await withServer((client) => client.query(`CREATE DATABASE ${databaseName}`));
   const databaseUrl = new URL(serverUrl);
   databaseUrl.pathname = `/${databaseName}`;
-  const keyDirectory = await mkdtemp(join(tmpdir(), "family-butler-test-"));
+  const keyDirectory = await mkdtemp(join(tmpdir(), "family-agenda-test-"));
 
   const workspacePackages = join(keyDirectory, "packages");
   const pluginDirectory = join(keyDirectory, "plugins");

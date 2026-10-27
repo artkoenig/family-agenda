@@ -4,9 +4,9 @@ status: proposed
 
 # Source Types are plugins that register themselves at startup and are enabled by an Admin
 
-The core of Family Butler names no Source Type. WebUntis, ICS calendars, IMAP mailboxes and WhatsApp are each a Source plugin, and a new Source Type is added by installing one more plugin, without touching `domain`, `application`, the Admin area or the database schema. We chose this because the Family's channels change (another school app, a club portal, a second messenger) and each of them should cost one package, not a change that runs through every layer.
+The core of Family Agenda names no Source Type. WebUntis, ICS calendars, IMAP mailboxes and WhatsApp are each a Source plugin, and a new Source Type is added by installing one more plugin, without touching `domain`, `application`, the Admin area or the database schema. We chose this because the Family's channels change (another school app, a club portal, a second messenger) and each of them should cost one package, not a change that runs through every layer.
 
-A Source plugin is a package that implements the `SourcePlugin` contract from `packages/source-sdk`. The SDK is the only package a plugin may import from Family Butler; dependency-cruiser enforces this as it does the other boundaries (ADR-0002). A plugin declares:
+A Source plugin is a package that implements the `SourcePlugin` contract from `packages/source-sdk`. The SDK is the only package a plugin may import from Family Agenda; dependency-cruiser enforces this as it does the other boundaries (ADR-0002). A plugin declares:
 
 - **Identity**: a stable Source Type id (such as `webuntis`), a display name, its own version and the SDK version it was built against.
 - **Configuration**: a schema of plain fields and secret fields. The Admin area renders the Source step of the wizard and the Fix button ([How do Admins find out that a Source has broken?](https://github.com/artkoenig/family-buttler/issues/25)) from it. Secret fields go to the `SecretStore` and reach the plugin only at run time. A plugin that needs an interactive step, such as pairing WhatsApp by QR code, declares it as a setup step the wizard shows.
@@ -19,7 +19,7 @@ Plugins hold no state of their own outside the SDK. Each Source gets an opaque s
 
 ## Registration
 
-At startup the composition root discovers plugins and registers each with a `SourceRegistry`. It looks in two places: the installed workspace packages that declare a `familyButler.sourcePlugin` entry in their `package.json`, and a `plugins/` directory in its own volume, for plugins an operator adds to a stock image. That entry also holds the plugin's manifest: its identity, a short description, whether its Sources need the LLM endpoint, and a risk notice where one applies, such as WhatsApp's (ADR-0001). The registry reads manifests without loading any plugin code. A plugin with an incompatible SDK version is listed in the Admin area as not loadable, with the reason. Everything after registration (the wizard, the scheduler, the ingest endpoints, the Source status) asks the registry and never branches on a Source Type id.
+At startup the composition root discovers plugins and registers each with a `SourceRegistry`. It looks in two places: the installed workspace packages that declare a `familyAgenda.sourcePlugin` entry in their `package.json`, and a `plugins/` directory in its own volume, for plugins an operator adds to a stock image. That entry also holds the plugin's manifest: its identity, a short description, whether its Sources need the LLM endpoint, and a risk notice where one applies, such as WhatsApp's (ADR-0001). The registry reads manifests without loading any plugin code. A plugin with an incompatible SDK version is listed in the Admin area as not loadable, with the reason. Everything after registration (the wizard, the scheduler, the ingest endpoints, the Source status) asks the registry and never branches on a Source Type id.
 
 The four v1 Source Types ship as plugins in this repository (`packages/source-webuntis`, `source-ics`, `source-imap`, `source-whatsapp`) and are installed in the default image. They use the same contract as any other plugin, which keeps the contract honest.
 
@@ -37,7 +37,7 @@ Installed is not enabled. An Admin enables each Source Type the Family uses, and
 - A plugin that needs a process of its own, such as the Go whatsmeow sidecar (ADR-0001), ships it as a container and talks to the Instance only through its push ingest endpoint. The plugin package holds the TypeScript side; the container is enabled with a Compose profile.
 - An update can bring new Source Types, but never turns one on. A plugin that is installed and disabled costs nothing at run time, because its code is not loaded.
 - When a plugin is removed, its Sources stay, with their Origins and Revisions, and show as Failing with "Source Type not installed". Reinstalling the plugin resumes them from their stored state.
-- Every Source Type, built in or added, is bound by ADR-0004: it runs on the Instance, never in Butler Cloud.
+- Every Source Type, built in or added, is bound by ADR-0004: it runs on the Instance, never in Agenda Cloud.
 - The `SourceAdapter` port of ADR-0002 becomes the `SourcePlugin` contract, and the Sources leave `packages/adapters-*` for `packages/source-*`.
 
 ## Considered Options

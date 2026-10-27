@@ -1,4 +1,4 @@
-import type { JobQueue } from "@family-butler/application";
+import type { JobQueue } from "@family-agenda/application";
 import { PgBoss } from "pg-boss";
 
 export class PgBossJobQueue implements JobQueue {

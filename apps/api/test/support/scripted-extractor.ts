@@ -5,8 +5,8 @@ import type {
   Extractor,
   TranscriptionRequest,
   TranscriptionResult,
-} from "@family-butler/application";
-import type { DateMention } from "@family-butler/domain";
+} from "@family-agenda/application";
+import type { DateMention } from "@family-agenda/domain";
 import { scanImageText } from "./fake-text-extractor";
 
 const noDate = { day: null, month: null, year: null, weekday: null, daysAfter: null, weeksAfter: null };

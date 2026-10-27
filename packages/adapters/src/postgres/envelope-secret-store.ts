@@ -1,5 +1,5 @@
 import { createCipheriv, createDecipheriv, randomBytes, randomUUID } from "node:crypto";
-import type { SecretRef, SecretStore } from "@family-butler/application";
+import type { SecretRef, SecretStore } from "@family-agenda/application";
 import { eq } from "drizzle-orm";
 import { masterKeyLength } from "../file-master-key";
 import type { Database } from "./database";

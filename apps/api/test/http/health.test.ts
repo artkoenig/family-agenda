@@ -1,4 +1,4 @@
-import { healthResponse } from "@family-butler/contracts";
+import { healthResponse } from "@family-agenda/contracts";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { bootHttpForTest, type HttpTestInstance } from "../support/http";
 

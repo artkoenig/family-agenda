@@ -1,4 +1,4 @@
-import type { Origin } from "@family-butler/source-sdk";
+import type { Origin } from "@family-agenda/source-sdk";
 import ICAL from "ical.js";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createHttpApp } from "../../src/http/app";
@@ -78,8 +78,8 @@ describe("Events in a View over HTTP", () => {
 
     const page = await (await instance.get(path)).text();
 
-    expect(rowOf(page, "School breakfast")).toContain('class="event earlier"');
-    expect(rowOf(page, "Dentist")).toContain('class="event cancelled"');
+    expect(rowOf(page, "School breakfast")).toContain('class="fam-event fam-event--earlier"');
+    expect(rowOf(page, "Dentist")).toContain('class="fam-event fam-event--cancelled"');
     expect(rowOf(page, "Dentist")).toContain("<s>Dentist</s>");
     // The "now" line comes after what is over.
     expect(page.indexOf("School breakfast")).toBeLessThan(page.indexOf("Now 09:10"));
@@ -114,7 +114,7 @@ describe("Events in a View over HTTP", () => {
     expect(earlier).not.toContain("Now ");
     expect(earlier).toContain('<input type="hidden" id="shown-from" name="from" value="2026-09-11" hx-swap-oob="true"/>');
     const further = await (await instance.get(`${path}/days?show=all&from=2026-09-08&until=2026-09-10&then=earlier`)).text();
-    expect(rowOf(further, "Swimming")).toContain('class="event earlier"');
+    expect(rowOf(further, "Swimming")).toContain('class="fam-event fam-event--earlier"');
   });
 
   it("refreshes the days scrolled to, and refuses days it cannot show", async () => {

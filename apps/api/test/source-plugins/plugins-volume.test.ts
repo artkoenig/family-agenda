@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { sdkVersion } from "@family-butler/source-sdk";
+import { sdkVersion } from "@family-agenda/source-sdk";
 
 const apiDirectory = fileURLToPath(new URL("../..", import.meta.url));
 const script = fileURLToPath(new URL("../support/load-plugin-natively.ts", import.meta.url));
@@ -13,7 +13,7 @@ const script = fileURLToPath(new URL("../support/load-plugin-natively.ts", impor
 describe("a plugin in the plugins volume", () => {
   let plugins: string;
   beforeEach(async () => {
-    plugins = await mkdtemp(join(tmpdir(), "family-butler-plugins-"));
+    plugins = await mkdtemp(join(tmpdir(), "family-agenda-plugins-"));
   });
   afterEach(async () => {
     await rm(plugins, { recursive: true, force: true });
@@ -28,14 +28,14 @@ describe("a plugin in the plugins volume", () => {
         name,
         version: "1.0.0",
         ...packageJson,
-        familyButler: {
+        familyAgenda: {
           sourcePlugin: { entry: "./index.ts", sourceTypeId: name, displayName: name, sdkVersion, description: "A club portal." },
         },
       }),
     );
     await writeFile(
       join(plugins, name, "index.ts"),
-      `import { sdkVersion, SourceError, type SourcePlugin } from "@family-butler/source-sdk";
+      `import { sdkVersion, SourceError, type SourcePlugin } from "@family-agenda/source-sdk";
 export default {
   identity: { sourceTypeId: ${JSON.stringify(name)}, displayName: ${JSON.stringify(name)}, version: "1.0.0", sdkVersion },
   configuration: { version: 1, fields: [] },

@@ -2,7 +2,7 @@ import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { bootForTest, type TestInstance } from "../support/boot";
-import type { SourceId } from "@family-butler/domain";
+import type { SourceId } from "@family-agenda/domain";
 import {
   loadedTestPlugins,
   testPluginControls,
@@ -48,7 +48,7 @@ describe("Source Types", () => {
     });
     const other = join(instance.workspacePackages, "domain");
     await mkdir(other);
-    await writeFile(join(other, "package.json"), JSON.stringify({ name: "@family-butler/domain" }));
+    await writeFile(join(other, "package.json"), JSON.stringify({ name: "@family-agenda/domain" }));
     await instance.restart();
 
     const types = await instance.app.sourceTypes.open();

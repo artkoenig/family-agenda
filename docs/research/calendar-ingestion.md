@@ -1,6 +1,6 @@
 # Calendar Source ingestion: secret ICS URL vs. Google Calendar API vs. CalDAV
 
-Question (issue #4): how should Family Butler read calendar **Sources** such as Google Calendar, and ideally iCloud and club calendars, read-only, to turn them into **Events**?
+Question (issue #4): how should Family Agenda read calendar **Sources** such as Google Calendar, and ideally iCloud and club calendars, read-only, to turn them into **Events**?
 
 Research date: 2026-10-25. Note: Google, Apple and IETF hosts could not be fetched directly from the research sandbox. Google and RFC claims below come from search-engine extracts of the official pages linked. Library claims were read directly from GitHub sources. Items marked *unverified* need checking before implementation.
 
@@ -29,9 +29,9 @@ Research date: 2026-10-25. Note: Google, Apple and IETF hosts could not be fetch
 - Recurrence: `singleEvents=true` expands series into instances server-side ([events.list](https://developers.google.com/calendar/v3/reference/events/list)). Exceptions are linked by `recurringEventId`/`originalStartTime` (Events resource; *details not re-fetched*).
 - Push: `events.watch` needs a public HTTPS webhook with a valid, non-self-signed certificate ([Push notifications](https://developers.google.com/workspace/calendar/api/guides/push)). That is a poor fit for a home LAN install, so polling with sync tokens is the realistic mode.
 - Setup friction:
-  - Calendar read scopes are *sensitive*. An unverified app shows a warning screen and is capped at 100 users. Verification is not needed for "experimental or test builds" not launched publicly ([Unverified apps](https://support.google.com/cloud/answer/7454865)). One Family is far under the cap, so verification is not required, but the Admin must create their own GCP project (no shared Family Butler client ID, because that would be a public app needing verification).
+  - Calendar read scopes are *sensitive*. An unverified app shows a warning screen and is capped at 100 users. Verification is not needed for "experimental or test builds" not launched publicly ([Unverified apps](https://support.google.com/cloud/answer/7454865)). One Family is far under the cap, so verification is not required, but the Admin must create their own GCP project (no shared Family Agenda client ID, because that would be a public app needing verification).
   - With publishing status **Testing**, refresh tokens expire after **7 days**. Moving to **In production** (still unverified) gives long-lived tokens that expire only if revoked or unused for ~6 months ([Google setup docs](https://developers.google.com/health/setup)).
-  - Redirect URIs for web clients must be HTTPS, cannot be raw IPs and must use a public-suffix TLD. Only `localhost` is exempt ([Manage OAuth clients](https://support.google.com/cloud/answer/15549257)). A self-hosted box at `http://192.168.x.x` or `butler.local` therefore cannot be a redirect target. Workarounds: authorise once via a desktop/loopback client (`http://localhost`) or a public domain with TLS. Whether the device-code flow permits Calendar scopes is *unverified* (Google's "allowed scopes" list for devices was not retrievable).
+  - Redirect URIs for web clients must be HTTPS, cannot be raw IPs and must use a public-suffix TLD. Only `localhost` is exempt ([Manage OAuth clients](https://support.google.com/cloud/answer/15549257)). A self-hosted box at `http://192.168.x.x` or `agenda.local` therefore cannot be a redirect target. Workarounds: authorise once via a desktop/loopback client (`http://localhost`) or a public domain with TLS. Whether the device-code flow permits Calendar scopes is *unverified* (Google's "allowed scopes" list for devices was not retrievable).
 - Generality: Google only.
 
 ### 3. CalDAV
@@ -40,7 +40,7 @@ Research date: 2026-10-25. Note: Google, Apple and IETF hosts could not be fetch
 - iCloud: `caldav.icloud.com` with Apple ID + app-specific password (2FA required). There is no official public doc beyond the password requirement ([Nylas iCloud guide](https://cli.nylas.com/guides/icloud-caldav-settings)). Apple's OAuth-style "Apple Account authorization" for third parties was still a pilot ([Apple Developer Forums](https://developer.apple.com/forums/thread/850313)). The `python-caldav` library ships an iCloud profile, and its measured compatibility hints (2026-10) show iCloud supports sync tokens (only the `limit` option is unsupported) and expands recurrences in searches ([python-caldav compatibility_hints.py](https://github.com/python-caldav/caldav/blob/master/caldav/compatibility_hints.py)). The library notes Google and iCloud "haven't been tested for a long time" ([python-caldav docs](https://github.com/python-caldav/caldav/blob/master/docs/source/about.rst)).
 - Generality: good for "real" calendar servers (iCloud, Nextcloud, Fastmail, etc.), poor for club/school calendars, which almost always publish only an ICS link.
 
-## Implications for Family Butler
+## Implications for Family Agenda
 
 **Recommendation: make the ICS URL the baseline calendar Source type, and add Google API / CalDAV only as optional upgrades if latency proves to be a problem.**
 

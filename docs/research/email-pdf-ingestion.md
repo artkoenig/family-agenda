@@ -1,6 +1,6 @@
 # Mailbox Source ingestion: getting mail and PDF attachments into text
 
-Question (issue #5): how should Family Butler read a family mailbox **Source** (IMAP vs. Gmail API vs. a dedicated forwarding address), select only relevant mail, and turn PDF attachments (school letters, often scanned) into text that the LLM can extract **Items** from?
+Question (issue #5): how should Family Agenda read a family mailbox **Source** (IMAP vs. Gmail API vs. a dedicated forwarding address), select only relevant mail, and turn PDF attachments (school letters, often scanned) into text that the LLM can extract **Items** from?
 
 Research date: 2026-10-25. Note: Google, Microsoft, IETF and Hugging Face hosts could not be fetched directly from the research sandbox. Claims about them come from search-engine extracts of the official pages linked. Library and model claims were read directly from the projects' GitHub READMEs, source and LICENSE files. Items marked *unverified* need checking before implementation.
 
@@ -24,7 +24,7 @@ Research date: 2026-10-25. Note: Google, Microsoft, IETF and Hugging Face hosts 
 - Outlook.com personal accounts no longer accept Basic auth for IMAP/POP/SMTP; OAuth is required. Microsoft announced it in 2024; the 16 September 2024 cut-off date comes from secondary sources ([Microsoft support](https://support.microsoft.com/office/outlook-and-other-apps-are-unable-to-connect-to-outlook-com-f4202ebf-89c6-4a8a-bec3-3d60cf7deaef)). *Exact date unverified.*
 - GMX/web.de: IMAP access is off by default and must be enabled under Settings → "POP3/IMAP Abruf". With 2FA enabled an application-specific password is needed (community and press sources, e.g. [giga.de](https://www.giga.de/tipp/gmx-imap-pop3-aktivieren-einrichten-e-mail-client/); *not confirmed on GMX's own help pages*).
 - Gmail exposes labels as IMAP folders and adds `X-GM-RAW`, which accepts full Gmail search syntax in IMAP `SEARCH`, plus stable `X-GM-MSGID`/`X-GM-THRID` IDs ([Gmail IMAP extensions](https://developers.google.com/workspace/gmail/imap/imap-extensions)).
-- Read-only by construction (IMAP standard behaviour, RFC 3501/9051): open the folder with `EXAMINE` (read-only `SELECT`) and fetch with `BODY.PEEK[]`, so the `\Seen` flag is never set. Track `UIDVALIDITY` + `UID` to avoid re-processing. This differs from paperless-ngx, which marks, flags, moves or tags mail to avoid consuming it twice ([paperless-ngx mail docs](https://github.com/paperless-ngx/paperless-ngx/blob/dev/docs/usage.md#incoming-email)). Family Butler only reads, so it should not change the mailbox.
+- Read-only by construction (IMAP standard behaviour, RFC 3501/9051): open the folder with `EXAMINE` (read-only `SELECT`) and fetch with `BODY.PEEK[]`, so the `\Seen` flag is never set. Track `UIDVALIDITY` + `UID` to avoid re-processing. This differs from paperless-ngx, which marks, flags, moves or tags mail to avoid consuming it twice ([paperless-ngx mail docs](https://github.com/paperless-ngx/paperless-ngx/blob/dev/docs/usage.md#incoming-email)). Family Agenda only reads, so it should not change the mailbox.
 - IDLE (RFC 2177) gives near-instant delivery but servers drop idle connections, so a client must re-issue IDLE periodically (the RFC advises at least every 29 minutes). Polling every 2-5 minutes is simpler and fresh enough for school letters. Python: `imapclient` (New BSD) supports IDLE ([README](https://github.com/mjs/imapclient)).
 
 **The Gmail API buys little for this use case and costs a lot of setup.**
@@ -32,14 +32,14 @@ Research date: 2026-10-25. Note: Google, Microsoft, IETF and Hugging Face hosts 
 - Push (`users.watch`) needs a Cloud Pub/Sub topic and must be renewed at least every 7 days ([push guide](https://developers.google.com/workspace/gmail/api/guides/push); *details from prior knowledge, page not fetched*). A pull subscription avoids a public webhook but still ties the install to GCP.
 
 **A dedicated forwarding address is the best privacy story, and it still ends in IMAP.**
-- Parents create one extra mailbox (e.g. `familie-butler@<provider>`) and add rules in their own mailboxes that forward school, club and doctor mail to it. Family Butler holds credentials only for that mailbox, never for the parents' private mail.
+- Parents create one extra mailbox (e.g. `familie-agenda@<provider>`) and add rules in their own mailboxes that forward school, club and doctor mail to it. Family Agenda holds credentials only for that mailbox, never for the parents' private mail.
 - Running our own SMTP receiver instead (MX record, inbound port 25) is a poor fit for a home install: residential ISPs often block port 25 and it adds spam handling. Treat it as out of scope.
 - Caveats: Gmail asks the user to confirm the forwarding address first (*unverified detail*). A *manually* forwarded mail wraps the original as quoted text or a `message/rfc822` attachment, so the parser must unwrap it to find the real sender and date.
 
 ### Selecting relevant mail
 Use three layers, cheapest first:
-1. **Provider-side filter into a folder/label.** The parent creates a rule such as `from:(@schule-xyz.de OR @elternportal.de) → label "Family Butler"` (Gmail) or a GMX/web.de filter that moves mail into a folder. Family Butler reads only that folder. This is the same approach paperless-ngx recommends ("set up a special folder... and use your mail client to move mails into that folder").
-2. **Sender/subject allow-list in Family Butler's own Source config** (domains, addresses, subject keywords), plus a maximum age. On Gmail this can be pushed down to the server with `X-GM-RAW`.
+1. **Provider-side filter into a folder/label.** The parent creates a rule such as `from:(@schule-xyz.de OR @elternportal.de) → label "Family Agenda"` (Gmail) or a GMX/web.de filter that moves mail into a folder. Family Agenda reads only that folder. This is the same approach paperless-ngx recommends ("set up a special folder... and use your mail client to move mails into that folder").
+2. **Sender/subject allow-list in Family Agenda's own Source config** (domains, addresses, subject keywords), plus a maximum age. On Gmail this can be pushed down to the server with `X-GM-RAW`.
 3. **LLM relevance check** on what passes: "does this concern a Family Member; which Item types?" Low-confidence results go to the Admin review.
 
 Reading the whole inbox and relying on the LLM alone is not advisable: it costs tokens, and it sends unrelated private mail to a possibly remote LLM.
@@ -74,10 +74,10 @@ Benchmarks: [olmOCR-bench](https://github.com/allenai/olmocr/tree/main/olmocr/be
 - Bring-your-own-LLM caveat: not every configured model accepts images, and local OpenAI-compatible servers need a VLM loaded (e.g. a Qwen-VL class model, which needs a GPU for reasonable speed). The pipeline must detect "no vision" and fall back to OCR.
 - Privacy: this sends the full letter image to the LLM endpoint. That is the same trust boundary as sending the extracted text, but images can carry more (signatures, letterheads with children's names).
 
-## Implications for Family Butler
+## Implications for Family Agenda
 
 **Recommendation.**
-1. **Mailbox Source = IMAP, one folder, read-only.** Use a generic IMAP adapter (`EXAMINE` + `BODY.PEEK`, track `UIDVALIDITY`/`UID`, poll every 2-5 minutes, IDLE optional). Recommend in the setup guide that the Admin either (a) creates a dedicated "Family Butler" mailbox and forwards to it, or (b) creates a provider-side filter into a dedicated folder/label. Gmail goes over IMAP with an app password. Do not build a Gmail API adapter for v1: restricted-scope verification and 7-day Testing tokens make it worse than IMAP for one Family. Outlook.com would need OAuth (XOAUTH2), so defer it unless a Family needs it.
+1. **Mailbox Source = IMAP, one folder, read-only.** Use a generic IMAP adapter (`EXAMINE` + `BODY.PEEK`, track `UIDVALIDITY`/`UID`, poll every 2-5 minutes, IDLE optional). Recommend in the setup guide that the Admin either (a) creates a dedicated "Family Agenda" mailbox and forwards to it, or (b) creates a provider-side filter into a dedicated folder/label. Gmail goes over IMAP with an app password. Do not build a Gmail API adapter for v1: restricted-scope verification and 7-day Testing tokens make it worse than IMAP for one Family. Outlook.com would need OAuth (XOAUTH2), so defer it unless a Family needs it.
 2. **Selection** = folder/label first, then a sender/subject allow-list in the Source config, then an LLM relevance check feeding the Admin review. Never ingest the whole inbox.
 3. **PDF pipeline** = per page: text layer via pypdf or pypdfium2 (permissive licences; avoid PyMuPDF's AGPL unless needed). If the page has no meaningful text, rasterise it with pypdfium2 and **send the image to the configured LLM if it supports vision**. Otherwise **fall back to Tesseract `deu` via OCRmyPDF** (CPU-only, Apache/MPL, small). Keep Docling as a later option if layout/tables matter. Skip Marker/Surya and olmOCR for v1: they need a GPU, and Marker's weights carry a non-OSI licence.
 4. **Validate before committing:** collect 10-20 real (redacted) school letters and compare Tesseract `deu` with vision-LLM transcription on dates, times and things to bring. Those fields drive **Events**, **Tasks** and **Deadlines**.

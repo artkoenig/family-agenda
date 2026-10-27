@@ -25,7 +25,7 @@ import {
   runMigrations,
   SystemClock,
   type PostgresConnection,
-} from "@family-butler/adapters";
+} from "@family-agenda/adapters";
 import {
   createActivityLog,
   createAdminAccess,
@@ -55,7 +55,7 @@ import {
   type SourceTypeAccess,
   type TextExtractor,
   type ViewAccess,
-} from "@family-butler/application";
+} from "@family-agenda/application";
 import { SourceRegistry } from "./source-registry";
 
 const defaultWorkspacePackages = fileURLToPath(new URL("../../../packages", import.meta.url));
@@ -72,9 +72,9 @@ export type ApplicationConfig = {
   blobDirectory: string;
   /** The `plugins/` volume, for Source plugins an operator adds to a stock image. */
   pluginDirectory: string;
-  /** Where the Source plugins shipped with Family Butler are; by default the workspace's packages. */
+  /** Where the Source plugins shipped with Family Agenda are; by default the workspace's packages. */
   workspacePackages?: string;
-  /** The version of Family Butler, which new Source Types are recorded with. */
+  /** The version of Family Agenda, which new Source Types are recorded with. */
   applicationVersion?: string;
   /** The IANA time zone the Family lives in; by default the one of the process (`TZ`). */
   timeZone?: string;

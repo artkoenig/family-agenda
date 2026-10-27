@@ -9,8 +9,8 @@ import type {
   SourceRunContext,
   SourceRunResult,
   SourceTypeRegistry,
-} from "@family-butler/application";
-import type { SourceTypeId } from "@family-butler/domain";
+} from "@family-agenda/application";
+import type { SourceTypeId } from "@family-agenda/domain";
 import {
   parseManifest,
   problemsWith,
@@ -21,7 +21,7 @@ import {
   type JsonObject,
   type SourcePlugin,
   type SourcePluginManifest,
-} from "@family-butler/source-sdk";
+} from "@family-agenda/source-sdk";
 
 type Discovered = {
   installed: InstalledSourceType;
@@ -32,7 +32,7 @@ type Discovered = {
 /**
  * The Source plugins found at startup (ADR-0010): packages in the given directories, such as
  * the workspace's `packages/` and the `plugins/` volume, whose `package.json` holds a
- * `familyButler.sourcePlugin` manifest. Discovering reads manifests only; a plugin's code is
+ * `familyAgenda.sourcePlugin` manifest. Discovering reads manifests only; a plugin's code is
  * loaded when it is first asked for, which only happens for enabled Source Types.
  */
 export class SourceRegistry implements SourceTypeRegistry {
@@ -101,7 +101,7 @@ export class SourceRegistry implements SourceTypeRegistry {
   }
 }
 
-const sdkSpecifier = "@family-butler/source-sdk";
+const sdkSpecifier = "@family-agenda/source-sdk";
 
 /** Directories, as URL prefixes, whose plugins import the SDK through `shareSdkWith`. */
 const sharingDirectories = new Set<string>();

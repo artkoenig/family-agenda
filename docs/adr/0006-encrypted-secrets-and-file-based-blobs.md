@@ -11,7 +11,7 @@ Raw source messages and attachments, such as PDFs and images, are kept behind a 
 ## Consequences
 
 - A backup consists of a Postgres dump and the blob volume. The master key is not included. The Admin must keep a recovery kit, printed or saved at first start, without which a backup cannot restore Source credentials.
-- Off-site backups to Butler Cloud (ADR-0004) are encrypted on the Instance with a backup key derived from the recovery kit, so Butler Cloud stores only ciphertext.
+- Off-site backups to Agenda Cloud (ADR-0004) are encrypted on the Instance with a backup key derived from the recovery kit, so Agenda Cloud stores only ciphertext.
 - Deleting a raw message deletes its blob file, which makes retention ([artkoenig/family-buttler#18](https://github.com/artkoenig/family-buttler/issues/18)) a file operation.
 - The whatsmeow sidecar keeps its own session store (ADR-0002). It lives in its own volume, which is covered by the same backup and the same recovery kit.
 
