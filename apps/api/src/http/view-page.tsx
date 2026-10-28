@@ -327,7 +327,7 @@ export function spanLabel(span: TimelineEvent["span"], { t, locale }: Translatio
 }
 
 /** A round avatar: the photo, or the initial on one of the eight member colours. */
-export function Avatar(props: { member: FamilyMemberSummary; size?: "sm" | "lg" }) {
+export function Avatar(props: { member: FamilyMemberSummary; size?: "sm" }) {
   const { member } = props;
   const size = props.size ? ` fam-avatar--${props.size}` : "";
   return member.hasPhoto ? (

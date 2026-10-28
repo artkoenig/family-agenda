@@ -68,8 +68,10 @@ describe("Admin area over HTTP", () => {
 
     const list = await (await instance.get("/admin/admins", { cookie })).text();
     expect(list).toContain("ben@example.org");
-    const benId = /action="\/admin\/admins\/([0-9a-f-]+)\/password"/.exec(list)?.[1];
+    // Their row opens their dialog, where the new password is set.
+    const benId = /href="\/admin\/admins\/([0-9a-f-]{36})"/.exec(list)?.[1];
     expect(benId).toBeDefined();
+    expect(await (await instance.get(`/admin/admins/${benId}`, { cookie })).text()).toContain(`action="/admin/admins/${benId}/password"`);
 
     const reset = await instance.post(
       `/admin/admins/${benId}/password`,
