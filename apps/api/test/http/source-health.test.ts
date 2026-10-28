@@ -42,7 +42,7 @@ describe("Source health in the Admin area and on Views", () => {
     instance.clock.advance(10 * minutes);
     await instance.app.polling.pollDue();
   };
-  const sourcesPage = async () => (await instance.get("/admin/sources", { cookie })).text();
+  const sourcesPage = async () => (await instance.get("/admin/source-types/calendar", { cookie })).text();
   const failingBanner = /<div class="fam-banner fam-banner--problem" role="status">[\s\S]*?A Source is failing/;
 
   it("shows a Source's status and the time of its last successful run", async () => {
@@ -92,7 +92,7 @@ describe("Source health in the Admin area and on Views", () => {
     expect(fix).toContain("Last error: calendar failed");
     const step = "<strong>Share the calendar</strong> <span>Share it with the address below.</span>";
     expect(fix).toContain(step);
-    expect(await (await instance.get("/admin/sources/new", { cookie })).text(), "adding shows the same steps").toContain(step);
+    expect(await (await instance.get("/admin/sources/new?type=calendar", { cookie })).text(), "adding shows the same steps").toContain(step);
 
     const saved = await instance.post(
       `/admin/sources/${source}`,

@@ -235,7 +235,6 @@
 /* A QR code stays black on white in both themes, so that phones read it. */
 .fam-qr { margin: 0; padding: var(--space-3); background: #fff; border-radius: var(--radius-md); width: min(260px, 100%); }
 .fam-qr svg { display: block; width: 100%; height: auto; }
-.fam-catalogue { flex-basis: 100%; display: grid; gap: var(--space-2); padding-top: var(--space-3); border-top: 1px solid var(--line); }
 .fam-secret {
   display: block; font-family: var(--font-mono); font-size: 18px; line-height: 28px; font-weight: 500; letter-spacing: .02em;
   overflow-wrap: anywhere; background: var(--surface-sunken); color: var(--ink);
@@ -342,7 +341,7 @@
 .fam-entry--wrap { flex-wrap: wrap; align-items: flex-start; }
 .fam-entry--wrap > .fam-entry__main { flex: 1 1 280px; }
 .fam-entry__main > * { margin: 0; }
-h2.fam-entry__name { font-size: 16px; line-height: 24px; }
+h2.fam-entry__name, h3.fam-entry__name { font-size: 16px; line-height: 24px; }
 .fam-entry__form { display: grid; gap: var(--space-2); justify-items: start; margin: 0; }
 .fam-tag {
   display: inline-block; margin-left: var(--space-2); padding: 0 8px; border-radius: var(--radius-full);
@@ -354,6 +353,27 @@ h2.fam-entry__name { font-size: 16px; line-height: 24px; }
 }
 .fam-entry__links dt { color: var(--ink-muted); font-weight: 600; }
 .fam-entry__links dd { margin: 0; font-family: var(--font-mono); }
+
+/* The Sources: a card per Source Type, and a Source Type's page ---------- */
+.fam-type-cards {
+  list-style: none; margin: 0; padding: 0;
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr)); gap: var(--space-4);
+}
+.fam-type-cards > li { display: flex; }
+.fam-type-card {
+  flex: 1; display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-4); text-decoration: none;
+  background: var(--surface-raised); border: 1px solid var(--line); border-radius: var(--radius-lg); box-shadow: var(--shadow-raised);
+}
+.fam-page a.fam-type-card { color: var(--ink); }
+.fam-type-card:hover { background: var(--hearth-tint); }
+.fam-type-card--off { background: transparent; border: 1px dashed var(--line-strong); box-shadow: none; }
+.fam-type-card__name { font-size: 19px; line-height: 26px; font-weight: 700; }
+.fam-type-card__description { flex: 1; color: var(--ink-muted); font-size: 14px; line-height: 20px; }
+.fam-type-card__summary { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.fam-breadcrumb { color: var(--ink-muted); font-size: 14px; line-height: 20px; margin-bottom: calc(-1 * var(--space-4)); }
+.fam-type-section { display: flex; flex-direction: column; gap: var(--space-2); }
+.fam-type-section > * { margin: 0; }
+.fam-type-section__title { font-size: 19px; line-height: 26px; font-weight: 700; }
 
 /* Entries that open in place for editing ------------------------------- */
 .fam-edit > summary { list-style: none; }

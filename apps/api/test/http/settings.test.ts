@@ -41,7 +41,8 @@ describe("the settings in the Admin area", () => {
     expect(entryOf(page, "LLM endpoint")).toContain("Not set up");
     expect(entryOf(page, "Admins")).toContain("1 Admin");
     expect(entryOf(page, "Recovery Kit")).toContain("Saved");
-    expect(entryOf(page, "Source Types")).toContain("New ones are available");
+    expect(entryOf(page, "Sources")).toContain("New ones are available");
+    expect(entryOf(page, "Source Types")).toBe("");
   });
 
   it("opens the Admin area on the Family Members, without a dialog", async () => {
@@ -78,17 +79,14 @@ describe("the settings in the Admin area", () => {
     expect(dialog).toContain('value="ben@example.org"');
   });
 
-  it("adds a Source by choosing among the enabled Source Types, then filling in that one's form", async () => {
+  it("adds a Source from its Source Type's page, in a dialog over that page", async () => {
     await instance.app.sourceTypes.enable("calendar");
     await instance.app.sourceTypes.enable("mailbox");
 
-    const choosing = dialogOf(await get("/admin/sources/new"));
-    expect(choosing).toContain('href="/admin/sources/new?type=calendar"');
-    expect(choosing).toContain('href="/admin/sources/new?type=mailbox"');
-
+    expect(await get("/admin/source-types/mailbox")).toContain('href="/admin/sources/new?type=mailbox"');
     const form = dialogOf(await get("/admin/sources/new?type=mailbox"));
     expect(form).toContain("Add Mailbox");
-    expect(form).toContain('href="/admin/sources/new"');
+    expect(form).toContain('data-close="/admin/source-types/mailbox"');
 
     const refused = await instance.post(
       "/admin/sources",
@@ -102,11 +100,9 @@ describe("the settings in the Admin area", () => {
     expect(again).not.toContain("hunter2");
   });
 
-  it("goes back to the Sources when no Source Type is enabled or an unknown one is asked for", async () => {
-    expect((await instance.get("/admin/sources/new", { cookie })).headers.get("location")).toBe("/admin/sources");
-    await instance.app.sourceTypes.enable("calendar");
-    expect((await instance.get("/admin/sources/new?type=unknown", { cookie })).headers.get("location")).toBe(
-      "/admin/sources/new",
-    );
+  it("goes back to the Source Type's page when it is not enabled, and to the Sources when none is named", async () => {
+    const location = async (path: string) => (await instance.get(path, { cookie })).headers.get("location");
+    expect(await location("/admin/sources/new")).toBe("/admin/sources");
+    expect(await location("/admin/sources/new?type=calendar")).toBe("/admin/source-types/calendar");
   });
 });
