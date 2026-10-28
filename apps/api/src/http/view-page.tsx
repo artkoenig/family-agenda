@@ -92,22 +92,24 @@ export function ViewTimeline(props: { page: ViewPage }) {
             {t.view.outOfDate}
           </p>
         ) : null}
-        <nav class="fam-filter" aria-label={t.view.quickFilter} hx-boost="true" hx-target="#view" hx-swap="outerHTML">
-          <a class="fam-filter__item" href={viewUrl(page.id, "all")} aria-current={page.showing === "all" ? "true" : undefined}>
-            <span class="fam-avatar fam-avatar--all" aria-hidden="true"></span>
-            {t.view.all}
-          </a>
-          {page.members.map((member) => (
-            <a
-              class="fam-filter__item"
-              href={viewUrl(page.id, toggled(page, member.id))}
-              aria-current={page.showing !== "all" && page.showing.includes(member.id) ? "true" : undefined}
-            >
-              <Avatar member={member} />
-              {member.name}
+        {page.choices.length > 1 ? (
+          <nav class="fam-filter" aria-label={t.view.quickFilter} hx-boost="true" hx-target="#view" hx-swap="outerHTML">
+            <a class="fam-filter__item" href={viewUrl(page.id, "all")} aria-current={showsEveryChoice(page) ? "true" : undefined}>
+              <span class="fam-avatar fam-avatar--all" aria-hidden="true"></span>
+              {t.view.all}
             </a>
-          ))}
-        </nav>
+            {page.choices.map((member) => (
+              <a
+                class="fam-filter__item"
+                href={viewUrl(page.id, toggled(page, member.id))}
+                aria-current={!showsEveryChoice(page) && page.showing.includes(member.id) ? "true" : undefined}
+              >
+                <Avatar member={member} />
+                {member.name}
+              </a>
+            ))}
+          </nav>
+        ) : null}
       </header>
       <ol class="fam-days">
         <ViewDays page={page} earlier later />
@@ -350,12 +352,19 @@ export function daysUrl(page: ViewPage, days: TimelineDays, then: "earlier" | "l
   return `/views/${page.id}/days?show=${show}&from=${days.first}&until=${days.last}&then=${then}`;
 }
 
+/** Whether the quick filter shows everyone it offers, as "All" does. */
+function showsEveryChoice(page: ViewPage): boolean {
+  const { showing } = page;
+  return showing === "all" || page.choices.every((member) => showing.includes(member.id));
+}
+
 /** What the quick filter shows after tapping a Family Member: added, or taken out again. */
 function toggled(page: ViewPage, id: FamilyMemberId): Showing {
-  if (page.showing === "all") return [id];
-  const next = page.members
+  if (showsEveryChoice(page) || page.showing === "all") return [id];
+  const showing = page.showing;
+  const next = page.choices
     .map((member) => member.id)
-    .filter((memberId) => (memberId === id) !== page.showing.includes(memberId));
+    .filter((memberId) => (memberId === id) !== showing.includes(memberId));
   return next.length > 0 ? next : "all";
 }
 

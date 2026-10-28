@@ -109,20 +109,35 @@ describe("configuring Views", () => {
     expect(page?.members.map((member) => member.name)).toEqual(["Mia", "Leo"]);
   });
 
-  it("starts the quick filter with the preselected Family Members, and combines any of them", async () => {
-    const view = await createView({ preselected: [mia], horizonDays: 1 });
+  it("offers in the quick filter only the preselected Family Members, and combines any of them", async () => {
+    const kitchen = await createView({ preselected: [leo, mia], horizonDays: 1 });
     const everyone = await createView({ preselected: [], horizonDays: 1 });
 
-    expect((await open(view))?.showing).toEqual([mia]);
-    expect((await open(everyone))?.showing).toBe("all");
+    const kitchenPage = await open(kitchen);
+    expect(kitchenPage?.choices.map((member) => member.name)).toEqual(["Mia", "Leo"]);
+    expect(kitchenPage?.showing).toEqual([mia, leo]);
+    const everyonePage = await open(everyone);
+    expect(everyonePage?.choices.map((member) => member.name)).toEqual(["Mia", "Leo"]);
+    expect(everyonePage?.showing).toBe("all");
 
-    const showing = async (show: FamilyMemberId[] | "all") =>
+    const showing = async (view: ViewId, show: FamilyMemberId[] | "all") =>
       (await instance.app.views.open(view, { access: openViewAccess, show }))?.showing;
-    expect(await showing([leo, mia])).toEqual([mia, leo]);
-    expect(await showing("all")).toBe("all");
-    expect(await showing([])).toBe("all");
+    expect(await showing(kitchen, [leo])).toEqual([leo]);
+    expect(await showing(kitchen, "all")).toEqual([mia, leo]);
+    expect(await showing(kitchen, [])).toEqual([mia, leo]);
+    expect(await showing(everyone, [leo, mia])).toEqual([mia, leo]);
+    expect(await showing(everyone, [])).toBe("all");
     const stranger = "no-such-member" as FamilyMemberId;
-    expect(await showing([stranger, leo])).toEqual([leo]);
+    expect(await showing(everyone, [stranger, leo])).toEqual([leo]);
+  });
+
+  it("shows only the preselected Family Member, whom the quick filter cannot leave", async () => {
+    const forMia = await createView({ preselected: [mia], horizonDays: 1 });
+
+    const page = await instance.app.views.open(forMia, { access: openViewAccess, show: [leo] });
+
+    expect(page?.choices.map((member) => member.name)).toEqual(["Mia"]);
+    expect(page?.showing).toEqual([mia]);
   });
 
   it("opens no View that its access policy refuses", async () => {
