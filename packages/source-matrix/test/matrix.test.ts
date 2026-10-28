@@ -286,6 +286,35 @@ describe("chats", () => {
     ]);
   });
 
+  it("withdraw the edits of a message deleted for everyone along with it", async () => {
+    const first = await poll(allowListing(config, room));
+    const original = homeserver.text(room, sender, "Elternabend um 19 Uhr", now);
+    const edit = homeserver.send(
+      room,
+      sender,
+      { msgtype: "m.text", body: "* um 19:30", "m.new_content": { msgtype: "m.text", body: "Elternabend um 19:30 Uhr" }, "m.relates_to": { rel_type: "m.replace", event_id: original } },
+      now,
+    );
+    const second = await poll(allowListing(config, room), first.state);
+    homeserver.redact(room, original, now);
+
+    const third = await poll(allowListing(config, room), second.state);
+
+    expect(third.withdrawn).toEqual([original, edit]);
+  });
+
+  it("are read back once joined when they were allow-listed before", async () => {
+    const later = homeserver.createRoom("FC Eltern U11", { [sender]: "Trainer Klaus (WA)" });
+    homeserver.text(later, sender, "Turnier am Samstag.", new Date(now.getTime() - 2 * days));
+    const first = await poll(allowListing(config, room, later));
+    homeserver.invite(later, userOf(config));
+    const second = await poll(allowListing(config, room, later), first.state);
+
+    const third = await poll(allowListing(config, room, later), second.state);
+
+    expect([...second.origins, ...third.origins].map(textOf)).toEqual(["Turnier am Samstag."]);
+  });
+
   it("are never written to, marked read or shown as typing, and nobody else's invitation is accepted", async () => {
     const stranger = homeserver.createRoom("Gewinnspiel");
     homeserver.invite(stranger, userOf(config), "@spam:other.example");

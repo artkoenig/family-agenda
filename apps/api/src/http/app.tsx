@@ -875,10 +875,10 @@ export function createHttpApp(application: Application, options: HttpOptions) {
 }
 
 /**
- * A Source form's fields: `plain.<key>` and `secret.<key>` as the plugin declares them, and the
- * polling interval in minutes, empty for the plugin's suggestion.
+ * A Source form's fields: `plain.<key>` and `secret.<key>` as the plugin declares them,
+ * `choice.<key>` once per ticked box of a choice field, which makes a list, and the polling
+ * interval in minutes, empty for the plugin's suggestion.
  */
-/** A Source's form, parsed with every value of a name: a choice field's ticked boxes are a list. */
 function sourceInputOf(form: Record<string, unknown>): SourceInput {
   const plain: Record<string, string | string[]> = {};
   const secrets: Record<string, string> = {};

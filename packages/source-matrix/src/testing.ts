@@ -301,6 +301,11 @@ export class FakeHomeserver {
     const messages = /^\/_matrix\/client\/v3\/rooms\/([^/]+)\/messages$/.exec(path);
     if (method === "GET" && messages) {
       const roomId = decodeURIComponent(messages[1] ?? "");
+      // A room only replayed `/sync` responses name has no history here.
+      if (!this.rooms.has(roomId)) {
+        respond(response, 200, { chunk: [], start: url.searchParams.get("from") });
+        return;
+      }
       if (!this.isMember(roomId, userId)) {
         respond(response, 403, { errcode: "M_FORBIDDEN", error: "Not in the room." });
         return;

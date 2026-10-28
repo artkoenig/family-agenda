@@ -34,9 +34,16 @@ export type MatrixPluginOptions = {
 
 /**
  * The state blob: where `/sync` resumes, the names of the joined rooms and of the senders seen,
- * and the allow-listed rooms read so far, so that a room allow-listed later is read back first.
+ * the allow-listed rooms read so far, so that a room allow-listed later is read back first, and
+ * the edits of each message read, which go with it when it is redacted.
  */
-type State = { since: string; rooms: Record<string, string>; names: Record<string, string>; read: string[] };
+type State = {
+  since: string;
+  rooms: Record<string, string>;
+  names: Record<string, string>;
+  read: string[];
+  edits: Record<string, string[]>;
+};
 
 /** How far back a newly allow-listed chat is read, so that a busy group does not bring years of messages. */
 const backfillDays = 14;
@@ -138,12 +145,13 @@ export function createMatrixPlugin(options: MatrixPluginOptions = {}): SourcePlu
         since: sync.next_batch,
         rooms: { ...previous?.rooms },
         names: { ...previous?.names },
-        read: [...allowListed],
+        read: [],
+        edits: { ...previous?.edits },
       };
       const left = new Set(Object.keys(sync.rooms?.leave ?? {}));
       state.rooms = Object.fromEntries(Object.entries(state.rooms).filter(([roomId]) => !left.has(roomId)));
       // A chat joined now can be allow-listed at once, though its messages come with the next run.
-      for (const [roomId, name] of await acceptInvites(sync, { homeserver, token, messenger, serverName: instance.homeserver.serverName })) {
+      for (const [roomId, name] of await acceptInvites(sync, { homeserver, userId, token, messenger, serverName: instance.homeserver.serverName })) {
         state.rooms[roomId] = name;
       }
 
@@ -176,6 +184,16 @@ export function createMatrixPlugin(options: MatrixPluginOptions = {}): SourcePlu
         if (!previous || previous.read.includes(roomId) || !(roomId in state.rooms)) continue;
         take(roomId, await readBack(homeserver, token, roomId, sync.next_batch, null, backfillStart));
       }
+
+      // Chats allow-listed but not joined yet are read back once they are.
+      state.read = [...allowListed].filter((roomId) => roomId in state.rooms);
+      // An edit is a message of its own, which goes when the message it edits is redacted.
+      for (const { event } of events.values()) {
+        const edited = editedBy(event);
+        if (edited && event.event_id) state.edits[edited] = [...new Set([...(state.edits[edited] ?? []), event.event_id])];
+      }
+      for (const redacted of [...withdrawn]) for (const edit of state.edits[redacted] ?? []) withdrawn.add(edit);
+      state.edits = Object.fromEntries(Object.entries(state.edits).filter(([edited]) => !withdrawn.has(edited)));
 
       const origins: Origin[] = [];
       for (const { roomId, event } of events.values()) {
@@ -367,12 +385,14 @@ function linked(messenger: Messenger): PluginText {
  */
 async function acceptInvites(
   sync: SyncResponse,
-  bridge: { homeserver: HomeserverClient; token: string; messenger: Messenger; serverName: string },
+  bridge: { homeserver: HomeserverClient; userId: string; token: string; messenger: Messenger; serverName: string },
 ): Promise<Map<string, string>> {
   const joined = new Map<string, string>();
   for (const [roomId, room] of Object.entries(sync.rooms?.invite ?? {})) {
     const events = room.invite_state?.events ?? [];
-    const invitation = events.find((event) => event.type === "m.room.member" && event.content.membership === "invite");
+    const invitation = events.find(
+      (event) => event.type === "m.room.member" && event.state_key === bridge.userId && event.content.membership === "invite",
+    );
     if (!invitation || !isOfBridge(invitation.sender, bridge.messenger, bridge.serverName)) continue;
     try {
       await bridge.homeserver.join(bridge.token, roomId);
@@ -482,6 +502,13 @@ async function originOf(
   };
 }
 
+/** The message an edit changes; none for any other event. */
+function editedBy(event: MatrixEvent): string | null {
+  const relation = event.content["m.relates_to"];
+  if (!isObject(relation) || relation.rel_type !== "m.replace") return null;
+  return typeof relation.event_id === "string" ? relation.event_id : null;
+}
+
 /** The joined rooms a Source can allow-list, by name. */
 function chatChoices(context: RunContext): Choice[] {
   const rooms = parseState(context.state)?.rooms ?? {};
@@ -504,6 +531,7 @@ function parseState(state: string | null): State | null {
       rooms: isObject(parsed.rooms) ? parsed.rooms : {},
       names: isObject(parsed.names) ? parsed.names : {},
       read: Array.isArray(parsed.read) ? parsed.read.filter((room): room is string => typeof room === "string") : [],
+      edits: isObject(parsed.edits) ? parsed.edits : {},
     };
   } catch {
     return null;

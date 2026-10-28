@@ -44,6 +44,10 @@ _Avoid_: Health state, broken, stale (for the status)
 A chat network, such as WhatsApp, Signal or Telegram, that the Matrix Source Type reads through a bridge on the Instance; an Admin enables each one, and each Source of the Matrix type is one linked Messenger account.
 _Avoid_: Bridge (for the domain concept), network, chat app
 
+**Catalogue**:
+What a Source Type offers for an Admin to enable entry by entry, such as the Messengers of the Matrix Source Type; each Source of that type uses one enabled entry.
+_Avoid_: Option list, sub-type
+
 **Attribution Rule**:
 An Admin-maintained rule that assigns Items to Family Members, or to the whole Family, by where they came from, such as a sender address, a messenger group, or a calendar; never by what the content mentions.
 _Avoid_: Mapping, routing rule, filter
