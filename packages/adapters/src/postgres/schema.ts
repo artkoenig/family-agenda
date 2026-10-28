@@ -135,6 +135,16 @@ export const sources = pgTable(
     /** Whether its Items show on the timeline; a hidden Source is still read. */
     shown: boolean("shown").notNull().default(true),
     lastRunAt: timestamp("last_run_at", { withTimezone: true }),
+    /** When it last ran successfully, which the Admin area shows. */
+    lastSuccessAt: timestamp("last_success_at", { withTimezone: true }),
+    /** The first failed run since the last successful one; null while it runs successfully. */
+    failingSince: timestamp("failing_since", { withTimezone: true }),
+    /** `definite` once any error since `failingSince` was, else `temporary`; null with `failingSince`. */
+    lastErrorKind: text("last_error_kind"),
+    /** The message of the last error; null with `failingSince`. */
+    lastError: text("last_error"),
+    /** When its last Origin not seen before was recorded, for the Silent status. */
+    lastNewOriginAt: timestamp("last_new_origin_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
   },
   (table) => [index("sources_source_type_id_idx").on(table.sourceTypeId)],

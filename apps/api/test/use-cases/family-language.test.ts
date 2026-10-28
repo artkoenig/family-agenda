@@ -56,6 +56,9 @@ describe("the Family Language", () => {
     // the later ones undone too: only migrations newer than the last one recorded run.
     await instance.query(`DROP TABLE attribution_rule_members, attribution_rules`);
     await instance.query(`ALTER TABLE families DROP COLUMN language, DROP COLUMN ocr_languages`);
+    await instance.query(
+      `ALTER TABLE sources DROP COLUMN last_success_at, DROP COLUMN failing_since, DROP COLUMN last_error_kind, DROP COLUMN last_error, DROP COLUMN last_new_origin_at`,
+    );
     await instance.query(`DELETE FROM drizzle.__drizzle_migrations WHERE created_at >= ${familyLanguagesMigration}`);
 
     await instance.restart();

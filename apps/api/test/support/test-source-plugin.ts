@@ -8,6 +8,7 @@ import {
   type Origin,
   type PluginText,
   type RunContext,
+  type SetupStep,
   type SourcePlugin,
 } from "@family-agenda/source-sdk";
 
@@ -39,6 +40,9 @@ export const testPluginControls = {
 export type TestPluginOptions = {
   sourceTypeId: string;
   configuration?: Configuration;
+  /** Whether its Sources count as Silent without new Origins; by default they do. */
+  silentApplies?: boolean;
+  setupSteps?: SetupStep[];
 };
 
 /** A polling plugin that emits the Origins it was given and fails on demand. */
@@ -54,7 +58,7 @@ export function testSourcePlugin(options: TestPluginOptions): SourcePlugin {
         { key: "password", label: "Password", secret: true, required: false },
       ],
     },
-    setupSteps: [],
+    setupSteps: options.setupSteps ?? [],
     ingestion: {
       mode: "polling",
       suggestedIntervalSeconds: 600,
@@ -77,7 +81,7 @@ export function testSourcePlugin(options: TestPluginOptions): SourcePlugin {
         },
       },
     ],
-    health: { silentApplies: true },
+    health: { silentApplies: options.silentApplies ?? true },
   };
 }
 
@@ -93,6 +97,8 @@ export type TestPluginPackage = {
   riskNotice?: PluginText;
   /** Source code of a configuration (an object literal) the plugin declares. */
   configuration?: string;
+  silentApplies?: boolean;
+  setupSteps?: SetupStep[];
 };
 
 const pluginModule = fileURLToPath(new URL("./test-source-plugin.ts", import.meta.url));
@@ -121,9 +127,11 @@ export async function writeTestPluginPackage(directory: string, plugin: TestPlug
     }),
   );
   const configuration = plugin.configuration ? `, configuration: ${plugin.configuration}` : "";
+  const silentApplies = plugin.silentApplies !== undefined ? `, silentApplies: ${plugin.silentApplies}` : "";
+  const setupSteps = plugin.setupSteps ? `, setupSteps: ${JSON.stringify(plugin.setupSteps)}` : "";
   await writeFile(
     join(packageDirectory, "index.ts"),
     `import { testSourcePlugin } from ${JSON.stringify(pluginModule)};\n` +
-      `export default testSourcePlugin({ sourceTypeId: ${JSON.stringify(plugin.sourceTypeId)}${configuration} });\n`,
+      `export default testSourcePlugin({ sourceTypeId: ${JSON.stringify(plugin.sourceTypeId)}${configuration}${silentApplies}${setupSteps} });\n`,
   );
 }

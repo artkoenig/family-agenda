@@ -65,7 +65,7 @@ export function createSourcePolling(deps: PollingDeps) {
     const now = clock.now();
     const result = await ingestion.poll(await runContextOf(source, { secrets, now, timeZone }));
     if (!result.ok) {
-      await sources.recordFailedRun(source.id, now);
+      await sources.recordFailedRun(source.id, now, { kind: result.kind, message: result.message });
       return { sourceId: source.id, kind: result.kind, message: result.message };
     }
     const origins = [];
