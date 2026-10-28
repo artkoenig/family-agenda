@@ -10,7 +10,7 @@ export const installedPrograms: MatrixPrograms = { synapse: process.execPath, br
 
 type StoredEvent = { position: number; roomId: string; event: MatrixEvent };
 
-type Room = { name: string; direct: boolean; members: Map<string, { membership: "invite" | "join"; inviter: string; displayname: string }> };
+type Room = { name: string; direct: boolean; members: Map<string, { membership: "invite" | "join"; inviter: string; displayname: string; since: number }> };
 
 type User = { token: string | null; replay: SyncResponse[] };
 
@@ -42,6 +42,8 @@ export class FakeHomeserver {
   private qrCodes = 0;
   /** Whether the WhatsApp bridge runs; when it does not, its address does not answer. */
   bridgeRunning = true;
+  /** How many more joins the homeserver refuses as rate limited, as Synapse does past its burst. */
+  limitedJoins = 0;
 
   get url(): string {
     return `http://127.0.0.1:${this.port}`;
@@ -92,19 +94,20 @@ export class FakeHomeserver {
   createRoom(name: string, ghosts: Record<string, string> = {}, options: { direct?: boolean } = {}): string {
     const roomId = `!${randomBytes(6).toString("hex")}:${this.serverName}`;
     const room: Room = { name, direct: options.direct ?? false, members: new Map() };
-    for (const [userId, displayname] of Object.entries(ghosts)) room.members.set(userId, { membership: "join", inviter: this.bot, displayname });
+    for (const [userId, displayname] of Object.entries(ghosts)) room.members.set(userId, { membership: "join", inviter: this.bot, displayname, since: 0 });
     this.rooms.set(roomId, room);
     return roomId;
   }
 
   /** The bridge, or anyone else, invites a user to a room. */
   invite(roomId: string, userId: string, inviter = this.bot): void {
-    this.roomOf(roomId).members.set(userId, { membership: "invite", inviter, displayname: userId });
+    this.position += 1;
+    this.roomOf(roomId).members.set(userId, { membership: "invite", inviter, displayname: userId, since: this.position });
   }
 
   /** Puts a user in a room, as if it had accepted an invitation before. */
   addMember(roomId: string, userId: string): void {
-    this.roomOf(roomId).members.set(userId, { membership: "join", inviter: this.bot, displayname: userId });
+    this.roomOf(roomId).members.set(userId, { membership: "join", inviter: this.bot, displayname: userId, since: 0 });
   }
 
   isMember(roomId: string, userId: string): boolean {
@@ -225,7 +228,8 @@ export class FakeHomeserver {
     const invite: NonNullable<SyncResponse["rooms"]>["invite"] = {};
     for (const [roomId, room] of this.rooms) {
       const member = room.members.get(userId);
-      if (member?.membership === "invite") {
+      // Like Synapse, an incremental `/sync` names an invitation only once, in the first one after it.
+      if (member?.membership === "invite" && member.since > after) {
         invite[roomId] = { invite_state: { events: this.stateOf(roomId).filter((event) => event.type === "m.room.name" || event.state_key === userId) } };
       }
       if (member?.membership !== "join") continue;
@@ -300,6 +304,11 @@ export class FakeHomeserver {
     if (method === "POST" && join) {
       const roomId = decodeURIComponent(join[1] ?? "");
       const member = this.rooms.get(roomId)?.members.get(userId);
+      if (this.limitedJoins > 0) {
+        this.limitedJoins -= 1;
+        respond(response, 429, { errcode: "M_LIMIT_EXCEEDED", error: "Too Many Requests", retry_after_ms: 10_000 });
+        return;
+      }
       if (!member) {
         respond(response, 403, { errcode: "M_FORBIDDEN", error: "You are not invited to this room." });
         return;
