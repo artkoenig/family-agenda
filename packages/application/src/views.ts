@@ -18,6 +18,7 @@ import {
   type ItemId,
   type LocalDate,
   type LocalTime,
+  type MultilingualText,
   type RawMessageId,
   type TimeSpan,
   type ViewId,
@@ -29,7 +30,9 @@ import type {
   Clock,
   FamilyMemberRepository,
   FamilyRepository,
+  InstalledSourceType,
   ItemRepository,
+  SourceTypeRegistry,
   ViewAccessPolicy,
   ViewRepository,
 } from "./ports";
@@ -44,6 +47,7 @@ export type ViewsDeps = {
   views: ViewRepository;
   items: ItemRepository;
   rules: AttributionRuleRepository;
+  registry: SourceTypeRegistry;
   activity: ActivityLog;
   sourceHealth: SourceHealthCheck;
 };
@@ -75,8 +79,8 @@ export type TimelineEvent = {
   cancelled: boolean;
   /** Over before now; earlier rows of today are dimmed. */
   earlier: boolean;
-  /** Where the original can be looked at. */
-  links: string[];
+  /** Where the original can be looked at, each with the display name of its Source Type. */
+  links: { url: string; source: MultilingualText }[];
   /** The raw messages it was extracted from, which Admins can open. */
   messages: RawMessageId[];
   /** Whom it concerns, by the Attribution Rules, the Family Members in the Family's order. */
@@ -134,7 +138,12 @@ const feedDaysBack = 30;
 export const openViewAccess: ViewAccessPolicy = { mayOpen: () => Promise.resolve(true) };
 
 export function createViewAccess(deps: ViewsDeps) {
-  const { clock, timeZone, families, members, views, items, rules, activity, sourceHealth } = deps;
+  const { clock, timeZone, families, members, views, items, rules, registry, activity, sourceHealth } = deps;
+
+  /** The display name of the Source Type, or its id if it is not installed. */
+  function sourceTypeName(sourceTypeId: string, installed: InstalledSourceType[]): MultilingualText {
+    return installed.find((type) => type.id === sourceTypeId)?.displayName ?? sourceTypeId;
+  }
 
   /**
    * The Family's Events that may touch the days from `first` to `last`, or all later days if
@@ -148,13 +157,15 @@ export function createViewAccess(deps: ViewsDeps) {
     const to = last ? new Date(new Date(`${addDays(last, 1)}T00:00:00Z`).getTime() + day) : null;
     const familyRules = await rules.list(familyId);
     const order = (await members.list(familyId)).map((member) => member.id);
+    const installed = registry.installed();
     return (await items.overlapping(familyId, from, to)).flatMap((item) => {
       const event = item.kind === "event" ? eventOf(item.folded) : null;
       if (!event) return [];
       const attribution = attributionOf(item.origins, familyRules);
       if (showing !== "all" && !isShownTo(attribution, showing)) return [];
       const concerns = attribution === "whole-family" ? attribution : order.filter((id) => attribution.includes(id));
-      return [{ id: item.id, event, links: item.links, messages: item.messages, concerns }];
+      const links = item.links.map(({ url, sourceTypeId }) => ({ url, source: sourceTypeName(sourceTypeId, installed) }));
+      return [{ id: item.id, event, links, messages: item.messages, concerns }];
     });
   }
 

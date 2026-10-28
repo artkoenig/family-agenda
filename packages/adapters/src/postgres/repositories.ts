@@ -926,9 +926,15 @@ export class PostgresItemRepository implements ItemRepository {
     if (rows.length === 0) return [];
     const ids = rows.map((row) => row.id);
     const links = await this.db
-      .selectDistinct({ itemId: revisions.itemId, link: origins.link, firstSeenAt: origins.firstSeenAt })
+      .selectDistinct({
+        itemId: revisions.itemId,
+        link: origins.link,
+        sourceTypeId: sources.sourceTypeId,
+        firstSeenAt: origins.firstSeenAt,
+      })
       .from(revisions)
       .innerJoin(origins, eq(origins.id, revisions.originId))
+      .innerJoin(sources, eq(sources.id, origins.sourceId))
       .where(and(inArray(revisions.itemId, ids), isNotNull(origins.link)))
       .orderBy(asc(origins.firstSeenAt));
     const messages = await this.db
@@ -951,7 +957,9 @@ export class PostgresItemRepository implements ItemRepository {
               id: row.id as ItemId,
               kind: row.kind as ItemKind,
               folded: row.folded,
-              links: links.flatMap((link) => (link.itemId === row.id && link.link ? [link.link] : [])),
+              links: links.flatMap(({ itemId, link, sourceTypeId }) =>
+                itemId === row.id && link ? [{ url: link, sourceTypeId: sourceTypeId as SourceTypeId }] : [],
+              ),
               messages: messages.flatMap((message) => (message.itemId === row.id ? [message.id as RawMessageId] : [])),
               origins: originsOfItems.flatMap(({ itemId, sourceId, attributes }) =>
                 itemId === row.id ? [{ sourceId: sourceId as SourceId, attributes }] : [],

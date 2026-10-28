@@ -393,7 +393,6 @@ export const en = {
     status: "Status",
     original: "Original",
     source: "Source",
-    openOriginal: "Open the original",
     openMessage: "Open the message",
     adminsOnly: " (Admins only)",
     from: (time: string) => `from ${time}`,

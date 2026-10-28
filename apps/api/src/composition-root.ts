@@ -207,6 +207,7 @@ export async function bootApplication(config: ApplicationConfig): Promise<Applic
     views: new PostgresViewRepository(postgres.db),
     items,
     rules,
+    registry,
     activity,
     sourceHealth,
   });

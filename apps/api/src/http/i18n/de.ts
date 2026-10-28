@@ -380,7 +380,6 @@ export const de: Catalogue = {
     status: "Status",
     original: "Original",
     source: "Quelle",
-    openOriginal: "Original öffnen",
     openMessage: "Nachricht öffnen",
     adminsOnly: " (nur für Admins)",
     from: (time) => `ab ${time}`,
