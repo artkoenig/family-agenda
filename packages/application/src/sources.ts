@@ -9,12 +9,15 @@ import type {
   PlainConfig,
   SecretRef,
   SecretStore,
+  SetupStepSpec,
   Source,
   SourceRepository,
   SourceRunContext,
   SourceTypeRegistry,
   SourceTypeRepository,
 } from "./ports";
+import { enabledSourceType } from "./enabled-source-type";
+import { healthOf, type SourceHealth } from "./source-health";
 
 export type SourcesDeps = {
   clock: Clock;
@@ -38,6 +41,7 @@ export type SourceSummary = {
   pollIntervalSeconds: number | null;
   /** Whether its Items show on the timeline and in the feeds; a hidden Source is still read. */
   shown: boolean;
+  health: SourceHealth;
 };
 
 /** What the Admin area renders a Source's form from, for an enabled Source Type. */
@@ -45,6 +49,8 @@ export type SourceForm = {
   sourceTypeId: SourceTypeId;
   displayName: MultilingualText;
   fields: ConfigFieldSpec[];
+  /** Interactive steps shown with the fields, when adding a Source and when fixing one. */
+  setupSteps: SetupStepSpec[];
   /** Null if its Sources are not polled. */
   suggestedIntervalSeconds: number | null;
 };
@@ -115,15 +121,20 @@ export function createSourceAccess(deps: SourcesDeps) {
     async list(): Promise<SourceSummary[]> {
       const installed = registry.installed();
       const all = await sources.list(await families.theFamily());
-      return all.map((source) => ({
-        id: source.id,
-        sourceTypeId: source.sourceTypeId,
-        displayName: installed.find((type) => type.id === source.sourceTypeId)?.displayName ?? source.sourceTypeId,
-        plain: source.plain,
-        storedSecrets: Object.keys(source.secrets).sort(),
-        pollIntervalSeconds: source.pollIntervalSeconds,
-        shown: source.shown,
-      }));
+      const summaries: SourceSummary[] = [];
+      for (const source of all) {
+        summaries.push({
+          id: source.id,
+          sourceTypeId: source.sourceTypeId,
+          displayName: installed.find((type) => type.id === source.sourceTypeId)?.displayName ?? source.sourceTypeId,
+          plain: source.plain,
+          storedSecrets: Object.keys(source.secrets).sort(),
+          pollIntervalSeconds: source.pollIntervalSeconds,
+          shown: source.shown,
+          health: await healthOf(source, { clock, registry, sourceTypes, sources }),
+        });
+      }
+      return summaries;
     },
 
     /** The forms of the enabled Source Types, for adding and editing their Sources. */
@@ -137,6 +148,7 @@ export function createSourceAccess(deps: SourcesDeps) {
           sourceTypeId: type.id,
           displayName: type.displayName,
           fields: sourceType.configuration.fields,
+          setupSteps: sourceType.setupSteps,
           suggestedIntervalSeconds: ingestion.mode === "polling" ? ingestion.suggestedIntervalSeconds : null,
         });
       }
@@ -167,14 +179,18 @@ export function createSourceAccess(deps: SourcesDeps) {
         pollIntervalSeconds: input.pollIntervalSeconds ?? null,
         shown: true,
         lastRunAt: null,
+        lastSuccessAt: null,
+        failure: null,
+        lastNewOriginAt: null,
         createdAt: clock.now(),
       });
       return { ok: true, id };
     },
 
     /**
-     * Changes a Source's configuration and polling interval. Its state stays, so that a calendar
-     * whose address an Admin fixes resumes where it was.
+     * Changes a Source's configuration and polling interval, and runs it on the next tick, so
+     * that a fix shows at once. Its state stays, so that a calendar whose address an Admin fixes
+     * resumes where it was.
      */
     async edit(id: SourceId, input: SourceInput): Promise<EditSourceResult> {
       const source = await sources.findById(id);
@@ -198,6 +214,7 @@ export function createSourceAccess(deps: SourcesDeps) {
         configVersion: sourceType.configuration.version,
         secrets: refs,
         pollIntervalSeconds: input.pollIntervalSeconds ?? null,
+        lastRunAt: null,
       });
       for (const ref of replaced) await secrets.remove(ref);
       return { ok: true };
@@ -223,16 +240,6 @@ export function createSourceAccess(deps: SourcesDeps) {
 }
 
 export type SourceAccess = ReturnType<typeof createSourceAccess>;
-
-/** The plugin of an enabled Source Type, or null. */
-export async function enabledSourceType(
-  sourceTypeId: SourceTypeId,
-  deps: { registry: SourceTypeRegistry; sourceTypes: SourceTypeRepository },
-): Promise<LoadedSourceType | null> {
-  const record = (await deps.sourceTypes.list()).find((type) => type.id === sourceTypeId);
-  const loaded = record?.enabled ? await deps.registry.load(sourceTypeId) : null;
-  return loaded?.ok ? loaded.sourceType : null;
-}
 
 /** What a plugin is given to run for a Source: its configuration, with the values of its secrets. */
 export async function runContextOf(

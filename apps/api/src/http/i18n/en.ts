@@ -122,6 +122,10 @@ export const en = {
     groups: { family: "Family", sources: "Sources", instance: "Instance" },
     newSourceTypes: "New Source Types are available",
     lookAtThem: "Look at them",
+    failingSource: "A Source is failing",
+    failingSourceBody: "Some Items may be out of date until it is fixed.",
+    lookAtSources: "Look at the Sources",
+    failing: (count: number) => `${count} failing`,
     noneYet: "None yet",
     views: (count: number) =>
       plural(count, { one: `${count} View on the home network`, other: `${count} Views on the home network` }),
@@ -254,6 +258,17 @@ export const en = {
     hiddenMeta: "hidden from the timeline",
     interval: "Check every … minutes (optional)",
     intervalHint: (minutes: number) => `Empty for the suggested ${minutes}.`,
+    status: { ok: "OK", failing: "Failing", silent: "Silent" },
+    silentHint: (days: number) => `Nothing new for ${days} days.`,
+    lastError: (message: string) => `Last error: ${message}`,
+    lastRead: (when: string) => `Last read ${when}`,
+    notReadYet: "Not read successfully yet",
+    notInstalled: "Source Type not installed",
+    notLoadable: (reason: string) => `Source Type cannot be loaded: ${reason}`,
+    cannotLoad: "Source Type cannot be loaded",
+    fix: "Fix",
+    fixEyebrow: "Fix a Source",
+    saveAndRead: "Save and read again",
   },
 
   attribution: {
@@ -367,6 +382,7 @@ export const en = {
     until: (time: string) => `until ${time}`,
     allDay: "All day",
     onAllDay: (date: string) => `${date}, all day`,
+    outOfDate: "Some of this may be out of date.",
   },
 };
 

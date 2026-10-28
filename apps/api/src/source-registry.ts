@@ -129,7 +129,7 @@ function shareSdkWith(directories: string[]): void {
 }
 
 function loadedSourceType(plugin: SourcePlugin): LoadedSourceType {
-  const { configuration, ingestion, originAttributes } = plugin;
+  const { configuration, setupSteps, ingestion, originAttributes, health } = plugin;
   return {
     configuration: {
       version: configuration.version,
@@ -141,6 +141,7 @@ function loadedSourceType(plugin: SourcePlugin): LoadedSourceType {
         description: description ?? null,
       })),
     },
+    setupSteps: setupSteps.map(({ id, title, description }) => ({ id, title, description })),
     ingestion:
       ingestion.mode === "polling"
         ? {
@@ -162,6 +163,7 @@ function loadedSourceType(plugin: SourcePlugin): LoadedSourceType {
         }
       },
     })),
+    silentApplies: health.silentApplies,
     migrateConfig(plain: PlainConfig, fromVersion: number): PlainConfig {
       let migrated = plain as JsonObject;
       for (let version = fromVersion; version < configuration.version; version++) {

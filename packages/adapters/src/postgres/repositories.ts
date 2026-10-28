@@ -46,6 +46,8 @@ import type {
   OcrLanguage,
   PhotoType,
   RawMessageId,
+  RunError,
+  SourceFailure,
   SourceId,
   SourceTypeId,
   View,
@@ -518,6 +520,9 @@ export class PostgresSourceRepository implements SourceRepository {
       pollIntervalSeconds: source.pollIntervalSeconds,
       shown: source.shown,
       lastRunAt: source.lastRunAt,
+      lastSuccessAt: source.lastSuccessAt,
+      ...failureColumns(source.failure),
+      lastNewOriginAt: source.lastNewOriginAt,
       createdAt: source.createdAt,
     });
   }
@@ -551,12 +556,21 @@ export class PostgresSourceRepository implements SourceRepository {
         configVersion: source.configVersion,
         secretRefs: source.secrets,
         pollIntervalSeconds: source.pollIntervalSeconds,
+        lastRunAt: source.lastRunAt,
       })
       .where(eq(sources.id, source.id));
   }
 
-  async recordFailedRun(id: SourceId, at: Date): Promise<void> {
-    await this.db.update(sources).set({ lastRunAt: at }).where(eq(sources.id, id));
+  async recordFailedRun(id: SourceId, at: Date, error: RunError): Promise<void> {
+    await this.db
+      .update(sources)
+      .set({
+        lastRunAt: at,
+        failingSince: sql`coalesce(${sources.failingSince}, ${at})`,
+        lastErrorKind: sql`CASE WHEN ${sources.lastErrorKind} = 'definite' THEN 'definite' ELSE ${error.kind} END`,
+        lastError: error.message,
+      })
+      .where(eq(sources.id, id));
   }
 
   async setShown(id: SourceId, shown: boolean): Promise<void> {
@@ -600,9 +614,23 @@ export class PostgresSourceRepository implements SourceRepository {
       pollIntervalSeconds: row.pollIntervalSeconds,
       shown: row.shown,
       lastRunAt: row.lastRunAt,
+      lastSuccessAt: row.lastSuccessAt,
+      failure:
+        row.failingSince && row.lastError !== null
+          ? { kind: row.lastErrorKind === "definite" ? "definite" : "temporary", message: row.lastError, since: row.failingSince }
+          : null,
+      lastNewOriginAt: row.lastNewOriginAt,
       createdAt: row.createdAt,
     }));
   }
+}
+
+function failureColumns(failure: SourceFailure | null) {
+  return {
+    failingSince: failure?.since ?? null,
+    lastErrorKind: failure?.kind ?? null,
+    lastError: failure?.message ?? null,
+  };
 }
 
 type Transaction = Parameters<Parameters<Database["transaction"]>[0]>[0];
@@ -673,7 +701,20 @@ export class PostgresItemRepository implements ItemRepository {
         await this.append(tx, { familyId: run.familyId, sourceId: run.sourceId, originId: row.id, at: run.at }, origin.revisions, reached);
       }
       await this.recomputeAll(tx, reached, recompute);
-      await tx.update(sources).set({ state: run.state, lastRunAt: run.at }).where(eq(sources.id, run.sourceId));
+      const lastNewOrigin = tx
+        .select({ at: sql`max(${origins.firstSeenAt})` })
+        .from(origins)
+        .where(eq(origins.sourceId, run.sourceId));
+      await tx
+        .update(sources)
+        .set({
+          state: run.state,
+          lastRunAt: run.at,
+          lastSuccessAt: run.at,
+          ...failureColumns(null),
+          lastNewOriginAt: sql`(${lastNewOrigin})`,
+        })
+        .where(eq(sources.id, run.sourceId));
       return { knownMessages };
     });
   }

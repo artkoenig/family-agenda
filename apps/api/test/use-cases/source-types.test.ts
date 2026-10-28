@@ -186,6 +186,7 @@ describe("Sources", () => {
         storedSecrets: ["password"],
         pollIntervalSeconds: null,
         shown: true,
+        health: { status: "ok", problem: null, lastSuccessAt: null },
       },
     ]);
     const [row] = await instance.query("SELECT config, secret_refs::text AS refs, state FROM sources");
@@ -265,6 +266,7 @@ describe("Sources", () => {
           { key: "url", label: "URL", secret: false, required: true, description: null },
           { key: "password", label: "Password", secret: true, required: false, description: null },
         ],
+        setupSteps: [],
         suggestedIntervalSeconds: 600,
       },
     ]);

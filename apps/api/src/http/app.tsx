@@ -3,6 +3,7 @@ import { createRequire } from "node:module";
 import {
   type RuleInput,
   type SourceInput,
+  type SourceSummary,
   type Showing,
   type TimelineDays,
   type ViewAccessPolicy,
@@ -318,10 +319,12 @@ export function createHttpApp(application: Application, options: HttpOptions) {
   const settings = async (): Promise<SettingsSummary> => {
     const endpoint = await llmEndpoint.current();
     const language = await languages.current();
+    const allSources = await sources.list();
     return {
       members: (await familyMembers.list()).map((member) => member.name),
       views: (await views.list()).length,
-      sources: (await sources.list()).length,
+      sources: allSources.length,
+      failingSources: allSources.filter((source) => source.health.status === "failing").length,
       rules: (await attributionRules.list()).length,
       enabledSourceTypes: (await sources.forms()).length,
       llm: endpoint ? { model: endpoint.model, local: endpoint.local } : null,
@@ -562,15 +565,20 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     return c.redirect("/admin/source-types", 303);
   });
 
-  const sourcesPage = async (c: Context<Env>, shown: { problem?: string; adding?: SourceAdding } = {}) => {
+  const sourcesPage = async (
+    c: Context<Env>,
+    shown: { problem?: string; adding?: SourceAdding; fixing?: SourceSummary } = {},
+  ) => {
     const forms = await sources.forms();
     const page = (
       <SourcesPage
         admin={c.get("admin")}
         sources={await sources.list()}
         forms={forms}
+        timeZone={timeZone}
         {...(shown.problem ? { problem: shown.problem } : {})}
         {...(shown.adding ? { adding: shown.adding } : {})}
+        {...(shown.fixing ? { fixing: shown.fixing } : {})}
       />
     );
     const refused = shown.problem || (shown.adding?.step === "form" && shown.adding.problem);
@@ -617,6 +625,13 @@ export function createHttpApp(application: Application, options: HttpOptions) {
       return sourcesPage(c, { adding: { step: "form", form: sourceForm, entered, problem } });
     }
     return c.redirect("/admin/sources", 303);
+  });
+
+  // A Fix button opens the Source's form in the dialog adding a Source uses.
+  app.get("/admin/sources/:id/fix", async (c) => {
+    const fixing = (await sources.list()).find((source) => source.id === c.req.param("id"));
+    if (!fixing) return c.redirect("/admin/sources");
+    return sourcesPage(c, { fixing });
   });
 
   app.post("/admin/sources/:id", async (c) => {

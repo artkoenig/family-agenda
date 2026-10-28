@@ -1,6 +1,7 @@
 export * from "./activity";
 export * from "./admin-access";
 export * from "./attribution-rules";
+export * from "./enabled-source-type";
 export * from "./extraction";
 export * from "./family-members";
 export * from "./languages";
@@ -9,6 +10,7 @@ export * from "./messages";
 export * from "./polling";
 export * from "./ports";
 export * from "./recovery-kit";
+export * from "./source-health";
 export * from "./source-types";
 export * from "./sources";
 export * from "./views";

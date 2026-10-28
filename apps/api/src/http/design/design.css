@@ -139,6 +139,7 @@
 .fam-bar--scrolled { box-shadow: var(--shadow-bar); }
 .fam-bar > * { max-width: var(--content-width); margin-left: auto; margin-right: auto; }
 .fam-bar__top { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
+.fam-out-of-date { margin: var(--space-2) 0 0; font-size: 14px; line-height: 20px; color: var(--ink-muted); }
 .fam-clock { font-size: 30px; line-height: 36px; font-weight: 800; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }
 .fam-clock__date { font-size: 16px; font-weight: 500; letter-spacing: 0; color: var(--ink-muted); margin-left: var(--space-1); }
 
@@ -228,6 +229,8 @@
 .fam-status--ok { color: var(--sage-strong); }
 .fam-status--problem { color: var(--danger); }
 .fam-status--waiting { color: var(--ink-muted); }
+.fam-health { display: flex; flex-wrap: wrap; align-items: center; column-gap: var(--space-3); row-gap: var(--space-1); }
+.fam-setup-steps { margin: 0; padding-left: var(--space-5); }
 .fam-secret {
   display: block; font-family: var(--font-mono); font-size: 18px; line-height: 28px; font-weight: 500; letter-spacing: .02em;
   overflow-wrap: anywhere; background: var(--surface-sunken); color: var(--ink);

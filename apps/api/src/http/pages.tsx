@@ -11,6 +11,7 @@ import {
   type RuleForm,
   type RuleTarget,
   type SourceForm,
+  type SourceHealth,
   type SourceSummary,
   type SourceTypeSummary,
   type ViewSummary,
@@ -23,6 +24,7 @@ import {
   maximumNameLength,
   minimumPasswordLength,
   photoTypes,
+  silentAfterMs,
   type FamilyLanguage,
   type OcrLanguage,
 } from "@family-agenda/domain";
@@ -91,6 +93,8 @@ export type SettingsSummary = {
   members: string[];
   views: number;
   sources: number;
+  /** How many Sources are Failing, which the whole Admin area shows a banner for. */
+  failingSources: number;
   rules: number;
   enabledSourceTypes: number;
   llm: { model: string; local: boolean } | null;
@@ -159,7 +163,10 @@ function settingsGroups(translation: Translation): SettingsGroup[] {
           id: "sources",
           href: "/admin/sources",
           label: t.sources.title,
-          summary: ({ settings }) => ({ text: settings.sources > 0 ? s.sources(settings.sources) : s.noneYet }),
+          summary: ({ settings }) =>
+            settings.failingSources > 0
+              ? { text: s.failing(settings.failingSources), tone: "attention" }
+              : { text: settings.sources > 0 ? s.sources(settings.sources) : s.noneYet },
         },
         {
           id: "attribution",
@@ -340,6 +347,23 @@ function AdminLayout(props: {
               </div>
             </div>
           ) : null}
+          {admin.settings.failingSources > 0 ? (
+            <div class="fam-banner fam-banner--problem" role="status">
+              <span class="fam-banner__glyph" aria-hidden="true">
+                !
+              </span>
+              <span class="fam-banner__title">{t.settings.failingSource}</span>
+              <div class="fam-banner__body">
+                {t.settings.failingSourceBody}
+                {current !== "sources" ? (
+                  <>
+                    {" "}
+                    <a href="/admin/sources">{t.settings.lookAtSources}</a>
+                  </>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
           {props.children}
         </main>
       </div>
@@ -409,7 +433,7 @@ function DialogFooter(props: { closeHref: string; submit: string; backHref?: str
 }
 
 /** An entry that opens in place for editing: its row as the summary, its form below. */
-function EditableEntry(props: { lead?: Child; name: Child; meta?: Child; open?: boolean; children: Child }) {
+function EditableEntry(props: { lead?: Child; name: Child; meta?: Child; action?: Child; open?: boolean; children: Child }) {
   const { t } = useTranslation();
   return (
     <details class="fam-edit" open={props.open}>
@@ -419,6 +443,7 @@ function EditableEntry(props: { lead?: Child; name: Child; meta?: Child; open?: 
           <span class="fam-entry__name">{props.name}</span>
           {props.meta ? <span class="fam-entry__meta">{props.meta}</span> : null}
         </span>
+        {props.action}
         <span class="fam-button fam-button--quiet fam-edit__toggle" aria-hidden="true">
           <span class="fam-edit__when-closed">{t.common.edit}</span>
           <span class="fam-edit__when-open">{t.common.close}</span>
@@ -839,10 +864,15 @@ export function SourcesPage(props: {
   admin: SignedInAdmin;
   sources: SourceSummary[];
   forms: SourceForm[];
+  /** The IANA time zone the Family lives in, which times are shown in. */
+  timeZone: string;
   problem?: string;
   adding?: SourceAdding;
+  /** The Source whose Fix button was pressed: its form, in the dialog adding a Source uses. */
+  fixing?: SourceSummary;
 }) {
   const formOf = (id: string) => props.forms.find((form) => form.sourceTypeId === id);
+  const fixingForm = props.fixing ? formOf(props.fixing.sourceTypeId) : undefined;
   const { adding } = props;
   const { t, text } = useTranslation();
   const s = t.sources;
@@ -883,6 +913,7 @@ export function SourcesPage(props: {
         <form method="post" action="/admin/sources" class="fam-dialog__form">
           <Problem message={adding.problem} />
           <input type="hidden" name="sourceTypeId" value={adding.form.sourceTypeId} />
+          <SetupSteps form={adding.form} />
           <SourceFields form={adding.form} prefix={`new-${adding.form.sourceTypeId}`} {...(adding.entered ? { entered: adding.entered } : {})} autofocus />
           <DialogFooter
             closeHref="/admin/sources"
@@ -891,6 +922,8 @@ export function SourcesPage(props: {
           />
         </form>
       </Dialog>
+    ) : props.fixing && fixingForm ? (
+      <FixDialog source={props.fixing} form={fixingForm} timeZone={props.timeZone} />
     ) : undefined;
   return (
     <AdminLayout title={s.title} admin={props.admin} current="sources" dialog={dialog}>
@@ -908,7 +941,22 @@ export function SourcesPage(props: {
             const name = text(source.displayName);
             return (
               <li>
-                <EditableEntry name={name} meta={sourceMeta(source, form, t)}>
+                <EditableEntry
+                  name={name}
+                  meta={
+                    <>
+                      {sourceMeta(source, form, t)}
+                      <HealthLine health={source.health} timeZone={props.timeZone} />
+                    </>
+                  }
+                  action={
+                    source.health.status === "failing" && form ? (
+                      <a class="fam-button fam-button--secondary" href={`/admin/sources/${source.id}/fix`}>
+                        {s.fix}
+                      </a>
+                    ) : undefined
+                  }
+                >
                   {form ? (
                     <form method="post" action={`/admin/sources/${source.id}`}>
                       <SourceFields form={form} prefix={source.id} source={source} />
@@ -941,6 +989,74 @@ export function SourcesPage(props: {
         </ul>
       )}
     </AdminLayout>
+  );
+}
+
+/** The dialog a Fix button opens: the form adding a Source uses, filled in with the Source's settings. */
+function FixDialog(props: { source: SourceSummary; form: SourceForm; timeZone: string }) {
+  const { source, form } = props;
+  const { t, text } = useTranslation();
+  const s = t.sources;
+  return (
+    <Dialog id="fix-source" eyebrow={s.fixEyebrow} title={text(source.displayName)} closeHref="/admin/sources">
+      <form method="post" action={`/admin/sources/${source.id}`} class="fam-dialog__form">
+        <HealthLine health={source.health} timeZone={props.timeZone} />
+        <SetupSteps form={form} />
+        <SourceFields form={form} prefix={`fix-${source.id}`} source={source} autofocus />
+        <DialogFooter closeHref="/admin/sources" submit={s.saveAndRead} />
+      </form>
+    </Dialog>
+  );
+}
+
+/** The interactive steps a plugin declares for its Sources, such as pairing an account. */
+function SetupSteps(props: { form: SourceForm }) {
+  const { text } = useTranslation();
+  if (props.form.setupSteps.length === 0) return null;
+  return (
+    <ol class="fam-setup-steps">
+      {props.form.setupSteps.map((step) => (
+        <li>
+          <strong>{text(step.title)}</strong> <span>{text(step.description)}</span>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+/** A Source's status, when it was last read successfully, and its last error. */
+function HealthLine(props: { health: SourceHealth; timeZone: string }) {
+  const { health } = props;
+  const { t, locale } = useTranslation();
+  const s = t.sources;
+  const tone = { ok: "ok", failing: "problem", silent: "waiting" }[health.status];
+  const when = (date: Date) =>
+    new Intl.DateTimeFormat(locale, {
+      weekday: "short",
+      day: "numeric",
+      month: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+      timeZone: props.timeZone,
+    }).format(date);
+  const { problem } = health;
+  const problemText =
+    problem === null
+      ? null
+      : problem.kind === "not-installed"
+        ? s.notInstalled
+        : problem.kind === "not-loadable"
+          ? problem.reason === null
+            ? s.cannotLoad
+            : s.notLoadable(problem.reason)
+          : s.lastError(problem.message);
+  return (
+    <span class="fam-health">
+      <span class={`fam-status fam-status--${tone}`}>{s.status[health.status]}</span>
+      {health.status === "silent" ? <span>{s.silentHint(silentAfterMs / (24 * 60 * 60 * 1000))}</span> : null}
+      <span>{health.lastSuccessAt ? s.lastRead(when(health.lastSuccessAt)) : s.notReadYet}</span>
+      {problemText !== null ? <span class="fam-problem">{problemText}</span> : null}
+    </span>
   );
 }
 

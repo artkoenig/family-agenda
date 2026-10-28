@@ -87,6 +87,11 @@ export function ViewTimeline(props: { page: ViewPage }) {
           </div>
           <ActivityIndicator viewId={page.id} activity={page.activity} />
         </div>
+        {page.mayBeOutOfDate ? (
+          <p class="fam-out-of-date" role="status">
+            {t.view.outOfDate}
+          </p>
+        ) : null}
         <nav class="fam-filter" aria-label={t.view.quickFilter} hx-boost="true" hx-target="#view" hx-swap="outerHTML">
           <a class="fam-filter__item" href={viewUrl(page.id, "all")} aria-current={page.showing === "all" ? "true" : undefined}>
             <span class="fam-avatar fam-avatar--all" aria-hidden="true"></span>

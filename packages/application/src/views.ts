@@ -33,6 +33,7 @@ import type {
   ViewAccessPolicy,
   ViewRepository,
 } from "./ports";
+import type { SourceHealthCheck } from "./source-health";
 
 export type ViewsDeps = {
   clock: Clock;
@@ -44,6 +45,7 @@ export type ViewsDeps = {
   items: ItemRepository;
   rules: AttributionRuleRepository;
   activity: ActivityLog;
+  sourceHealth: SourceHealthCheck;
 };
 
 export type ViewSettings = { preselected: FamilyMemberId[]; horizonDays: number };
@@ -98,6 +100,8 @@ export type ViewPage = {
   days: { date: LocalDate; items: TimelineEvent[] }[];
   /** What the worker is busy with, such as reading messages; null when it is idle. */
   activity: CurrentActivity | null;
+  /** Whether a Source is Failing, which the View says without naming it. */
+  mayBeOutOfDate: boolean;
 };
 
 /** Days of a timeline, from `first` to `last`, both included. */
@@ -130,7 +134,7 @@ const feedDaysBack = 30;
 export const openViewAccess: ViewAccessPolicy = { mayOpen: () => Promise.resolve(true) };
 
 export function createViewAccess(deps: ViewsDeps) {
-  const { clock, timeZone, families, members, views, items, rules, activity } = deps;
+  const { clock, timeZone, families, members, views, items, rules, activity, sourceHealth } = deps;
 
   /**
    * The Family's Events that may touch the days from `first` to `last`, or all later days if
@@ -284,6 +288,7 @@ export function createViewAccess(deps: ViewsDeps) {
         horizonDays: view.horizonDays,
         days: await timelineOf(view.familyId, dates, showing, instant),
         activity: await activity.current(),
+        mayBeOutOfDate: await sourceHealth.anyFailing(),
       };
     },
 
