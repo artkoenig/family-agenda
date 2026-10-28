@@ -195,7 +195,7 @@
 /* Elements inside .fam-admin get the Field and Button look without classes; :where keeps classes stronger. */
 :where(.fam-admin) form { display: grid; gap: var(--space-2); margin: var(--space-3) 0; }
 :where(.fam-admin) label { font-weight: 600; }
-:where(.fam-admin) label:has(> input[type="checkbox"]) { display: flex; align-items: flex-start; gap: var(--space-2); font-weight: 400; }
+:where(.fam-admin) label:where(:has(> input[type="checkbox"])) { display: flex; align-items: flex-start; gap: var(--space-2); font-weight: 400; }
 :where(.fam-admin) small { display: block; margin-top: -4px; font-size: 14px; line-height: 20px; color: var(--ink-muted); }
 :where(.fam-admin) input:not([type="checkbox"], [type="hidden"], [type="file"]), :where(.fam-admin) select, :where(.fam-admin) textarea {
   min-height: var(--control-height); width: 100%; padding: 0 var(--space-4);
