@@ -10,7 +10,7 @@ export const installedPrograms: MatrixPrograms = { synapse: process.execPath, br
 
 type StoredEvent = { position: number; roomId: string; event: MatrixEvent };
 
-type Room = { name: string; members: Map<string, { membership: "invite" | "join"; inviter: string; displayname: string }> };
+type Room = { name: string; channel: string; members: Map<string, { membership: "invite" | "join"; inviter: string; displayname: string }> };
 
 type User = { token: string | null; replay: SyncResponse[] };
 
@@ -88,10 +88,14 @@ export class FakeHomeserver {
     return `@whatsappbot:${this.serverName}`;
   }
 
-  /** A portal room of the bridge, with its ghosts as members. */
-  createRoom(name: string, ghosts: Record<string, string> = {}): string {
+  /**
+   * A portal room of the bridge, with its ghosts as members: a WhatsApp group, or a private
+   * chat with the WhatsApp user of the given phone number.
+   */
+  createRoom(name: string, ghosts: Record<string, string> = {}, privateChatWith?: string): string {
     const roomId = `!${randomBytes(6).toString("hex")}:${this.serverName}`;
-    const room: Room = { name, members: new Map() };
+    const channel = privateChatWith ? `${privateChatWith}@s.whatsapp.net` : `120363${randomBytes(6).toString("hex")}@g.us`;
+    const room: Room = { name, channel, members: new Map() };
     for (const [userId, displayname] of Object.entries(ghosts)) room.members.set(userId, { membership: "join", inviter: this.bot, displayname });
     this.rooms.set(roomId, room);
     return roomId;
@@ -199,11 +203,18 @@ export class FakeHomeserver {
     };
   }
 
-  /** The room's name and its members, as state events. */
+  /** The room's name, the bridge's description of it, and its members, as state events. */
   private stateOf(roomId: string): MatrixEvent[] {
     const room = this.roomOf(roomId);
+    const bridge = {
+      bridgebot: this.bot,
+      protocol: { id: "whatsapp", displayname: "WhatsApp" },
+      channel: { id: room.channel, displayname: room.name },
+      "com.beeper.room_type.v2": room.channel.endsWith("@g.us") ? "" : "dm",
+    };
     return [
       { type: "m.room.name", sender: this.bot, state_key: "", content: { name: room.name } },
+      { type: "m.bridge", sender: this.bot, state_key: `fi.mau.whatsapp://whatsapp/${room.channel}`, content: bridge },
       ...[...room.members].map(([userId, member]) => ({
         type: "m.room.member",
         sender: member.membership === "invite" ? member.inviter : userId,
@@ -300,6 +311,16 @@ export class FakeHomeserver {
       }
       member.membership = "join";
       respond(response, 200, { room_id: roomId });
+      return;
+    }
+    const state = /^\/_matrix\/client\/v3\/rooms\/([^/]+)\/state$/.exec(path);
+    if (method === "GET" && state) {
+      const roomId = decodeURIComponent(state[1] ?? "");
+      if (!this.rooms.has(roomId) || !this.isMember(roomId, userId)) {
+        respond(response, 403, { errcode: "M_FORBIDDEN", error: "Not in the room." });
+        return;
+      }
+      respond(response, 200, this.stateOf(roomId));
       return;
     }
     const messages = /^\/_matrix\/client\/v3\/rooms\/([^/]+)\/messages$/.exec(path);

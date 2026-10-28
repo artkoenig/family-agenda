@@ -10,6 +10,8 @@ export type Messenger = {
   botLocalpart: string;
   /** How the local parts of its ghost users start, the Matrix users that stand for the Messenger's users. */
   ghostPrefix: string;
+  /** Matches the channel id of a group chat in the bridge's `m.bridge` state, unlike private chats or broadcasts. */
+  groupChannel: RegExp;
   /** The bridge's login flow that shows a QR code to scan. */
   qrLoginFlow: string;
   /** What to do with the QR code the bridge shows. */
@@ -36,6 +38,8 @@ export const messengers: Messenger[] = [
     },
     botLocalpart: "whatsappbot",
     ghostPrefix: "whatsapp_",
+    // A group's JID is on the server `g.us`; private chats, broadcasts and channels are elsewhere.
+    groupChannel: /@g\.us$/,
     qrLoginFlow: "qr",
     scanHint: {
       en: "On the phone, open WhatsApp, then Settings, Linked devices, Link a device, and scan this code.",

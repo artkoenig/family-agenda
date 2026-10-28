@@ -14,6 +14,14 @@
               "origin_server_ts": 1789370200000
             },
             {
+              "type": "m.bridge",
+              "state_key": "fi.mau.whatsapp://whatsapp/120363049876543210@g.us",
+              "sender": "@whatsappbot:family-agenda.local",
+              "content": { "bridgebot": "@whatsappbot:family-agenda.local", "protocol": { "id": "whatsapp", "displayname": "WhatsApp" }, "channel": { "id": "120363049876543210@g.us", "displayname": "FC Eltern U11" }, "com.beeper.room_type.v2": "" },
+              "event_id": "$ClubBridgeInfo000000000000000000000000000014",
+              "origin_server_ts": 1789370200200
+            },
+            {
               "type": "m.room.member",
               "state_key": "@whatsapp_4917055566677:family-agenda.local",
               "sender": "@whatsapp_4917055566677:family-agenda.local",

@@ -36,6 +36,10 @@ const allowListing = (config: RunContext["config"], ...chats: string[]): RunCont
   plain: { ...config.plain, chats },
 });
 
+/** The chats the configuration offers to allow-list. */
+const chatChoices = (config: RunContext["config"], state: string | null) =>
+  plugin().configuration.fields.find((field) => field.key === "chats")!.choices!({ config, state, now, timeZone: "Europe/Berlin" });
+
 const textOf = (origin: Origin | undefined) => {
   if (origin?.content.kind !== "raw-message") throw new Error("not a raw message");
   return origin.content.text;
@@ -131,12 +135,10 @@ describe("recorded /sync responses", () => {
       ["2026-09-12T08:00:00.000Z", "FC Eltern U11", "Training am Dienstag fällt aus, Platz gesperrt."],
       ["2026-09-13T06:13:20.000Z", "FC Eltern U11", "Samstag Turnier in Musterstadt, Abfahrt 9 Uhr."],
     ]);
-    // The chats a Source can allow-list are named as the bridge names them.
-    const choices = await plugin().configuration.fields.find((field) => field.key === "chats")!.choices!({ config, state, now, timeZone: "Europe/Berlin" });
-    expect(choices).toEqual([
+    // The groups a Source can allow-list are named as the bridge names them; private chats are none of them.
+    expect(await chatChoices(config, state)).toEqual([
       { value: club, label: "FC Eltern U11" },
       { value: klasse, label: "Klasse 5b Eltern" },
-      { value: "!aBcPrivatFamilieChat:family-agenda.local", label: "Oma (WA)" },
     ]);
   });
 });
@@ -316,6 +318,42 @@ describe("chats", () => {
     const third = await poll(allowListing(config, room, later), second.state);
 
     expect([...second.origins, ...third.origins].map(textOf)).toEqual(["Turnier am Samstag."]);
+  });
+
+  it("can only be groups: private chats are neither offered nor read, even when allow-listed", async () => {
+    const oma = homeserver.ghost("4930111222333");
+    const privateChat = homeserver.createRoom("Oma (WA)", { [oma]: "Oma (WA)" }, "4930111222333");
+    homeserver.invite(privateChat, userOf(config));
+    homeserver.text(privateChat, oma, "Kaffee am Sonntag um 15 Uhr?", new Date(now.getTime() - days));
+    homeserver.text(room, sender, "Wandertag am Freitag.", new Date(now.getTime() - days));
+    const first = await poll(config);
+
+    expect(await chatChoices(config, first.state)).toEqual([{ value: room, label: "Klasse 5b Eltern" }]);
+    const second = await poll(allowListing(config, room, privateChat), first.state);
+    homeserver.text(privateChat, oma, "Oder lieber Samstag?", now);
+    const third = await poll(allowListing(config, room, privateChat), second.state);
+    expect([...second.origins, ...third.origins].map(textOf)).toEqual(["Wandertag am Freitag."]);
+  });
+
+  it("joined before groups were told apart are looked up once", async () => {
+    const oma = homeserver.ghost("4930111222333");
+    const privateChat = homeserver.createRoom("Oma (WA)", { [oma]: "Oma (WA)" }, "4930111222333");
+    homeserver.invite(privateChat, userOf(config));
+    const first = await poll(config);
+    const older = JSON.parse(first.state!) as Record<string, unknown>;
+    delete older.groups;
+    const before = homeserver.requests.length;
+    // Synapse sends a room's state only when it changes.
+    homeserver.replaySync(userOf(config), [recorded("sync-empty", userOf(config)), recorded("sync-empty", userOf(config))]);
+
+    const second = await poll(config, JSON.stringify(older));
+    await poll(config, second.state);
+
+    expect(await chatChoices(config, second.state)).toEqual([{ value: room, label: "Klasse 5b Eltern" }]);
+    const lookups = homeserver.requests.slice(before).filter((request) => request.endsWith("/state"));
+    expect(lookups.sort()).toEqual(
+      [room, privateChat].map((roomId) => `GET /_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/state`).sort(),
+    );
   });
 
   it("are never written to, marked read or shown as typing, and nobody else's invitation is accepted", async () => {

@@ -16,6 +16,14 @@
               "unsigned": { "age": 2073600000 }
             },
             {
+              "type": "m.bridge",
+              "state_key": "fi.mau.whatsapp://whatsapp/120363041234567890@g.us",
+              "sender": "@whatsappbot:family-agenda.local",
+              "content": { "bridgebot": "@whatsappbot:family-agenda.local", "protocol": { "id": "whatsapp", "displayname": "WhatsApp" }, "channel": { "id": "120363041234567890@g.us", "displayname": "Klasse 5b Eltern" }, "com.beeper.room_type.v2": "" },
+              "event_id": "$KlasseBridgeInfo000000000000000000000000012",
+              "origin_server_ts": 1789369200500
+            },
+            {
               "type": "m.room.member",
               "state_key": "@whatsapp_4917612345678:family-agenda.local",
               "sender": "@whatsapp_4917612345678:family-agenda.local",
@@ -103,6 +111,14 @@
               "content": { "name": "Oma (WA)" },
               "event_id": "$PrivateRoomNameOma000000000000000000000005",
               "origin_server_ts": 1789369200000
+            },
+            {
+              "type": "m.bridge",
+              "state_key": "fi.mau.whatsapp://whatsapp/4930111222333@s.whatsapp.net",
+              "sender": "@whatsappbot:family-agenda.local",
+              "content": { "bridgebot": "@whatsappbot:family-agenda.local", "protocol": { "id": "whatsapp", "displayname": "WhatsApp" }, "channel": { "id": "4930111222333@s.whatsapp.net", "displayname": "Oma (WA)" }, "com.beeper.room_type.v2": "dm" },
+              "event_id": "$OmaBridgeInfo0000000000000000000000000000013",
+              "origin_server_ts": 1789369300500
             }
           ]
         },
