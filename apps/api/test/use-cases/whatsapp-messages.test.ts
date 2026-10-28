@@ -15,7 +15,7 @@ const matrixPackage = fileURLToPath(new URL("../../../../packages/source-matrix/
 
 /**
  * Installs the Matrix plugin as the image does, but reading the Matrix setup of a fake homeserver
- * from the file the Matrix profile would write.
+ * from the file the worker would write.
  */
 async function installMatrixPlugin(instance: TestInstance, homeserver: FakeHomeserver): Promise<void> {
   const directory = join(instance.workspacePackages, "source-matrix");
@@ -30,7 +30,8 @@ async function installMatrixPlugin(instance: TestInstance, homeserver: FakeHomes
   await writeFile(
     join(directory, "index.ts"),
     `import { createMatrixPlugin } from ${JSON.stringify(join(matrixPackage, "src/index.ts"))};\n` +
-      `export default createMatrixPlugin({ instance: ${JSON.stringify(instanceFile)}, timeoutMs: 5000 });\n`,
+      `import { installedPrograms } from ${JSON.stringify(join(matrixPackage, "src/testing.ts"))};\n` +
+      `export default createMatrixPlugin({ instance: ${JSON.stringify(instanceFile)}, timeoutMs: 5000, programs: installedPrograms });\n`,
   );
 }
 

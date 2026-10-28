@@ -6,7 +6,7 @@ export type Messenger = {
   displayName: PluginText;
   description: PluginText;
   riskNotice?: PluginText;
-  /** The local part of its bridge bot's Matrix user, as the Matrix profile configures the bridge. */
+  /** The local part of its bridge bot's Matrix user, as the worker configures the bridge. */
   botLocalpart: string;
   /** How the local parts of its ghost users start, the Matrix users that stand for the Messenger's users. */
   ghostPrefix: string;
@@ -19,8 +19,8 @@ export type Messenger = {
 };
 
 /**
- * The Messengers the plugin supports, each served by one bridge. Adding one is an entry here and
- * a Compose profile for its bridge.
+ * The Messengers the plugin supports, each served by one bridge. Adding one is an entry here, its
+ * bridge in the image, and its configuration in `configuration.ts`.
  */
 export const messengers: Messenger[] = [
   {

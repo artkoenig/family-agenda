@@ -45,6 +45,7 @@ import {
   createRecoveryKitAccess,
   createSourceAccess,
   createSourceHealth,
+  createServiceSupervision,
   createSourcePolling,
   createSourceTypeAccess,
   createViewAccess,
@@ -64,6 +65,7 @@ import {
   type RecoveryKitAccess,
   type SecretStore,
   type SourceAccess,
+  type ServiceSupervision,
   type SourcePolling,
   type SourceTypeAccess,
   type TextExtractor,
@@ -125,6 +127,8 @@ export type Application = {
   attributionRules: AttributionRuleAccess;
   /** Runs the Sources that are due; the worker does on each tick. */
   polling: SourcePolling;
+  /** Starts and stops the programs of Source Types, such as a homeserver; only the worker does. */
+  services: ServiceSupervision;
   llmEndpoint: LlmEndpointAccess;
   /** Extracts Items from the raw messages that wait for it; the worker does on each tick. */
   extraction: ExtractionAccess;
@@ -255,6 +259,7 @@ export async function bootApplication(config: ApplicationConfig): Promise<Applic
     blobs,
     activity,
   });
+  const services = createServiceSupervision({ registry, sourceTypes: sourceTypeRepository, catalogues: catalogueRepository });
   const endpoints = new PostgresLlmEndpointRepository(postgres.db);
   const llmEndpoint = createLlmEndpointAccess({ clock, families, endpoints, secrets });
   const extraction = createExtraction({
@@ -292,6 +297,7 @@ export async function bootApplication(config: ApplicationConfig): Promise<Applic
     sources,
     attributionRules,
     polling,
+    services,
     llmEndpoint,
     extraction,
     messages,

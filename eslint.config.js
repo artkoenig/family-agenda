@@ -18,7 +18,7 @@ export default tseslint.config(
     rules: { "@typescript-eslint/no-non-null-assertion": "off" },
   },
   {
-    files: ["**/*.js", "**/*.cjs"],
+    files: ["**/*.js", "**/*.cjs", "**/*.mjs"],
     extends: [tseslint.configs.disableTypeChecked],
     languageOptions: { globals: { module: "writable" } },
   },

@@ -1,9 +1,12 @@
 import { readFileSync } from "node:fs";
-import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
 import { describeSourcePluginContract } from "@family-agenda/source-sdk/testing";
 import { SourceError, type IngestResult, type Origin, type RunContext, type SetupProgress, type SourcePlugin } from "@family-agenda/source-sdk";
 import { createMatrixPlugin } from "../src";
-import { FakeHomeserver } from "../src/testing";
+import { FakeHomeserver, installedPrograms } from "../src/testing";
 
 const now = new Date("2026-09-14T07:30:00Z");
 const days = 24 * 60 * 60 * 1000;
@@ -12,7 +15,7 @@ const homeserver = new FakeHomeserver();
 await homeserver.start();
 afterAll(() => homeserver.close());
 
-const plugin = () => createMatrixPlugin({ instance: homeserver.instance(), timeoutMs: 5000 });
+const plugin = () => createMatrixPlugin({ instance: homeserver.instance(), timeoutMs: 5000, programs: installedPrograms });
 
 /** Adds a Source as the core does: the plugin creates its Matrix user, whose values go into its configuration. */
 async function addSource(of: SourcePlugin = plugin()): Promise<RunContext["config"]> {
@@ -329,24 +332,59 @@ describe("chats", () => {
 });
 
 describe("the catalogue of Messengers", () => {
-  it("lists WhatsApp as installed while its bridge runs", async () => {
+  it("lists WhatsApp as installed where the image has Synapse and its bridge", async () => {
     expect((await plugin().catalogue!.entries()).map(({ id, installed }) => ({ id, installed }))).toEqual([{ id: "whatsapp", installed: true }]);
-
-    homeserver.bridgeRunning = false;
-    try {
-      expect((await plugin().catalogue!.entries())[0]?.installed).toBe(false);
-    } finally {
-      homeserver.bridgeRunning = true;
-    }
   });
 
-  it("lists WhatsApp as not installed without the Matrix profile", async () => {
-    const without = createMatrixPlugin({ instance: "/nonexistent/instance.json" });
+  it("lists WhatsApp as not installed without them", async () => {
+    const without = createMatrixPlugin({ instance: "/nonexistent/instance.json", programs: { synapse: "/nonexistent/python", bridges: {} } });
 
     expect((await without.catalogue!.entries())[0]).toMatchObject({ id: "whatsapp", installed: false, riskNotice: expect.anything() as unknown });
     await expect(poll({ plain: { messenger: "whatsapp", userId: "@x:y" }, secrets: { accessToken: "t" } }, null, without)).rejects.toThrow(
-      "Matrix is not set up on this Instance",
+      "WhatsApp is not installed on this Instance.",
     );
+  });
+});
+
+describe("a Messenger the worker is still starting", () => {
+  let directory: string;
+  let instanceFile: string;
+  beforeEach(async () => {
+    directory = await mkdtemp(join(tmpdir(), "family-agenda-matrix-"));
+    instanceFile = join(directory, "instance.json");
+  });
+  afterEach(() => rm(directory, { recursive: true, force: true }));
+
+  const starting = (startTimeoutMs = 0) => createMatrixPlugin({ instance: instanceFile, timeoutMs: 5000, programs: installedPrograms, startTimeoutMs });
+
+  it("is a temporary error, and its setup step waits", async () => {
+    const config = { plain: { messenger: "whatsapp", userId: "@x:y" }, secrets: { accessToken: "t" } };
+
+    const error = await poll(config, null, starting()).catch((caught: unknown) => caught);
+
+    expect(error).toMatchObject({ kind: "temporary", message: "WhatsApp is starting on this Instance. This takes up to a minute the first time." });
+    expect(await starting().setupSteps[0]!.progress!({ config, state: null, now, timeZone: "Europe/Berlin" })).toEqual({
+      status: "waiting",
+      message: expect.objectContaining({ de: "WhatsApp startet auf dieser Instanz. Beim ersten Mal dauert das bis zu einer Minute." }) as unknown,
+    });
+  });
+
+  it("is a definite error once the worker says why it cannot start it", async () => {
+    await writeFile(join(directory, "status.json"), JSON.stringify({ problem: "Matrix could not be set up: permission denied to create role" }));
+
+    const error = await poll({ plain: { messenger: "whatsapp", userId: "@x:y" }, secrets: { accessToken: "t" } }, null, starting()).catch(
+      (caught: unknown) => caught,
+    );
+
+    expect(error).toMatchObject({ kind: "definite", message: "Matrix could not be set up: permission denied to create role" });
+  });
+
+  it("is waited for when a Source is added right after enabling it", async () => {
+    const adding = starting(10_000).sourceAdded!({ config: { plain: { messenger: "whatsapp" }, secrets: {} }, now, timeZone: "Europe/Berlin" });
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    await writeFile(instanceFile, JSON.stringify(homeserver.instance()));
+
+    expect((await adding).plain.userId).toMatch(/^@family-agenda-[0-9a-f]{12}:/);
   });
 });
 

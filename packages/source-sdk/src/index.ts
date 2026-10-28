@@ -2,7 +2,7 @@
  * The contract a Source plugin implements (ADR-0010). It is the only Family Agenda package a
  * plugin may import.
  */
-export const sdkVersion = "0.4.0";
+export const sdkVersion = "0.5.0";
 
 /**
  * A text the Admin area shows: plain, or per language as `{ en: "Calendar", de: "Kalender" }`.
@@ -237,6 +237,22 @@ export class SourceError extends Error {
   }
 }
 
+/**
+ * Programs a plugin runs on the Instance for its Sources, such as a homeserver and the bridges of
+ * the Messengers an Admin enabled (ADR-0011). Only the worker runs them: it reconciles them with
+ * what is enabled every few seconds, and stops them when it shuts down.
+ */
+export type Services = {
+  /**
+   * Starts what is enabled and stops the rest: `entries` are the ids of the catalogue's enabled
+   * entries, and `enabled` is false once the Source Type is disabled. Returns quickly when nothing
+   * changed; a service still starting is left to start, to be looked at again next time.
+   */
+  reconcile(enabled: { enabled: boolean; entries: string[] }): Promise<void>;
+  /** Stops every service, as the worker shuts down. */
+  stop(): Promise<void>;
+};
+
 export interface SourcePlugin {
   identity: SourcePluginIdentity;
   configuration: Configuration;
@@ -245,6 +261,7 @@ export interface SourcePlugin {
   originAttributes: OriginAttribute[];
   health: Health;
   catalogue?: Catalogue;
+  services?: Services;
   /**
    * Prepares a Source an Admin adds, such as by creating an account for it, and returns the
    * values of its fields set by the plugin. A `SourceError` refuses adding the Source.
