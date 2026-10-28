@@ -36,6 +36,9 @@ const allowListing = (config: RunContext["config"], ...chats: string[]): RunCont
   plain: { ...config.plain, chats },
 });
 
+const choicesOf = (config: RunContext["config"], state: string | null) =>
+  plugin().configuration.fields.find((field) => field.key === "chats")!.choices!({ config, state, now, timeZone: "Europe/Berlin" });
+
 const textOf = (origin: Origin | undefined) => {
   if (origin?.content.kind !== "raw-message") throw new Error("not a raw message");
   return origin.content.text;
@@ -131,12 +134,11 @@ describe("recorded /sync responses", () => {
       ["2026-09-12T08:00:00.000Z", "FC Eltern U11", "Training am Dienstag fällt aus, Platz gesperrt."],
       ["2026-09-13T06:13:20.000Z", "FC Eltern U11", "Samstag Turnier in Musterstadt, Abfahrt 9 Uhr."],
     ]);
-    // The chats a Source can allow-list are named as the bridge names them.
+    // The chats a Source can allow-list are the group chats, named as the bridge names them.
     const choices = await plugin().configuration.fields.find((field) => field.key === "chats")!.choices!({ config, state, now, timeZone: "Europe/Berlin" });
     expect(choices).toEqual([
       { value: club, label: "FC Eltern U11" },
       { value: klasse, label: "Klasse 5b Eltern" },
-      { value: "!aBcPrivatFamilieChat:family-agenda.local", label: "Oma (WA)" },
     ]);
   });
 });
@@ -316,6 +318,31 @@ describe("chats", () => {
     const third = await poll(allowListing(config, room, later), second.state);
 
     expect([...second.origins, ...third.origins].map(textOf)).toEqual(["Turnier am Samstag."]);
+  });
+
+  it("are offered and read only when they are groups, not direct chats", async () => {
+    const direct = homeserver.createRoom("Oma (WA)", { [sender]: "Oma (WA)" }, { direct: true });
+    homeserver.invite(direct, userOf(config));
+    const first = await poll(config);
+    homeserver.text(direct, sender, "Kommt ihr Sonntag zum Kaffee?", now);
+
+    const { origins } = await poll(allowListing(config, room, direct), first.state);
+
+    expect(origins).toEqual([]);
+    expect(await choicesOf(config, first.state)).toEqual([{ value: room, label: "Klasse 5b Eltern" }]);
+  });
+
+  it("are told apart as groups or direct chats when joined before they were", async () => {
+    const direct = homeserver.createRoom("Oma (WA)", { [sender]: "Oma (WA)" }, { direct: true });
+    homeserver.invite(direct, userOf(config));
+    const first = await poll(config);
+    // A state written before group chats were told apart.
+    const older = JSON.parse(first.state ?? "{}") as Record<string, unknown>;
+    delete older.groups;
+
+    const second = await poll(config, JSON.stringify(older));
+
+    expect(await choicesOf(config, second.state)).toEqual([{ value: room, label: "Klasse 5b Eltern" }]);
   });
 
   it("are never written to, marked read or shown as typing, and nobody else's invitation is accepted", async () => {

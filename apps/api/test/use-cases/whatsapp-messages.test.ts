@@ -105,7 +105,7 @@ describe("WhatsApp chats read through the Matrix bridge", () => {
   });
 
   it("ignores messages in chats that are not allow-listed", async () => {
-    const family = homeserver.createRoom("Oma (WA)", { [homeserver.ghost("4930111222333")]: "Oma (WA)" });
+    const family = homeserver.createRoom("Oma (WA)", { [homeserver.ghost("4930111222333")]: "Oma (WA)" }, { direct: true });
     homeserver.invite(family, user);
     await run();
 

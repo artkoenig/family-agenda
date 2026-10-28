@@ -10,7 +10,7 @@ export const installedPrograms: MatrixPrograms = { synapse: process.execPath, br
 
 type StoredEvent = { position: number; roomId: string; event: MatrixEvent };
 
-type Room = { name: string; members: Map<string, { membership: "invite" | "join"; inviter: string; displayname: string }> };
+type Room = { name: string; direct: boolean; members: Map<string, { membership: "invite" | "join"; inviter: string; displayname: string }> };
 
 type User = { token: string | null; replay: SyncResponse[] };
 
@@ -88,10 +88,10 @@ export class FakeHomeserver {
     return `@whatsappbot:${this.serverName}`;
   }
 
-  /** A portal room of the bridge, with its ghosts as members. */
-  createRoom(name: string, ghosts: Record<string, string> = {}): string {
+  /** A portal room of the bridge, with its ghosts as members; a group chat unless `direct`. */
+  createRoom(name: string, ghosts: Record<string, string> = {}, options: { direct?: boolean } = {}): string {
     const roomId = `!${randomBytes(6).toString("hex")}:${this.serverName}`;
-    const room: Room = { name, members: new Map() };
+    const room: Room = { name, direct: options.direct ?? false, members: new Map() };
     for (const [userId, displayname] of Object.entries(ghosts)) room.members.set(userId, { membership: "join", inviter: this.bot, displayname });
     this.rooms.set(roomId, room);
     return roomId;
@@ -199,11 +199,17 @@ export class FakeHomeserver {
     };
   }
 
-  /** The room's name and its members, as state events. */
+  /** The room's name, the bridge's description of it and its members, as state events. */
   private stateOf(roomId: string): MatrixEvent[] {
     const room = this.roomOf(roomId);
     return [
       { type: "m.room.name", sender: this.bot, state_key: "", content: { name: room.name } },
+      {
+        type: "m.bridge",
+        sender: this.bot,
+        state_key: `${this.serverName}/whatsapp`,
+        content: { bridgebot: this.bot, channel: { id: roomId }, ...(room.direct ? { "com.beeper.room_type": "dm" } : {}) },
+      },
       ...[...room.members].map(([userId, member]) => ({
         type: "m.room.member",
         sender: member.membership === "invite" ? member.inviter : userId,
@@ -328,6 +334,16 @@ export class FakeHomeserver {
         ...(last && chunk.length === limit ? { end: `s${last.position - 1}` } : {}),
         state: this.stateOf(roomId).filter((event) => event.type === "m.room.member"),
       });
+    }
+    const state = /^\/_matrix\/client\/v3\/rooms\/([^/]+)\/state$/.exec(path);
+    if (method === "GET" && state) {
+      const roomId = decodeURIComponent(state[1] ?? "");
+      if (!this.rooms.has(roomId) || !this.isMember(roomId, userId)) {
+        respond(response, 403, { errcode: "M_FORBIDDEN", error: "Not in the room." });
+        return;
+      }
+      respond(response, 200, this.stateOf(roomId));
+      return;
     }
     const download = /^\/_matrix\/client\/v1\/media\/download\/([^/]+)\/([^/]+)$/.exec(path);
     if (method === "GET" && download) {
