@@ -145,14 +145,6 @@ describe("the IMAP plugin", () => {
     mailbox.uidValidity -= 1;
   });
 
-  it("offers the senders of its folder for Attribution Rules", async () => {
-    const [sender] = plugin().originAttributes;
-
-    expect(sender?.key).toBe("sender");
-    const values = await sender!.knownValues({ config: config(), state: null, now, timeZone: "Europe/Berlin" });
-    expect(values.map((value) => value.value).sort()).toEqual(["berger@schule.example.org", "verein@example.org"]);
-  });
-
   it("fails definitely on a wrong password or a folder that does not exist", async () => {
     await expect(poll({ config: config({}, "wrong") })).rejects.toMatchObject({ kind: "definite" });
     await expect(poll({ config: config({ folder: "Nirgends" }) })).rejects.toMatchObject({ kind: "definite" });

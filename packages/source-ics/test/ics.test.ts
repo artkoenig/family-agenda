@@ -107,12 +107,11 @@ describe("the ICS plugin", () => {
     ]);
   });
 
-  it("names the calendar as an Origin attribute, and links to an entry's own address", async () => {
+  it("names the calendar on its Origins, and links to an entry's own address", async () => {
     const plugin = createIcsPlugin({ fetch: server(calendar(fixture("family-v1.ics"))).fetch });
 
     const [piano, trip] = (await poll(plugin)).origins;
 
-    expect(plugin.originAttributes.map((attribute) => attribute.key)).toEqual(["calendar"]);
     expect(piano).toMatchObject({
       externalId: "piano-0915@google.com",
       attributes: { calendar: "Mia's clubs" },
@@ -250,14 +249,6 @@ describe("the ICS plugin", () => {
       ["no-end", now.toISOString(), { allDay: false, start: "2026-09-15T16:00:00.000Z", end: "2026-09-15T16:00:00.000Z" }],
       ["no-end-all-day", now.toISOString(), { allDay: true, firstDay: "2026-09-18", lastDay: "2026-09-18" }],
     ]);
-  });
-
-  it("knows the calendar's name for rule suggestions", async () => {
-    const plugin = createIcsPlugin({ fetch: server(calendar(fixture("family-v1.ics"))).fetch });
-
-    const values = await plugin.originAttributes[0]!.knownValues({ config, state: null, now, timeZone: "Europe/Berlin" });
-
-    expect(values).toEqual([{ value: "Mia's clubs", label: "Mia's clubs" }]);
   });
 
   it.each([

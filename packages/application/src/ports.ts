@@ -1,8 +1,6 @@
 import type {
   Act,
   Admin,
-  AttributionRule,
-  AttributionRuleId,
   DateMention,
   BlobRef,
   AdminId,
@@ -19,7 +17,6 @@ import type {
   LocalTime,
   MultilingualText,
   OcrLanguage,
-  OriginOf,
   RawMessageId,
   RunError,
   SourceFailure,
@@ -263,8 +260,6 @@ export type LoadedSourceType = {
   /** The plain configuration of `fromVersion` migrated to the current version. */
   migrateConfig: (plain: PlainConfig, fromVersion: number) => PlainConfig;
   ingestion: PollingIngestion | { mode: "push" };
-  /** What Attribution Rules can match on, such as a sender or a calendar. */
-  originAttributes: OriginAttributeSpec[];
   /** Whether its Sources count as Silent when no new Origin comes for a while. */
   silentApplies: boolean;
   /** What an Admin enables within it, such as Messengers; null if it has none. */
@@ -286,15 +281,7 @@ export type LoadedSourceType = {
   sourceRemoved(context: SourceRunContext): Promise<void>;
 };
 
-/** An Origin attribute a plugin declares. */
-export type OriginAttributeSpec = {
-  key: string;
-  label: MultilingualText;
-  /** The values the plugin knows of, such as the senders of recent mail; none if asking it failed. */
-  knownValues(context: SourceRunContext): Promise<KnownValue[]>;
-};
-
-/** A value of an Origin attribute, with how the plugin names it. */
+/** A value a plugin offers, such as a chat for a choice field, with how the plugin names it. */
 export type KnownValue = { value: string; label: string };
 
 /** The Source plugins discovered at startup (ADR-0010). */
@@ -364,6 +351,11 @@ export type Source = {
   shown: boolean;
   /** As an Admin named it, such as "Class 3b"; null for the name the Admin area derives from its settings. */
   name: string | null;
+  /**
+   * The Family Members an Admin assigned it to, in the Family's order, whom its Items concern;
+   * none for the whole Family. Family Members removed since are no longer listed.
+   */
+  concerns: FamilyMemberId[];
   /** When the worker last ran it, successfully or not; null before its first run, or after an Admin changed it. */
   lastRunAt: Date | null;
   /** When it last ran successfully; null before then. */
@@ -397,6 +389,8 @@ export interface SourceRepository {
   setShown(id: SourceId, shown: boolean): Promise<void>;
   /** Names the Source as an Admin calls it; null for the name derived from its settings. */
   rename(id: SourceId, name: string | null): Promise<void>;
+  /** Assigns the Source to the Family Members, replacing those it was assigned to; none for the whole Family. */
+  assign(id: SourceId, concerns: FamilyMemberId[]): Promise<void>;
   /**
    * Removes the Source in one transaction with its Origins, raw messages, Revisions and Items.
    * Returns the BlobStore files of its raw messages, for the caller to remove.
@@ -517,8 +511,8 @@ export type ProjectedItem = {
   links: { url: string; sourceTypeId: SourceTypeId; sourceName: string | null }[];
   /** The raw messages it was extracted from, oldest first, each with the Source Type and name of its Source. */
   messages: { id: RawMessageId; sourceTypeId: SourceTypeId; sourceName: string | null }[];
-  /** The Origins whose accepted Revisions it adds up to, which Attribution Rules match on. */
-  origins: OriginOf[];
+  /** The Sources of the Origins whose accepted Revisions it adds up to, which decide whom it concerns. */
+  sourceIds: SourceId[];
 };
 
 /** Items, as projections of their append-only Revisions (ADR-0009). */
@@ -554,23 +548,6 @@ export interface ItemRepository {
    * `to` of null means all of the future. Items of a hidden Source are left out.
    */
   overlapping(familyId: FamilyId, from: Date, to: Date | null): Promise<ProjectedItem[]>;
-}
-
-/** The Family's Attribution Rules, an ordinary table beside the projected Items (ADR-0009). */
-export interface AttributionRuleRepository {
-  /** Returns false if the Source already has a rule for this attribute value. */
-  add(rule: AttributionRule): Promise<boolean>;
-  /**
-   * In the order they were created, each with its Family Members in the order those were added;
-   * Family Members removed since are no longer listed. A removed Source's rules are gone.
-   */
-  list(familyId: FamilyId): Promise<AttributionRule[]>;
-  findById(id: AttributionRuleId): Promise<AttributionRule | null>;
-  /** Stores a changed rule that was found before. Returns false if another rule has its value. */
-  update(rule: AttributionRule): Promise<boolean>;
-  remove(id: AttributionRuleId): Promise<void>;
-  /** The values of an Origin attribute that the Source's recorded Origins carry, sorted. */
-  seenValues(sourceId: SourceId, attribute: string): Promise<string[]>;
 }
 
 /** The one LLM endpoint of the Family, an OpenAI-compatible server. */

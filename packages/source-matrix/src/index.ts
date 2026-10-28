@@ -340,30 +340,6 @@ export function createMatrixPlugin(options: MatrixPluginOptions = {}): SourcePlu
       },
     ],
     ingestion: { mode: "polling", suggestedIntervalSeconds: 5 * 60, poll },
-    originAttributes: [
-      {
-        key: "messenger",
-        label: { en: "Messenger", de: "Messenger" },
-        knownValues: () => Promise.resolve(messengers.map(({ attributeValue }) => ({ value: attributeValue, label: attributeValue }))),
-      },
-      {
-        key: "chat",
-        label: { en: "Chat", de: "Chat" },
-        knownValues: (context) => {
-          const chats = new Set(chatsOf(context.config.plain.chats));
-          const allowListed = chatChoices(context).filter((choice) => chats.has(choice.value));
-          return Promise.resolve(allowListed.map(({ label }) => ({ value: label, label })));
-        },
-      },
-      {
-        key: "sender",
-        label: { en: "Sender", de: "Absender" },
-        knownValues: (context) => {
-          const names = [...new Set(Object.values(parseState(context.state)?.names ?? {}))].sort();
-          return Promise.resolve(names.map((name) => ({ value: name, label: name })));
-        },
-      },
-    ],
     // Class and club groups pause for weeks in the holidays.
     health: { silentApplies: false },
     catalogue: {

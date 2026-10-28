@@ -14,13 +14,13 @@ We chose this because a review gate in front of every uncertain Item makes the F
 - A rejected Revision no longer counts. Rejecting an Item's first Revision removes the Item from Views and the ICS feed, and later Revisions that match it stay with it without bringing it back.
 - A Revision is rejected automatically when its evidence quote is not found verbatim in the message, when a stated weekday doesn't match its date, or when its WhatsApp message is deleted. An Admin can restore it.
 - A Revision is marked as a conflict when it was rejected automatically, when it disagrees with another Source, or when it contradicts an Admin Revision. A conflict needs no acknowledgement. The conflict filter shows only Items still on the timeline.
-- An Attribution Rule applies retroactively. Without a matching rule, an Item concerns the whole Family.
+- A Source Assignment applies retroactively: whom an Item concerns is computed on read from the Sources of its Origins. An Item of a Source assigned to no one concerns the whole Family.
 - Merging Items and splitting an Origin off reassign Revisions to Items. They are not Revisions, but they appear in the change list and can be undone.
 - Extraction runs once per message. There is no second run to compare against. "Once" means one successful run: while the LLM endpoint is unreachable or rejects the key, messages wait and are retried automatically. A message that fails on its own content three times is marked Not extracted, and an Admin can retry it.
 
 ## Consequences
 
-- Only Items are projected this way. Family Members, Sources, Views and Attribution Rules stay ordinary tables.
+- Only Items are projected this way. Family Members, Sources (with their Source Assignments) and Views stay ordinary tables.
 - A Revision arriving late, such as from the WhatsApp backfill, recomputes the Item it belongs to, so the Item never depends on arrival order.
 - A Revision keeps its extracted fields when retention deletes its raw message.
 

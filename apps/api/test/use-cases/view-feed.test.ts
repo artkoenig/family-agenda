@@ -170,7 +170,7 @@ describe("the ICS feed of a View", () => {
     if (!forMia.ok) throw new Error("creating failed");
     await arrive(piano);
 
-    // Without Attribution Rules, every Event concerns the whole Family, and has no name prefix.
+    // With no Source assigned to anyone, every Event concerns the whole Family, and has no name prefix.
     expect((await feed(forMia.id))?.map((event) => event.summary)).toEqual(["Piano lesson"]);
   });
 

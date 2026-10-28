@@ -4,7 +4,7 @@ status: proposed
 
 # The Family stays a boundary in the data model, without row-level security
 
-An Instance serves exactly one Family, and Agenda Cloud never hosts Items (ADR-0004). Tenant isolation therefore has no job to do inside an Instance. We still keep a `families` table and a `family_id` foreign key on every aggregate root (Family Members, Sources, Items, Views, Attribution Rules), because that costs one column and keeps the Family an explicit boundary in the domain and in queries. We add no Postgres row-level security, no per-request tenant context and no tenant-aware job routing.
+An Instance serves exactly one Family, and Agenda Cloud never hosts Items (ADR-0004). Tenant isolation therefore has no job to do inside an Instance. We still keep a `families` table and a `family_id` foreign key on every aggregate root (Family Members, Sources, Items, Views), because that costs one column and keeps the Family an explicit boundary in the domain and in queries. We add no Postgres row-level security, no per-request tenant context and no tenant-aware job routing.
 
 ## Considered Options
 

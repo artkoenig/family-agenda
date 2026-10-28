@@ -38,9 +38,6 @@ const examplePlugin = (overrides: Partial<SourcePlugin> = {}): SourcePlugin => (
         state: `${state ?? ""}+1`,
       }),
   },
-  originAttributes: [
-    { key: "sender", label: "Sender", knownValues: () => Promise.resolve([]) },
-  ],
   health: { silentApplies: true },
   ...overrides,
 });
@@ -128,7 +125,6 @@ describe("a plugin with a catalogue", () => {
             ]),
         },
         identity: { sourceTypeId: "example", displayName: { en: "Example", de: "Beispiel" }, version: "1.0.0", sdkVersion },
-        originAttributes: [],
       }),
     { languages: ["de"] },
   );

@@ -172,42 +172,20 @@ export const sources = pgTable(
 );
 
 /**
- * Attribution Rules: the Items of a Source's Origins whose attribute has the value concern the
- * rule's Family Members, or the whole Family. Removing the Source removes its rules.
+ * The Family Members a Source is assigned to, whom its Items concern; a Source with none here
+ * concerns the whole Family. Removing the Source or the Family Member removes them here too.
  */
-export const attributionRules = pgTable(
-  "attribution_rules",
+export const sourceMembers = pgTable(
+  "source_members",
   {
-    id: uuid("id").primaryKey(),
-    position: bigserial("position", { mode: "number" }).notNull(),
-    familyId: uuid("family_id")
-      .notNull()
-      .references(() => families.id),
     sourceId: uuid("source_id")
       .notNull()
       .references(() => sources.id, { onDelete: "cascade" }),
-    /** The key of the Origin attribute, as the Source's plugin declares it. */
-    attribute: text("attribute").notNull(),
-    value: text("value").notNull(),
-    /** Whether it concerns the whole Family; otherwise its Family Members. */
-    wholeFamily: boolean("whole_family").notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
-  },
-  (table) => [unique("attribution_rules_source_attribute_value_unique").on(table.sourceId, table.attribute, table.value)],
-);
-
-/** The Family Members a rule assigns; removing a Family Member removes them here too. */
-export const attributionRuleMembers = pgTable(
-  "attribution_rule_members",
-  {
-    ruleId: uuid("rule_id")
-      .notNull()
-      .references(() => attributionRules.id, { onDelete: "cascade" }),
     familyMemberId: uuid("family_member_id")
       .notNull()
       .references(() => familyMembers.id, { onDelete: "cascade" }),
   },
-  (table) => [primaryKey({ columns: [table.ruleId, table.familyMemberId] })],
+  (table) => [primaryKey({ columns: [table.sourceId, table.familyMemberId] })],
 );
 
 /**
