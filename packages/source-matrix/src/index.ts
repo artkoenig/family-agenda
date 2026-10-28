@@ -42,12 +42,14 @@ export type MatrixPluginOptions = {
 
 /**
  * The state blob: where `/sync` resumes, the names of the joined rooms and of the senders seen,
- * the allow-listed rooms read so far, so that a room allow-listed later is read back first, and
- * the edits of each message read, which go with it when it is redacted.
+ * whether each joined room is a group chat, the allow-listed rooms read so far, so that a room
+ * allow-listed later is read back first, and the edits of each message read, which go with it
+ * when it is redacted.
  */
 type State = {
   since: string;
   rooms: Record<string, string>;
+  groups: Record<string, boolean>;
   names: Record<string, string>;
   read: string[];
   edits: Record<string, string[]>;
@@ -61,6 +63,9 @@ const maximumBackfillEvents = 500;
 
 /** The largest attachment kept, such as a PDF; larger ones are left out. */
 const maximumAttachmentBytes = 25 * 1024 * 1024;
+
+/** Room types the bridge marks rooms with that are not group chats. */
+const nonGroupRoomTypes = new Set(["dm", "space"]);
 
 /** Message types whose `body` is the text of the message. */
 const textTypes = new Set(["m.text", "m.notice", "m.emote"]);
@@ -160,7 +165,6 @@ export function createMatrixPlugin(options: MatrixPluginOptions = {}): SourcePlu
     const { userId, token } = accountOf(context);
     await checkLogin(bridge, messenger, userId);
     const previous = parseState(context.state);
-    const allowListed = new Set(chatsOf(context.config.plain.chats));
     const backfillStart = context.now.getTime() - backfillDays * 24 * 60 * 60 * 1000;
 
     try {
@@ -168,16 +172,26 @@ export function createMatrixPlugin(options: MatrixPluginOptions = {}): SourcePlu
       const state: State = {
         since: sync.next_batch,
         rooms: { ...previous?.rooms },
+        groups: { ...previous?.groups },
         names: { ...previous?.names },
         read: [],
         edits: { ...previous?.edits },
       };
       const left = new Set(Object.keys(sync.rooms?.leave ?? {}));
       state.rooms = Object.fromEntries(Object.entries(state.rooms).filter(([roomId]) => !left.has(roomId)));
+      state.groups = Object.fromEntries(Object.entries(state.groups).filter(([roomId]) => !left.has(roomId)));
       // A chat joined now can be allow-listed at once, though its messages come with the next run.
       for (const [roomId, name] of await acceptInvites(sync, { homeserver, userId, token, messenger, serverName: instance.homeserver.serverName })) {
         state.rooms[roomId] = name;
       }
+
+      for (const [roomId, room] of Object.entries(sync.rooms?.join ?? {})) {
+        for (const event of room.state?.events ?? []) learn(state, roomId, event);
+        state.rooms[roomId] ??= roomId;
+      }
+      await classify(state, homeserver, token);
+      // Only group chats are read: a direct chat is never one to read, even when allow-listed before.
+      const allowListed = new Set(chatsOf(context.config.plain.chats).filter((roomId) => state.groups[roomId] === true));
 
       const withdrawn = new Set<string>();
       const events = new Map<string, { roomId: string; event: MatrixEvent }>();
@@ -194,8 +208,6 @@ export function createMatrixPlugin(options: MatrixPluginOptions = {}): SourcePlu
       };
 
       for (const [roomId, room] of Object.entries(sync.rooms?.join ?? {})) {
-        for (const event of room.state?.events ?? []) learn(state, roomId, event);
-        state.rooms[roomId] ??= roomId;
         take(roomId, room.timeline?.events ?? []);
         const isNew = previous !== null && !previous.read.includes(roomId);
         // A timeline cut short leaves out messages since the last run, which are read back.
@@ -500,8 +512,29 @@ function isOfBridge(userId: string, messenger: Messenger, serverName: string): b
   return localpart === messenger.botLocalpart || localpart.startsWith(messenger.ghostPrefix);
 }
 
-/** Remembers room names and the display names of senders from state events. */
+/**
+ * Whether a room is a group chat, from the bridge's `m.bridge` state event: a direct chat is
+ * marked as one, and a room without it, such as the one with the bridge bot, is no chat at all.
+ */
+function isGroup(events: MatrixEvent[]): boolean {
+  return events.some((event) => event.type === "m.bridge" && !nonGroupRoomTypes.has(String(event.content["com.beeper.room_type"])));
+}
+
+/** Finds out whether the joined rooms not known yet are group chats; a room that cannot be read now is tried again on the next run. */
+async function classify(state: State, homeserver: HomeserverClient, token: string): Promise<void> {
+  for (const roomId of Object.keys(state.rooms)) {
+    if (roomId in state.groups) continue;
+    try {
+      state.groups[roomId] = isGroup(await homeserver.state(token, roomId));
+    } catch {
+      continue;
+    }
+  }
+}
+
+/** Remembers room names, whether rooms are group chats, and the display names of senders from state events. */
 function learn(state: State, roomId: string, event: MatrixEvent): void {
+  if (event.type === "m.bridge") state.groups[roomId] = isGroup([event]);
   if (event.type === "m.room.name" && typeof event.content.name === "string" && event.content.name.trim() !== "") {
     state.rooms[roomId] = event.content.name.trim();
   }
@@ -595,10 +628,11 @@ function editedBy(event: MatrixEvent): string | null {
   return typeof relation.event_id === "string" ? relation.event_id : null;
 }
 
-/** The joined rooms a Source can allow-list, by name. */
+/** The joined group chats a Source can allow-list, by name. */
 function chatChoices(context: RunContext): Choice[] {
-  const rooms = parseState(context.state)?.rooms ?? {};
-  return Object.entries(rooms)
+  const state = parseState(context.state);
+  return Object.entries(state?.rooms ?? {})
+    .filter(([roomId]) => state?.groups[roomId] === true)
     .map(([value, label]) => ({ value, label }))
     .sort((a, b) => a.label.localeCompare(b.label));
 }
@@ -615,6 +649,7 @@ function parseState(state: string | null): State | null {
     return {
       since: parsed.since,
       rooms: isObject(parsed.rooms) ? parsed.rooms : {},
+      groups: isObject(parsed.groups) ? parsed.groups : {},
       names: isObject(parsed.names) ? parsed.names : {},
       read: Array.isArray(parsed.read) ? parsed.read.filter((room): room is string => typeof room === "string") : [],
       edits: isObject(parsed.edits) ? parsed.edits : {},

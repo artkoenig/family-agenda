@@ -110,6 +110,11 @@ export function homeserverClient(options: HomeserverOptions) {
       return call("GET", `/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/messages?${query.toString()}`, { token });
     },
 
+    /** The current state events of a room. */
+    state(token: string, roomId: string): Promise<MatrixEvent[]> {
+      return call("GET", `/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/state`, { token });
+    },
+
     async join(token: string, roomId: string): Promise<void> {
       await call("POST", `/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/join`, { token, body: {} });
     },
