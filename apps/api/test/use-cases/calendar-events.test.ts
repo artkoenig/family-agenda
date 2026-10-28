@@ -175,7 +175,7 @@ describe("calendar Events on the timeline", () => {
     await arrive(rename);
 
     const page = await instance.app.views.open(view, { access: openViewAccess });
-    expect(page?.days[1]?.items[0]?.links).toEqual(["https://calendar.example.org/event/piano"]);
+    expect(page?.days[1]?.items[0]?.links).toEqual([{ url: "https://calendar.example.org/event/piano", source: "calendar" }]);
   });
 
   it("rejects a Revision whose fields an Event cannot have, and keeps the rest", async () => {

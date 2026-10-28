@@ -59,13 +59,13 @@ describe("Origins a Source withdraws, such as deleted chat messages", () => {
     await run();
     expect(await titles()).toEqual(["Wandertag 5b"]);
     const page = await instance.app.views.open(view, { access: openViewAccess });
-    const [messageId] = page!.days.flatMap((day) => day.items)[0]!.messages;
+    const [extracted] = page!.days.flatMap((day) => day.items)[0]!.messages;
 
     testPluginControls.withdraw("chat", ["$m1"]);
     await run();
 
     expect(await titles()).toEqual([]);
-    expect(await instance.app.messages.open(messageId!)).toBeNull();
+    expect(await instance.app.messages.open(extracted!.id)).toBeNull();
     expect(blobs.size).toBe(0);
     expect(await instance.query("SELECT accepted, rejection FROM revisions")).toEqual([
       { accepted: false, rejection: "origin-withdrawn" },

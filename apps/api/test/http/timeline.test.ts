@@ -19,7 +19,7 @@ describe("Events in a View over HTTP", () => {
   let path: string;
   beforeEach(async () => {
     // The clock starts on Monday 2026-09-14 at 09:00 in Berlin.
-    instance = await bootHttpForTest({}, { sourcePlugins: [{ sourceTypeId: "timeline-cal" }] });
+    instance = await bootHttpForTest({}, { sourcePlugins: [{ sourceTypeId: "timeline-cal", displayName: { en: "School calendar", de: "Schulkalender" } }] });
     await instance.post("/setup", { email: "anna@example.org", password: "correct horse battery" });
     await instance.app.sourceTypes.enable("timeline-cal");
     await instance.app.sources.add({ sourceTypeId: "timeline-cal", plain: { url: "https://calendar.example.org" }, secrets: {} });
@@ -56,7 +56,7 @@ describe("Events in a View over HTTP", () => {
     expect(piano).toMatch(/<summary[^>]*>.*16:00.*Piano lesson.*<\/summary>/s);
     expect(piano).toContain("Tue 15 Sept, 16:00 – 17:00");
     expect(piano).toContain("Music school");
-    expect(piano).toContain('<a href="https://calendar.example.org/event/piano" rel="noreferrer" target="_blank">');
+    expect(piano).toMatch(/<dt>Source<\/dt><dd><a href="https:\/\/calendar.example.org\/event\/piano" rel="noreferrer" target="_blank">School calendar<\/a>/);
     expect(rowOf(page, "Class trip")).toContain("All day");
     expect(page.indexOf("Piano lesson")).toBeLessThan(page.indexOf("Class trip"));
   });
