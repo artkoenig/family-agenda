@@ -610,6 +610,15 @@ export function createHttpApp(application: Application, options: HttpOptions) {
   );
   enablement("/admin/source-types/:id/catalogue/:entry/disable", ({ id = "", entry = "" }) => catalogues.disable(id, entry));
 
+  // How often the Sources using a catalogue entry are polled, such as all WhatsApp accounts.
+  app.post("/admin/source-types/:id/catalogue/:entry/interval", async (c) => {
+    const id = c.req.param("id");
+    const minutes = field(await c.req.parseBody(), "pollIntervalMinutes").trim();
+    const result = await catalogues.setPollInterval(id, c.req.param("entry"), minutes === "" ? null : Number(minutes) * 60);
+    if (!result.ok) return sourceTypePage(c, id, { problem: problemIn(c, result.problem) });
+    return c.redirect(sourceTypeHref(id), 303);
+  });
+
   /** What the live setup steps of a Source show now, such as a QR code to scan. */
   const liveStepsOf = async (source: SourceSummary): Promise<LiveStep[]> => {
     const form = (await sources.forms()).find((candidate) => candidate.sourceTypeId === source.sourceTypeId);

@@ -219,6 +219,7 @@ export const de: Catalogue = {
     enable: (name) => `${name} aktivieren`,
     catalogueIntro: "Aktiviere die, die deine Familie nutzt, und füge dann bei jedem davon Quellen hinzu.",
     notInstalled: "Auf dieser Instanz nicht installiert",
+    entryInterval: (name) => `Alle ${name}-Konten alle … Minuten abrufen (optional)`,
     entryDisableHint: "Kann deaktiviert werden, sobald keine Quelle es nutzt.",
   },
 
@@ -238,6 +239,8 @@ export const de: Catalogue = {
       "Eine verborgene Quelle wird weiter gelesen, aber ihre Einträge bleiben aus der Zeitleiste, bis sie wieder gezeigt wird. Eine Quelle zu entfernen beendet das Lesen und entfernt alles, was sie gebracht hat.",
     addEyebrow: "Quelle hinzufügen",
     addType: (name) => `${name} hinzufügen`,
+    addAccount: "Konto hinzufügen",
+    addAccountOf: (name) => `Ein ${name}-Konto hinzufügen`,
     notRead: "Ihr Quellentyp ist nicht aktiviert oder nicht installiert, daher wird sie nicht gelesen.",
     shown: "In der Zeitleiste gezeigt",
     hidden: "In der Zeitleiste verborgen",

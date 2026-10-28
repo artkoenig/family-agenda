@@ -234,6 +234,7 @@ export const en = {
     catalogueIntro: "Enable the ones your Family uses, then add Sources at each of them.",
     notInstalled: "Not installed on this Instance",
     entryDisableHint: "It can be disabled once no Source uses it.",
+    entryInterval: (name: string) => `Check all ${name} accounts every … minutes (optional)`,
   },
 
   sources: {
@@ -252,6 +253,8 @@ export const en = {
       "A hidden Source is still read, but its Items stay off the timeline until it is shown again. Removing a Source stops reading it and removes everything it has brought in.",
     addEyebrow: "Add a Source",
     addType: (name: string) => `Add ${name}`,
+    addAccount: "Add account",
+    addAccountOf: (name: string) => `Add a ${name} account`,
     notRead: "Its Source Type is not enabled or not installed, so it is not read.",
     shown: "Shown on the timeline",
     hidden: "Hidden from the timeline",

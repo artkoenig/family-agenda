@@ -8,6 +8,7 @@ import type {
   SourceTypeRepository,
 } from "./ports";
 import { enabledSourceType } from "./enabled-source-type";
+import { isPollInterval } from "./poll-interval";
 import { disableIfUnused, enableIfAllowed, type DisableResult, type Enableable, type EnableResult } from "./enablement";
 
 export type CataloguesDeps = {
@@ -23,6 +24,8 @@ export type CatalogueEntrySummary = CatalogueEntrySpec & {
   enabled: boolean;
   /** The application version that brought it. */
   firstSeenIn: string;
+  /** How often the Sources using it are polled; null for their plugin's suggestion. */
+  pollIntervalSeconds: number | null;
 };
 
 /** The catalogue of an enabled Source Type, such as the Messengers of the Matrix plugin (ADR-0011). */
@@ -34,6 +37,7 @@ export type CatalogueSummary = {
 
 /** How enabling and disabling an entry is refused. */
 const problems = { unknown: "unknown-entry", unavailable: "not-installed", inUse: "entry-in-use" } as const;
+
 
 /**
  * The entries of a catalogue that a Source can use: enabled by an Admin, and installed. An entry
@@ -80,7 +84,9 @@ export function createCatalogueAccess(deps: CataloguesDeps) {
       entries: entries
         .flatMap((entry) => {
           const record = records.get(entry.id);
-          return record ? [{ ...entry, enabled: record.enabled, firstSeenIn: record.firstSeenIn }] : [];
+          return record
+            ? [{ ...entry, enabled: record.enabled, firstSeenIn: record.firstSeenIn, pollIntervalSeconds: record.pollIntervalSeconds }]
+            : [];
         })
         .sort((a, b) => textIn(a.displayName, "en").localeCompare(textIn(b.displayName, "en"))),
     };
@@ -128,6 +134,23 @@ export function createCatalogueAccess(deps: CataloguesDeps) {
       input: { riskAcknowledged?: boolean } = {},
     ): Promise<EnableResult<typeof problems>> {
       return enableIfAllowed(await enableable(sourceTypeId, entryId), input, problems);
+    },
+
+    /**
+     * Sets how often the Sources using an entry are polled, such as all WhatsApp accounts; null
+     * returns them to their plugin's suggestion.
+     */
+    async setPollInterval(
+      sourceTypeId: string,
+      entryId: string,
+      seconds: number | null,
+    ): Promise<{ ok: true } | { ok: false; problem: "unknown-entry" | "invalid-interval" }> {
+      const found = (await withCatalogues()).find((candidate) => candidate.id === sourceTypeId);
+      const summary = found ? await summaryOf(found.id, found.sourceType) : null;
+      if (!found || !summary?.entries.some((entry) => entry.id === entryId)) return { ok: false, problem: "unknown-entry" };
+      if (!isPollInterval(seconds)) return { ok: false, problem: "invalid-interval" };
+      await catalogues.setPollInterval(found.id, entryId, seconds);
+      return { ok: true };
     },
 
     /** Only an entry no Source uses can be disabled; an Admin removes those Sources first. */

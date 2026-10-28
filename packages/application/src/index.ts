@@ -9,6 +9,7 @@ export * from "./family-members";
 export * from "./languages";
 export * from "./llm-endpoint";
 export * from "./messages";
+export * from "./poll-interval";
 export * from "./polling";
 export * from "./ports";
 export * from "./recovery-kit";

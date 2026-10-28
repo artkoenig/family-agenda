@@ -100,6 +100,29 @@ describe("a Source Type's catalogue and the Sources that use it", () => {
     expect((await form())?.fields.map((field) => field.key)).toEqual(["network", "chats"]);
   });
 
+  it("polls the Sources using an entry at the entry's interval, set for all of them", async () => {
+    await addWhatsApp();
+    await addWhatsApp();
+    const runs = () => testPluginControls.runs("bridged").length;
+    await instance.app.polling.pollDue();
+    const start = runs();
+
+    expect(await instance.app.catalogues.setPollInterval("bridged", "whatsapp", 60 * 60)).toEqual({ ok: true });
+    instance.clock.advance(30 * 60 * 1000);
+    await instance.app.polling.pollDue();
+    expect(runs() - start).toBe(0);
+
+    expect((await instance.app.catalogues.list())[0]?.entries.find((entry) => entry.id === "whatsapp")?.pollIntervalSeconds).toBe(60 * 60);
+    expect(await instance.app.catalogues.setPollInterval("bridged", "whatsapp", null)).toEqual({ ok: true });
+    await instance.app.polling.pollDue();
+    expect(runs() - start).toBe(2);
+  });
+
+  it("refuses a polling interval out of range, or for an entry not in the catalogue", async () => {
+    expect(await instance.app.catalogues.setPollInterval("bridged", "whatsapp", 30)).toEqual({ ok: false, problem: "invalid-interval" });
+    expect(await instance.app.catalogues.setPollInterval("bridged", "telegram", 60 * 60)).toEqual({ ok: false, problem: "unknown-entry" });
+  });
+
   it("refuses to disable an entry while a Source uses it", async () => {
     const { id } = await addWhatsApp();
 
