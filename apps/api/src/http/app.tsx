@@ -48,7 +48,8 @@ import {
   recoveryKitText,
   SignInPage,
   SourcesPage,
-  SourceTypesPage,
+  SourceTypePage,
+  sourceTypeHref,
   ViewsPage,
   type LiveStep,
   type RuleDialog,
@@ -330,7 +331,6 @@ export function createHttpApp(application: Application, options: HttpOptions) {
       sources: allSources.length,
       failingSources: allSources.filter((source) => source.health.status === "failing").length,
       rules: (await attributionRules.list()).length,
-      enabledSourceTypes: (await sources.forms()).length,
       llm: endpoint ? { model: endpoint.model, local: endpoint.local } : null,
       admins: (await admins.listAdmins()).length,
       kitSaved: await recoveryKit.isConfirmed(),
@@ -539,21 +539,55 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     return c.redirect("/admin/views", 303);
   });
 
-  const sourceTypesPage = async (c: Context<Env>, problem?: string) => {
+  // Each Source Type's card, leading to its page with its Sources.
+  const sourcesPage = async (c: Context<Env>) => {
+    // Opening the Sources ends the new-Source-Types banner, so this page no longer shows it.
     const list = await sourceTypes.open();
-    // Opening the list ends the banner, so this page no longer shows it.
-    const page = (
-      <SourceTypesPage
-        admin={{ ...c.get("admin"), newSourceTypes: false }}
-        sourceTypes={list}
-        catalogues={await catalogues.list()}
-        {...(problem ? { problem } : {})}
-      />
-    );
-    return render(c, page, problem ? 400 : 200);
+    const page = <SourcesPage admin={{ ...c.get("admin"), newSourceTypes: false }} sourceTypes={list} sources={await sources.list()} />;
+    return render(c, page);
   };
 
-  app.get("/admin/source-types", (c) => sourceTypesPage(c));
+  app.get("/admin/sources", (c) => sourcesPage(c));
+
+  // The Source Types had a page of their own before they moved onto the Sources page.
+  app.get("/admin/source-types", (c) => c.redirect("/admin/sources", 301));
+
+  /**
+   * A Source Type's page, with a dialog over it while one of its Sources is added, fixed or set
+   * up; the Sources page for a Source Type that is neither installed nor has Sources.
+   */
+  const sourceTypePage = async (
+    c: Context<Env>,
+    id: string,
+    shown: { problem?: string; adding?: SourceAdding; fixing?: SourceSummary; settingUp?: SourceSummary } = {},
+  ) => {
+    const sourceType = (await sourceTypes.list()).find((type) => type.id === id) ?? null;
+    const ofType = (await sources.list()).filter((source) => source.sourceTypeId === id);
+    const displayName = sourceType?.displayName ?? ofType[0]?.displayName;
+    if (!displayName) return c.redirect("/admin/sources");
+    const setUp = shown.fixing ?? shown.settingUp;
+    const page = (
+      <SourceTypePage
+        admin={c.get("admin")}
+        sourceTypeId={id}
+        sourceType={sourceType}
+        displayName={displayName}
+        sources={ofType}
+        form={(await sources.forms()).find((form) => form.sourceTypeId === id)}
+        catalogue={(await catalogues.list()).find((catalogue) => catalogue.sourceTypeId === id)}
+        timeZone={timeZone}
+        {...(shown.problem ? { problem: shown.problem } : {})}
+        {...(shown.adding ? { adding: shown.adding } : {})}
+        {...(shown.fixing ? { fixing: shown.fixing } : {})}
+        {...(shown.settingUp ? { settingUp: shown.settingUp } : {})}
+        {...(setUp ? { liveSteps: await liveStepsOf(setUp) } : {})}
+      />
+    );
+    const refused = shown.problem || shown.adding?.problem;
+    return render(c, page, refused ? 400 : 200);
+  };
+
+  app.get("/admin/source-types/:id", (c) => sourceTypePage(c, c.req.param("id")));
 
   /** Enabling or disabling a Source Type or a catalogue entry: the same form, refused the same way. */
   const enablement = (
@@ -562,9 +596,10 @@ export function createHttpApp(application: Application, options: HttpOptions) {
   ) => {
     app.post(path, async (c) => {
       const form = await c.req.parseBody();
+      const id = c.req.param("id") ?? "";
       const result = await act(c.req.param(), field(form, "riskAcknowledged") === "yes");
-      if (!result.ok) return sourceTypesPage(c, problemIn(c, result.problem));
-      return c.redirect("/admin/source-types", 303);
+      if (!result.ok) return sourceTypePage(c, id, { problem: problemIn(c, result.problem) });
+      return c.redirect(sourceTypeHref(id), 303);
     });
   };
 
@@ -596,29 +631,6 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     return { sourceId, stepId, progress, qrSvg };
   };
 
-  const sourcesPage = async (
-    c: Context<Env>,
-    shown: { problem?: string; adding?: SourceAdding; fixing?: SourceSummary; settingUp?: SourceSummary } = {},
-  ) => {
-    const forms = await sources.forms();
-    const setUp = shown.fixing ?? shown.settingUp;
-    const page = (
-      <SourcesPage
-        admin={c.get("admin")}
-        sources={await sources.list()}
-        forms={forms}
-        timeZone={timeZone}
-        {...(shown.problem ? { problem: shown.problem } : {})}
-        {...(shown.adding ? { adding: shown.adding } : {})}
-        {...(shown.fixing ? { fixing: shown.fixing } : {})}
-        {...(shown.settingUp ? { settingUp: shown.settingUp } : {})}
-        {...(setUp ? { liveSteps: await liveStepsOf(setUp) } : {})}
-      />
-    );
-    const refused = shown.problem || (shown.adding?.step === "form" && shown.adding.problem);
-    return render(c, page, refused ? 400 : 200);
-  };
-
   /** The message for a Source that cannot be saved, naming the fields by their labels. */
   const sourceProblem = async (
     c: Context<Env>,
@@ -631,19 +643,16 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     return t.problemsWith.invalidConfig(list(result.fields.map((key) => labels.get(key) ?? key)));
   };
 
-  app.get("/admin/sources", (c) => sourcesPage(c));
+  /** A Source by its id, for the page of its Source Type. */
+  const sourceOf = async (id: string) => (await sources.list()).find((source) => source.id === id);
 
-  // Adding a Source: choosing among the enabled Source Types, then that one's form.
+  // Adding a Source: its Source Type's form, in a dialog over that Source Type's page.
   app.get("/admin/sources/new", async (c) => {
-    const forms = await sources.forms();
-    const type = c.req.query("type") ?? (forms.length === 1 ? forms[0]?.sourceTypeId : undefined);
-    if (type === undefined) {
-      if (forms.length === 0) return c.redirect("/admin/sources");
-      return sourcesPage(c, { adding: { step: "choose" } });
-    }
-    const form = forms.find((candidate) => candidate.sourceTypeId === type);
-    if (!form) return c.redirect("/admin/sources/new");
-    return sourcesPage(c, { adding: { step: "form", form } });
+    const type = c.req.query("type");
+    if (type === undefined) return c.redirect("/admin/sources");
+    const form = (await sources.forms()).find((candidate) => candidate.sourceTypeId === type);
+    if (!form) return c.redirect(sourceTypeHref(type));
+    return sourceTypePage(c, type, { adding: { form } });
   });
 
   app.post("/admin/sources", async (c) => {
@@ -654,19 +663,19 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     if (!result.ok) {
       const problem = await sourceProblem(c, result);
       const sourceForm = (await sources.forms()).find((candidate) => candidate.sourceTypeId === sourceTypeId);
-      if (!sourceForm) return sourcesPage(c, { problem });
+      if (!sourceForm) return sourceTypePage(c, sourceTypeId, { problem });
       const plain = Object.fromEntries(Object.entries(input.plain).map(([key, value]) => [key, String(value)]));
       const entered = { plain, interval: field(form, "pollIntervalMinutes").trim() };
-      return sourcesPage(c, { adding: { step: "form", form: sourceForm, entered, problem } });
+      return sourceTypePage(c, sourceTypeId, { adding: { form: sourceForm, entered, problem } });
     }
-    return c.redirect(result.setUp ? `/admin/sources/${result.id}/setup` : "/admin/sources", 303);
+    return c.redirect(result.setUp ? `/admin/sources/${result.id}/setup` : sourceTypeHref(sourceTypeId), 303);
   });
 
   // A Source with live setup steps, such as a QR code login, goes through them once added.
   app.get("/admin/sources/:id/setup", async (c) => {
-    const settingUp = (await sources.list()).find((source) => source.id === c.req.param("id"));
+    const settingUp = await sourceOf(c.req.param("id"));
     if (!settingUp) return c.redirect("/admin/sources");
-    return sourcesPage(c, { settingUp });
+    return sourceTypePage(c, settingUp.sourceTypeId, { settingUp });
   });
 
   // What a live setup step shows now; asked for again every few seconds while it waits.
@@ -678,27 +687,33 @@ export function createHttpApp(application: Application, options: HttpOptions) {
 
   // A Fix button opens the Source's form in the dialog adding a Source uses.
   app.get("/admin/sources/:id/fix", async (c) => {
-    const fixing = (await sources.list()).find((source) => source.id === c.req.param("id"));
+    const fixing = await sourceOf(c.req.param("id"));
     if (!fixing) return c.redirect("/admin/sources");
-    return sourcesPage(c, { fixing });
+    return sourceTypePage(c, fixing.sourceTypeId, { fixing });
   });
 
   app.post("/admin/sources/:id", async (c) => {
+    const source = await sourceOf(c.req.param("id"));
+    if (!source) return c.redirect("/admin/sources", 303);
     const form = await c.req.parseBody({ all: true });
-    const result = await sources.edit(c.req.param("id") as SourceId, sourceInputOf(form));
-    if (!result.ok) return sourcesPage(c, { problem: await sourceProblem(c, result) });
-    return c.redirect("/admin/sources", 303);
+    const result = await sources.edit(source.id, sourceInputOf(form));
+    if (!result.ok) return sourceTypePage(c, source.sourceTypeId, { problem: await sourceProblem(c, result) });
+    return c.redirect(sourceTypeHref(source.sourceTypeId), 303);
   });
 
   app.post("/admin/sources/:id/shown", async (c) => {
+    const source = await sourceOf(c.req.param("id"));
+    if (!source) return c.redirect("/admin/sources", 303);
     const form = await c.req.parseBody();
-    await sources.setShown(c.req.param("id") as SourceId, field(form, "shown") === "yes");
-    return c.redirect("/admin/sources", 303);
+    await sources.setShown(source.id, field(form, "shown") === "yes");
+    return c.redirect(sourceTypeHref(source.sourceTypeId), 303);
   });
 
   app.post("/admin/sources/:id/remove", async (c) => {
-    await sources.remove(c.req.param("id") as SourceId);
-    return c.redirect("/admin/sources", 303);
+    const source = await sourceOf(c.req.param("id"));
+    if (!source) return c.redirect("/admin/sources", 303);
+    await sources.remove(source.id);
+    return c.redirect(sourceTypeHref(source.sourceTypeId), 303);
   });
 
   const rulesPage = async (c: Context<Env>, dialog?: RuleDialog) => {

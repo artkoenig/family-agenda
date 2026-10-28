@@ -37,7 +37,7 @@ describe("Sources of a Source Type with a catalogue and a live setup step", () =
   });
 
   it("lists the catalogue under its Source Type and enables an entry once its risk is acknowledged", async () => {
-    const page = await (await instance.get("/admin/source-types", { cookie })).text();
+    const page = await (await instance.get("/admin/source-types/bridged", { cookie })).text();
     expect(page).toContain("Reads WhatsApp groups.");
     expect(page).toContain("Against WhatsApp&#39;s terms.");
     expect(page).toContain("Not installed on this Instance");
@@ -49,17 +49,18 @@ describe("Sources of a Source Type with a catalogue and a live setup step", () =
 
     const enabled = await instance.post("/admin/source-types/bridged/catalogue/whatsapp/enable", { riskAcknowledged: "yes" }, { cookie });
     expect(enabled.status).toBe(303);
-    expect(await (await instance.get("/admin/source-types", { cookie })).text()).toContain("Disable WhatsApp");
+    expect(await (await instance.get("/admin/source-types/bridged", { cookie })).text()).toContain("Disable WhatsApp");
   });
 
   it("asks to enable a Messenger before a Source can be added", async () => {
-    const form = await (await instance.get("/admin/sources/new", { cookie })).text();
-    expect(form).toContain("None is enabled.");
+    const form = await (await instance.get("/admin/sources/new?type=bridged", { cookie })).text();
+    expect(form).toContain("None is enabled yet.");
+    expect(form).toContain('<a href="/admin/source-types/bridged">Enable one</a>');
   });
 
   it("adds a Source with a chosen Messenger, then shows the QR code to scan until it is done", async () => {
     await instance.app.catalogues.enable("bridged", "whatsapp", { riskAcknowledged: true });
-    const form = await (await instance.get("/admin/sources/new", { cookie })).text();
+    const form = await (await instance.get("/admin/sources/new?type=bridged", { cookie })).text();
     expect(form).toMatch(/<select[^>]*name="plain.messenger"/);
     expect(form).toContain('<option value="whatsapp"');
     expect(form).not.toContain("plain.account");
@@ -99,7 +100,7 @@ describe("Sources of a Source Type with a catalogue and a live setup step", () =
       { value: "!class:local", label: "Klasse 5b" },
       { value: "!club:local", label: "Fußballverein" },
     ]);
-    const list = await (await instance.get("/admin/sources", { cookie })).text();
+    const list = await (await instance.get("/admin/source-types/bridged", { cookie })).text();
     expect(list).toMatch(/<input type="checkbox" name="choice.chats" value="!class:local"\/?> Klasse 5b/);
 
     const body = new FormData();

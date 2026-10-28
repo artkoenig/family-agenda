@@ -134,14 +134,14 @@ describe("the pages in the Family Language", () => {
     it("are shown in the Family Language, in English where a language is missing", async () => {
       await setUp("de", [multilingual]);
 
-      const types = await get("/admin/source-types");
+      const types = await get("/admin/source-types/calendar");
       expect(types).toContain("Kalender");
       expect(types).toContain("Liest einen Kalender.");
       expect(types).toContain("Liest alles.");
       expect(types).toContain("Kalender aktivieren");
 
       await instance.app.sourceTypes.enable("calendar", { riskAcknowledged: true });
-      const form = await get("/admin/sources/new");
+      const form = await get("/admin/sources/new?type=calendar");
       expect(form).toContain("Kalender hinzufügen");
       expect(form).toMatch(/<label for="new-calendar-url">Adresse<\/label>/);
       expect(form).toContain("<small>Where it lives.</small>");
@@ -153,7 +153,7 @@ describe("the pages in the Family Language", () => {
     it("are shown in English when the Family Language is English", async () => {
       await setUp("en", [multilingual]);
 
-      const types = await get("/admin/source-types");
+      const types = await get("/admin/source-types/calendar");
       expect(types).toContain("Reads a calendar.");
       expect(types).toContain("Enable Calendar");
     });
@@ -161,13 +161,13 @@ describe("the pages in the Family Language", () => {
     it("render unchanged under German when they are plain", async () => {
       await setUp("de", [plain]);
 
-      const types = await get("/admin/source-types");
+      const types = await get("/admin/source-types/mailbox");
       expect(types).toContain("Reads a mailbox.");
       expect(types).toContain("Reads all mail.");
       expect(types).toContain("Mailbox aktivieren");
 
       await instance.app.sourceTypes.enable("mailbox", { riskAcknowledged: true });
-      const form = await get("/admin/sources/new");
+      const form = await get("/admin/sources/new?type=mailbox");
       expect(form).toMatch(/<label for="new-mailbox-host">Mail server<\/label>/);
       expect(form).toContain("<small>Such as imap.example.org.</small>");
     });

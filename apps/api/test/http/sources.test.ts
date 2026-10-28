@@ -16,16 +16,45 @@ describe("Sources in the Admin area", () => {
     await instance.close();
   });
 
-  const page = async () => (await instance.get("/admin/sources", { cookie })).text();
+  const get = async (path: string) => (await instance.get(path, { cookie })).text();
+  const page = () => get("/admin/source-types/calendar");
 
-  it("asks to enable a Source Type before a Source can be added", async () => {
-    expect(await page()).toContain('<a href="/admin/source-types">');
+  it("shows each Source Type as a card leading to its page, where it is enabled", async () => {
+    const overview = await get("/admin/sources");
+    expect(overview).toContain('href="/admin/source-types/calendar"');
+    expect(overview).toContain("Not enabled");
+    expect(await page()).toContain('action="/admin/source-types/calendar/enable"');
+    expect(await page()).not.toContain("/admin/sources/new");
+
+    const enabled = await instance.post("/admin/source-types/calendar/enable", {}, { cookie });
+
+    expect(enabled.headers.get("location")).toBe("/admin/source-types/calendar");
+    expect(await page()).toContain('href="/admin/sources/new?type=calendar"');
+    expect(await page()).toContain("No Sources yet");
+    expect(await page()).toContain('action="/admin/source-types/calendar/disable"');
+    expect(await get("/admin/sources")).not.toContain("Not enabled");
+  });
+
+  it("sums up a Source Type's Sources on its card", async () => {
+    await instance.app.sourceTypes.enable("calendar");
+    await instance.app.sources.add({ sourceTypeId: "calendar", plain: { url: "https://calendar.example.org" }, secrets: {} });
+    await instance.app.sources.add({ sourceTypeId: "calendar", plain: { url: "https://school.example.org" }, secrets: {} });
+
+    const overview = await get("/admin/sources");
+
+    expect(overview).toContain("2 Sources");
+    expect(overview).toContain('<span class="fam-status fam-status--ok">All OK</span>');
+  });
+
+  it("sends the old Source Types page and unknown Source Types to the Sources", async () => {
+    expect((await instance.get("/admin/source-types", { cookie })).headers.get("location")).toBe("/admin/sources");
+    expect((await instance.get("/admin/source-types/unknown", { cookie })).headers.get("location")).toBe("/admin/sources");
   });
 
   it("adds a Source from the form its plugin declares, masking the secret", async () => {
     await instance.app.sourceTypes.enable("calendar");
-    // With one Source Type enabled, adding goes straight to its form, in a dialog over the list.
-    const form = await (await instance.get("/admin/sources/new", { cookie })).text();
+    // Adding opens its form in a dialog over the Source Type's page.
+    const form = await get("/admin/sources/new?type=calendar");
     expect(form).toMatch(/<dialog open="" class="fam-dialog"/);
     expect(form).toContain("Add Calendar");
     expect(form).toMatch(/<input[^>]*name="secret.password"[^>]*type="password"/);
@@ -38,6 +67,7 @@ describe("Sources in the Admin area", () => {
     );
 
     expect(added.status).toBe(303);
+    expect(added.headers.get("location")).toBe("/admin/source-types/calendar");
     const [source] = await instance.app.sources.list();
     expect(source).toMatchObject({ plain: { url: "https://calendar.example.org" }, storedSecrets: ["password"], pollIntervalSeconds: null });
     const list = await page();
