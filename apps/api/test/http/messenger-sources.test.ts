@@ -69,6 +69,23 @@ describe("Sources of a Source Type with a catalogue and a live setup step", () =
     expect(added.headers.get("location")).toBe(`/admin/sources/${source!.id}/setup`);
   });
 
+  it("lists a Messenger's accounts in its sheet, and offers to disable it only once it has none", async () => {
+    await instance.app.catalogues.enable("bridged", "whatsapp", { riskAcknowledged: true });
+    const empty = await (await instance.get("/admin/source-types/bridged", { cookie })).text();
+    expect(empty).toContain("No accounts yet.");
+    expect(empty).toMatch(/<button type="submit" class="fam-button fam-button--secondary" aria-label="Disable WhatsApp">/);
+
+    const added = await instance.app.sources.add({ sourceTypeId: "bridged", plain: { messenger: "whatsapp" }, secrets: {} });
+    if (!added.ok) throw new Error("adding failed");
+
+    const page = await (await instance.get("/admin/source-types/bridged", { cookie })).text();
+    expect(page).not.toContain("No accounts yet.");
+    expect(page).toContain(`href="/admin/sources/${added.id}"`);
+    expect(page, "its accounts are not listed again as the Source Type's Sources").not.toContain('<h2 class="fam-group__title">Sources</h2>');
+    expect(page).toMatch(/<button type="submit" class="fam-button fam-button--secondary" disabled="" aria-label="Disable WhatsApp">/);
+    expect(page).toContain("It can be disabled once no Source uses it.");
+  });
+
   it("opens the form of a Messenger's account with that Messenger given, not shown", async () => {
     await instance.app.catalogues.enable("bridged", "whatsapp", { riskAcknowledged: true });
     const form = await (await instance.get("/admin/sources/new?type=bridged&entry=whatsapp", { cookie })).text();
@@ -83,7 +100,8 @@ describe("Sources of a Source Type with a catalogue and a live setup step", () =
     await instance.app.catalogues.enable("bridged", "whatsapp", { riskAcknowledged: true });
     const page = await (await instance.get("/admin/source-types/bridged", { cookie })).text();
     expect(page).toContain('action="/admin/source-types/bridged/catalogue/whatsapp/interval"');
-    expect(page).toContain("Check all WhatsApp accounts every … minutes (optional)");
+    expect(page).toMatch(/<label for="interval-whatsapp" class="fam-row__label">Polling interval \(optional\)<\/label>/);
+    expect(page).toContain("For all WhatsApp accounts. Empty for the suggested 10.");
 
     const saved = await instance.post("/admin/source-types/bridged/catalogue/whatsapp/interval", { pollIntervalMinutes: "15" }, { cookie });
     expect(saved.status).toBe(303);
@@ -142,8 +160,8 @@ describe("Sources of a Source Type with a catalogue and a live setup step", () =
       { value: "!class:local", label: "Klasse 5b" },
       { value: "!club:local", label: "Fußballverein" },
     ]);
-    const list = await (await instance.get("/admin/source-types/bridged", { cookie })).text();
-    expect(list).toMatch(/<input type="checkbox" name="choice.chats" value="!class:local"\/?> Klasse 5b/);
+    const own = await (await instance.get(`/admin/sources/${added.id}`, { cookie })).text();
+    expect(own).toMatch(/<input type="checkbox" name="choice.chats" value="!class:local"\/?> Klasse 5b/);
 
     const body = new FormData();
     body.append("choice.chats", "");
