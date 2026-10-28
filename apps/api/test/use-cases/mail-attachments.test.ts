@@ -99,7 +99,7 @@ describe("Events extracted from PDF attachments", () => {
     extractor.script("Wandertag der Klasse 5b", [hikingDay]);
     await arrive(mail("m1", covering, [pdf("elternbrief.pdf", fakePdf({ text: letter }))]));
     const page = await instance.app.views.open(view, { access: openViewAccess });
-    const message = page?.days.flatMap((day) => day.items)[0]?.messages[0];
+    const message = page?.days.flatMap((day) => day.items)[0]?.messages[0]?.id;
     expect(message).toBeDefined();
 
     const [source] = await instance.app.sources.list();

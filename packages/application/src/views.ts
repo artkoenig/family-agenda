@@ -81,8 +81,8 @@ export type TimelineEvent = {
   earlier: boolean;
   /** Where the original can be looked at, each with the display name of its Source Type. */
   links: { url: string; source: MultilingualText }[];
-  /** The raw messages it was extracted from, which Admins can open. */
-  messages: RawMessageId[];
+  /** The raw messages it was extracted from, which Admins can open, each with the display name of its Source Type. */
+  messages: { id: RawMessageId; source: MultilingualText }[];
   /** Whom it concerns, by the Attribution Rules, the Family Members in the Family's order. */
   concerns: Attribution;
 };
@@ -165,7 +165,8 @@ export function createViewAccess(deps: ViewsDeps) {
       if (showing !== "all" && !isShownTo(attribution, showing)) return [];
       const concerns = attribution === "whole-family" ? attribution : order.filter((id) => attribution.includes(id));
       const links = item.links.map(({ url, sourceTypeId }) => ({ url, source: sourceTypeName(sourceTypeId, installed) }));
-      return [{ id: item.id, event, links, messages: item.messages, concerns }];
+      const messages = item.messages.map(({ id, sourceTypeId }) => ({ id, source: sourceTypeName(sourceTypeId, installed) }));
+      return [{ id: item.id, event, links, messages, concerns }];
     });
   }
 

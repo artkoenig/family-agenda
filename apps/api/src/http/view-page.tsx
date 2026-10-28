@@ -290,11 +290,11 @@ function EventRow(props: { row: TimelineEvent; members: FamilyMemberSummary[] })
             </dd>
           </>
         ))}
-        {row.messages.map((id) => (
+        {row.messages.map((message) => (
           <>
-            <dt>{v.original}</dt>
+            <dt>{v.source}</dt>
             <dd>
-              <a href={`/admin/messages/${id}`}>{v.openMessage}</a>
+              {translation.text(message.source)} · <a href={`/admin/messages/${message.id}`}>{v.openMessage}</a>
               {v.adminsOnly}
             </dd>
           </>

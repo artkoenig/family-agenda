@@ -511,8 +511,8 @@ export type ProjectedItem = {
   folded: FoldedItem;
   /** Where its Origins can be looked at, each with the Source Type of the Origin's Source. */
   links: { url: string; sourceTypeId: SourceTypeId }[];
-  /** The raw messages it was extracted from, oldest first. */
-  messages: RawMessageId[];
+  /** The raw messages it was extracted from, oldest first, each with the Source Type of its Source. */
+  messages: { id: RawMessageId; sourceTypeId: SourceTypeId }[];
   /** The Origins whose accepted Revisions it adds up to, which Attribution Rules match on. */
   origins: OriginOf[];
 };

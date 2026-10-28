@@ -378,7 +378,6 @@ export const de: Catalogue = {
     when: "Wann",
     where: "Wo",
     status: "Status",
-    original: "Original",
     source: "Quelle",
     openMessage: "Nachricht öffnen",
     adminsOnly: " (nur für Admins)",
