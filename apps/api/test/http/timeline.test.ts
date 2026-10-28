@@ -56,7 +56,7 @@ describe("Events in a View over HTTP", () => {
     expect(piano).toMatch(/<summary[^>]*>.*16:00.*Piano lesson.*<\/summary>/s);
     expect(piano).toContain("Tue 15 Sept, 16:00 – 17:00");
     expect(piano).toContain("Music school");
-    expect(piano).toContain('<a href="https://calendar.example.org/event/piano" rel="noreferrer" target="_blank">');
+    expect(piano).toMatch(/<dt>Source<\/dt><dd><a href="https:\/\/calendar.example.org\/event\/piano" rel="noreferrer" target="_blank">calendar.example.org<\/a>/);
     expect(rowOf(page, "Class trip")).toContain("All day");
     expect(page.indexOf("Piano lesson")).toBeLessThan(page.indexOf("Class trip"));
   });

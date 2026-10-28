@@ -392,6 +392,7 @@ export const en = {
     where: "Where",
     status: "Status",
     original: "Original",
+    source: "Source",
     openOriginal: "Open the original",
     openMessage: "Open the message",
     adminsOnly: " (Admins only)",

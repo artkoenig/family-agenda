@@ -282,10 +282,10 @@ function EventRow(props: { row: TimelineEvent; members: FamilyMemberSummary[] })
         ) : null}
         {row.links.map((link) => (
           <>
-            <dt>{v.original}</dt>
+            <dt>{v.source}</dt>
             <dd>
               <a href={link} rel="noreferrer" target="_blank">
-                {v.openOriginal}
+                {hostOf(link) ?? v.openOriginal}
               </a>
             </dd>
           </>
@@ -302,6 +302,15 @@ function EventRow(props: { row: TimelineEvent; members: FamilyMemberSummary[] })
       </dl>
     </details>
   );
+}
+
+/** Where a link leads, as its host without a leading `www.`; null if it has none. */
+function hostOf(link: string): string | null {
+  try {
+    return new URL(link).hostname.replace(/^www\./, "") || null;
+  } catch {
+    return null;
+  }
 }
 
 /** How the Event shows on its day: from and until, or all day. */
