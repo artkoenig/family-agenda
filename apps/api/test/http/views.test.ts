@@ -42,9 +42,9 @@ describe("Views over HTTP", () => {
     new RegExp(`<a[^>]*class="fam-filter__item[^"]*"[^>]*>(?:(?!</a>).)*${label}</a>`, "s").exec(page)?.[0] ?? "";
 
   it("opens a View without a session, as an empty timeline from now to its horizon", async () => {
-    const view = await createView([mia]);
+    const view = await createView([]);
 
-    const response = await instance.get(`/views/${view}`);
+    const response = await instance.get(`/views/${view}?show=${mia}`);
 
     expect(response.status).toBe(200);
     const page = await response.text();
@@ -80,9 +80,9 @@ describe("Views over HTTP", () => {
   });
 
   it("combines Family Members in the quick filter, and answers htmx with just the timeline", async () => {
-    const view = await createView([mia]);
+    const view = await createView([]);
 
-    const page = await (await instance.get(`/views/${view}`)).text();
+    const page = await (await instance.get(`/views/${view}?show=${mia}`)).text();
     const addLeo = /href="([^"]+)"/.exec(filterLink(page, "Leo"))?.[1]?.replaceAll("&amp;", "&");
     expect(addLeo).toBeDefined();
 
@@ -91,12 +91,26 @@ describe("Views over HTTP", () => {
     expect(response.status).toBe(200);
     const fragment = await response.text();
     expect(fragment).not.toContain("<html");
-    expect(filterLink(fragment, "Mia")).toContain('aria-current="true"');
-    expect(filterLink(fragment, "Leo")).toContain('aria-current="true"');
+    expect(filterLink(fragment, "All")).toContain('aria-current="true"');
 
     const all = await (await instance.get(`/views/${view}?show=all`)).text();
     expect(filterLink(all, "All")).toContain('aria-current="true"');
     expect(filterLink(all, "Mia")).not.toContain("aria-current");
+  });
+
+  it("offers in the quick filter only the Family Members the View is for, and none for just one", async () => {
+    await addMember("Ben");
+    const kitchen = await createView([mia, leo]);
+    const forMia = await createView([mia]);
+
+    const kitchenPage = await (await instance.get(`/views/${kitchen}`)).text();
+    expect(filterLink(kitchenPage, "All")).toContain('aria-current="true"');
+    expect(filterLink(kitchenPage, "Mia")).not.toBe("");
+    expect(filterLink(kitchenPage, "Leo")).not.toBe("");
+    expect(filterLink(kitchenPage, "Ben")).toBe("");
+
+    const miaPage = await (await instance.get(`/views/${forMia}`)).text();
+    expect(miaPage).not.toContain("fam-filter");
   });
 
   it("serves a Family Member's photo without a session, and 404 without one", async () => {

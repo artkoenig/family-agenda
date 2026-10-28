@@ -8,7 +8,7 @@ export type ViewId = string & { readonly __brand: "ViewId" };
 export type View = {
   id: ViewId;
   familyId: FamilyId;
-  /** Whom the quick filter starts with; none means the whole Family. */
+  /** Whom the View is for, and its quick filter offers; none means the whole Family. */
   preselected: FamilyMemberId[];
   /** How many days the timeline shows, today included. */
   horizonDays: number;

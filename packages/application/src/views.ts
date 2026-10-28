@@ -92,8 +92,14 @@ export type ViewPage = {
   /** The Family Language, which dates are formatted in. */
   language: FamilyLanguage;
   now: LocalDateTime;
-  /** Everyone in the Family, for the quick filter. */
+  /** Everyone in the Family, for the avatars of whom an Event concerns. */
   members: FamilyMemberSummary[];
+  /**
+   * Whom the quick filter offers: those the View preselects, or everyone if it preselects no one.
+   * With only one, there is nothing to filter.
+   */
+  choices: FamilyMemberSummary[];
+  /** Whom the timeline shows, always some of `choices`, or "all" if the View preselects no one. */
   showing: Showing;
   /** How many days one step of scrolling loads: the View's horizon. */
   horizonDays: number;
@@ -273,7 +279,8 @@ export function createViewAccess(deps: ViewsDeps) {
 
     /**
      * The View as its timeline, or null if there is no such View or `access` refuses it.
-     * `show` is what the quick filter was set to; without it, it starts with the preselection.
+     * `show` is what the quick filter was set to, of those the View preselects; without it, or
+     * with none of them, it shows all of them, or everyone if the View preselects no one.
      * `days` are those scrolled to, into the past or the future; without them, it shows the
      * horizon from today. They must pass `isAcceptableTimelineRange`.
      */
@@ -287,9 +294,11 @@ export function createViewAccess(deps: ViewsDeps) {
       const view = await views.findById(id);
       if (!view || !(await input.access.mayOpen(view.id))) return null;
       const family = await members.list(view.familyId);
-      const show = input.show ?? view.preselected;
-      const chosen = show === "all" ? [] : family.map((member) => member.id).filter((memberId) => show.includes(memberId));
-      const showing: Showing = chosen.length > 0 ? chosen : "all";
+      const choices = view.preselected.length > 0 ? family.filter((member) => view.preselected.includes(member.id)) : family;
+      const show = input.show ?? "all";
+      const chosen = show === "all" ? [] : choices.map((member) => member.id).filter((memberId) => show.includes(memberId));
+      const showing: Showing =
+        chosen.length > 0 ? chosen : view.preselected.length > 0 ? choices.map((member) => member.id) : "all";
       const instant = clock.now();
       const now = localDateTime(instant, timeZone);
       const { first, last } = input.days ?? { first: now.date, last: addDays(now.date, view.horizonDays - 1) };
@@ -299,6 +308,7 @@ export function createViewAccess(deps: ViewsDeps) {
         language: (await families.languages(view.familyId)).language,
         now,
         members: family.map(summariseFamilyMember),
+        choices: choices.map(summariseFamilyMember),
         showing,
         horizonDays: view.horizonDays,
         days: await timelineOf(view.familyId, dates, showing, instant),
