@@ -208,6 +208,7 @@ export const de: Catalogue = {
   },
 
   sourceTypes: {
+    use: (name) => `${name} verwenden`,
     newIn: (version) => `Neu in ${version}`,
     version: (version) => `Version ${version}`,
     needsLlm: ". Seine Quellen brauchen den LLM-Endpunkt.",

@@ -222,6 +222,7 @@ export const en = {
   },
 
   sourceTypes: {
+    use: (name: string) => `Use ${name}`,
     newIn: (version: string) => `New in ${version}`,
     version: (version: string) => `Version ${version}`,
     needsLlm: ". Its Sources need the LLM endpoint.",

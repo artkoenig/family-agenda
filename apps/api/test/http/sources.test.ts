@@ -165,6 +165,14 @@ describe("Sources in the Admin area", () => {
     await instance.post(`/admin/sources/${added.id}/name`, { name: " " }, { cookie });
     expect(await instance.app.sources.list()).toMatchObject([{ name: null }]);
     expect(await page()).toMatch(/<span class="fam-row__label">https:\/\/calendar.example.org<\/span><span class="fam-row__hint">every 10 minutes<\/span>/);
+
+    // The Source's one form saves its name with its settings; a name it refuses leaves both as they were.
+    const refused = await instance.post(`/admin/sources/${added.id}`, { name: "x".repeat(41), "plain.url": "https://other.example.org" }, { cookie });
+    expect(refused.status).toBe(400);
+    expect(await instance.app.sources.list()).toMatchObject([{ name: null, plain: { url: "https://calendar.example.org" } }]);
+    const saved = await instance.post(`/admin/sources/${added.id}`, { name: "Club", "plain.url": "https://club.example.org" }, { cookie });
+    expect(saved.status).toBe(303);
+    expect(await instance.app.sources.list()).toMatchObject([{ name: "Club", plain: { url: "https://club.example.org" } }]);
   });
 
   it("shows why a Source cannot be saved", async () => {

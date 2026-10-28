@@ -50,8 +50,9 @@ describe("Source health in the Admin area and on Views", () => {
 
     const page = await sourcesPage();
     expect(page).toContain('<span class="fam-status fam-status--ok">OK</span>');
-    expect(page).toContain("Last read Mon 14 Sept, 09:10");
+    expect(page, "a row that went well leaves when it was read to the Source's page").not.toContain("Last read");
     expect(page).not.toMatch(failingBanner);
+    expect(await (await instance.get(`/admin/sources/${source}`, { cookie })).text()).toContain("Last read Mon 14 Sept, 09:10");
   });
 
   it("shows a Failing Source with its last error, and a banner in the whole Admin area", async () => {

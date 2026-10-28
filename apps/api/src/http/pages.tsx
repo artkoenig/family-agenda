@@ -944,17 +944,6 @@ export function SourceTypePage(props: {
         title={name}
         status={status}
         description={sourceType ? text(sourceType.description) : s.notInstalled}
-        action={
-          switchable ? (
-            <EnableSwitch
-              id="enable-source-type"
-              name={name}
-              action={href}
-              enabled={switchable.enabled}
-              lockedHint={props.sources.length > 0 ? types.lockedHint(name) : null}
-            />
-          ) : undefined
-        }
       />
       {sourceType ? (
         <p class="fam-entry__meta">
@@ -964,9 +953,22 @@ export function SourceTypePage(props: {
       ) : null}
       {sourceType && sourceType.notLoadable !== null ? <p class="fam-problem">{types.notLoadable(sourceType.notLoadable)}</p> : null}
       <Problem message={props.problem} />
-      {switchable && !switchable.enabled && switchable.riskNotice !== null ? (
+      {switchable ? (
         <section class="fam-sheet">
-          <RiskNotice form="enable-source-type" notice={switchable.riskNotice} />
+          <SettingRow
+            title={<span class="fam-row__label">{types.use(name)}</span>}
+            hints={[switchable.enabled && props.sources.length > 0 ? types.lockedHint(name) : null]}
+            control={
+              <EnableSwitch
+                id="enable-source-type"
+                name={name}
+                action={href}
+                enabled={switchable.enabled}
+                locked={switchable.enabled && props.sources.length > 0}
+              />
+            }
+          />
+          {!switchable.enabled && switchable.riskNotice !== null ? <RiskNotice form="enable-source-type" notice={switchable.riskNotice} /> : null}
         </section>
       ) : null}
       {catalogue && configKey !== undefined ? (
@@ -977,7 +979,11 @@ export function SourceTypePage(props: {
           <Group title={s.title} level={2} intro={s.sourcesIntro}>
             <SourceRows sources={listed} form={form} timeZone={props.timeZone} empty={s.noSources} />
             {sourceType?.enabled && form && !form.catalogue ? (
-              <div class="fam-group__actions">{addButton(`/admin/sources/new?type=${encodeURIComponent(props.sourceTypeId)}`, s.addType(name))}</div>
+              <div class="fam-group__actions">
+                <a class="fam-button fam-button--quiet fam-button--add" href={`/admin/sources/new?type=${encodeURIComponent(props.sourceTypeId)}`}>
+                  {s.addType(name)}
+                </a>
+              </div>
             ) : null}
           </Group>
         </section>
@@ -1011,7 +1017,10 @@ export function SourcePage(props: {
   const { name, derived } = sourceLabel(source, form, translation);
   // A Source using a catalogue entry is polled at the entry's interval, set with the entry.
   const suggestedSeconds = form && !form.catalogue ? form.suggestedIntervalSeconds : null;
-  const editable = form && (form.fields.length > 0 || suggestedSeconds !== null);
+  const editable = form !== undefined && (form.fields.length > 0 || suggestedSeconds !== null);
+  // The catalogue entry it uses, such as its Messenger, cannot change; it is named in the header.
+  const entryKey = form?.catalogue?.configKey;
+  const entry = entryKey !== undefined ? form?.catalogue?.entries.find((candidate) => candidate.id === source.plain[entryKey]) : undefined;
   const dialog =
     props.fixing && form ? <FixDialog source={source} form={form} closeHref={href} timeZone={props.timeZone} liveSteps={props.liveSteps ?? []} /> : undefined;
   return (
@@ -1026,6 +1035,7 @@ export function SourcePage(props: {
         status={<HealthStatus health={source.health} chip />}
         description={
           <span class="fam-health">
+            {entry ? <span>{text(entry.displayName)} ·</span> : null}
             <HealthDetails health={source.health} timeZone={props.timeZone} />
           </span>
         }
@@ -1040,50 +1050,24 @@ export function SourcePage(props: {
       <Problem message={props.problem} />
       <section class="fam-sheet">
         {!form ? <p class="fam-problem">{s.notRead}</p> : null}
-        <form method="post" action={`${href}/name`} class="fam-sheet__form">
-          <Group title={s.name} level={2}>
+        {/* One form for all it is set by; with nothing else editable, only its name. */}
+        <form method="post" action={editable ? href : `${href}/name`} class="fam-sheet__form">
+          <Group title={s.settings} level={2}>
             <div class="fam-group__fields">
               <div class="fam-field">
                 <label for={`${source.id}-name`}>{s.name}</label>
                 <input id={`${source.id}-name`} name="name" maxlength={maximumNameLength} placeholder={derived} value={source.name ?? undefined} />
                 <small>{s.nameHint(derived)}</small>
               </div>
+              {form && editable ? <SourceFields form={form} prefix={source.id} source={source} omitFixed /> : null}
             </div>
-            <div class="fam-group__actions">
-              <button type="submit" class="fam-button fam-button--secondary">
-                {t.common.save}
-              </button>
-            </div>
-          </Group>
-        </form>
-        {form && editable ? (
-          <form method="post" action={href} class="fam-sheet__form">
-            {form.fields.length > 0 ? (
-              <Group title={s.settings} level={2}>
-                <div class="fam-group__fields">
-                  <SourceFields form={form} prefix={source.id} source={source} noInterval />
-                </div>
-              </Group>
-            ) : null}
-            {suggestedSeconds !== null ? (
-              <Group title={s.polling} level={2}>
-                <ul class="fam-rows">
-                  <IntervalRow
-                    id={`${source.id}-interval`}
-                    value={source.pollIntervalSeconds !== null ? String(source.pollIntervalSeconds / 60) : undefined}
-                    suggestedSeconds={suggestedSeconds}
-                    hint={s.intervalHint(suggestedSeconds / 60)}
-                  />
-                </ul>
-              </Group>
-            ) : null}
             <div class="fam-group__actions">
               <button type="submit" class="fam-button fam-button--primary">
                 {t.common.save}
               </button>
             </div>
-          </form>
-        ) : null}
+          </Group>
+        </form>
         <Group title={s.timeline} level={2}>
           <ul class="fam-rows">
             <li class="fam-row">
@@ -1182,9 +1166,12 @@ function SourceRow(props: { source: SourceSummary; form: SourceForm | undefined;
             {source.shown ? null : <span class="fam-chip fam-chip--small">{s.hidden}</span>}
           </span>
           {meta !== "" ? <span class="fam-row__hint">{meta}</span> : null}
-          <span class="fam-row__hint fam-health">
-            <HealthDetails health={source.health} timeZone={props.timeZone} />
-          </span>
+          {/* Its page tells when it was last read; its row only once something went wrong. */}
+          {source.health.status !== "ok" || source.health.problem !== null ? (
+            <span class="fam-row__hint fam-health">
+              <HealthDetails health={source.health} timeZone={props.timeZone} />
+            </span>
+          ) : null}
         </span>
         <HealthStatus health={source.health} />
         <Chevron />
@@ -1199,22 +1186,40 @@ function SourceRow(props: { source: SourceSummary; form: SourceForm | undefined;
 }
 
 /**
- * Whether something an Admin enables on its own, a Source Type or a catalogue entry, is enabled,
- * as one switch posting to `<action>/enable` or `<action>/disable`. While something uses it, it
- * stays locked on, saying why. One with a risk notice is enabled only once the `RiskNotice` tied
- * to the switch's form by its `id` is acknowledged.
+ * A setting as a list row: its title, hints below it such as why it is locked, and its control,
+ * such as a switch, at the end. Hints that are null are left out.
  */
-function EnableSwitch(props: { id: string; name: string; action: string; enabled: boolean; lockedHint: string | null }) {
-  const { t } = useTranslation();
-  const s = t.sourceTypes;
-  const locked = props.enabled && props.lockedHint !== null;
+function SettingRow(props: { title: Child; hints?: (Child | null)[]; control: Child }) {
   return (
-    <form method="post" action={`${props.action}/${props.enabled ? "disable" : "enable"}`} id={props.id} class="fam-toggle">
-      <span class="fam-toggle__state" aria-hidden="true">
-        {props.enabled ? s.enabled : s.notEnabled}
-      </span>
-      <button type="submit" role="switch" aria-checked={props.enabled ? "true" : "false"} aria-label={s.enable(props.name)} disabled={locked} class="fam-switch">
-        {locked ? (
+    <div class="fam-setting">
+      <div class="fam-setting__text">
+        {props.title}
+        {(props.hints ?? []).map((hint) => (hint !== null ? <p class="fam-setting__hint">{hint}</p> : null))}
+      </div>
+      {props.control}
+    </div>
+  );
+}
+
+/**
+ * Whether something an Admin enables on its own, a Source Type or a catalogue entry, is enabled,
+ * as a switch posting to `<action>/enable` or `<action>/disable`. While something uses it, it is
+ * `locked` on. One with a risk notice is enabled only once the `RiskNotice` tied to the switch's
+ * form by its `id` is acknowledged.
+ */
+function EnableSwitch(props: { id: string; name: string; action: string; enabled: boolean; locked: boolean }) {
+  const { t } = useTranslation();
+  return (
+    <form method="post" action={`${props.action}/${props.enabled ? "disable" : "enable"}`} id={props.id} class="fam-row__form">
+      <button
+        type="submit"
+        role="switch"
+        aria-checked={props.enabled ? "true" : "false"}
+        aria-label={t.sourceTypes.enable(props.name)}
+        disabled={props.locked}
+        class="fam-switch"
+      >
+        {props.locked ? (
           <svg
             class="fam-switch__lock"
             width="12"
@@ -1232,7 +1237,6 @@ function EnableSwitch(props: { id: string; name: string; action: string; enabled
           </svg>
         ) : null}
       </button>
-      {locked ? <span class="fam-toggle__hint">{props.lockedHint}</span> : null}
     </form>
   );
 }
@@ -1242,16 +1246,15 @@ function RiskNotice(props: { form: string; notice: MultilingualText }) {
   const { t, text } = useTranslation();
   const s = t.sourceTypes;
   return (
-    <div class="fam-enable">
-      <div class="fam-banner fam-banner--attention">
-        <span class="fam-banner__glyph" aria-hidden="true">
+    <div class="fam-risk">
+      <p class="fam-risk__text">
+        <span class="fam-risk__glyph" aria-hidden="true">
           !
         </span>
-        <span class="fam-banner__title">{s.riskTitle}</span>
-        <div class="fam-banner__body">
-          <p>{text(props.notice)}</p>
-        </div>
-      </div>
+        <span>
+          <strong>{s.riskTitle}:</strong> {text(props.notice)}
+        </span>
+      </p>
       <label>
         <input type="checkbox" name="riskAcknowledged" value="yes" form={props.form} required /> {s.acknowledgeRisk}
       </label>
@@ -1272,7 +1275,7 @@ function IntervalRow(props: { id: string; value: string | undefined; suggestedSe
       </span>
       <IntervalInput id={props.id} value={props.value} suggestedSeconds={props.suggestedSeconds} />
       {props.save ? (
-        <button type="submit" class="fam-button fam-button--secondary">
+        <button type="submit" class="fam-button fam-button--quiet">
           {t.common.save}
         </button>
       ) : null}
@@ -1312,7 +1315,7 @@ function AddAtEntry(props: { form: SourceForm; entryId: string; name: string }) 
   if (!nothingToFill) {
     return (
       <a
-        class="fam-button fam-button--primary"
+        class="fam-button fam-button--quiet fam-button--add"
         href={`/admin/sources/new?type=${encodeURIComponent(form.sourceTypeId)}&entry=${encodeURIComponent(entryId)}`}
         aria-label={s.addAccountOf(props.name)}
       >
@@ -1324,7 +1327,7 @@ function AddAtEntry(props: { form: SourceForm; entryId: string; name: string }) 
     <form method="post" action="/admin/sources" class="fam-entry__form">
       <input type="hidden" name="sourceTypeId" value={form.sourceTypeId} />
       <input type="hidden" name={`plain.${configKey}`} value={entryId} />
-      <button type="submit" class="fam-button fam-button--primary" aria-label={s.addAccountOf(props.name)}>
+      <button type="submit" class="fam-button fam-button--quiet fam-button--add" aria-label={s.addAccountOf(props.name)}>
         {s.addAccount}
       </button>
     </form>
@@ -1385,23 +1388,23 @@ function CatalogueEntries(props: {
           const suggestedSeconds = form && usable.has(entry.id) ? form.suggestedIntervalSeconds : null;
           return (
             <li class="fam-sheet">
-              <div class="fam-sheet__header">
-                <div class="fam-sheet__heading">
-                  <h3 class="fam-sheet__title">{name}</h3>
-                  <p class="fam-sheet__description">{text(entry.description)}</p>
-                </div>
-                {entry.installed ? (
-                  <EnableSwitch
-                    id={`enable-${entry.id}`}
-                    name={name}
-                    action={`${base}/${entry.id}`}
-                    enabled={entry.enabled}
-                    lockedHint={accounts.length > 0 ? s.entryLockedHint(name) : null}
-                  />
-                ) : (
-                  <span class="fam-chip">{s.notInstalled}</span>
-                )}
-              </div>
+              <SettingRow
+                title={<h3 class="fam-sheet__title">{name}</h3>}
+                hints={[text(entry.description), entry.enabled && accounts.length > 0 ? s.entryLockedHint(name) : null]}
+                control={
+                  entry.installed ? (
+                    <EnableSwitch
+                      id={`enable-${entry.id}`}
+                      name={name}
+                      action={`${base}/${entry.id}`}
+                      enabled={entry.enabled}
+                      locked={entry.enabled && accounts.length > 0}
+                    />
+                  ) : (
+                    <span class="fam-chip">{s.notInstalled}</span>
+                  )
+                }
+              />
               {entry.installed && !entry.enabled && entry.riskNotice !== null ? <RiskNotice form={`enable-${entry.id}`} notice={entry.riskNotice} /> : null}
               {entry.enabled ? (
                 <>
@@ -1608,8 +1611,8 @@ function SourceFields(props: {
   source?: SourceSummary;
   entered?: { plain: Record<string, string>; interval: string };
   autofocus?: boolean;
-  /** Leaves out the polling interval, which a Source's page sets in a group of its own. */
-  noInterval?: boolean;
+  /** Leaves out the catalogue entry of an existing Source, which cannot change, such as its Messenger. */
+  omitFixed?: boolean;
 }) {
   const { form, prefix, source, entered } = props;
   const { t, text } = useTranslation();
@@ -1630,6 +1633,7 @@ function SourceFields(props: {
         const stored = field.secret && source?.storedSecrets.includes(field.key);
         const focus = props.autofocus === true && index === 0;
         if (form.catalogue?.configKey === field.key) {
+          if (props.omitFixed && source) return null;
           return <CatalogueField field={field} form={form} id={id(field.key)} chosen={plainValue(field.key)} existing={source !== undefined} autofocus={focus} />;
         }
         if (field.choice) return <ChoiceField field={field} id={id(field.key)} source={source} />;
@@ -1653,7 +1657,7 @@ function SourceFields(props: {
           </div>
         );
       })}
-      {form.suggestedIntervalSeconds !== null && !form.catalogue && !props.noInterval ? (
+      {form.suggestedIntervalSeconds !== null && !form.catalogue ? (
         <div class="fam-field">
           <label for={id("interval")}>{t.sources.interval}</label>
           <IntervalInput id={id("interval")} value={interval} suggestedSeconds={form.suggestedIntervalSeconds} />
