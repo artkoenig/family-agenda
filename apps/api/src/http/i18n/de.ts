@@ -165,6 +165,7 @@ export const de: Catalogue = {
     saveFirstBody: "Drucke es aus oder lade es herunter. Jeder Admin kann es später wieder anzeigen.",
     masterKey: "Hauptschlüssel",
     confirm: "Ich habe das Wiederherstellungs-Kit ausgedruckt oder gespeichert.",
+    confirmTitle: "Bestätigen",
     continue: "Weiter",
   },
 

@@ -180,6 +180,7 @@ export const en = {
     saveFirstBody: "Print it or download it. Any Admin can show it again later.",
     masterKey: "Master key",
     confirm: "I have printed or saved the Recovery Kit.",
+    confirmTitle: "Confirm",
     continue: "Continue",
   },
 

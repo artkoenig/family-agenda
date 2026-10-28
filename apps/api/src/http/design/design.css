@@ -17,14 +17,14 @@
   outline-offset: 2px;
   border-radius: var(--radius-sm);
 }
-.fam-tabular { font-variant-numeric: tabular-nums; }
+.fam-visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 /* A link drawn as a button keeps the button's colours, not the link's. */
 .fam a.fam-button, .fam-page a.fam-button { text-decoration: none; }
 .fam a.fam-button--primary, .fam-page a.fam-button--primary { color: var(--on-hearth); }
 .fam a.fam-button--secondary, .fam-page a.fam-button--secondary { color: var(--ink); }
 .fam a.fam-button--danger, .fam-page a.fam-button--danger { color: var(--danger); }
 
-/* Button ---------------------------------------------------------------- */
+/* Button: primary, secondary, quiet and danger, the last two text only --- */
 .fam-button {
   display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2);
   min-height: var(--control-height); padding: 0 var(--space-4);
@@ -36,37 +36,15 @@
 .fam-button--primary:hover { background: var(--hearth-strong); }
 .fam-button--secondary { background: transparent; color: var(--ink); border-color: var(--line-strong); }
 .fam-button--secondary:hover { background: var(--hearth-tint); }
-.fam-button--quiet { background: transparent; color: var(--hearth-strong); padding: 0 var(--space-2); }
+.fam-button--quiet, .fam-button--danger { background: transparent; padding: 0 var(--space-2); }
+.fam-button--quiet { color: var(--hearth-strong); }
 .fam-button--quiet:hover { background: var(--hearth-tint); }
-.fam-button--danger { background: transparent; color: var(--danger); border-color: var(--danger); }
+.fam-button--danger { color: var(--danger); }
 .fam-button--danger:hover { background: var(--danger-tint); }
 .fam-button--pill { border-radius: var(--radius-full); min-height: 36px; padding: 0 var(--space-4); font-size: 14px; }
+/* An action adding something to the list above it. */
+.fam-button--add::before { content: "+"; font-size: 20px; font-weight: 500; line-height: 1; }
 .fam-button[disabled], .fam-button[aria-disabled="true"] { opacity: .55; cursor: not-allowed; }
-
-/* Field ----------------------------------------------------------------- */
-.fam-form { display: grid; gap: var(--space-5); max-width: var(--content-width); }
-.fam-field { display: grid; gap: var(--space-1); }
-.fam-field__label { font-weight: 600; }
-.fam-field__hint { font-size: 14px; line-height: 20px; color: var(--ink-muted); }
-.fam-field__problem { font-size: 14px; line-height: 20px; color: var(--danger); font-weight: 600; }
-.fam-input {
-  min-height: var(--control-height); width: 100%; padding: 0 var(--space-4);
-  font: inherit; color: var(--ink); background: var(--surface-raised);
-  border: 1px solid var(--line-strong); border-radius: var(--radius-md);
-}
-.fam-input::placeholder { color: var(--ink-muted); }
-.fam-input[aria-invalid="true"] { border-color: var(--danger); border-width: 2px; padding: 0 calc(var(--space-4) - 1px); }
-.fam-check { display: flex; align-items: flex-start; gap: var(--space-3); cursor: pointer; }
-.fam-check input {
-  appearance: none; flex: none; width: 22px; height: 22px; margin: 1px 0 0;
-  border: 2px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--surface-raised);
-  display: grid; place-items: center; cursor: pointer;
-}
-.fam-check input:checked { background: var(--hearth); border-color: var(--hearth); }
-.fam-check input:checked::after {
-  content: ""; width: 6px; height: 11px; margin-top: -2px;
-  border: solid var(--on-hearth); border-width: 0 2.5px 2.5px 0; transform: rotate(45deg);
-}
 
 /* Banner ---------------------------------------------------------------- */
 .fam-banner {
@@ -99,7 +77,6 @@
 }
 .fam-avatar img { width: 100%; height: 100%; object-fit: cover; }
 .fam-avatar--sm { width: var(--avatar-sm); height: var(--avatar-sm); font-size: 14px; }
-.fam-avatar--lg { width: var(--avatar-lg); height: var(--avatar-lg); font-size: 26px; }
 .fam-avatar--m1 { background: var(--member-1); } .fam-avatar--m2 { background: var(--member-2); }
 .fam-avatar--m3 { background: var(--member-3); } .fam-avatar--m4 { background: var(--member-4); }
 .fam-avatar--m5 { background: var(--member-5); } .fam-avatar--m6 { background: var(--member-6); }
@@ -136,7 +113,6 @@
   -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
   padding: var(--space-3) var(--space-4) var(--space-2); border-bottom: 1px solid var(--line);
 }
-.fam-bar--scrolled { box-shadow: var(--shadow-bar); }
 .fam-bar > * { max-width: var(--content-width); margin-left: auto; margin-right: auto; }
 .fam-bar__top { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
 .fam-out-of-date { margin: var(--space-2) 0 0; font-size: 14px; line-height: 20px; color: var(--ink-muted); }
@@ -205,43 +181,6 @@
 .fam-event__details dt { font-weight: 600; }
 .fam-event__details dd { margin: 0; color: var(--ink); }
 
-/* Admin: nav, entry list, card, secret --------------------------------- */
-.fam-admin--narrow { max-width: var(--content-width); margin: 0 auto; padding: var(--space-6) var(--space-4); }
-.fam-nav { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-2); padding: var(--space-2) 0; border-bottom: 1px solid var(--line); }
-.fam-nav__home { font-weight: 800; color: var(--ink); text-decoration: none; margin-right: var(--space-3); }
-.fam .fam-nav a.fam-nav__home, .fam-page .fam-nav a.fam-nav__home { color: var(--ink); }
-.fam-nav__link { padding: var(--space-1) var(--space-2); border-radius: var(--radius-sm); text-decoration: none; font-weight: 600; }
-.fam .fam-nav a.fam-nav__link, .fam-page .fam-nav a.fam-nav__link { color: var(--ink-muted); }
-.fam .fam-nav a.fam-nav__link:hover, .fam-page .fam-nav a.fam-nav__link:hover { background: var(--hearth-tint); color: var(--ink); }
-.fam .fam-nav a.fam-nav__link[aria-current], .fam-page .fam-nav a.fam-nav__link[aria-current] { color: var(--ink); background: var(--hearth-tint); }
-.fam-nav__end { margin-left: auto; display: flex; align-items: center; gap: var(--space-3); }
-.fam-title { font-size: 26px; line-height: 32px; font-weight: 700; margin: var(--space-5) 0 var(--space-4); }
-.fam-heading { font-size: 19px; line-height: 26px; font-weight: 700; margin: var(--space-6) 0 var(--space-2); }
-.fam-card { background: var(--surface-raised); border: 1px solid var(--line); border-radius: var(--radius-lg); box-shadow: var(--shadow-raised); padding: var(--space-4); }
-.fam-entries { list-style: none; margin: 0; padding: 0; }
-.fam-entry { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3) 0; border-bottom: 1px solid var(--line); }
-.fam-entry__main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-.fam-entry__name { font-weight: 600; }
-.fam-entry__meta { font-size: 14px; line-height: 20px; color: var(--ink-muted); overflow-wrap: anywhere; }
-.fam-entry__actions { display: flex; gap: var(--space-2); flex: none; }
-.fam-status { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; line-height: 20px; font-weight: 600; }
-.fam-status::before { content: ""; width: 8px; height: 8px; border-radius: var(--radius-full); background: currentColor; }
-.fam-status--ok { color: var(--sage-strong); }
-.fam-status--problem { color: var(--danger); }
-.fam-status--waiting { color: var(--ink-muted); }
-.fam-health { display: flex; flex-wrap: wrap; align-items: center; column-gap: var(--space-2); row-gap: var(--space-1); }
-.fam-setup-steps { margin: 0; padding-left: var(--space-5); }
-.fam-live-step { display: grid; gap: var(--space-2); justify-items: start; margin-top: var(--space-2); }
-/* A QR code stays black on white in both themes, so that phones read it. */
-.fam-qr { margin: 0; padding: var(--space-3); background: #fff; border-radius: var(--radius-md); width: min(260px, 100%); }
-.fam-qr svg { display: block; width: 100%; height: auto; }
-.fam-secret {
-  display: block; font-family: var(--font-mono); font-size: 18px; line-height: 28px; font-weight: 500; letter-spacing: .02em;
-  overflow-wrap: anywhere; background: var(--surface-sunken); color: var(--ink);
-  border-radius: var(--radius-md); padding: var(--space-3) var(--space-4);
-}
-.fam-code { font-family: var(--font-mono); font-size: 14px; line-height: 20px; background: var(--surface-sunken); border-radius: var(--radius-sm); padding: 1px 6px; }
-
 /* Timeline: loading more days ------------------------------------------ */
 .fam-more { display: flex; justify-content: center; padding: var(--space-4) 0; color: var(--ink-muted); font-size: 14px; line-height: 20px; }
 
@@ -276,14 +215,29 @@
 :where(.fam-admin) button:hover { background: var(--hearth-strong); }
 :where(.fam-admin) fieldset { display: grid; gap: var(--space-2); margin: 0; padding: 0; border: 0; }
 :where(.fam-admin) legend { font-weight: 600; padding: 0 0 var(--space-1); }
-:where(.fam-admin) h2 { font-size: 19px; line-height: 26px; font-weight: 700; margin: var(--space-6) 0 var(--space-2); }
 :where(.fam-admin) dl { display: grid; grid-template-columns: auto 1fr; gap: var(--space-1) var(--space-4); }
 :where(.fam-admin) dt { font-weight: 600; color: var(--ink-muted); }
 :where(.fam-admin) dd { margin: 0; }
-.fam-actions { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: center; }
-.fam-message { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; background: var(--surface-raised); border: 1px solid var(--line); border-radius: var(--radius-md); padding: var(--space-4); }
-.fam-nav__who { color: var(--ink-muted); font-size: 14px; }
-.fam-nav form { margin: 0; display: inline; }
+/* Field: a label above its control, a hint below it. */
+.fam-field { display: grid; gap: var(--space-1); }
+.fam-field__label { font-weight: 600; }
+.fam-input--short { max-width: 140px; }
+.fam-unit { display: inline-flex; align-items: center; gap: var(--space-2); color: var(--ink-muted); }
+.fam-unit > input { width: 96px; }
+/* Checkboxes as tiles, each with an avatar, such as whom a View or a rule names. */
+.fam-choices { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: var(--space-2); }
+:where(.fam-admin) .fam-choice {
+  display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--line-strong); border-radius: var(--radius-md); font-weight: 400; cursor: pointer;
+}
+.fam-choice:has(input:checked) { background: var(--hearth-tint); }
+.fam-choice input { margin: 0; }
+
+/* Signing in and setting up: one narrow column without the settings list - */
+.fam-admin--narrow { max-width: 480px; margin: 0 auto; padding: var(--space-7) var(--space-4); }
+.fam-brand { margin: 0 0 var(--space-5); font-size: 19px; line-height: 26px; font-weight: 800; }
+.fam-title { font-size: 26px; line-height: 32px; font-weight: 700; margin: 0 0 var(--space-1); }
+.fam-admin--narrow .fam-problem { margin-top: var(--space-3); }
 
 /* Settings: the list of sections beside the current one's details ------ */
 .fam-settings__header {
@@ -295,6 +249,7 @@
 .fam-settings__brand span { color: var(--ink-muted); }
 .fam-settings__account { display: flex; align-items: center; gap: var(--space-3); }
 .fam-settings__account form { margin: 0; }
+.fam-settings__who { color: var(--ink-muted); font-size: 14px; }
 .fam-settings { display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--space-6); max-width: 1200px; margin: 0 auto; padding: var(--space-6); }
 .fam-settings__nav { flex: 1 1 260px; max-width: 320px; display: flex; flex-direction: column; gap: var(--space-1); }
 .fam-settings__group {
@@ -320,47 +275,18 @@
 }
 .fam-settings__main { flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column; gap: var(--space-5); }
 .fam-settings__main > * { margin-top: 0; margin-bottom: 0; }
+.fam-settings__main .fam-empty { border: 0; padding: 0; }
+.fam-breadcrumb { color: var(--ink-muted); font-size: 14px; line-height: 20px; margin-bottom: calc(-1 * var(--space-4)); }
 .fam-section-header { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: var(--space-4); }
 .fam-section-header__text { display: flex; flex-direction: column; gap: var(--space-1); max-width: 560px; }
 .fam-section-header__heading { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); }
 .fam-section-header__title { margin: 0; font-size: 26px; line-height: 32px; font-weight: 700; }
 .fam-section-header__description { margin: 0; color: var(--ink-muted); }
-.fam-settings__main .fam-empty { border: 0; padding: 0; }
-.fam-panel {
-  list-style: none; margin: 0; padding: 0 var(--space-4);
-  background: var(--surface-raised); border: 1px solid var(--line); border-radius: var(--radius-lg);
-}
-.fam-panel--padded { padding: var(--space-4); display: flex; flex-direction: column; gap: var(--space-3); }
-.fam-panel--padded > * { margin: 0; }
-.fam-entry__main > * { margin: 0; }
-h2.fam-entry__name, h3.fam-entry__name { font-size: 16px; line-height: 24px; }
-.fam-entry__form { display: grid; gap: var(--space-2); justify-items: start; margin: 0; }
-.fam-tag {
-  display: inline-block; margin-left: var(--space-2); padding: 0 8px; border-radius: var(--radius-full);
-  background: var(--honey-tint); color: var(--ink); font-size: 13px; line-height: 20px; font-weight: 600; vertical-align: 2px;
-}
+/* What a section says about itself in a sentence, such as which model reads messages. */
+.fam-callout { margin: 0; padding: var(--space-3) var(--space-4); border-radius: var(--radius-lg); background: var(--surface-sunken); }
+.fam-callout--ok { background: var(--sage-tint); }
 
-/* The Sources: a card per Source Type, and a Source Type's page ---------- */
-.fam-type-cards {
-  list-style: none; margin: 0; padding: 0;
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr)); gap: var(--space-4);
-}
-.fam-type-cards > li { display: flex; }
-.fam-type-card {
-  flex: 1; display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-4); text-decoration: none;
-  background: var(--surface-raised); border: 1px solid var(--line); border-radius: var(--radius-lg); box-shadow: var(--shadow-raised);
-}
-.fam-page a.fam-type-card { color: var(--ink); }
-.fam-type-card:hover { background: var(--hearth-tint); }
-.fam-type-card--off { background: transparent; border: 1px dashed var(--line-strong); box-shadow: none; }
-.fam-type-card__name { font-size: 19px; line-height: 26px; font-weight: 700; }
-.fam-type-card__description { flex: 1; color: var(--ink-muted); font-size: 14px; line-height: 20px; }
-.fam-type-card__summary { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2); }
-.fam-breadcrumb { color: var(--ink-muted); font-size: 14px; line-height: 20px; margin-bottom: calc(-1 * var(--space-4)); }
-.fam-type-section { display: flex; flex-direction: column; gap: var(--space-2); }
-.fam-type-section > * { margin: 0; }
-
-/* Sheet: a card of titled groups of rows, such as a Messenger's or a Source's settings -------- */
+/* Sheet: a card of titled groups, each of fields or rows ---------------- */
 .fam-sheets { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-4); }
 .fam-sheet {
   display: flex; flex-direction: column; padding: var(--space-5) var(--space-5) var(--space-3);
@@ -369,32 +295,36 @@ h2.fam-entry__name, h3.fam-entry__name { font-size: 16px; line-height: 24px; }
 .fam-sheet > * { margin: 0; }
 /* A sheet that is only a list keeps its rows close to its edges. */
 .fam-sheet:has(> .fam-rows:only-child) { padding-top: var(--space-2); padding-bottom: var(--space-2); }
-.fam-visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .fam-sheet__title { flex: 1; margin: 0; font-size: 19px; line-height: 26px; font-weight: 700; }
 :where(.fam-admin) .fam-sheet__form { display: block; margin: 0; }
 .fam-group { margin: var(--space-5) 0 0; }
 .fam-sheet > .fam-group:first-child, .fam-sheet > .fam-sheet__form:first-child > .fam-group:first-child { margin-top: 0; }
 .fam-group > * { margin: 0; }
 :where(.fam-admin) .fam-group__title { margin: 0 0 var(--space-1); font-size: 14px; line-height: 20px; font-weight: 700; color: var(--hearth-strong); }
-.fam-group__intro { margin: calc(-1 * var(--space-1)) 0 var(--space-2); font-size: 14px; line-height: 20px; color: var(--ink-muted); }
+.fam-group__intro { margin: 0 0 var(--space-2); font-size: 14px; line-height: 20px; color: var(--ink-muted); }
 .fam-group__fields { display: grid; gap: var(--space-5); padding-top: var(--space-3); }
 .fam-group__fields > * { max-width: 560px; }
 :where(.fam-admin) .fam-group__fields > form { margin: 0; }
 .fam-group__actions { display: flex; flex-wrap: wrap; gap: var(--space-2); padding: var(--space-4) 0 var(--space-3); }
 .fam-group__actions > form { margin: 0; }
 .fam-group__empty { padding: var(--space-3) 0; color: var(--ink-muted); }
+/* Running text in a group, such as what the Recovery Kit is for. */
+.fam-prose > * { margin: 0; }
+.fam-prose > * + * { margin-top: var(--space-2); }
+
+/* Row: one entry of a list in a sheet, plain or opening its page or dialog */
 .fam-rows { list-style: none; margin: 0; padding: 0; }
 .fam-row {
   display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-4);
   min-height: 64px; padding: var(--space-3) 0; border-top: 1px solid var(--line);
 }
+.fam-rows > .fam-row:first-child { border-top: 0; }
 .fam-row__main { flex: 1 1 240px; min-width: 0; display: flex; flex-direction: column; }
 .fam-row__label { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); font-weight: 600; overflow-wrap: anywhere; }
 .fam-row__hint { font-size: 14px; line-height: 20px; color: var(--ink-muted); overflow-wrap: anywhere; }
 :where(.fam-admin) .fam-row__hint { margin: 0; }
 .fam-row__hint.fam-health { display: flex; }
 :where(.fam-admin) .fam-row__form { display: flex; align-items: center; gap: var(--space-2); margin: 0; }
-.fam-rows > .fam-row:first-child { border-top: 0; }
 .fam-row--link { padding: 0; }
 .fam-row__link {
   flex: 1 1 280px; min-width: 0; display: flex; align-items: center; gap: var(--space-4);
@@ -402,22 +332,20 @@ h2.fam-entry__name, h3.fam-entry__name { font-size: 16px; line-height: 24px; }
 }
 .fam-page a.fam-row__link { color: var(--ink); }
 .fam-row__link:hover { background: var(--hearth-tint); }
+.fam-row__link > .fam-avatar, .fam-row__link > .fam-avatars { flex: none; }
 .fam-row__chevron { flex: none; color: var(--ink-muted); }
-.fam-unit { display: inline-flex; align-items: center; gap: var(--space-2); color: var(--ink-muted); }
-.fam-unit > input { width: 96px; }
-.fam-chip {
-  display: inline-flex; align-items: center; gap: 6px; min-height: 28px; padding: 0 12px; border-radius: var(--radius-full);
-  background: var(--surface-sunken); color: var(--ink-muted); font-size: 14px; line-height: 20px; font-weight: 600; white-space: nowrap;
-}
-.fam-chip--small { min-height: 22px; padding: 0 8px; font-size: 13px; }
-.fam-chip--ok { background: var(--sage-tint); color: var(--sage-strong); }
-.fam-chip--problem { background: var(--danger-tint); color: var(--danger); }
-.fam-chip--waiting { background: var(--honey-tint); color: var(--ink); }
-.fam-chip--ok::before, .fam-chip--problem::before, .fam-chip--waiting::before {
-  content: ""; width: 8px; height: 8px; border-radius: var(--radius-full); background: currentColor;
-}
-.fam-chip--waiting::before { background: var(--honey); }
-/* Switch: a button that flips a setting at once, such as showing a Source on the timeline. */
+/* Adding to the list above it from a choice, such as an OCR language. */
+:where(.fam-admin) .fam-inline-add { display: grid; gap: var(--space-1); margin: 0; padding: var(--space-3) 0 var(--space-2); border-top: 1px solid var(--line); }
+.fam-inline-add__controls { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+:where(.fam-admin) .fam-inline-add__controls > select { flex: 0 1 320px; width: auto; }
+
+/* Setting: a title, hints below it and its control, such as a switch, at the end */
+.fam-setting { display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--space-2) var(--space-4); }
+.fam-setting__text { flex: 1 1 200px; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.fam-setting__text > * { margin: 0; }
+.fam-setting__hint { margin: 0; color: var(--ink-muted); }
+.fam-setting > .fam-row__form { padding-top: 2px; }
+/* Switch: a button that flips a setting at once, locked while something needs it. */
 .fam-switch {
   position: relative; flex: none; width: 52px; height: 32px; min-height: 0; padding: 0; cursor: pointer;
   border: 2px solid var(--line-strong); border-radius: var(--radius-full); background: var(--surface-sunken);
@@ -435,12 +363,6 @@ h2.fam-entry__name, h3.fam-entry__name { font-size: 16px; line-height: 24px; }
 .fam-switch[aria-checked="true"]:disabled:hover { background: var(--hearth); border-color: var(--hearth); }
 .fam-switch__lock { position: absolute; top: 8px; left: 28px; z-index: 1; color: var(--hearth); }
 @media (prefers-reduced-motion: reduce) { .fam-switch, .fam-switch::after { transition: none; } }
-/* A setting as a list row: title and hints, its control at the end. */
-.fam-setting { display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--space-2) var(--space-4); }
-.fam-setting__text { flex: 1 1 200px; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.fam-setting__text > * { margin: 0; }
-.fam-setting__hint { margin: 0; color: var(--ink-muted); }
-.fam-setting > .fam-row__form { padding-top: 2px; }
 /* A risk to acknowledge before switching something on. */
 .fam-risk { display: grid; gap: var(--space-3); margin: var(--space-4) 0 var(--space-2); padding: var(--space-3) var(--space-4); border-radius: var(--radius-md); background: var(--honey-tint); }
 .fam-risk > * { margin: 0; }
@@ -449,42 +371,72 @@ h2.fam-entry__name, h3.fam-entry__name { font-size: 16px; line-height: 24px; }
   flex: none; display: grid; place-items: center; width: 22px; height: 22px; margin-top: 1px; border-radius: var(--radius-full);
   background: var(--honey); color: var(--ink); font-size: 13px; font-weight: 800; line-height: 1;
 }
-/* An action adding something to the list above it. */
-.fam-button--add::before { content: "+"; font-size: 20px; font-weight: 500; line-height: 1; }
 
-/* Adding to the list above it from a choice, such as an OCR language ---- */
-:where(.fam-admin) .fam-inline-add { display: grid; gap: var(--space-1); margin: 0; padding: var(--space-3) 0 var(--space-2); border-top: 1px solid var(--line); }
-.fam-inline-add__controls { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
-:where(.fam-admin) .fam-inline-add__controls > select { flex: 0 1 320px; width: auto; }
-:where(.fam-admin) .fam-sheet .fam-group__intro { margin-top: 0; }
+/* Status: a dot and a word in a row; a chip beside a heading ------------ */
+.fam-status { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; line-height: 20px; font-weight: 600; }
+.fam-status::before { content: ""; width: 8px; height: 8px; border-radius: var(--radius-full); background: currentColor; }
+.fam-status--ok { color: var(--sage-strong); }
+.fam-status--problem { color: var(--danger); }
+.fam-status--waiting { color: var(--ink-muted); }
+.fam-chip {
+  display: inline-flex; align-items: center; gap: 6px; min-height: 28px; padding: 0 12px; border-radius: var(--radius-full);
+  background: var(--surface-sunken); color: var(--ink-muted); font-size: 14px; line-height: 20px; font-weight: 600; white-space: nowrap;
+}
+.fam-chip--small { min-height: 22px; padding: 0 8px; font-size: 13px; }
+.fam-chip--ok { background: var(--sage-tint); color: var(--sage-strong); }
+.fam-chip--problem { background: var(--danger-tint); color: var(--danger); }
+.fam-chip--waiting { background: var(--honey-tint); color: var(--ink); }
+.fam-chip--ok::before, .fam-chip--problem::before, .fam-chip--waiting::before {
+  content: ""; width: 8px; height: 8px; border-radius: var(--radius-full); background: currentColor;
+}
+.fam-chip--waiting::before { background: var(--honey); }
+.fam-tag {
+  display: inline-block; margin-left: var(--space-2); padding: 0 8px; border-radius: var(--radius-full);
+  background: var(--honey-tint); color: var(--ink); font-size: 13px; line-height: 20px; font-weight: 600; vertical-align: 2px;
+}
+.fam-health { display: flex; flex-wrap: wrap; align-items: center; column-gap: var(--space-2); row-gap: var(--space-1); }
 
-/* Dialogs editing a row: removing it, and where it can be opened -------- */
-.fam-button--quiet-danger { color: var(--danger); }
-.fam-button--quiet-danger:hover { background: var(--danger-tint); }
-.fam-page a.fam-button--quiet-danger { color: var(--danger); }
-:where(.fam-admin) .fam-dialog__remove { display: none; }
-.fam-addresses { display: grid; grid-template-columns: auto 1fr; gap: 2px var(--space-4); margin: 0; font-size: 14px; line-height: 20px; }
-.fam-addresses dt { color: var(--ink-muted); font-weight: 600; }
-.fam-addresses dd { margin: 0; font-family: var(--font-mono); overflow-wrap: anywhere; }
-.fam-row__link > .fam-avatar, .fam-row__link > .fam-avatars { flex: none; }
+/* The Sources: a card per Source Type, its catalogue, a Source's setup -- */
+.fam-type-cards {
+  list-style: none; margin: 0; padding: 0;
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr)); gap: var(--space-4);
+}
+.fam-type-cards > li { display: flex; }
+.fam-type-card {
+  flex: 1; display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-4); text-decoration: none;
+  background: var(--surface-raised); border: 1px solid var(--line); border-radius: var(--radius-lg); box-shadow: var(--shadow-raised);
+}
+.fam-page a.fam-type-card { color: var(--ink); }
+.fam-type-card:hover { background: var(--hearth-tint); }
+.fam-type-card--off { background: transparent; border: 1px dashed var(--line-strong); box-shadow: none; }
+.fam-type-card__name { font-size: 19px; line-height: 26px; font-weight: 700; }
+.fam-type-card__description { flex: 1; color: var(--ink-muted); font-size: 14px; line-height: 20px; }
+.fam-type-card__summary { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.fam-type-section { display: flex; flex-direction: column; gap: var(--space-2); }
+.fam-type-section > * { margin: 0; }
+.fam-setup-steps { margin: 0; padding-left: var(--space-5); }
+.fam-live-step { display: grid; gap: var(--space-2); justify-items: start; margin-top: var(--space-2); }
+/* A QR code stays black on white in both themes, so that phones read it. */
+.fam-qr { margin: 0; padding: var(--space-3); background: #fff; border-radius: var(--radius-md); width: min(260px, 100%); }
+.fam-qr svg { display: block; width: 100%; height: auto; }
+.fam-message { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; background: var(--surface-raised); border: 1px solid var(--line); border-radius: var(--radius-md); padding: var(--space-4); }
 
-/* Something shown on request, such as the master key --------------------- */
-details[open] > summary .fam-edit__when-closed, details:not([open]) > summary .fam-edit__when-open { display: none; }
+/* Secret: what a person copies by hand, shown on request ---------------- */
+.fam-secret {
+  display: block; font-family: var(--font-mono); font-size: 18px; line-height: 28px; font-weight: 500; letter-spacing: .02em;
+  overflow-wrap: anywhere; background: var(--surface-sunken); color: var(--ink);
+  border-radius: var(--radius-md); padding: var(--space-3) var(--space-4);
+}
 .fam-reveal > summary { list-style: none; width: fit-content; }
 .fam-reveal > summary::-webkit-details-marker { display: none; }
 .fam-reveal[open] > summary { margin-bottom: var(--space-3); }
-.fam-callout { margin: 0; padding: var(--space-3) var(--space-4); border-radius: var(--radius-lg); background: var(--surface-sunken); }
-.fam-callout--ok { background: var(--sage-tint); }
-.fam-input--short { max-width: 140px; }
-.fam-choices { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: var(--space-2); }
-:where(.fam-admin) .fam-choice {
-  display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--line-strong); border-radius: var(--radius-md); font-weight: 400; cursor: pointer;
-}
-.fam-choice:has(input:checked) { background: var(--hearth-tint); }
-.fam-choice input { margin: 0; }
+.fam-reveal[open] > summary .fam-reveal__when-closed, .fam-reveal:not([open]) > summary .fam-reveal__when-open { display: none; }
+/* Where a View and its feed are, in its dialog. */
+.fam-addresses { display: grid; grid-template-columns: auto 1fr; gap: 2px var(--space-4); margin: 0; font-size: 14px; line-height: 20px; }
+.fam-addresses dt { color: var(--ink-muted); font-weight: 600; }
+.fam-addresses dd { margin: 0; font-family: var(--font-mono); overflow-wrap: anywhere; }
 
-/* Dialog: adding happens over the section, never inside its list ------- */
+/* Dialog: adding and editing happen over the section, never inside its list */
 .fam-dialog {
   position: fixed; inset: 0; margin: auto; z-index: 10; box-sizing: border-box;
   width: min(520px, calc(100% - 2 * var(--space-4))); height: fit-content; max-height: calc(100vh - 2 * var(--space-5)); overflow-y: auto;
@@ -503,14 +455,7 @@ details[open] > summary .fam-edit__when-closed, details:not([open]) > summary .f
 .fam-dialog__footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--space-3); padding-top: var(--space-1); }
 .fam-dialog__spacer { flex: 1; }
 :where(.fam-admin) .fam-dialog__footer button { justify-self: auto; }
-.fam-options { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-2); }
-.fam-option {
-  display: flex; align-items: center; gap: var(--space-3); min-height: 64px; padding: var(--space-3) var(--space-4);
-  border: 1px solid var(--line-strong); border-radius: var(--radius-lg); background: var(--surface); text-decoration: none;
-}
-.fam-page a.fam-option { color: var(--ink); }
-.fam-option:hover { background: var(--hearth-tint); }
-.fam-option__label { flex: 1; font-weight: 600; }
+:where(.fam-admin) .fam-dialog__remove { display: none; }
 
 /* On a phone the settings list becomes a row of sections above the details. */
 @media (max-width: 719px) {
@@ -539,5 +484,6 @@ details[open] > summary .fam-edit__when-closed, details:not([open]) > summary .f
 @media print {
   .fam-page { background: #fff; color: #000; }
   .fam-page .fam-secret { background: #fff; color: #000; border: 1px solid #000; }
-  .fam-nav, .fam-settings__header, .fam-settings__nav, .fam-banner, .fam-form, .fam-entry__actions, .fam-actions, .fam-admin form, .fam-button { display: none; }
+  .fam-page .fam-sheet { border: 0; box-shadow: none; padding: 0; }
+  .fam-settings__header, .fam-settings__nav, .fam-banner, .fam-group__actions, .fam-sheet__form, .fam-button { display: none; }
 }
