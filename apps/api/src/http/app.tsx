@@ -735,6 +735,14 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     return c.redirect(sourceHref(source.id), 303);
   });
 
+  app.post("/admin/sources/:id/name", async (c) => {
+    const source = await sourceOf(c.req.param("id"));
+    if (!source) return c.redirect("/admin/sources", 303);
+    const result = await sources.rename(source.id, field(await c.req.parseBody(), "name"));
+    if (!result.ok) return sourcePage(c, source, { problem: problemIn(c, result.problem) });
+    return c.redirect(sourceHref(source.id), 303);
+  });
+
   app.post("/admin/sources/:id/shown", async (c) => {
     const source = await sourceOf(c.req.param("id"));
     if (!source) return c.redirect("/admin/sources", 303);

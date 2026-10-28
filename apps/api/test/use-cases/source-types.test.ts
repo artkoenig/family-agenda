@@ -188,6 +188,7 @@ describe("Sources", () => {
         storedSecrets: ["password"],
         pollIntervalSeconds: null,
         shown: true,
+        name: null,
         health: { status: "ok", problem: null, lastSuccessAt: null },
         choices: {},
       },

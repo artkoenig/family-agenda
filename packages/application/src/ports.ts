@@ -362,6 +362,8 @@ export type Source = {
   pollIntervalSeconds: number | null;
   /** Whether its Items show on the timeline and in the feeds; a hidden Source is still read. */
   shown: boolean;
+  /** As an Admin named it, such as "Class 3b"; null for the name the Admin area derives from its settings. */
+  name: string | null;
   /** When the worker last ran it, successfully or not; null before its first run, or after an Admin changed it. */
   lastRunAt: Date | null;
   /** When it last ran successfully; null before then. */
@@ -393,6 +395,8 @@ export interface SourceRepository {
   recordFailedRun(id: SourceId, at: Date, error: RunError): Promise<void>;
   /** Shows or hides the Source's Items on the timeline and in the feeds. */
   setShown(id: SourceId, shown: boolean): Promise<void>;
+  /** Names the Source as an Admin calls it; null for the name derived from its settings. */
+  rename(id: SourceId, name: string | null): Promise<void>;
   /**
    * Removes the Source in one transaction with its Origins, raw messages, Revisions and Items.
    * Returns the BlobStore files of its raw messages, for the caller to remove.

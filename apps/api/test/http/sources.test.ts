@@ -141,6 +141,32 @@ describe("Sources in the Admin area", () => {
     expect(await instance.app.sources.list()).toMatchObject([{ shown: true }]);
   });
 
+  it("renames a Source, listing it by that name and its address after it, and back once the name is emptied", async () => {
+    await instance.app.sourceTypes.enable("calendar");
+    const added = await instance.app.sources.add({ sourceTypeId: "calendar", plain: { url: "https://calendar.example.org" }, secrets: {} });
+    if (!added.ok) throw new Error("adding failed");
+    const own = () => get(`/admin/sources/${added.id}`);
+    expect(await own()).toMatch(/<input id="[^"]*-name" name="name" maxlength="40" placeholder="https:\/\/calendar.example.org"\/>/);
+
+    const renamed = await instance.post(`/admin/sources/${added.id}/name`, { name: "  School calendar " }, { cookie });
+    expect(renamed.status).toBe(303);
+    expect(renamed.headers.get("location")).toBe(`/admin/sources/${added.id}`);
+    expect(await instance.app.sources.list()).toMatchObject([{ name: "School calendar" }]);
+    expect(await own()).toContain('value="School calendar"');
+    expect(await page()).toMatch(
+      /<span class="fam-row__label">School calendar<\/span><span class="fam-row__hint">https:\/\/calendar.example.org · every 10 minutes<\/span>/,
+    );
+
+    const tooLong = await instance.post(`/admin/sources/${added.id}/name`, { name: "x".repeat(41) }, { cookie });
+    expect(tooLong.status).toBe(400);
+    expect(await tooLong.text()).toContain("Enter a name of at most 40 characters.");
+    expect(await instance.app.sources.list()).toMatchObject([{ name: "School calendar" }]);
+
+    await instance.post(`/admin/sources/${added.id}/name`, { name: " " }, { cookie });
+    expect(await instance.app.sources.list()).toMatchObject([{ name: null }]);
+    expect(await page()).toMatch(/<span class="fam-row__label">https:\/\/calendar.example.org<\/span><span class="fam-row__hint">every 10 minutes<\/span>/);
+  });
+
   it("shows why a Source cannot be saved", async () => {
     await instance.app.sourceTypes.enable("calendar");
 

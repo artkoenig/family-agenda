@@ -987,7 +987,7 @@ export function SourceTypePage(props: {
 }
 
 /**
- * A Source's page: its settings and polling interval, whether it shows on the timeline, and
+ * A Source's page: its name, settings and polling interval, whether it shows on the timeline, and
  * removing it. Fixing it opens in a dialog over it.
  */
 export function SourcePage(props: {
@@ -1008,7 +1008,7 @@ export function SourcePage(props: {
   const { t, text } = translation;
   const s = t.sources;
   const href = sourceHref(source.id);
-  const { name } = sourceLabel(source, form, translation);
+  const { name, derived } = sourceLabel(source, form, translation);
   // A Source using a catalogue entry is polled at the entry's interval, set with the entry.
   const suggestedSeconds = form && !form.catalogue ? form.suggestedIntervalSeconds : null;
   const editable = form && (form.fields.length > 0 || suggestedSeconds !== null);
@@ -1040,6 +1040,22 @@ export function SourcePage(props: {
       <Problem message={props.problem} />
       <section class="fam-sheet">
         {!form ? <p class="fam-problem">{s.notRead}</p> : null}
+        <form method="post" action={`${href}/name`} class="fam-sheet__form">
+          <Group title={s.name} level={2}>
+            <div class="fam-group__fields">
+              <div class="fam-field">
+                <label for={`${source.id}-name`}>{s.name}</label>
+                <input id={`${source.id}-name`} name="name" maxlength={maximumNameLength} placeholder={derived} value={source.name ?? undefined} />
+                <small>{s.nameHint(derived)}</small>
+              </div>
+            </div>
+            <div class="fam-group__actions">
+              <button type="submit" class="fam-button fam-button--secondary">
+                {t.common.save}
+              </button>
+            </div>
+          </Group>
+        </form>
         {form && editable ? (
           <form method="post" action={href} class="fam-sheet__form">
             {form.fields.length > 0 ? (
@@ -1547,13 +1563,18 @@ function plainValues(plain: PlainConfig, except?: string): string[] {
 }
 
 /**
- * A Source's name and what else tells it apart, from what an Admin set: its first plain setting
- * such as its address, else its catalogue entry's name such as its Messenger's, else its Source
- * Type's; its other plain settings, what it is set to read among its choices, and how often it is
+ * A Source's name and what else tells it apart, from what an Admin set: the name they gave it, else
+ * the one `derived` from its settings, its first plain setting such as its address, else its
+ * catalogue entry's name such as its Messenger's, else its Source Type's; its plain settings not
+ * already its name, what it is set to read among its choices, and how often it is
  * checked. Values the plugin sets, such as an account id, and secrets are left out. Without its
  * form, its Source Type no longer loading, it shows its plain settings as they are.
  */
-function sourceLabel(source: SourceSummary, form: SourceForm | undefined, translation: Translation): { name: string; meta: string } {
+function sourceLabel(
+  source: SourceSummary,
+  form: SourceForm | undefined,
+  translation: Translation,
+): { name: string; meta: string; derived: string } {
   const { t, text } = translation;
   const configKey = form?.catalogue?.configKey;
   const fields = form?.fields.filter((field) => !field.secret && field.key !== configKey);
@@ -1562,7 +1583,10 @@ function sourceLabel(source: SourceSummary, form: SourceForm | undefined, transl
     .filter(shown)
     .map(String);
   const entry = configKey !== undefined ? form?.catalogue?.entries.find((candidate) => candidate.id === source.plain[configKey]) : undefined;
-  const name = first ?? text(entry?.displayName ?? source.displayName);
+  const derived = first ?? text(entry?.displayName ?? source.displayName);
+  // Named by an Admin, its first setting, such as its address, still tells it apart.
+  const name = source.name ?? derived;
+  const shownFirst = source.name !== null && first !== undefined ? [first] : [];
   const chosen = (fields ?? [])
     .filter((field) => field.choice)
     .map((field) => {
@@ -1574,7 +1598,7 @@ function sourceLabel(source: SourceSummary, form: SourceForm | undefined, transl
   // A Source using a catalogue entry is polled at the entry's interval, shown with the entry.
   const seconds = form?.catalogue ? null : (source.pollIntervalSeconds ?? form?.suggestedIntervalSeconds ?? null);
   const interval = seconds !== null ? [t.sources.every(seconds / 60)] : [];
-  return { name, meta: [...rest, ...chosen, ...interval].join(" · ") };
+  return { name, meta: [...shownFirst, ...rest, ...chosen, ...interval].join(" · "), derived };
 }
 
 /** The fields a plugin declares; a secret is never shown, only whether one is stored. */
@@ -1752,7 +1776,8 @@ export function AttributionRulesPage(props: {
   const { t, text } = useTranslation();
   const a = t.attribution;
   const close = "/admin/attribution-rules";
-  const sourceOf = (target: RuleTarget) => [text(target.sourceName), ...plainValues(target.sourcePlain)].join(" · ");
+  const sourceOf = (target: RuleTarget) =>
+    [text(target.sourceName), ...(target.sourceTitle !== null ? [target.sourceTitle] : plainValues(target.sourcePlain))].join(" · ");
   const newHref = (target: RuleTarget) =>
     `/admin/attribution-rules/new?source=${encodeURIComponent(target.sourceId)}&attribute=${encodeURIComponent(target.attribute)}`;
   const dialog =

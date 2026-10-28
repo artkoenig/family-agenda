@@ -46,6 +46,8 @@ export type RuleTarget = {
   sourceName: MultilingualText;
   /** The Source's plain settings an Admin set, to tell Sources of one Source Type apart. */
   sourcePlain: PlainConfig;
+  /** As an Admin named the Source; null if they did not. */
+  sourceTitle: string | null;
   attribute: string;
   /** As the plugin labels the attribute, or its key if the plugin cannot be loaded. */
   attributeLabel: MultilingualText;
@@ -83,6 +85,7 @@ export function createAttributionRuleAccess(deps: AttributionRulesDeps) {
       sourceId: source.id,
       sourceName: installed?.displayName ?? source.sourceTypeId,
       sourcePlain: Object.fromEntries(Object.entries(source.plain).filter(([key]) => !setByPlugin.has(key))),
+      sourceTitle: source.name,
       attribute,
       attributeLabel: spec?.label ?? attribute,
     };

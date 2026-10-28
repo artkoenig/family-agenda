@@ -91,6 +91,10 @@ describe("Sources of a Source Type with a catalogue and a live setup step", () =
     // Named after its Messenger, with the chats it reads rather than what the plugin set.
     expect(page).toMatch(/<span class="fam-row__label">WhatsApp<\/span><span class="fam-row__hint">Chats: none yet<\/span>/);
     expect(page).not.toContain("account-1");
+
+    await instance.post(`/admin/sources/${added.id}/name`, { name: "Class 3b" }, { cookie });
+    const renamed = await (await instance.get("/admin/source-types/bridged", { cookie })).text();
+    expect(renamed).toMatch(/<span class="fam-row__label">Class 3b<\/span><span class="fam-row__hint">Chats: none yet<\/span>/);
   });
 
   it("opens the form of a Messenger's account with that Messenger given, not shown", async () => {

@@ -245,6 +245,8 @@ export const de: Catalogue = {
     addAccountOf: (name) => `Ein ${name}-Konto hinzufügen`,
     notRead: "Ihr Quellentyp ist nicht aktiviert oder nicht installiert, daher wird sie nicht gelesen.",
     settings: "Einstellungen",
+    name: "Name",
+    nameHint: (derived) => `So erscheint sie in den Einstellungen. Leer für „${derived}“.`,
     polling: "Abruf",
     timeline: "Zeitleiste",
     management: "Verwaltung",

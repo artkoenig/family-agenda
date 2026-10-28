@@ -59,7 +59,7 @@ describe("the Family Language", () => {
     await instance.query(`ALTER TABLE origins DROP COLUMN withdrawn_at`);
     await instance.query(`ALTER TABLE families DROP COLUMN language, DROP COLUMN ocr_languages`);
     await instance.query(
-      `ALTER TABLE sources DROP COLUMN last_success_at, DROP COLUMN failing_since, DROP COLUMN last_error_kind, DROP COLUMN last_error, DROP COLUMN last_new_origin_at`,
+      `ALTER TABLE sources DROP COLUMN last_success_at, DROP COLUMN failing_since, DROP COLUMN last_error_kind, DROP COLUMN last_error, DROP COLUMN last_new_origin_at, DROP COLUMN name`,
     );
     await instance.query(`DELETE FROM drizzle.__drizzle_migrations WHERE created_at >= ${familyLanguagesMigration}`);
 

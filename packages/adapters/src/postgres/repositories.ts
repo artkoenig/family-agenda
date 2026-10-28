@@ -567,6 +567,7 @@ export class PostgresSourceRepository implements SourceRepository {
       state: source.state,
       pollIntervalSeconds: source.pollIntervalSeconds,
       shown: source.shown,
+      name: source.name,
       lastRunAt: source.lastRunAt,
       lastSuccessAt: source.lastSuccessAt,
       ...failureColumns(source.failure),
@@ -626,6 +627,11 @@ export class PostgresSourceRepository implements SourceRepository {
     await this.db.update(sources).set({ shown }).where(eq(sources.id, id));
   }
 
+  async rename(id: SourceId, name: string | null): Promise<void> {
+    if (!uuidPattern.test(id)) return;
+    await this.db.update(sources).set({ name }).where(eq(sources.id, id));
+  }
+
   async remove(id: SourceId): Promise<BlobRef[]> {
     if (!uuidPattern.test(id)) return [];
     return this.db.transaction(async (tx) => {
@@ -661,6 +667,7 @@ export class PostgresSourceRepository implements SourceRepository {
       state: row.state,
       pollIntervalSeconds: row.pollIntervalSeconds,
       shown: row.shown,
+      name: row.name,
       lastRunAt: row.lastRunAt,
       lastSuccessAt: row.lastSuccessAt,
       failure:

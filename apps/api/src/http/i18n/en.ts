@@ -259,6 +259,8 @@ export const en = {
     addAccountOf: (name: string) => `Add a ${name} account`,
     notRead: "Its Source Type is not enabled or not installed, so it is not read.",
     settings: "Settings",
+    name: "Name",
+    nameHint: (derived: string) => `How it is listed in the settings. Empty for “${derived}”.`,
     polling: "Polling",
     timeline: "Timeline",
     management: "Management",
