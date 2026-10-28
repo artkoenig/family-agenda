@@ -15,6 +15,7 @@ import {
   PostgresAdminRepository,
   PostgresAdminSessionRepository,
   PostgresAttributionRuleRepository,
+  PostgresCatalogueRepository,
   PostgresFamilyMemberRepository,
   PostgresFamilyRepository,
   PostgresItemRepository,
@@ -35,6 +36,7 @@ import {
   createActivityLog,
   createAdminAccess,
   createAttributionRuleAccess,
+  createCatalogueAccess,
   createExtraction,
   createFamilyMemberAccess,
   createLanguageAccess,
@@ -49,6 +51,7 @@ import {
   signInLimits,
   type AdminAccess,
   type AttributionRuleAccess,
+  type CatalogueAccess,
   type BlobStore,
   type ExtractionAccess,
   type Extractor,
@@ -115,6 +118,8 @@ export type Application = {
   languages: LanguageAccess;
   views: ViewAccess;
   sourceTypes: SourceTypeAccess;
+  /** What an Admin enables within a Source Type, such as Messengers. */
+  catalogues: CatalogueAccess;
   sources: SourceAccess;
   /** Which Family Members the Items of a Source's Origins concern. */
   attributionRules: AttributionRuleAccess;
@@ -209,11 +214,21 @@ export async function bootApplication(config: ApplicationConfig): Promise<Applic
     sourceTypes: sourceTypeRepository,
     sources: sourceRepository,
   });
+  const catalogueRepository = new PostgresCatalogueRepository(postgres.db);
+  const catalogues = createCatalogueAccess({
+    clock,
+    applicationVersion: config.applicationVersion ?? packageVersion,
+    registry,
+    sourceTypes: sourceTypeRepository,
+    catalogues: catalogueRepository,
+  });
   const sources = createSourceAccess({
     clock,
+    timeZone,
     families,
     registry,
     sourceTypes: sourceTypeRepository,
+    catalogues: catalogueRepository,
     sources: sourceRepository,
     secrets,
     blobs,
@@ -258,6 +273,7 @@ export async function bootApplication(config: ApplicationConfig): Promise<Applic
   const messages = createMessageAccess({ items, blobs });
   try {
     await sourceTypes.start();
+    await catalogues.start();
   } catch (error) {
     await postgres.close();
     throw error;
@@ -272,6 +288,7 @@ export async function bootApplication(config: ApplicationConfig): Promise<Applic
     languages,
     views,
     sourceTypes,
+    catalogues,
     sources,
     attributionRules,
     polling,

@@ -62,7 +62,7 @@ export const en = {
     "unknown-view": "This View does not exist.",
     "unknown-source-type": "This Source Type is not installed.",
     "not-loadable": "This Source Type cannot be loaded.",
-    "risk-not-acknowledged": "Confirm that you understand the risk of this Source Type.",
+    "risk-not-acknowledged": "Confirm that you understand the risk.",
     "has-sources": "Remove the Sources of this Source Type before disabling it.",
     "source-type-not-enabled": "This Source Type is not enabled.",
     "unknown-source": "This Source does not exist.",
@@ -80,12 +80,17 @@ export const en = {
     "no-one-concerned": "Choose whom it concerns: Family Members, or the whole Family.",
     "rule-exists": "This Source already has a rule for this value.",
     "unknown-rule": "This Attribution Rule does not exist.",
+    "unknown-entry": "This entry is not in the catalogue.",
+    "not-installed": "This is not installed on the Instance. Its Compose profile has to be enabled first.",
+    "entry-in-use": "Remove the Sources that use it before disabling it.",
     "invalid-interval": `The polling interval must be between ${pollIntervalRange.minSeconds / 60} minute and ${pollIntervalRange.maxSeconds / 86_400} days.`,
   },
   /** Problems that name what went wrong. */
   problemsWith: {
     /** A Source that cannot be saved, naming the fields by their labels. */
     invalidConfig: (fields: string) => `Check ${fields}.`,
+    /** The plugin could not prepare a Source being added. */
+    setupFailed: (message: string) => `The Source could not be set up: ${message}`,
     downloadFailed: (message: string) => `The model could not be downloaded. ${message}`,
   },
 
@@ -231,6 +236,9 @@ export const en = {
     disableHint: "It can be disabled once it has no Sources.",
     acknowledgeRisk: "I understand the risk.",
     enable: (name: string) => `Enable ${name}`,
+    catalogueIntro: "Enable the ones your Family uses. Only they are offered when adding a Source of this Source Type.",
+    notInstalled: "Not installed on this Instance",
+    entryDisableHint: "It can be disabled once no Source uses it.",
   },
 
   sources: {
@@ -269,6 +277,14 @@ export const en = {
     fix: "Fix",
     fixEyebrow: "Fix a Source",
     saveAndRead: "Save and read again",
+    noEntries: (link: Wrap): Child[] => ["None is enabled. Enable one under ", link("Source Types"), " first."],
+    choicesAfterSetup: "Offered once the Source is set up.",
+    noChoices: "Nothing to choose from yet. Come back once the Source has been read.",
+    setupEyebrow: "Set up a Source",
+    setupWaiting: "Waiting …",
+    setupDone: "Done.",
+    qrCode: "QR code to scan",
+    finish: "Finish",
   },
 
   attribution: {

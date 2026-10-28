@@ -80,17 +80,19 @@ export function createSourcePolling(deps: PollingDeps) {
       });
     }
     let known: string[];
+    let withdrawnFiles;
     try {
-      ({ knownMessages: known } = await items.recordRun(
-        { familyId: source.familyId, sourceId: source.id, at: now, state: result.state, origins },
+      ({ knownMessages: known, withdrawnFiles } = await items.recordRun(
+        { familyId: source.familyId, sourceId: source.id, at: now, state: result.state, withdrawn: result.withdrawn, origins },
         project,
       ));
     } catch (error) {
       for (const origin of origins) if (origin.message) await removeBlobsOf(origin.message);
       throw error;
     }
-    // A message seen before keeps the files it was recorded with.
+    // A message seen before keeps the files it was recorded with; a withdrawn one keeps none.
     for (const origin of origins) if (origin.message && known.includes(origin.externalId)) await removeBlobsOf(origin.message);
+    for (const file of withdrawnFiles) await blobs.remove(file);
     return null;
   }
 

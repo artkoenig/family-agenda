@@ -2,7 +2,7 @@
  * The contract a Source plugin implements (ADR-0010). It is the only Family Agenda package a
  * plugin may import.
  */
-export const sdkVersion = "0.3.0";
+export const sdkVersion = "0.4.0";
 
 /**
  * A text the Admin area shows: plain, or per language as `{ en: "Calendar", de: "Kalender" }`.
@@ -39,6 +39,44 @@ export type ConfigField = {
   secret: boolean;
   required: boolean;
   description?: PluginText;
+  /**
+   * Set by the plugin's `sourceAdded` rather than by an Admin, such as an account the plugin
+   * creates for the Source; the form never shows it.
+   */
+  setByPlugin?: boolean;
+  /**
+   * Makes a plain field a choice among values the plugin knows for an existing Source, such as
+   * the chats of a linked account; its value is the list of the chosen ones. A Source being added
+   * has none to offer yet.
+   */
+  choices?: (context: RunContext) => Promise<Choice[]>;
+};
+
+/** A value a plugin offers, with how it names it. */
+export type Choice = { value: string; label: string };
+
+/**
+ * What an Admin enables one by one within a Source Type, such as the Messengers the Matrix plugin
+ * reads through bridges (ADR-0011). Each Source uses one entry, named by a plain field.
+ */
+export type Catalogue = {
+  /** What its entries are, such as "Messengers". */
+  title: PluginText;
+  /** The plain field naming the entry a Source uses; the form offers the enabled entries for it. */
+  configKey: string;
+  /** Every entry the plugin supports, and whether the Instance has what it needs installed. */
+  entries(): Promise<CatalogueEntry[]>;
+};
+
+export type CatalogueEntry = {
+  /** Stable id of the entry, such as `whatsapp`. */
+  id: string;
+  displayName: PluginText;
+  description: PluginText;
+  /** Whether what the entry needs runs on the Instance, such as its bridge. */
+  installed: boolean;
+  /** Shown before an Admin can enable it, such as for an unofficial client. */
+  riskNotice?: PluginText;
 };
 
 export type Configuration = {
@@ -53,7 +91,22 @@ export type Configuration = {
 };
 
 /** An interactive step the wizard shows, such as pairing an account by QR code. */
-export type SetupStep = { id: string; title: PluginText; description: PluginText };
+export type SetupStep = {
+  id: string;
+  title: PluginText;
+  description: PluginText;
+  /**
+   * Drives the step live for a Source that exists, such as a QR code login: says what to show
+   * now. The Admin area asks again every few seconds until the step is done or has failed.
+   */
+  progress?: (context: RunContext) => Promise<SetupProgress>;
+};
+
+export type SetupProgress =
+  /** A QR code to scan, or what is awaited. */
+  | { status: "waiting"; qrCode?: string; message?: PluginText }
+  | { status: "done"; message?: PluginText }
+  | { status: "failed"; message: PluginText };
 
 /** What a plugin gets for one Source on each run. */
 export type RunContext = {
@@ -66,7 +119,15 @@ export type RunContext = {
   timeZone: string;
 };
 
-export type IngestResult = { origins: Origin[]; state: string | null };
+export type IngestResult = {
+  origins: Origin[];
+  state: string | null;
+  /**
+   * External ids of Origins deleted in the Source since, such as redacted messages; their
+   * Revisions are rejected. Ids the core never recorded are ignored.
+   */
+  withdrawn?: string[];
+};
 
 export type Ingestion =
   | {
@@ -183,6 +244,14 @@ export interface SourcePlugin {
   ingestion: Ingestion;
   originAttributes: OriginAttribute[];
   health: Health;
+  catalogue?: Catalogue;
+  /**
+   * Prepares a Source an Admin adds, such as by creating an account for it, and returns the
+   * values of its fields set by the plugin. A `SourceError` refuses adding the Source.
+   */
+  sourceAdded?(context: Omit<RunContext, "state">): Promise<{ plain: JsonObject; secrets: Record<string, string> }>;
+  /** Cleans up after a Source was removed, such as by logging its account out; a failure is ignored. */
+  sourceRemoved?(context: RunContext): Promise<void>;
 }
 
 const sourceTypeIdPattern = /^[a-z][a-z0-9-]*$/;
@@ -195,6 +264,14 @@ export function problemsWith(plugin: SourcePlugin): string[] {
   for (const field of configuration.fields) {
     if (keys.has(field.key)) problems.push(`configuration field "${field.key}" is declared twice`);
     keys.add(field.key);
+    if (field.choices && field.secret) problems.push(`configuration field "${field.key}" is a choice, so it cannot be secret`);
+  }
+  const { catalogue } = plugin;
+  if (catalogue) {
+    const field = configuration.fields.find((candidate) => candidate.key === catalogue.configKey);
+    if (!field || field.secret || field.setByPlugin) {
+      problems.push(`the catalogue's field "${catalogue.configKey}" is no plain field an Admin sets`);
+    }
   }
   if (!Number.isInteger(configuration.version) || configuration.version < 1) {
     problems.push("the configuration version must be a whole number from 1");

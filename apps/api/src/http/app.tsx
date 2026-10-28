@@ -25,6 +25,7 @@ import {
 import type { HealthResponse } from "@family-agenda/contracts";
 import type { HttpBindings } from "@hono/node-server";
 import { Hono, type Context } from "hono";
+import QRCode from "qrcode";
 import type { Child } from "hono/jsx";
 import { bodyLimit } from "hono/body-limit";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
@@ -40,6 +41,7 @@ import {
   FamilyMembersPage,
   FirstAdminPage,
   LanguagePage,
+  LiveStepProgress,
   LlmEndpointPage,
   MessagePage,
   RecoveryKitPage,
@@ -48,6 +50,7 @@ import {
   SourcesPage,
   SourceTypesPage,
   ViewsPage,
+  type LiveStep,
   type RuleDialog,
   type SettingsSummary,
   type SignedInAdmin,
@@ -118,6 +121,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     languages,
     views,
     sourceTypes,
+    catalogues,
     sources,
     attributionRules,
     llmEndpoint,
@@ -542,6 +546,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
       <SourceTypesPage
         admin={{ ...c.get("admin"), newSourceTypes: false }}
         sourceTypes={list}
+        catalogues={await catalogues.list()}
         {...(problem ? { problem } : {})}
       />
     );
@@ -550,26 +555,53 @@ export function createHttpApp(application: Application, options: HttpOptions) {
 
   app.get("/admin/source-types", (c) => sourceTypesPage(c));
 
-  app.post("/admin/source-types/:id/enable", async (c) => {
-    const form = await c.req.parseBody();
-    const result = await sourceTypes.enable(c.req.param("id"), {
-      riskAcknowledged: field(form, "riskAcknowledged") === "yes",
+  /** Enabling or disabling a Source Type or a catalogue entry: the same form, refused the same way. */
+  const enablement = (
+    path: string,
+    act: (params: Record<string, string>, riskAcknowledged: boolean) => Promise<{ ok: true } | { ok: false; problem: ProblemKey }>,
+  ) => {
+    app.post(path, async (c) => {
+      const form = await c.req.parseBody();
+      const result = await act(c.req.param(), field(form, "riskAcknowledged") === "yes");
+      if (!result.ok) return sourceTypesPage(c, problemIn(c, result.problem));
+      return c.redirect("/admin/source-types", 303);
     });
-    if (!result.ok) return sourceTypesPage(c, problemIn(c, result.problem));
-    return c.redirect("/admin/source-types", 303);
-  });
+  };
 
-  app.post("/admin/source-types/:id/disable", async (c) => {
-    const result = await sourceTypes.disable(c.req.param("id"));
-    if (!result.ok) return sourceTypesPage(c, problemIn(c, result.problem));
-    return c.redirect("/admin/source-types", 303);
-  });
+  enablement("/admin/source-types/:id/enable", ({ id = "" }, riskAcknowledged) => sourceTypes.enable(id, { riskAcknowledged }));
+  enablement("/admin/source-types/:id/disable", ({ id = "" }) => sourceTypes.disable(id));
+  enablement("/admin/source-types/:id/catalogue/:entry/enable", ({ id = "", entry = "" }, riskAcknowledged) =>
+    catalogues.enable(id, entry, { riskAcknowledged }),
+  );
+  enablement("/admin/source-types/:id/catalogue/:entry/disable", ({ id = "", entry = "" }) => catalogues.disable(id, entry));
+
+  /** What the live setup steps of a Source show now, such as a QR code to scan. */
+  const liveStepsOf = async (source: SourceSummary): Promise<LiveStep[]> => {
+    const form = (await sources.forms()).find((candidate) => candidate.sourceTypeId === source.sourceTypeId);
+    const steps: LiveStep[] = [];
+    for (const step of form?.setupSteps.filter((candidate) => candidate.live) ?? []) {
+      const live = await liveStepOf(source.id, step.id);
+      if (live) steps.push(live);
+    }
+    return steps;
+  };
+
+  const liveStepOf = async (sourceId: SourceId, stepId: string): Promise<LiveStep | null> => {
+    const progress = await sources.setupProgress(sourceId, stepId);
+    if (!progress) return null;
+    const qrSvg =
+      progress.status === "waiting" && progress.qrCode !== null
+        ? await QRCode.toString(progress.qrCode, { type: "svg", margin: 0, errorCorrectionLevel: "L" })
+        : null;
+    return { sourceId, stepId, progress, qrSvg };
+  };
 
   const sourcesPage = async (
     c: Context<Env>,
-    shown: { problem?: string; adding?: SourceAdding; fixing?: SourceSummary } = {},
+    shown: { problem?: string; adding?: SourceAdding; fixing?: SourceSummary; settingUp?: SourceSummary } = {},
   ) => {
     const forms = await sources.forms();
+    const setUp = shown.fixing ?? shown.settingUp;
     const page = (
       <SourcesPage
         admin={c.get("admin")}
@@ -579,6 +611,8 @@ export function createHttpApp(application: Application, options: HttpOptions) {
         {...(shown.problem ? { problem: shown.problem } : {})}
         {...(shown.adding ? { adding: shown.adding } : {})}
         {...(shown.fixing ? { fixing: shown.fixing } : {})}
+        {...(shown.settingUp ? { settingUp: shown.settingUp } : {})}
+        {...(setUp ? { liveSteps: await liveStepsOf(setUp) } : {})}
       />
     );
     const refused = shown.problem || (shown.adding?.step === "form" && shown.adding.problem);
@@ -588,8 +622,9 @@ export function createHttpApp(application: Application, options: HttpOptions) {
   /** The message for a Source that cannot be saved, naming the fields by their labels. */
   const sourceProblem = async (
     c: Context<Env>,
-    result: { problem: ProblemKey } | { problem: "invalid-config"; fields: string[] },
+    result: { problem: ProblemKey } | { problem: "invalid-config"; fields: string[] } | { problem: "setup-failed"; message: string },
   ) => {
+    if (result.problem === "setup-failed") return c.get("translation").t.problemsWith.setupFailed(result.message);
     if (!("fields" in result)) return problemIn(c, result.problem);
     const { t, text, list } = c.get("translation");
     const labels = new Map((await sources.forms()).flatMap((form) => form.fields.map((f) => [f.key, text(f.label)])));
@@ -612,7 +647,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
   });
 
   app.post("/admin/sources", async (c) => {
-    const form = await c.req.parseBody();
+    const form = await c.req.parseBody({ all: true });
     const sourceTypeId = field(form, "sourceTypeId");
     const input = sourceInputOf(form);
     const result = await sources.add({ sourceTypeId, ...input });
@@ -624,7 +659,21 @@ export function createHttpApp(application: Application, options: HttpOptions) {
       const entered = { plain, interval: field(form, "pollIntervalMinutes").trim() };
       return sourcesPage(c, { adding: { step: "form", form: sourceForm, entered, problem } });
     }
-    return c.redirect("/admin/sources", 303);
+    return c.redirect(result.setUp ? `/admin/sources/${result.id}/setup` : "/admin/sources", 303);
+  });
+
+  // A Source with live setup steps, such as a QR code login, goes through them once added.
+  app.get("/admin/sources/:id/setup", async (c) => {
+    const settingUp = (await sources.list()).find((source) => source.id === c.req.param("id"));
+    if (!settingUp) return c.redirect("/admin/sources");
+    return sourcesPage(c, { settingUp });
+  });
+
+  // What a live setup step shows now; asked for again every few seconds while it waits.
+  app.get("/admin/sources/:id/setup/:step", async (c) => {
+    const live = await liveStepOf(c.req.param("id") as SourceId, c.req.param("step"));
+    if (!live) return c.body(null, 404);
+    return render(c, <LiveStepProgress step={live} />);
   });
 
   // A Fix button opens the Source's form in the dialog adding a Source uses.
@@ -635,7 +684,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
   });
 
   app.post("/admin/sources/:id", async (c) => {
-    const form = await c.req.parseBody();
+    const form = await c.req.parseBody({ all: true });
     const result = await sources.edit(c.req.param("id") as SourceId, sourceInputOf(form));
     if (!result.ok) return sourcesPage(c, { problem: await sourceProblem(c, result) });
     return c.redirect("/admin/sources", 303);
@@ -816,14 +865,21 @@ export function createHttpApp(application: Application, options: HttpOptions) {
 }
 
 /**
- * A Source form's fields: `plain.<key>` and `secret.<key>` as the plugin declares them, and the
- * polling interval in minutes, empty for the plugin's suggestion.
+ * A Source form's fields: `plain.<key>` and `secret.<key>` as the plugin declares them,
+ * `choice.<key>` once per ticked box of a choice field, which makes a list, and the polling
+ * interval in minutes, empty for the plugin's suggestion.
  */
 function sourceInputOf(form: Record<string, unknown>): SourceInput {
-  const plain: Record<string, string> = {};
+  const plain: Record<string, string | string[]> = {};
   const secrets: Record<string, string> = {};
-  for (const [name, value] of Object.entries(form)) {
-    if (typeof value !== "string") continue;
+  for (const [name, given] of Object.entries(form)) {
+    const values = (Array.isArray(given) ? given : [given]).filter((value): value is string => typeof value === "string");
+    if (name.startsWith("choice.")) {
+      plain[name.slice("choice.".length)] = values.map((value) => value.trim()).filter((value) => value !== "");
+      continue;
+    }
+    const value = values.at(-1);
+    if (value === undefined) continue;
     if (name.startsWith("plain.")) plain[name.slice("plain.".length)] = value.trim();
     if (name.startsWith("secret.")) secrets[name.slice("secret.".length)] = value.trim();
   }

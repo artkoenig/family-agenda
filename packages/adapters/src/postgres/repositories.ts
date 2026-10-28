@@ -7,6 +7,8 @@ import type {
   AdminSessionRepository,
   AttributionRuleRepository,
   BackgroundActivity,
+  CatalogueRecord,
+  CatalogueRepository,
   Extraction,
   FamilyMemberRepository,
   FamilyRepository,
@@ -63,6 +65,7 @@ import {
   attributionRuleMembers,
   attributionRules,
   backgroundActivities,
+  catalogueEntries,
   families,
   familyMembers,
   itemKeys,
@@ -505,6 +508,44 @@ export class PostgresSourceTypeRepository implements SourceTypeRepository {
   }
 }
 
+export class PostgresCatalogueRepository implements CatalogueRepository {
+  constructor(private readonly db: Database) {}
+
+  async recordDiscovered(sourceTypeId: SourceTypeId, entryIds: string[], applicationVersion: string, at: Date): Promise<void> {
+    if (entryIds.length === 0) return;
+    await this.db
+      .insert(catalogueEntries)
+      .values(entryIds.map((entryId) => ({ sourceTypeId, entryId, firstSeenIn: applicationVersion, firstSeenAt: at })))
+      .onConflictDoNothing({ target: [catalogueEntries.sourceTypeId, catalogueEntries.entryId] });
+  }
+
+  async list(sourceTypeId: SourceTypeId): Promise<CatalogueRecord[]> {
+    const rows = await this.db
+      .select()
+      .from(catalogueEntries)
+      .where(eq(catalogueEntries.sourceTypeId, sourceTypeId))
+      .orderBy(asc(catalogueEntries.entryId));
+    return rows.map(({ entryId, enabled, firstSeenIn }) => ({ entryId, enabled, firstSeenIn }));
+  }
+
+  async enable(sourceTypeId: SourceTypeId, entryId: string): Promise<void> {
+    await this.db
+      .update(catalogueEntries)
+      .set({ enabled: true })
+      .where(and(eq(catalogueEntries.sourceTypeId, sourceTypeId), eq(catalogueEntries.entryId, entryId)));
+  }
+
+  async disableIfUnused(sourceTypeId: SourceTypeId, entryId: string, configKey: string): Promise<boolean> {
+    const unused = sql`NOT EXISTS (SELECT 1 FROM ${sources} WHERE ${sources.sourceTypeId} = ${sourceTypeId} AND ${sources.config} ->> ${configKey} = ${entryId})`;
+    const updated = await this.db
+      .update(catalogueEntries)
+      .set({ enabled: false })
+      .where(and(eq(catalogueEntries.sourceTypeId, sourceTypeId), eq(catalogueEntries.entryId, entryId), unused))
+      .returning({ entryId: catalogueEntries.entryId });
+    return updated.length === 1;
+  }
+}
+
 export class PostgresSourceRepository implements SourceRepository {
   constructor(private readonly db: Database) {}
 
@@ -640,7 +681,7 @@ type Recompute = (kind: ItemKind, revisions: FoldableRevision[]) => ItemProjecti
 export class PostgresItemRepository implements ItemRepository {
   constructor(private readonly db: Database) {}
 
-  async recordRun(run: SourceRun, recompute: Recompute): Promise<{ knownMessages: string[] }> {
+  async recordRun(run: SourceRun, recompute: Recompute): Promise<{ knownMessages: string[]; withdrawnFiles: BlobRef[] }> {
     return this.db.transaction(async (tx) => {
       const reached = new Map<ItemId, ItemKind>();
       const knownMessages: string[] = [];
@@ -660,9 +701,14 @@ export class PostgresItemRepository implements ItemRepository {
             target: [origins.sourceId, origins.externalId],
             // A later appearance without a link, such as a cancellation, keeps the link.
             set: { attributes: origin.attributes, link: sql`coalesce(excluded.link, ${origins.link})` },
+            // A withdrawn Origin never comes back.
+            setWhere: isNull(origins.withdrawnAt),
           })
           .returning({ id: origins.id });
-        if (!row) throw new Error("recording the Origin returned no row");
+        if (!row) {
+          if (origin.message) knownMessages.push(origin.externalId);
+          continue;
+        }
         const { message } = origin;
         if (message) {
           const id = randomUUID();
@@ -700,6 +746,7 @@ export class PostgresItemRepository implements ItemRepository {
         }
         await this.append(tx, { familyId: run.familyId, sourceId: run.sourceId, originId: row.id, at: run.at }, origin.revisions, reached);
       }
+      const withdrawnFiles = await this.withdraw(tx, run, reached);
       await this.recomputeAll(tx, reached, recompute);
       const lastNewOrigin = tx
         .select({ at: sql`max(${origins.firstSeenAt})` })
@@ -715,8 +762,42 @@ export class PostgresItemRepository implements ItemRepository {
           lastNewOriginAt: sql`(${lastNewOrigin})`,
         })
         .where(eq(sources.id, run.sourceId));
-      return { knownMessages };
+      return { knownMessages, withdrawnFiles };
     });
+  }
+
+  /**
+   * Marks the Origins the Source deleted as withdrawn, rejects their Revisions and removes their
+   * raw messages; notes the Items they reach. Returns the files of the removed messages.
+   */
+  private async withdraw(tx: Transaction, run: SourceRun, reached: Map<ItemId, ItemKind>): Promise<BlobRef[]> {
+    if (run.withdrawn.length === 0) return [];
+    const withdrawn = await tx
+      .update(origins)
+      .set({ withdrawnAt: run.at })
+      .where(and(eq(origins.sourceId, run.sourceId), inArray(origins.externalId, run.withdrawn), isNull(origins.withdrawnAt)))
+      .returning({ id: origins.id });
+    if (withdrawn.length === 0) return [];
+    const ids = withdrawn.map((row) => row.id);
+    const rejected = await tx
+      .update(revisions)
+      .set({ accepted: false, rejection: "origin-withdrawn" })
+      .where(and(inArray(revisions.originId, ids), eq(revisions.accepted, true)))
+      .returning({ itemId: revisions.itemId });
+    if (rejected.length > 0) {
+      const kinds = await tx
+        .select({ id: items.id, kind: items.kind })
+        .from(items)
+        .where(inArray(items.id, [...new Set(rejected.map((row) => row.itemId))]));
+      for (const item of kinds) reached.set(item.id as ItemId, item.kind as ItemKind);
+    }
+    const messages = tx.select({ id: rawMessages.id }).from(rawMessages).where(inArray(rawMessages.originId, ids));
+    const attachments = await tx
+      .delete(messageAttachments)
+      .where(inArray(messageAttachments.rawMessageId, messages))
+      .returning({ blob: messageAttachments.blob });
+    const texts = await tx.delete(rawMessages).where(inArray(rawMessages.originId, ids)).returning({ blob: rawMessages.textBlob });
+    return [...texts, ...attachments].map((row) => row.blob as BlobRef);
   }
 
   async pendingMessages(limit: number): Promise<PendingMessage[]> {

@@ -49,7 +49,7 @@ export const de: Catalogue = {
     "unknown-view": "Diese Ansicht gibt es nicht.",
     "unknown-source-type": "Dieser Quellentyp ist nicht installiert.",
     "not-loadable": "Dieser Quellentyp kann nicht geladen werden.",
-    "risk-not-acknowledged": "Bestätige, dass du das Risiko dieses Quellentyps verstehst.",
+    "risk-not-acknowledged": "Bestätige, dass du das Risiko verstehst.",
     "has-sources": "Entferne die Quellen dieses Quellentyps, bevor du ihn deaktivierst.",
     "source-type-not-enabled": "Dieser Quellentyp ist nicht aktiviert.",
     "unknown-source": "Diese Quelle gibt es nicht.",
@@ -67,10 +67,14 @@ export const de: Catalogue = {
     "no-one-concerned": "Wähle, wen sie betrifft: Familienmitglieder oder die ganze Familie.",
     "rule-exists": "Diese Quelle hat schon eine Regel für diesen Wert.",
     "unknown-rule": "Diese Zuordnungsregel gibt es nicht.",
+    "unknown-entry": "Diesen Eintrag gibt es im Katalog nicht.",
+    "not-installed": "Das ist auf der Instanz nicht installiert. Zuerst muss sein Compose-Profil aktiviert werden.",
+    "entry-in-use": "Entferne die Quellen, die es nutzen, bevor du es deaktivierst.",
     "invalid-interval": `Das Abrufintervall muss zwischen ${pollIntervalRange.minSeconds / 60} Minute und ${pollIntervalRange.maxSeconds / 86_400} Tagen liegen.`,
   },
   problemsWith: {
     invalidConfig: (fields) => `Prüfe ${fields}.`,
+    setupFailed: (message) => `Die Quelle konnte nicht eingerichtet werden: ${message}`,
     downloadFailed: (message) => `Das Modell konnte nicht heruntergeladen werden. ${message}`,
   },
 
@@ -218,6 +222,9 @@ export const de: Catalogue = {
     disableHint: "Er lässt sich deaktivieren, sobald er keine Quellen mehr hat.",
     acknowledgeRisk: "Ich verstehe das Risiko.",
     enable: (name) => `${name} aktivieren`,
+    catalogueIntro: "Aktiviere die, die deine Familie nutzt. Nur sie werden angeboten, wenn eine Quelle dieses Quellentyps hinzugefügt wird.",
+    notInstalled: "Auf dieser Instanz nicht installiert",
+    entryDisableHint: "Kann deaktiviert werden, sobald keine Quelle es nutzt.",
   },
 
   sources: {
@@ -256,6 +263,14 @@ export const de: Catalogue = {
     fix: "Beheben",
     fixEyebrow: "Eine Quelle beheben",
     saveAndRead: "Speichern und neu lesen",
+    noEntries: (link) => ["Keiner ist aktiviert. Aktiviere zuerst einen unter ", link("Quellentypen"), "."],
+    choicesAfterSetup: "Wird angeboten, sobald die Quelle eingerichtet ist.",
+    noChoices: "Noch nichts zur Auswahl. Schau wieder vorbei, wenn die Quelle gelesen wurde.",
+    setupEyebrow: "Eine Quelle einrichten",
+    setupWaiting: "Warte …",
+    setupDone: "Fertig.",
+    qrCode: "QR-Code zum Scannen",
+    finish: "Fertig",
   },
 
   attribution: {

@@ -55,6 +55,8 @@ describe("the Family Language", () => {
     // As before the migration that added the Family Language, which then runs again on restart, with
     // the later ones undone too: only migrations newer than the last one recorded run.
     await instance.query(`DROP TABLE attribution_rule_members, attribution_rules`);
+    await instance.query(`DROP TABLE catalogue_entries`);
+    await instance.query(`ALTER TABLE origins DROP COLUMN withdrawn_at`);
     await instance.query(`ALTER TABLE families DROP COLUMN language, DROP COLUMN ocr_languages`);
     await instance.query(
       `ALTER TABLE sources DROP COLUMN last_success_at, DROP COLUMN failing_since, DROP COLUMN last_error_kind, DROP COLUMN last_error, DROP COLUMN last_new_origin_at`,

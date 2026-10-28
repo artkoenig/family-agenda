@@ -20,7 +20,7 @@ export type ContractOptions = {
 };
 
 /** Every text a plugin shows, by where it comes from. */
-function textsOf(plugin: SourcePlugin, packageJson: unknown): [string, PluginText][] {
+async function textsOf(plugin: SourcePlugin, packageJson: unknown): Promise<[string, PluginText][]> {
   const texts: [string, PluginText][] = [["identity.displayName", plugin.identity.displayName]];
   for (const field of plugin.configuration.fields) {
     texts.push([`configuration field ${field.key}'s label`, field.label]);
@@ -30,6 +30,13 @@ function textsOf(plugin: SourcePlugin, packageJson: unknown): [string, PluginTex
     texts.push([`setup step ${step.id}'s title`, step.title], [`setup step ${step.id}'s description`, step.description]);
   }
   for (const attribute of plugin.originAttributes) texts.push([`Origin attribute ${attribute.key}'s label`, attribute.label]);
+  if (plugin.catalogue) {
+    texts.push(["the catalogue's title", plugin.catalogue.title]);
+    for (const entry of await plugin.catalogue.entries()) {
+      texts.push([`catalogue entry ${entry.id}'s name`, entry.displayName], [`catalogue entry ${entry.id}'s description`, entry.description]);
+      if (entry.riskNotice !== undefined) texts.push([`catalogue entry ${entry.id}'s risk notice`, entry.riskNotice]);
+    }
+  }
   if (packageJson !== undefined) {
     const result = parseManifest(packageJson);
     if (!result.ok) throw new Error(`the manifest is invalid: ${result.problem}`);
@@ -61,6 +68,13 @@ export function describeSourcePluginContract(
       expect(new Set(steps).size).toBe(steps.length);
     });
 
+    if (createPlugin().catalogue) {
+      it("lists each catalogue entry once", async () => {
+        const ids = (await createPlugin().catalogue?.entries())?.map((entry) => entry.id) ?? [];
+        expect(new Set(ids).size).toBe(ids.length);
+      });
+    }
+
     it("migrates a configuration of every older version to the current one", () => {
       const { configuration } = createPlugin();
       for (let from = 1; from < configuration.version; from++) {
@@ -69,8 +83,8 @@ export function describeSourcePluginContract(
     });
 
     for (const language of options.languages ?? []) {
-      it(`gives every text in ${language} too`, () => {
-        const missing = textsOf(createPlugin(), options.packageJson)
+      it(`gives every text in ${language} too`, async () => {
+        const missing = (await textsOf(createPlugin(), options.packageJson))
           .filter(([, text]) => typeof text === "string" || !text[language]?.trim())
           .map(([where]) => where);
         expect(missing, `texts without ${language}`).toEqual([]);

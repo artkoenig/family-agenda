@@ -1,4 +1,5 @@
 import { textIn, type SourceTypeId } from "@family-agenda/domain";
+import { disableIfUnused, enableIfAllowed, type DisableResult, type Enableable, type EnableResult } from "./enablement";
 import type {
   Clock,
   InstalledSourceType,
@@ -24,9 +25,8 @@ export type SourceTypeSummary = InstalledSourceType & {
   firstSeenIn: string;
 };
 
-export type EnableResult =
-  | { ok: true }
-  | { ok: false; problem: "unknown-source-type" | "not-loadable" | "risk-not-acknowledged" };
+/** How enabling and disabling a Source Type is refused. */
+const problems = { unknown: "unknown-source-type", unavailable: "not-loadable", inUse: "has-sources" } as const;
 
 export function createSourceTypeAccess(deps: SourceTypesDeps) {
   const { clock, applicationVersion, registry, sourceTypes, sources } = deps;
@@ -47,6 +47,28 @@ export function createSourceTypeAccess(deps: SourceTypesDeps) {
       }
       await sources.migrateConfig(source.id, source.configVersion, plain, configuration.version);
     }
+  }
+
+  /**
+   * A Source Type the Instance has recorded, as an Admin enables or disables it. Only an installed
+   * one can be enabled: its code is loaded once its risk is acknowledged, and its Sources'
+   * configuration is migrated then. One no longer installed can still be disabled.
+   */
+  async function enableable(id: string): Promise<Enableable | null> {
+    const installed = registry.installed().find((type) => type.id === id);
+    const record = (await sourceTypes.list()).find((type) => type.id === id);
+    if (!record) return null;
+    return {
+      available: () => Promise.resolve(installed?.notLoadable === null),
+      riskNotice: installed?.riskNotice ?? null,
+      async enable() {
+        if (!(await registry.load(record.id)).ok) return false;
+        await sourceTypes.enable(record.id);
+        await migrateSources(record.id);
+        return true;
+      },
+      disableIfUnused: async () => !record.enabled || (await sourceTypes.disableIfUnused(record.id)),
+    };
   }
 
   async function summaries(): Promise<SourceTypeSummary[]> {
@@ -96,29 +118,14 @@ export function createSourceTypeAccess(deps: SourceTypesDeps) {
       return list;
     },
 
-    async enable(id: string, input: { riskAcknowledged?: boolean } = {}): Promise<EnableResult> {
-      const installed = registry.installed().find((type) => type.id === id);
-      if (!installed) return { ok: false, problem: "unknown-source-type" };
-      if (installed.notLoadable !== null) return { ok: false, problem: "not-loadable" };
-      if (installed.riskNotice !== null && input.riskAcknowledged !== true) {
-        return { ok: false, problem: "risk-not-acknowledged" };
-      }
-      if (!(await registry.load(installed.id)).ok) return { ok: false, problem: "not-loadable" };
-      await sourceTypes.enable(installed.id);
-      await migrateSources(installed.id);
-      return { ok: true };
+    async enable(id: string, input: { riskAcknowledged?: boolean } = {}): Promise<EnableResult<typeof problems>> {
+      const installed = registry.installed().some((type) => type.id === id);
+      return enableIfAllowed(installed ? await enableable(id) : null, input, problems);
     },
 
     /** Only a Source Type without Sources can be disabled; an Admin removes those first. */
-    async disable(
-      id: string,
-    ): Promise<{ ok: true } | { ok: false; problem: "unknown-source-type" | "has-sources" }> {
-      const record = (await sourceTypes.list()).find((type) => type.id === id);
-      if (!record) return { ok: false, problem: "unknown-source-type" };
-      if (record.enabled && !(await sourceTypes.disableIfUnused(record.id))) {
-        return { ok: false, problem: "has-sources" };
-      }
-      return { ok: true };
+    async disable(id: string): Promise<DisableResult<typeof problems>> {
+      return disableIfUnused(await enableable(id), problems);
     },
   };
 }
