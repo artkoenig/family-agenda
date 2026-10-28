@@ -896,6 +896,7 @@ export function SourceTypePage(props: {
   const types = t.sourceTypes;
   const href = sourceTypeHref(props.sourceTypeId);
   const name = text(props.displayName);
+  const added = adding ? addedEntry(adding) : undefined;
   const enablement = (enabled: boolean) =>
     sourceType ? (
       <Enablement
@@ -908,13 +909,13 @@ export function SourceTypePage(props: {
       />
     ) : null;
   const dialog = adding ? (
-    <Dialog id="add-source" eyebrow={s.addEyebrow} title={text(adding.form.displayName)} closeHref={href}>
+    <Dialog id="add-source" eyebrow={s.addEyebrow} title={text(added?.displayName ?? adding.form.displayName)} closeHref={href}>
       <form method="post" action="/admin/sources" class="fam-dialog__form">
         <Problem message={adding.problem} />
         <input type="hidden" name="sourceTypeId" value={adding.form.sourceTypeId} />
         <SetupSteps form={adding.form} />
         <SourceFields form={adding.form} prefix={`new-${adding.form.sourceTypeId}`} {...(adding.entered ? { entered: adding.entered } : {})} autofocus />
-        <DialogFooter closeHref={href} submit={s.addType(text(adding.form.displayName))} />
+        <DialogFooter closeHref={href} submit={added ? s.addAccount : s.addType(text(adding.form.displayName))} />
       </form>
     </Dialog>
   ) : props.fixing && form ? (
@@ -940,7 +941,7 @@ export function SourceTypePage(props: {
       <SectionHeader
         title={name}
         description={sourceType ? text(sourceType.description) : s.notInstalled}
-        action={sourceType?.enabled && form ? addButton(`/admin/sources/new?type=${encodeURIComponent(props.sourceTypeId)}`, s.addType(name)) : undefined}
+        action={sourceType?.enabled && form && !form.catalogue ? addButton(`/admin/sources/new?type=${encodeURIComponent(props.sourceTypeId)}`, s.addType(name)) : undefined}
       />
       {sourceType ? (
         <p class="fam-entry__meta">
@@ -970,10 +971,50 @@ export function SourceTypePage(props: {
           )}
         </section>
       ) : null}
-      {sourceType?.enabled ? <CatalogueEntries catalogue={props.catalogue} /> : null}
+      {sourceType?.enabled ? <CatalogueEntries catalogue={props.catalogue} form={form} /> : null}
       {sourceType?.enabled ? <section class="fam-type-section">{enablement(true)}</section> : null}
     </AdminLayout>
   );
+}
+
+/**
+ * Adding a Source at a catalogue entry, such as an account at its Messenger. With nothing else to
+ * fill in before its setup, such as only chats to choose once linked, it starts the setup at once;
+ * otherwise it opens the form with the entry given.
+ */
+function AddAtEntry(props: { form: SourceForm; entryId: string; name: string }) {
+  const { form, entryId } = props;
+  const { t } = useTranslation();
+  const s = t.sources;
+  const configKey = form.catalogue?.configKey;
+  const nothingToFill = form.fields.every((field) => field.key === configKey || field.choice);
+  if (!nothingToFill) {
+    return (
+      <a
+        class="fam-button fam-button--primary"
+        href={`/admin/sources/new?type=${encodeURIComponent(form.sourceTypeId)}&entry=${encodeURIComponent(entryId)}`}
+        aria-label={s.addAccountOf(props.name)}
+      >
+        {s.addAccount}
+      </a>
+    );
+  }
+  return (
+    <form method="post" action="/admin/sources" class="fam-entry__form">
+      <input type="hidden" name="sourceTypeId" value={form.sourceTypeId} />
+      <input type="hidden" name={`plain.${configKey}`} value={entryId} />
+      <button type="submit" class="fam-button fam-button--primary" aria-label={s.addAccountOf(props.name)}>
+        {s.addAccount}
+      </button>
+    </form>
+  );
+}
+
+/** The catalogue entry a Source being added uses, such as its Messenger, once it is chosen. */
+function addedEntry(adding: SourceAdding) {
+  const { catalogue } = adding.form;
+  const chosen = catalogue ? adding.entered?.plain[catalogue.configKey] : undefined;
+  return catalogue?.entries.find((entry) => entry.id === chosen);
 }
 
 /** A Source in its Source Type's list, opening in place for editing, hiding and removing it. */
@@ -1089,9 +1130,14 @@ function Enablement(props: {
   );
 }
 
-/** The entries an Admin enables within a Source Type, such as its Messengers, each like a Source Type. */
-function CatalogueEntries(props: { catalogue: CatalogueSummary | undefined }) {
-  const { catalogue } = props;
+/**
+ * The entries an Admin enables within a Source Type, such as its Messengers, each like a Source
+ * Type. A Source is added at the entry it uses, such as an account at its Messenger, and is polled
+ * at the entry's interval.
+ */
+function CatalogueEntries(props: { catalogue: CatalogueSummary | undefined; form: SourceForm | undefined }) {
+  const { catalogue, form } = props;
+  const usable = new Set(form?.catalogue?.entries.map((entry) => entry.id));
   const { t, text } = useTranslation();
   const s = t.sourceTypes;
   if (!catalogue || catalogue.entries.length === 0) return null;
@@ -1111,14 +1157,38 @@ function CatalogueEntries(props: { catalogue: CatalogueSummary | undefined }) {
                 <h3 class="fam-entry__name">{name}</h3>
                 <p class="fam-entry__meta">{text(entry.description)}</p>
               </div>
-              <Enablement
-                name={name}
-                action={`${base}/${entry.id}`}
-                enabled={entry.enabled}
-                unavailable={entry.installed ? undefined : <span class="fam-status fam-status--waiting">{s.notInstalled}</span>}
-                riskNotice={entry.riskNotice}
-                disableHint={s.entryDisableHint}
-              />
+              <div class="fam-entry__form">
+                {form && usable.has(entry.id) ? <AddAtEntry form={form} entryId={entry.id} name={name} /> : null}
+                <Enablement
+                  name={name}
+                  action={`${base}/${entry.id}`}
+                  enabled={entry.enabled}
+                  unavailable={entry.installed ? undefined : <span class="fam-status fam-status--waiting">{s.notInstalled}</span>}
+                  riskNotice={entry.riskNotice}
+                  disableHint={s.entryDisableHint}
+                />
+              </div>
+              {form && usable.has(entry.id) && form.suggestedIntervalSeconds !== null ? (
+                <form method="post" action={`${base}/${entry.id}/interval`} class="fam-entry__form">
+                  <div class="fam-field">
+                    <label for={`interval-${entry.id}`}>{s.entryInterval(name)}</label>
+                    <input
+                      id={`interval-${entry.id}`}
+                      name="pollIntervalMinutes"
+                      type="number"
+                      min={pollIntervalRange.minSeconds / 60}
+                      max={pollIntervalRange.maxSeconds / 60}
+                      placeholder={String(form.suggestedIntervalSeconds / 60)}
+                      value={entry.pollIntervalSeconds !== null ? String(entry.pollIntervalSeconds / 60) : undefined}
+                      class="fam-input--short"
+                    />
+                    <small>{t.sources.intervalHint(form.suggestedIntervalSeconds / 60)}</small>
+                  </div>
+                  <button type="submit" class="fam-button fam-button--secondary">
+                    {t.common.save}
+                  </button>
+                </form>
+              ) : null}
             </li>
           );
         })}
@@ -1239,7 +1309,8 @@ function plainValues(plain: PlainConfig): string[] {
 function sourceMeta(source: SourceSummary, form: SourceForm | undefined, t: Catalogue): string {
   const plain = plainValues(source.plain);
   const secrets = source.storedSecrets.length > 0 ? [t.sources.secretStored] : [];
-  const seconds = source.pollIntervalSeconds ?? form?.suggestedIntervalSeconds ?? null;
+  // A Source using a catalogue entry is polled at the entry's interval, shown with the entry.
+  const seconds = form?.catalogue ? null : (source.pollIntervalSeconds ?? form?.suggestedIntervalSeconds ?? null);
   const interval = seconds !== null ? [t.sources.every(seconds / 60)] : [];
   const hidden = source.shown ? [] : [t.sources.hiddenMeta];
   return [...plain, ...secrets, ...interval, ...hidden].join(" · ");
@@ -1295,7 +1366,7 @@ function SourceFields(props: {
           </div>
         );
       })}
-      {form.suggestedIntervalSeconds !== null ? (
+      {form.suggestedIntervalSeconds !== null && !form.catalogue ? (
         <div class="fam-field">
           <label for={id("interval")}>{t.sources.interval}</label>
           <input
@@ -1316,8 +1387,8 @@ function SourceFields(props: {
 }
 
 /**
- * The field naming the catalogue entry a Source uses, such as its Messenger: a choice among the
- * enabled entries when adding a Source, and fixed once it exists.
+ * The field naming the catalogue entry a Source uses, such as its Messenger: fixed once it exists,
+ * given when it is added at its entry, and a choice among the enabled entries otherwise.
  */
 function CatalogueField(props: {
   field: SourceForm["fields"][number];
@@ -1331,8 +1402,10 @@ function CatalogueField(props: {
   const { t, text } = useTranslation();
   const entries = form.catalogue?.entries ?? [];
   const label = <label for={id}>{text(field.label)}</label>;
+  const entry = entries.find((candidate) => candidate.id === chosen);
+  // Added at its entry, the dialog is titled after it, so the field needs no showing.
+  if (entry && !props.existing) return <input type="hidden" name={`plain.${field.key}`} value={entry.id} />;
   if (props.existing) {
-    const entry = entries.find((candidate) => candidate.id === chosen);
     return (
       <div class="fam-field">
         {label}

@@ -525,13 +525,20 @@ export class PostgresCatalogueRepository implements CatalogueRepository {
       .from(catalogueEntries)
       .where(eq(catalogueEntries.sourceTypeId, sourceTypeId))
       .orderBy(asc(catalogueEntries.entryId));
-    return rows.map(({ entryId, enabled, firstSeenIn }) => ({ entryId, enabled, firstSeenIn }));
+    return rows.map(({ entryId, enabled, firstSeenIn, pollIntervalSeconds }) => ({ entryId, enabled, firstSeenIn, pollIntervalSeconds }));
   }
 
   async enable(sourceTypeId: SourceTypeId, entryId: string): Promise<void> {
     await this.db
       .update(catalogueEntries)
       .set({ enabled: true })
+      .where(and(eq(catalogueEntries.sourceTypeId, sourceTypeId), eq(catalogueEntries.entryId, entryId)));
+  }
+
+  async setPollInterval(sourceTypeId: SourceTypeId, entryId: string, seconds: number | null): Promise<void> {
+    await this.db
+      .update(catalogueEntries)
+      .set({ pollIntervalSeconds: seconds })
       .where(and(eq(catalogueEntries.sourceTypeId, sourceTypeId), eq(catalogueEntries.entryId, entryId)));
   }
 

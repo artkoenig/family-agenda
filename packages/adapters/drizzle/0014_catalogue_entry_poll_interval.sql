@@ -1,0 +1,1 @@
+ALTER TABLE "catalogue_entries" ADD COLUMN "poll_interval_seconds" integer;

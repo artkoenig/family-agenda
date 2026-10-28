@@ -124,6 +124,8 @@ export const catalogueEntries = pgTable(
     /** The application version the entry was first discovered in. */
     firstSeenIn: text("first_seen_in").notNull(),
     firstSeenAt: timestamp("first_seen_at", { withTimezone: true }).notNull(),
+    /** How often the Sources using it are polled; null for their plugin's suggestion. */
+    pollIntervalSeconds: integer("poll_interval_seconds"),
   },
   (table) => [primaryKey({ columns: [table.sourceTypeId, table.entryId] })],
 );

@@ -253,6 +253,7 @@ export async function bootApplication(config: ApplicationConfig): Promise<Applic
     timeZone,
     registry,
     sourceTypes: sourceTypeRepository,
+    catalogues: catalogueRepository,
     sources: sourceRepository,
     secrets,
     items,

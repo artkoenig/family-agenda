@@ -320,6 +320,8 @@ export type CatalogueRecord = {
   enabled: boolean;
   /** The application version the entry was first discovered in. */
   firstSeenIn: string;
+  /** How often the Sources using it are polled; null for their plugin's suggestion. */
+  pollIntervalSeconds: number | null;
 };
 
 export interface CatalogueRepository {
@@ -327,6 +329,7 @@ export interface CatalogueRepository {
   recordDiscovered(sourceTypeId: SourceTypeId, entryIds: string[], applicationVersion: string, at: Date): Promise<void>;
   list(sourceTypeId: SourceTypeId): Promise<CatalogueRecord[]>;
   enable(sourceTypeId: SourceTypeId, entryId: string): Promise<void>;
+  setPollInterval(sourceTypeId: SourceTypeId, entryId: string, seconds: number | null): Promise<void>;
   /**
    * Disables the entry unless a Source of the Source Type names it in its plain `configKey`
    * field. Returns whether it is disabled now.

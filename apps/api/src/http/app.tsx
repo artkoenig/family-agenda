@@ -610,6 +610,15 @@ export function createHttpApp(application: Application, options: HttpOptions) {
   );
   enablement("/admin/source-types/:id/catalogue/:entry/disable", ({ id = "", entry = "" }) => catalogues.disable(id, entry));
 
+  // How often the Sources using a catalogue entry are polled, such as all WhatsApp accounts.
+  app.post("/admin/source-types/:id/catalogue/:entry/interval", async (c) => {
+    const id = c.req.param("id");
+    const minutes = field(await c.req.parseBody(), "pollIntervalMinutes").trim();
+    const result = await catalogues.setPollInterval(id, c.req.param("entry"), minutes === "" ? null : Number(minutes) * 60);
+    if (!result.ok) return sourceTypePage(c, id, { problem: problemIn(c, result.problem) });
+    return c.redirect(sourceTypeHref(id), 303);
+  });
+
   /** What the live setup steps of a Source show now, such as a QR code to scan. */
   const liveStepsOf = async (source: SourceSummary): Promise<LiveStep[]> => {
     const form = (await sources.forms()).find((candidate) => candidate.sourceTypeId === source.sourceTypeId);
@@ -652,6 +661,11 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     if (type === undefined) return c.redirect("/admin/sources");
     const form = (await sources.forms()).find((candidate) => candidate.sourceTypeId === type);
     if (!form) return c.redirect(sourceTypeHref(type));
+    // Added at a catalogue entry, such as a Messenger, the Source uses that entry.
+    const entry = c.req.query("entry");
+    if (form.catalogue && entry !== undefined) {
+      return sourceTypePage(c, type, { adding: { form, entered: { plain: { [form.catalogue.configKey]: entry }, interval: "" } } });
+    }
     return sourceTypePage(c, type, { adding: { form } });
   });
 

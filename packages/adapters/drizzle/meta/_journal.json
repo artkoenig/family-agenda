@@ -99,6 +99,13 @@
       "when": 1793168670365,
       "tag": "0013_catalogue_and_withdrawn_origins",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1793196309191,
+      "tag": "0014_catalogue_entry_poll_interval",
+      "breakpoints": true
     }
   ]
 }
