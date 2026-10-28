@@ -48,9 +48,9 @@ _Avoid_: Bridge (for the domain concept), network, chat app
 What a Source Type offers for an Admin to enable entry by entry, such as the Messengers of the Matrix Source Type; each Source of that type uses one enabled entry.
 _Avoid_: Option list, sub-type
 
-**Attribution Rule**:
-An Admin-maintained rule that assigns Items to Family Members, or to the whole Family, by where they came from, such as a sender address, a messenger group, or a calendar; never by what the content mentions.
-_Avoid_: Mapping, routing rule, filter
+**Source Assignment**:
+The Family Members an Admin assigns a Source to; the Source's Items concern them, or the whole Family when it is assigned to no one. Nothing within a Source, such as a sender or a calendar's name, counts, and never what the content mentions. An Item from several Sources concerns everyone they are assigned to, or the whole Family if one of them is assigned to no one.
+_Avoid_: Attribution Rule (replaced), mapping, routing rule, filter
 
 ### Items
 

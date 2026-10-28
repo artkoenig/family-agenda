@@ -2,7 +2,7 @@
  * The contract a Source plugin implements (ADR-0010). It is the only Family Agenda package a
  * plugin may import.
  */
-export const sdkVersion = "0.5.0";
+export const sdkVersion = "0.6.0";
 
 /**
  * A text the Admin area shows: plain, or per language as `{ en: "Calendar", de: "Kalender" }`.
@@ -183,7 +183,7 @@ export type Origin = {
   /** Identifies the Origin within its Source, such as a message id. */
   externalId: string;
   occurredAt: Date;
-  /** Values of the plugin's Origin attributes, which Attribution Rules match on. */
+  /** What the plugin tells about where it came from, such as its sender or calendar, shown with its message; whom it concerns is decided by its Source alone. */
   attributes: Record<string, string>;
   /** An `http` or `https` address where the Family can look at the original, if there is one. */
   link?: string;
@@ -200,14 +200,6 @@ export type Origin = {
         thread?: string;
       }
     | { kind: "revisions"; revisions: PluginRevision[] };
-};
-
-/** Something an Attribution Rule can match on, such as a sender or a calendar. */
-export type OriginAttribute = {
-  key: string;
-  label: PluginText;
-  /** The values the plugin knows of, such as recent senders, offered in the Attribution Rule form. */
-  knownValues(context: RunContext): Promise<{ value: string; label: string }[]>;
 };
 
 export type Health = {
@@ -258,7 +250,6 @@ export interface SourcePlugin {
   configuration: Configuration;
   setupSteps: SetupStep[];
   ingestion: Ingestion;
-  originAttributes: OriginAttribute[];
   health: Health;
   catalogue?: Catalogue;
   services?: Services;

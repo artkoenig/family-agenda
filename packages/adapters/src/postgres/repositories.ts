@@ -5,7 +5,6 @@ import type {
   AdminRepository,
   AdminSession,
   AdminSessionRepository,
-  AttributionRuleRepository,
   BackgroundActivity,
   CatalogueRecord,
   CatalogueRepository,
@@ -34,8 +33,6 @@ import type {
 import type {
   Admin,
   AdminId,
-  AttributionRule,
-  AttributionRuleId,
   BlobRef,
   Email,
   FamilyId,
@@ -62,8 +59,6 @@ import type { Database } from "./database";
 import {
   admins,
   adminSessions,
-  attributionRuleMembers,
-  attributionRules,
   backgroundActivities,
   catalogueEntries,
   families,
@@ -76,6 +71,7 @@ import {
   rawMessages,
   revisions,
   signInFailures,
+  sourceMembers,
   sources,
   sourceTypes,
   viewPreselections,
@@ -370,104 +366,6 @@ async function insertPreselections(tx: Pick<Database, "insert">, view: View): Pr
     .values(view.preselected.map((familyMemberId) => ({ viewId: view.id, familyMemberId })));
 }
 
-export class PostgresAttributionRuleRepository implements AttributionRuleRepository {
-  constructor(private readonly db: Database) {}
-
-  async add(rule: AttributionRule): Promise<boolean> {
-    return this.db.transaction(async (tx) => {
-      const inserted = await tx
-        .insert(attributionRules)
-        .values({ ...rule, wholeFamily: rule.concerns === "whole-family" })
-        .onConflictDoNothing({ target: [attributionRules.sourceId, attributionRules.attribute, attributionRules.value] })
-        .returning({ id: attributionRules.id });
-      if (inserted.length === 0) return false;
-      await insertRuleMembers(tx, rule);
-      return true;
-    });
-  }
-
-  async list(familyId: FamilyId): Promise<AttributionRule[]> {
-    return this.select(eq(attributionRules.familyId, familyId));
-  }
-
-  async findById(id: AttributionRuleId): Promise<AttributionRule | null> {
-    if (!uuidPattern.test(id)) return null;
-    const [rule] = await this.select(eq(attributionRules.id, id));
-    return rule ?? null;
-  }
-
-  async update(rule: AttributionRule): Promise<boolean> {
-    return this.db.transaction(async (tx) => {
-      const [taken] = await tx
-        .select({ id: attributionRules.id })
-        .from(attributionRules)
-        .where(
-          and(
-            eq(attributionRules.sourceId, rule.sourceId),
-            eq(attributionRules.attribute, rule.attribute),
-            eq(attributionRules.value, rule.value),
-            sql`${attributionRules.id} <> ${rule.id}`,
-          ),
-        );
-      if (taken) return false;
-      await tx
-        .update(attributionRules)
-        .set({ value: rule.value, wholeFamily: rule.concerns === "whole-family" })
-        .where(eq(attributionRules.id, rule.id));
-      await tx.delete(attributionRuleMembers).where(eq(attributionRuleMembers.ruleId, rule.id));
-      await insertRuleMembers(tx, rule);
-      return true;
-    });
-  }
-
-  async remove(id: AttributionRuleId): Promise<void> {
-    if (!uuidPattern.test(id)) return;
-    await this.db.delete(attributionRules).where(eq(attributionRules.id, id));
-  }
-
-  async seenValues(sourceId: SourceId, attribute: string): Promise<string[]> {
-    if (!uuidPattern.test(sourceId)) return [];
-    const value = sql<string>`${origins.attributes} ->> ${attribute}`;
-    const rows = await this.db
-      .selectDistinct({ value })
-      .from(origins)
-      .where(and(eq(origins.sourceId, sourceId), sql`${origins.attributes} ? ${attribute}`));
-    return rows.map((row) => row.value).sort();
-  }
-
-  private async select(where: SQL): Promise<AttributionRule[]> {
-    const rows = await this.db
-      .select({ rule: attributionRules, familyMemberId: attributionRuleMembers.familyMemberId })
-      .from(attributionRules)
-      .leftJoin(attributionRuleMembers, eq(attributionRuleMembers.ruleId, attributionRules.id))
-      .leftJoin(familyMembers, eq(familyMembers.id, attributionRuleMembers.familyMemberId))
-      .where(where)
-      .orderBy(asc(attributionRules.position), asc(familyMembers.position));
-    const byId = new Map<string, AttributionRule>();
-    for (const { rule, familyMemberId } of rows) {
-      const found = byId.get(rule.id) ?? {
-        id: rule.id as AttributionRuleId,
-        familyId: rule.familyId as FamilyId,
-        sourceId: rule.sourceId as SourceId,
-        attribute: rule.attribute,
-        value: rule.value,
-        concerns: rule.wholeFamily ? "whole-family" : [],
-        createdAt: rule.createdAt,
-      };
-      if (familyMemberId && found.concerns !== "whole-family") found.concerns.push(familyMemberId as FamilyMemberId);
-      byId.set(rule.id, found);
-    }
-    return [...byId.values()];
-  }
-}
-
-async function insertRuleMembers(tx: Pick<Database, "insert">, rule: AttributionRule): Promise<void> {
-  if (rule.concerns === "whole-family" || rule.concerns.length === 0) return;
-  await tx
-    .insert(attributionRuleMembers)
-    .values(rule.concerns.map((familyMemberId) => ({ ruleId: rule.id, familyMemberId })));
-}
-
 export class PostgresSourceTypeRepository implements SourceTypeRepository {
   constructor(private readonly db: Database) {}
 
@@ -632,6 +530,14 @@ export class PostgresSourceRepository implements SourceRepository {
     await this.db.update(sources).set({ name }).where(eq(sources.id, id));
   }
 
+  async assign(id: SourceId, concerns: FamilyMemberId[]): Promise<void> {
+    if (!uuidPattern.test(id)) return;
+    await this.db.transaction(async (tx) => {
+      await tx.delete(sourceMembers).where(eq(sourceMembers.sourceId, id));
+      if (concerns.length > 0) await tx.insert(sourceMembers).values(concerns.map((familyMemberId) => ({ sourceId: id, familyMemberId })));
+    });
+  }
+
   async remove(id: SourceId): Promise<BlobRef[]> {
     if (!uuidPattern.test(id)) return [];
     return this.db.transaction(async (tx) => {
@@ -657,6 +563,21 @@ export class PostgresSourceRepository implements SourceRepository {
 
   private async select(where: SQL): Promise<Source[]> {
     const rows = await this.db.select().from(sources).where(where).orderBy(asc(sources.position));
+    const assigned = await this.db
+      .select({ sourceId: sourceMembers.sourceId, familyMemberId: sourceMembers.familyMemberId })
+      .from(sourceMembers)
+      .innerJoin(familyMembers, eq(familyMembers.id, sourceMembers.familyMemberId))
+      .where(
+        rows.length > 0
+          ? inArray(
+              sourceMembers.sourceId,
+              rows.map((row) => row.id),
+            )
+          : sql`false`,
+      )
+      .orderBy(asc(familyMembers.position));
+    const concernsOf = (id: string) =>
+      assigned.filter((row) => row.sourceId === id).map((row) => row.familyMemberId as FamilyMemberId);
     return rows.map((row) => ({
       id: row.id as SourceId,
       familyId: row.familyId as FamilyId,
@@ -668,6 +589,7 @@ export class PostgresSourceRepository implements SourceRepository {
       pollIntervalSeconds: row.pollIntervalSeconds,
       shown: row.shown,
       name: row.name,
+      concerns: concernsOf(row.id),
       lastRunAt: row.lastRunAt,
       lastSuccessAt: row.lastSuccessAt,
       failure:
@@ -960,9 +882,9 @@ export class PostgresItemRepository implements ItemRepository {
       // A message whose Revisions were all rejected said nothing that shows.
       .where(and(inArray(revisions.itemId, ids), eq(revisions.accepted, true)))
       .orderBy(asc(rawMessages.sentAt));
-    // Only what an Origin stated that counts says whom the Item concerns.
-    const originsOfItems = await this.db
-      .selectDistinct({ itemId: revisions.itemId, sourceId: origins.sourceId, attributes: origins.attributes })
+    // Only the Sources of Origins whose statements count say whom the Item concerns.
+    const sourcesOfItems = await this.db
+      .selectDistinct({ itemId: revisions.itemId, sourceId: origins.sourceId })
       .from(revisions)
       .innerJoin(origins, eq(origins.id, revisions.originId))
       .where(and(inArray(revisions.itemId, ids), eq(revisions.accepted, true)));
@@ -979,9 +901,7 @@ export class PostgresItemRepository implements ItemRepository {
               messages: messages.flatMap(({ itemId, id, sourceTypeId, sourceName }) =>
                 itemId === row.id ? [{ id: id as RawMessageId, sourceTypeId: sourceTypeId as SourceTypeId, sourceName }] : [],
               ),
-              origins: originsOfItems.flatMap(({ itemId, sourceId, attributes }) =>
-                itemId === row.id ? [{ sourceId: sourceId as SourceId, attributes }] : [],
-              ),
+              sourceIds: sourcesOfItems.flatMap(({ itemId, sourceId }) => (itemId === row.id ? [sourceId as SourceId] : [])),
             },
           ]
         : [],

@@ -19,7 +19,7 @@ export const loadedTestPlugins: string[] = [];
 
 const pending = new Map<string, { origins: Origin[]; failure?: SourceError; withdrawn?: string[] }>();
 const runs = new Map<string, RunContext[]>();
-const knownValues = new Map<string, { value: string; label: string }[] | "fail">();
+const knownValues = new Map<string, { value: string; label: string }[]>();
 const catalogueEntries = new Map<string, CatalogueEntry[]>();
 const setupProgress = new Map<string, SetupProgress>();
 const addingFails = new Set<string>();
@@ -69,8 +69,8 @@ export const testPluginControls = {
   failNext(sourceTypeId: string, kind: "definite" | "temporary"): void {
     pending.set(sourceTypeId, { origins: [], failure: new SourceError(`${sourceTypeId} failed`, kind) });
   },
-  /** What the plugin's `sender` attribute says it knows of from now on, or that asking it fails. */
-  knowValues(sourceTypeId: string, values: { value: string; label: string }[] | "fail"): void {
+  /** The values the plugin's choice fields offer from now on, such as a Messenger's chats. */
+  knowValues(sourceTypeId: string, values: { value: string; label: string }[]): void {
     knownValues.set(sourceTypeId, values);
   },
   /** What the plugin of a Source Type was run with so far, oldest first. */
@@ -156,8 +156,7 @@ export function testSourcePlugin(options: TestPluginOptions): SourcePlugin {
 }
 
 function knownValueList(sourceTypeId: string): { value: string; label: string }[] {
-  const values = knownValues.get(sourceTypeId);
-  return values === undefined || values === "fail" ? [] : values;
+  return knownValues.get(sourceTypeId) ?? [];
 }
 
 /** A polling plugin that emits the Origins it was given and fails on demand. */
@@ -190,16 +189,6 @@ function basicTestSourcePlugin(options: TestPluginOptions): SourcePlugin {
         });
       },
     },
-    originAttributes: [
-      {
-        key: "sender",
-        label: "Sender",
-        knownValues: () => {
-          const values = knownValues.get(sourceTypeId) ?? [];
-          return values === "fail" ? Promise.reject(new Error("unreachable")) : Promise.resolve(values);
-        },
-      },
-    ],
     health: { silentApplies: options.silentApplies ?? true },
   };
 }

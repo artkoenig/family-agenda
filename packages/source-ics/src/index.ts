@@ -130,17 +130,6 @@ export function createIcsPlugin(options: IcsPluginOptions = {}): SourcePlugin {
         return { origins, state: JSON.stringify(state) };
       },
     },
-    originAttributes: [
-      {
-        key: "calendar",
-        label: { en: "Calendar", de: "Kalender" },
-        async knownValues(context) {
-          const downloaded = await download(context, null);
-          const name = nameOf(context, downloaded ? parseCalendar(downloaded.body, context.timeZone).name : null);
-          return [{ value: name, label: name }];
-        },
-      },
-    ],
     health: { silentApplies: false },
   };
 }

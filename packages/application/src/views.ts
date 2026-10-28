@@ -26,12 +26,12 @@ import {
 import type { ActivityLog, CurrentActivity } from "./activity";
 import { summariseFamilyMember, type FamilyMemberSummary } from "./family-members";
 import type {
-  AttributionRuleRepository,
   Clock,
   FamilyMemberRepository,
   FamilyRepository,
   InstalledSourceType,
   ItemRepository,
+  SourceRepository,
   SourceTypeRegistry,
   ViewAccessPolicy,
   ViewRepository,
@@ -46,7 +46,7 @@ export type ViewsDeps = {
   members: FamilyMemberRepository;
   views: ViewRepository;
   items: ItemRepository;
-  rules: AttributionRuleRepository;
+  sources: SourceRepository;
   registry: SourceTypeRegistry;
   activity: ActivityLog;
   sourceHealth: SourceHealthCheck;
@@ -83,7 +83,7 @@ export type TimelineEvent = {
   links: { url: string; source: MultilingualText }[];
   /** The raw messages it was extracted from, which Admins can open, each with its Source's name, else its Source Type's. */
   messages: { id: RawMessageId; source: MultilingualText }[];
-  /** Whom it concerns, by the Attribution Rules, the Family Members in the Family's order. */
+  /** Whom it concerns, by the Family Members its Sources are assigned to, the Family Members in the Family's order. */
   concerns: Attribution;
 };
 
@@ -144,7 +144,7 @@ const feedDaysBack = 30;
 export const openViewAccess: ViewAccessPolicy = { mayOpen: () => Promise.resolve(true) };
 
 export function createViewAccess(deps: ViewsDeps) {
-  const { clock, timeZone, families, members, views, items, rules, registry, activity, sourceHealth } = deps;
+  const { clock, timeZone, families, members, views, items, sources, registry, activity, sourceHealth } = deps;
 
   /**
    * The name an Admin gave the Source, else the display name of its Source Type, or that type's id
@@ -157,20 +157,20 @@ export function createViewAccess(deps: ViewsDeps) {
   /**
    * The Family's Events that may touch the days from `first` to `last`, or all later days if
    * `last` is null, that concern someone `showing` shows; the caller decides by the Family's time
-   * zone. Attribution Rules apply as they are now, to every Item whenever it came.
+   * zone. Whom its Sources are assigned to now decides whom an Item concerns, whenever it came.
    */
   async function eventsAround(familyId: FamilyId, first: LocalDate, last: LocalDate | null, showing: Showing) {
     // A day lasts at most 26 hours, and no time zone is more than 14 hours from UTC.
     const day = 24 * 60 * 60 * 1000;
     const from = new Date(new Date(`${first}T00:00:00Z`).getTime() - day);
     const to = last ? new Date(new Date(`${addDays(last, 1)}T00:00:00Z`).getTime() + day) : null;
-    const familyRules = await rules.list(familyId);
+    const assigned = new Map((await sources.list(familyId)).map((source) => [source.id, source.concerns]));
     const order = (await members.list(familyId)).map((member) => member.id);
     const installed = registry.installed();
     return (await items.overlapping(familyId, from, to)).flatMap((item) => {
       const event = item.kind === "event" ? eventOf(item.folded) : null;
       if (!event) return [];
-      const attribution = attributionOf(item.origins, familyRules);
+      const attribution = attributionOf(item.sourceIds.map((id) => assigned.get(id) ?? []));
       if (showing !== "all" && !isShownTo(attribution, showing)) return [];
       const concerns = attribution === "whole-family" ? attribution : order.filter((id) => attribution.includes(id));
       const links = item.links.map((link) => ({ url: link.url, source: sourceName(link, installed) }));

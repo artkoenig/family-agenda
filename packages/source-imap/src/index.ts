@@ -25,9 +25,6 @@ type State = { uidValidity: string; lastUid: number };
 /** How far back the first run of a Source reads, so that adding a mailbox does not extract years of mail. */
 const firstRunDays = 14;
 
-/** How far back the senders offered for Attribution Rules reach. */
-const senderDays = 180;
-
 const defaultPort = 993;
 
 /**
@@ -164,26 +161,6 @@ export function createImapPlugin(options: ImapPluginOptions = {}): SourcePlugin 
           return { origins, state: stateOf(uidValidity, lastUid) };
         }),
     },
-    originAttributes: [
-      {
-        key: "sender",
-        label: { en: "Sender address", de: "Absenderadresse" },
-        knownValues: (context) =>
-          withFolder(context, async (client) => {
-            const since = new Date(context.now.getTime() - senderDays * 24 * 60 * 60 * 1000);
-            const uids = (await client.search({ since }, { uid: true })) || [];
-            if (uids.length === 0) return [];
-            const mails = await client.fetchAll(uids.join(","), { uid: true, headers: ["from"] }, { uid: true });
-            const senders = new Set<string>();
-            for (const mail of mails) {
-              const parsed = await simpleParser(mail.headers ?? Buffer.alloc(0));
-              const sender = senderOf(parsed);
-              if (sender) senders.add(sender);
-            }
-            return [...senders].sort().map((value) => ({ value, label: value }));
-          }),
-      },
-    ],
     // School mail pauses for weeks in the holidays.
     health: { silentApplies: false },
   };

@@ -14,7 +14,6 @@ import {
   PostgresActivityRepository,
   PostgresAdminRepository,
   PostgresAdminSessionRepository,
-  PostgresAttributionRuleRepository,
   PostgresCatalogueRepository,
   PostgresFamilyMemberRepository,
   PostgresFamilyRepository,
@@ -35,7 +34,6 @@ import {
 import {
   createActivityLog,
   createAdminAccess,
-  createAttributionRuleAccess,
   createCatalogueAccess,
   createExtraction,
   createFamilyMemberAccess,
@@ -51,7 +49,6 @@ import {
   createViewAccess,
   signInLimits,
   type AdminAccess,
-  type AttributionRuleAccess,
   type CatalogueAccess,
   type BlobStore,
   type ExtractionAccess,
@@ -124,7 +121,6 @@ export type Application = {
   catalogues: CatalogueAccess;
   sources: SourceAccess;
   /** Which Family Members the Items of a Source's Origins concern. */
-  attributionRules: AttributionRuleAccess;
   /** Runs the Sources that are due; the worker does on each tick. */
   polling: SourcePolling;
   /** Starts and stops the programs of Source Types, such as a homeserver; only the worker does. */
@@ -184,7 +180,6 @@ export async function bootApplication(config: ApplicationConfig): Promise<Applic
 
   const timeZone = config.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
   const items = new PostgresItemRepository(postgres.db);
-  const rules = new PostgresAttributionRuleRepository(postgres.db);
   const activity = createActivityLog({ clock, families, activities: new PostgresActivityRepository(postgres.db) });
   const registry = await SourceRegistry.discover([
     config.workspacePackages ?? defaultWorkspacePackages,
@@ -206,7 +201,7 @@ export async function bootApplication(config: ApplicationConfig): Promise<Applic
     members,
     views: new PostgresViewRepository(postgres.db),
     items,
-    rules,
+    sources: sourceRepository,
     registry,
     activity,
     sourceHealth,
@@ -231,23 +226,13 @@ export async function bootApplication(config: ApplicationConfig): Promise<Applic
     clock,
     timeZone,
     families,
+    members,
     registry,
     sourceTypes: sourceTypeRepository,
     catalogues: catalogueRepository,
     sources: sourceRepository,
     secrets,
     blobs,
-  });
-  const attributionRules = createAttributionRuleAccess({
-    clock,
-    timeZone,
-    families,
-    members,
-    registry,
-    sourceTypes: sourceTypeRepository,
-    sources: sourceRepository,
-    secrets,
-    rules,
   });
   const polling = createSourcePolling({
     clock,
@@ -297,7 +282,6 @@ export async function bootApplication(config: ApplicationConfig): Promise<Applic
     sourceTypes,
     catalogues,
     sources,
-    attributionRules,
     polling,
     services,
     llmEndpoint,
