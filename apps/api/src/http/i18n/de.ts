@@ -307,6 +307,8 @@ export const de: Catalogue = {
   },
 
   llm: {
+    connection: "Verbindung",
+    options: "Optionen",
     title: "LLM-Endpunkt",
     description:
       "Quellen wie Postfächer bringen Nachrichten, keine Termine. Ein Sprachmodell liest die Termine aus jeder Nachricht. Family Agenda spricht mit jedem Server mit OpenAI-kompatibler API: einem lokalen wie Ollama, llama.cpp oder LM Studio, oder einem Cloud-Anbieter mit API-Schlüssel.",
