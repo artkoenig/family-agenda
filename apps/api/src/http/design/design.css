@@ -326,6 +326,7 @@
 .fam-settings__main > * { margin-top: 0; margin-bottom: 0; }
 .fam-section-header { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: var(--space-4); }
 .fam-section-header__text { display: flex; flex-direction: column; gap: var(--space-1); max-width: 560px; }
+.fam-section-header__heading { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); }
 .fam-section-header__title { margin: 0; font-size: 26px; line-height: 32px; font-weight: 700; }
 .fam-section-header__description { margin: 0; color: var(--ink-muted); }
 .fam-settings__main .fam-empty { border: 0; padding: 0; }
@@ -373,7 +374,82 @@ h2.fam-entry__name, h3.fam-entry__name { font-size: 16px; line-height: 24px; }
 .fam-breadcrumb { color: var(--ink-muted); font-size: 14px; line-height: 20px; margin-bottom: calc(-1 * var(--space-4)); }
 .fam-type-section { display: flex; flex-direction: column; gap: var(--space-2); }
 .fam-type-section > * { margin: 0; }
-.fam-type-section__title { font-size: 19px; line-height: 26px; font-weight: 700; }
+
+/* Sheet: a card of titled groups of rows, such as a Messenger's or a Source's settings -------- */
+.fam-sheets { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-4); }
+.fam-sheet {
+  display: flex; flex-direction: column; padding: var(--space-5) var(--space-5) var(--space-3);
+  background: var(--surface-raised); border: 1px solid var(--line); border-radius: var(--radius-lg); box-shadow: var(--shadow-raised);
+}
+.fam-sheet > * { margin: 0; }
+.fam-sheet__header { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); }
+.fam-sheet__title { flex: 1; margin: 0; font-size: 19px; line-height: 26px; font-weight: 700; }
+.fam-sheet__description { margin: var(--space-1) 0 0; color: var(--ink-muted); }
+:where(.fam-admin) .fam-sheet__form { display: block; margin: 0; }
+:where(.fam-admin) .fam-enable { gap: var(--space-4); margin: var(--space-4) 0 var(--space-2); }
+.fam-sheet > .fam-enable:first-child { margin-top: 0; }
+.fam-group { margin: var(--space-5) 0 0; }
+.fam-sheet > .fam-group:first-child, .fam-sheet > .fam-sheet__form:first-child > .fam-group:first-child { margin-top: 0; }
+.fam-group > * { margin: 0; }
+:where(.fam-admin) .fam-group__title {
+  margin: 0 0 var(--space-2); font-size: 13px; line-height: 16px; font-weight: 800;
+  letter-spacing: .08em; text-transform: uppercase; color: var(--ink-muted);
+}
+.fam-group__intro { margin: calc(-1 * var(--space-1)) 0 var(--space-2); font-size: 14px; line-height: 20px; color: var(--ink-muted); }
+.fam-group__fields { display: grid; gap: var(--space-5); padding-top: var(--space-4); border-top: 1px solid var(--line); }
+.fam-group__fields > * { max-width: 560px; }
+:where(.fam-admin) .fam-group__fields > form { margin: 0; }
+.fam-group__actions { display: flex; flex-wrap: wrap; gap: var(--space-2); padding: var(--space-4) 0 var(--space-3); }
+.fam-group__actions > form { margin: 0; }
+.fam-group__empty { padding: var(--space-3) 0; border-top: 1px solid var(--line); color: var(--ink-muted); }
+.fam-rows { list-style: none; margin: 0; padding: 0; }
+.fam-row {
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-4);
+  min-height: 64px; padding: var(--space-3) 0; border-top: 1px solid var(--line);
+}
+.fam-row__main { flex: 1 1 240px; min-width: 0; display: flex; flex-direction: column; }
+.fam-row__label { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); font-weight: 600; overflow-wrap: anywhere; }
+.fam-row__hint { font-size: 14px; line-height: 20px; color: var(--ink-muted); overflow-wrap: anywhere; }
+:where(.fam-admin) .fam-row__hint { margin: 0; }
+.fam-row__hint.fam-health { display: flex; }
+:where(.fam-admin) .fam-row__form { display: flex; align-items: center; gap: var(--space-2); margin: 0; }
+.fam-row--link { padding: 0; }
+.fam-row__link {
+  flex: 1 1 280px; min-width: 0; display: flex; align-items: center; gap: var(--space-4);
+  padding: var(--space-3) var(--space-2); margin: 0 calc(-1 * var(--space-2)); border-radius: var(--radius-md); text-decoration: none;
+}
+.fam-page a.fam-row__link { color: var(--ink); }
+.fam-row__link:hover { background: var(--hearth-tint); }
+.fam-row__chevron { flex: none; color: var(--ink-muted); }
+.fam-unit { display: inline-flex; align-items: center; gap: var(--space-2); color: var(--ink-muted); }
+.fam-unit > input { width: 96px; }
+.fam-chip {
+  display: inline-flex; align-items: center; gap: 6px; min-height: 28px; padding: 0 12px; border-radius: var(--radius-full);
+  background: var(--surface-sunken); color: var(--ink-muted); font-size: 14px; line-height: 20px; font-weight: 600; white-space: nowrap;
+}
+.fam-chip--small { min-height: 22px; padding: 0 8px; font-size: 13px; }
+.fam-chip--ok { background: var(--sage-tint); color: var(--sage-strong); }
+.fam-chip--problem { background: var(--danger-tint); color: var(--danger); }
+.fam-chip--waiting { background: var(--honey-tint); color: var(--ink); }
+.fam-chip--ok::before, .fam-chip--problem::before, .fam-chip--waiting::before {
+  content: ""; width: 8px; height: 8px; border-radius: var(--radius-full); background: currentColor;
+}
+.fam-chip--waiting::before { background: var(--honey); }
+/* Switch: a button that flips a setting at once, such as showing a Source on the timeline. */
+.fam-switch {
+  position: relative; flex: none; width: 52px; height: 32px; min-height: 0; padding: 0; cursor: pointer;
+  border: 2px solid var(--line-strong); border-radius: var(--radius-full); background: var(--surface-sunken);
+  transition: background-color .12s, border-color .12s;
+}
+.fam-switch::after {
+  content: ""; position: absolute; top: 4px; left: 4px; width: 20px; height: 20px;
+  border-radius: var(--radius-full); background: var(--line-strong); transition: left .12s;
+}
+.fam-switch:hover { background: var(--hearth-tint); }
+.fam-switch[aria-checked="true"] { background: var(--hearth); border-color: var(--hearth); }
+.fam-switch[aria-checked="true"]:hover { background: var(--hearth-strong); border-color: var(--hearth-strong); }
+.fam-switch[aria-checked="true"]::after { left: 24px; background: var(--on-hearth); }
+@media (prefers-reduced-motion: reduce) { .fam-switch, .fam-switch::after { transition: none; } }
 
 /* Entries that open in place for editing ------------------------------- */
 .fam-edit > summary { list-style: none; }
