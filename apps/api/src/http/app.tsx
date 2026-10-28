@@ -405,7 +405,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
 
   const adminsPage = async (
     c: Context<Env>,
-    shown: { problem?: string; adding?: { email?: string; problem?: string } } = {},
+    shown: { problem?: string; adding?: { email?: string; problem?: string }; editing?: { id: AdminId; problem?: string } } = {},
   ) => {
     const page = (
       <AdminsPage
@@ -413,14 +413,18 @@ export function createHttpApp(application: Application, options: HttpOptions) {
         admins={await admins.listAdmins()}
         {...(shown.problem ? { problem: shown.problem } : {})}
         {...(shown.adding ? { adding: shown.adding } : {})}
+        {...(shown.editing ? { editing: shown.editing } : {})}
       />
     );
-    return render(c, page, shown.problem || shown.adding?.problem ? 400 : 200);
+    return render(c, page, shown.problem || shown.adding?.problem || shown.editing?.problem ? 400 : 200);
   };
 
   app.get("/admin/admins", (c) => adminsPage(c));
 
   app.get("/admin/admins/new", (c) => adminsPage(c, { adding: {} }));
+
+  // Another Admin opens in a dialog, where their password is reset.
+  app.get("/admin/admins/:id", (c) => adminsPage(c, { editing: { id: c.req.param("id") as AdminId } }));
 
   app.post("/admin/admins", async (c) => {
     const form = await c.req.parseBody();
@@ -436,24 +440,30 @@ export function createHttpApp(application: Application, options: HttpOptions) {
       adminId: c.req.param("id") as AdminId,
       newPassword: field(form, "password"),
     });
-    if (!result.ok) return adminsPage(c, { problem: problemIn(c, result.problem) });
+    if (!result.ok) return adminsPage(c, { editing: { id: c.req.param("id") as AdminId, problem: problemIn(c, result.problem) } });
     return c.redirect("/admin/admins", 303);
   });
 
   const familyMembersPage = async (
     c: Context<Env>,
-    shown: { problem?: string; adding?: { name?: string; problem?: string }; status?: 200 | 400 | 413 } = {},
+    shown: {
+      problem?: string;
+      adding?: { name?: string; problem?: string };
+      editing?: { id: FamilyMemberId; problem?: string };
+      status?: 200 | 400 | 413;
+    } = {},
   ) => {
-    const { problem, adding } = shown;
+    const { problem, adding, editing } = shown;
     const page = (
       <FamilyMembersPage
         admin={c.get("admin")}
         members={await familyMembers.list()}
         {...(problem ? { problem } : {})}
         {...(adding ? { adding } : {})}
+        {...(editing ? { editing } : {})}
       />
     );
-    return render(c, page, shown.status ?? (problem || adding?.problem ? 400 : 200));
+    return render(c, page, shown.status ?? (problem || adding?.problem || editing?.problem ? 400 : 200));
   };
 
   // A photo and the rest of the form; larger uploads are refused before they are read.
@@ -461,8 +471,9 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     maxSize: maximumPhotoBytes + 64 * 1024,
     onError: (c: Context<Env>) => {
       const problem = problemIn(c, "photo-too-large");
-      // Adding shows the problem in its dialog, editing above the list.
-      const shown = c.req.path === "/admin/family-members" ? { adding: { problem } } : { problem };
+      // Adding and editing show the problem in their dialog.
+      const editing = /^\/admin\/family-members\/([^/]+)$/.exec(c.req.path)?.[1];
+      const shown = editing ? { editing: { id: editing as FamilyMemberId, problem } } : { adding: { problem } };
       return familyMembersPage(c, { ...shown, status: 413 });
     },
   });
@@ -470,6 +481,8 @@ export function createHttpApp(application: Application, options: HttpOptions) {
   app.get("/admin/family-members", (c) => familyMembersPage(c));
 
   app.get("/admin/family-members/new", (c) => familyMembersPage(c, { adding: {} }));
+
+  app.get("/admin/family-members/:id", (c) => familyMembersPage(c, { editing: { id: c.req.param("id") as FamilyMemberId } }));
 
   app.post("/admin/family-members", photoUpload, async (c) => {
     const form = await c.req.parseBody();
@@ -487,7 +500,9 @@ export function createHttpApp(application: Application, options: HttpOptions) {
       name: field(form, "name"),
       ...(photo !== undefined ? { photo } : {}),
     });
-    if (!result.ok) return familyMembersPage(c, { problem: problemIn(c, result.problem) });
+    if (!result.ok) {
+      return familyMembersPage(c, { editing: { id: c.req.param("id") as FamilyMemberId, problem: problemIn(c, result.problem) } });
+    }
     return c.redirect("/admin/family-members", 303);
   });
 
@@ -496,7 +511,10 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     return c.redirect("/admin/family-members", 303);
   });
 
-  const viewsPage = async (c: Context<Env>, shown: { problem?: string; creating?: { problem?: string } } = {}) => {
+  const viewsPage = async (
+    c: Context<Env>,
+    shown: { problem?: string; creating?: { problem?: string }; editing?: { id: ViewId; problem?: string } } = {},
+  ) => {
     const page = (
       <ViewsPage
         admin={c.get("admin")}
@@ -504,9 +522,10 @@ export function createHttpApp(application: Application, options: HttpOptions) {
         members={await familyMembers.list()}
         {...(shown.problem ? { problem: shown.problem } : {})}
         {...(shown.creating ? { creating: shown.creating } : {})}
+        {...(shown.editing ? { editing: shown.editing } : {})}
       />
     );
-    return render(c, page, shown.problem || shown.creating?.problem ? 400 : 200);
+    return render(c, page, shown.problem || shown.creating?.problem || shown.editing?.problem ? 400 : 200);
   };
 
   const viewSettingsOf = async (c: Context<Env>) => {
@@ -524,6 +543,8 @@ export function createHttpApp(application: Application, options: HttpOptions) {
 
   app.get("/admin/views/new", (c) => viewsPage(c, { creating: {} }));
 
+  app.get("/admin/views/:id", (c) => viewsPage(c, { editing: { id: c.req.param("id") as ViewId } }));
+
   app.post("/admin/views", async (c) => {
     const result = await views.create(await viewSettingsOf(c));
     if (!result.ok) return viewsPage(c, { creating: { problem: problemIn(c, result.problem) } });
@@ -532,7 +553,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
 
   app.post("/admin/views/:id", async (c) => {
     const result = await views.edit(c.req.param("id") as ViewId, await viewSettingsOf(c));
-    if (!result.ok) return viewsPage(c, { problem: problemIn(c, result.problem) });
+    if (!result.ok) return viewsPage(c, { editing: { id: c.req.param("id") as ViewId, problem: problemIn(c, result.problem) } });
     return c.redirect("/admin/views", 303);
   });
 

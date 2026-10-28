@@ -144,8 +144,13 @@ describe("Views over HTTP", () => {
     const [view] = await instance.app.views.list();
     expect(view).toMatchObject({ preselected: [ella!.id], horizonDays: 5 });
 
+    // Its row opens its dialog, which tells where it and its feed are.
     const views = await (await instance.get("/admin/views", { cookie })).text();
-    expect(views).toContain(`href="/views/${view!.id}"`);
+    expect(views).toContain(`href="/admin/views/${view!.id}"`);
+    const dialog = await (await instance.get(`/admin/views/${view!.id}`, { cookie })).text();
+    expect(dialog).toMatch(/<dialog open="" class="fam-dialog"/);
+    expect(dialog).toContain(`href="/views/${view!.id}"`);
+    expect(dialog).toContain(`href="/views/${view!.id}/feed.ics"`);
   });
 
   it("shows an Admin why a Family Member or View cannot be saved", async () => {
@@ -165,6 +170,26 @@ describe("Views over HTTP", () => {
     const farAhead = await instance.post("/admin/views", { horizonDays: "90" }, { cookie });
     expect(farAhead.status).toBe(400);
     expect(await farAhead.text()).toContain("between 1 and 31 days");
+    // A change that is refused shows why in the dialog of what was changed.
+    const mia = await instance.app.familyMembers.add({ name: "Mia" });
+    const view = await instance.app.views.create({ preselected: [], horizonDays: 7 });
+    if (!mia.ok || !view.ok) throw new Error("adding failed");
+    const renamed = await instance.post(`/admin/family-members/${mia.id}`, { name: " " }, { cookie });
+    expect(renamed.status).toBe(400);
+    const renamedPage = await renamed.text();
+    expect(renamedPage).toContain('<dialog open="" class="fam-dialog" aria-labelledby="edit-member-title"');
+    expect(renamedPage).toContain("Enter a name");
+    const hugeAgain = new FormData();
+    hugeAgain.set("name", "Mia");
+    hugeAgain.set("photo", new File([new Uint8Array(6 * 1024 * 1024)], "mia.jpg"));
+    const tooLargeAgain = await instance.request(`/admin/family-members/${mia.id}`, { body: hugeAgain, cookie });
+    expect(tooLargeAgain.status).toBe(413);
+    expect(await tooLargeAgain.text()).toContain('aria-labelledby="edit-member-title"');
+    const farAheadAgain = await instance.post(`/admin/views/${view.id}`, { horizonDays: "90" }, { cookie });
+    expect(farAheadAgain.status).toBe(400);
+    const farAheadPage = await farAheadAgain.text();
+    expect(farAheadPage).toContain('aria-labelledby="edit-view-title"');
+    expect(farAheadPage).toContain("between 1 and 31 days");
   });
 
   it("keeps the Family Member and View pages to signed-in Admins", async () => {

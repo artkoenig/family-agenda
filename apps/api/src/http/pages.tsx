@@ -27,9 +27,12 @@ import {
   minimumPasswordLength,
   photoTypes,
   silentAfterMs,
+  type AdminId,
   type FamilyLanguage,
+  type FamilyMemberId,
   type MultilingualText,
   type OcrLanguage,
+  type ViewId,
 } from "@family-agenda/domain";
 import type { Child } from "hono/jsx";
 import { raw } from "hono/html";
@@ -52,43 +55,78 @@ function FamilyLanguageOptions(props: { selected: FamilyLanguage }) {
   );
 }
 
+/**
+ * A page before the settings, such as signing in: the product's name above one sheet with its
+ * title, what it is for, and its form.
+ */
+function EntrancePage(props: { title: string; intro?: string; problem?: string | undefined; children: Child }) {
+  return (
+    <Layout title={props.title} narrow>
+      <p class="fam-brand">Family Agenda</p>
+      <section class="fam-sheet">
+        <h1 class="fam-title">{props.title}</h1>
+        {props.intro ? <p class="fam-section-header__description">{props.intro}</p> : null}
+        <Problem message={props.problem} />
+        {props.children}
+      </section>
+    </Layout>
+  );
+}
+
 export function FirstAdminPage(props: { language: FamilyLanguage; email?: string; problem?: string }) {
   const { t } = useTranslation();
   return (
-    <Layout title={t.setup.title} narrow>
-      <h1 class="fam-title">{t.setup.title}</h1>
-      <p>{t.setup.intro}</p>
-      <Problem message={props.problem} />
-      <form method="post" action="/setup">
-        <label for="email">{t.common.email}</label>
-        <input id="email" name="email" type="email" required autocomplete="username" value={props.email} />
-        <label for="password">{t.setup.password}</label>
-        <input id="password" name="password" type="password" required minlength={minimumPasswordLength} autocomplete="new-password" />
-        <label for="language">{t.setup.familyLanguage}</label>
-        <select id="language" name="language">
-          <FamilyLanguageOptions selected={props.language} />
-        </select>
-        <small>{t.setup.familyLanguageHint}</small>
-        <button type="submit">{t.setup.submit}</button>
+    <EntrancePage title={t.setup.title} intro={t.setup.intro} problem={props.problem}>
+      <form method="post" action="/setup" class="fam-sheet__form">
+        <div class="fam-group__fields">
+          <div class="fam-field">
+            <label for="email">{t.common.email}</label>
+            <input id="email" name="email" type="email" required autofocus autocomplete="username" value={props.email} />
+          </div>
+          <div class="fam-field">
+            <label for="password">{t.setup.password}</label>
+            <input id="password" name="password" type="password" required minlength={minimumPasswordLength} autocomplete="new-password" />
+          </div>
+          <div class="fam-field">
+            <label for="language">{t.setup.familyLanguage}</label>
+            <select id="language" name="language">
+              <FamilyLanguageOptions selected={props.language} />
+            </select>
+            <small>{t.setup.familyLanguageHint}</small>
+          </div>
+        </div>
+        <div class="fam-group__actions">
+          <button type="submit" class="fam-button fam-button--primary">
+            {t.setup.submit}
+          </button>
+        </div>
       </form>
-    </Layout>
+    </EntrancePage>
   );
 }
 
 export function SignInPage(props: { email?: string; problem?: string }) {
   const { t } = useTranslation();
   return (
-    <Layout title={t.signIn.title} narrow>
-      <h1 class="fam-title">{t.signIn.title}</h1>
-      <Problem message={props.problem} />
-      <form method="post" action="/admin/sign-in">
-        <label for="email">{t.common.email}</label>
-        <input id="email" name="email" type="email" required autocomplete="username" value={props.email} />
-        <label for="password">{t.common.password}</label>
-        <input id="password" name="password" type="password" required autocomplete="current-password" />
-        <button type="submit">{t.signIn.submit}</button>
+    <EntrancePage title={t.signIn.title} problem={props.problem}>
+      <form method="post" action="/admin/sign-in" class="fam-sheet__form">
+        <div class="fam-group__fields">
+          <div class="fam-field">
+            <label for="email">{t.common.email}</label>
+            <input id="email" name="email" type="email" required autofocus autocomplete="username" value={props.email} />
+          </div>
+          <div class="fam-field">
+            <label for="password">{t.common.password}</label>
+            <input id="password" name="password" type="password" required autocomplete="current-password" />
+          </div>
+        </div>
+        <div class="fam-group__actions">
+          <button type="submit" class="fam-button fam-button--primary">
+            {t.signIn.submit}
+          </button>
+        </div>
       </form>
-    </Layout>
+    </EntrancePage>
   );
 }
 
@@ -292,7 +330,7 @@ function AdminLayout(props: {
           <span>{t.settings.title}</span>
         </div>
         <div class="fam-settings__account">
-          <span class="fam-nav__who">{admin.email}</span>
+          <span class="fam-settings__who">{admin.email}</span>
           <form method="post" action="/admin/sign-out">
             <button type="submit" class="fam-button fam-button--quiet">
               {t.settings.signOut}
@@ -406,11 +444,19 @@ function Dialog(props: { id: string; eyebrow?: string; title: string; closeHref:
   );
 }
 
-/** A dialog's buttons: going back a step, cancelling, and its one action. */
-function DialogFooter(props: { closeHref: string; submit: string; backHref?: string }) {
+/**
+ * A dialog's buttons: going back a step or removing what it edits, cancelling, and its one action.
+ * Removing submits the `RemoveForm` of the id given, outside the dialog's own form.
+ */
+function DialogFooter(props: { closeHref: string; submit: string; backHref?: string; remove?: { form: string; label: string } }) {
   const { t } = useTranslation();
   return (
     <div class="fam-dialog__footer">
+      {props.remove ? (
+        <button type="submit" form={props.remove.form} class="fam-button fam-button--danger">
+          {props.remove.label}
+        </button>
+      ) : null}
       {props.backHref ? (
         <a class="fam-button fam-button--quiet" href={props.backHref}>
           {t.common.back}
@@ -427,26 +473,37 @@ function DialogFooter(props: { closeHref: string; submit: string; backHref?: str
   );
 }
 
-/** An entry that opens in place for editing: its row as the summary, its form below. */
-function EditableEntry(props: { lead?: Child; name: Child; meta?: Child; action?: Child; open?: boolean; children: Child }) {
-  const { t } = useTranslation();
-  return (
-    <details class="fam-edit" open={props.open}>
-      <summary class="fam-edit__summary">
-        {props.lead}
-        <span class="fam-entry__main">
-          <span class="fam-entry__name">{props.name}</span>
-          {props.meta ? <span class="fam-entry__meta">{props.meta}</span> : null}
-        </span>
-        {props.action}
-        <span class="fam-button fam-button--quiet fam-edit__toggle" aria-hidden="true">
-          <span class="fam-edit__when-closed">{t.common.edit}</span>
-          <span class="fam-edit__when-open">{t.common.close}</span>
-        </span>
-      </summary>
-      <div class="fam-edit__body">{props.children}</div>
-    </details>
+/**
+ * A row of a settings list that opens what it shows, such as a Family Member in its dialog: an
+ * optional lead such as an avatar, its name and what tells it apart, and a chevron. Without an
+ * `href` it is a plain row, such as the signed-in Admin's own.
+ */
+function ListRow(props: { href?: string; lead?: Child; name: Child; meta?: Child; trailing?: Child; autofocus?: boolean }) {
+  const body = (
+    <>
+      {props.lead}
+      <span class="fam-row__main">
+        <span class="fam-row__label">{props.name}</span>
+        {props.meta ? <span class="fam-row__hint">{props.meta}</span> : null}
+      </span>
+      {props.trailing}
+    </>
   );
+  return props.href ? (
+    <li class="fam-row fam-row--link">
+      <a class="fam-row__link" href={props.href} autofocus={props.autofocus}>
+        {body}
+        <Chevron />
+      </a>
+    </li>
+  ) : (
+    <li class="fam-row">{body}</li>
+  );
+}
+
+/** The form a dialog's Remove button submits, outside the dialog's own form. */
+function RemoveForm(props: { id: string; action: string }) {
+  return <form method="post" action={props.action} id={props.id} class="fam-dialog__remove"></form>;
 }
 
 const addButton = (href: string, label: string) => (
@@ -461,10 +518,25 @@ export function AdminsPage(props: {
   problem?: string;
   /** The add dialog, open with what was entered and why it was refused. */
   adding?: { email?: string; problem?: string };
+  /** The dialog of another Admin, open with why a new password was refused. */
+  editing?: { id: AdminId; problem?: string };
 }) {
-  const { adding } = props;
+  const { adding, editing } = props;
   const { t } = useTranslation();
-  const dialog = adding ? (
+  const edited = editing ? props.admins.find((other) => other.id === editing.id && other.id !== props.admin.id) : undefined;
+  const dialog = edited ? (
+    <Dialog id="edit-admin" eyebrow={t.admins.eyebrow} title={edited.email} closeHref="/admin/admins">
+      <form method="post" action={`/admin/admins/${edited.id}/password`} class="fam-dialog__form">
+        <Problem message={editing?.problem} />
+        <div class="fam-field">
+          <label for="password">{t.admins.newPassword}</label>
+          <input id="password" name="password" type="password" required autofocus minlength={minimumPasswordLength} autocomplete="new-password" />
+          <small>{t.admins.passwordHint}</small>
+        </div>
+        <DialogFooter closeHref="/admin/admins" submit={t.admins.resetPassword} />
+      </form>
+    </Dialog>
+  ) : adding ? (
     <Dialog id="add-admin" eyebrow={t.admins.eyebrow} title={t.admins.dialogTitle} closeHref="/admin/admins">
       <form method="post" action="/admin/admins" class="fam-dialog__form">
         <Problem message={adding.problem} />
@@ -489,32 +561,17 @@ export function AdminsPage(props: {
         action={addButton("/admin/admins/new", t.admins.add)}
       />
       <Problem message={props.problem} />
-      <ul class="fam-panel fam-entries">
-        {props.admins.map((other) =>
-          other.id === props.admin.id ? (
-            <li class="fam-entry">
-              <span class="fam-entry__main">
-                <span class="fam-entry__name">{other.email}</span>
-                <span class="fam-entry__meta">{t.admins.you}</span>
-              </span>
-            </li>
-          ) : (
-            <li>
-              <EditableEntry name={other.email} meta={t.admins.admin}>
-                <form method="post" action={`/admin/admins/${other.id}/password`}>
-                  <div class="fam-field">
-                    <label for={`password-${other.id}`}>{t.admins.newPassword}</label>
-                    <input id={`password-${other.id}`} name="password" type="password" required minlength={minimumPasswordLength} autocomplete="new-password" />
-                  </div>
-                  <button type="submit" class="fam-button fam-button--secondary">
-                    {t.admins.resetPassword}
-                  </button>
-                </form>
-              </EditableEntry>
-            </li>
-          ),
-        )}
-      </ul>
+      <section class="fam-sheet">
+        <ul class="fam-rows">
+          {props.admins.map((other) =>
+            other.id === props.admin.id ? (
+              <ListRow name={other.email} meta={t.admins.you} />
+            ) : (
+              <ListRow href={`/admin/admins/${other.id}`} name={other.email} meta={t.admins.admin} />
+            ),
+          )}
+        </ul>
+      </section>
     </AdminLayout>
   );
 }
@@ -533,70 +590,78 @@ export function RecoveryKitPage(props: {
 }) {
   const { t } = useTranslation();
   const k = t.recoveryKit;
-  const actions = (
-    <p class="fam-actions">
-      <button
-        type="button"
-        class="fam-button fam-button--secondary"
-        onclick="for (const kit of document.querySelectorAll('details.fam-reveal')) kit.open = true; window.print()"
-      >
-        {k.print}
-      </button>
-      <a href="/admin/recovery-kit/download">{k.download}</a>
-    </p>
-  );
   return (
     <AdminLayout title={k.title} admin={props.admin} current="recovery-kit">
       <SectionHeader title={k.title} description={k.description} />
       {props.confirmed ? (
-        <>
-          <div class="fam-banner fam-banner--success" role="status">
-            <span class="fam-banner__glyph" aria-hidden="true">
-              ✓
-            </span>
-            <span class="fam-banner__title">{k.saved}</span>
-            <div class="fam-banner__body">{k.savedBody}</div>
-          </div>
-          <div class="fam-panel fam-panel--padded">
-            <details class="fam-reveal">
-              <summary class="fam-button fam-button--secondary">
-                <span class="fam-edit__when-closed">{k.showMasterKey}</span>
-                <span class="fam-edit__when-open">{k.hideMasterKey}</span>
-              </summary>
-              <p class="fam-secret">{props.kit.masterKey}</p>
-            </details>
-            {k.purpose.map((sentence) => (
-              <p>{sentence}</p>
-            ))}
-            {actions}
-          </div>
-        </>
+        <div class="fam-banner fam-banner--success" role="status">
+          <span class="fam-banner__glyph" aria-hidden="true">
+            ✓
+          </span>
+          <span class="fam-banner__title">{k.saved}</span>
+          <div class="fam-banner__body">{k.savedBody}</div>
+        </div>
       ) : (
-        <>
-          <div class="fam-banner fam-banner--attention" role="status">
-            <span class="fam-banner__glyph" aria-hidden="true">
-              !
-            </span>
-            <span class="fam-banner__title">{k.saveFirst}</span>
-            <div class="fam-banner__body">{k.saveFirstBody}</div>
-          </div>
-          <div class="fam-panel fam-panel--padded">
-            <h2>{k.masterKey}</h2>
-            <p class="fam-secret">{props.kit.masterKey}</p>
-            {k.purpose.map((sentence) => (
-              <p>{sentence}</p>
-            ))}
-            {actions}
-            <form method="post" action="/admin/recovery-kit/confirm">
-              <Problem message={props.problem} />
-              <label>
-                <input type="checkbox" name="saved" value="yes" required /> {k.confirm}
-              </label>
-              <button type="submit">{k.continue}</button>
-            </form>
-          </div>
-        </>
+        <div class="fam-banner fam-banner--attention" role="status">
+          <span class="fam-banner__glyph" aria-hidden="true">
+            !
+          </span>
+          <span class="fam-banner__title">{k.saveFirst}</span>
+          <div class="fam-banner__body">{k.saveFirstBody}</div>
+        </div>
       )}
+      <section class="fam-sheet">
+        <Group title={k.masterKey} level={2}>
+          <div class="fam-group__fields">
+            {/* Once saved, it shows only on request, as anyone near the screen could copy it. */}
+            {props.confirmed ? (
+              <details class="fam-reveal">
+                <summary class="fam-button fam-button--secondary">
+                  <span class="fam-reveal__when-closed">{k.showMasterKey}</span>
+                  <span class="fam-reveal__when-open">{k.hideMasterKey}</span>
+                </summary>
+                <p class="fam-secret">{props.kit.masterKey}</p>
+              </details>
+            ) : (
+              <p class="fam-secret">{props.kit.masterKey}</p>
+            )}
+            <div class="fam-prose">
+              {k.purpose.map((sentence) => (
+                <p>{sentence}</p>
+              ))}
+            </div>
+          </div>
+          <div class="fam-group__actions">
+            <button
+              type="button"
+              class="fam-button fam-button--secondary"
+              onclick="for (const kit of document.querySelectorAll('details.fam-reveal')) kit.open = true; window.print()"
+            >
+              {k.print}
+            </button>
+            <a class="fam-button fam-button--quiet" href="/admin/recovery-kit/download">
+              {k.download}
+            </a>
+          </div>
+        </Group>
+        {props.confirmed ? null : (
+          <form method="post" action="/admin/recovery-kit/confirm" class="fam-sheet__form">
+            <Group title={k.confirmTitle} level={2}>
+              <Problem message={props.problem} />
+              <div class="fam-group__fields">
+                <label>
+                  <input type="checkbox" name="saved" value="yes" required /> {k.confirm}
+                </label>
+              </div>
+              <div class="fam-group__actions">
+                <button type="submit" class="fam-button fam-button--primary">
+                  {k.continue}
+                </button>
+              </div>
+            </Group>
+          </form>
+        )}
+      </section>
     </AdminLayout>
   );
 }
@@ -607,11 +672,41 @@ export function FamilyMembersPage(props: {
   problem?: string;
   /** The add dialog, open with what was entered and why it was refused. */
   adding?: { name?: string; problem?: string };
+  /** A Family Member's dialog, open with why a change was refused. */
+  editing?: { id: FamilyMemberId; problem?: string };
 }) {
-  const { adding } = props;
+  const { adding, editing } = props;
   const { t } = useTranslation();
   const m = t.members;
-  const dialog = adding ? (
+  const edited = editing ? props.members.find((member) => member.id === editing.id) : undefined;
+  const dialog = edited ? (
+    <Dialog id="edit-member" eyebrow={m.eyebrow} title={edited.name} closeHref="/admin/family-members">
+      <form method="post" action={`/admin/family-members/${edited.id}`} enctype="multipart/form-data" class="fam-dialog__form">
+        <Problem message={editing?.problem} />
+        <div class="fam-field">
+          <label for="name">{m.name}</label>
+          <input id="name" name="name" required autofocus maxlength={maximumNameLength} value={edited.name} />
+          <small>{m.nameHint}</small>
+        </div>
+        <div class="fam-field">
+          <label for="photo">{edited.hasPhoto ? m.replacePhoto : m.photo}</label>
+          <input id="photo" name="photo" type="file" accept={photoTypes.join(",")} />
+          {edited.hasPhoto ? null : <small>{m.photoHint}</small>}
+        </div>
+        {edited.hasPhoto ? (
+          <label>
+            <input type="checkbox" name="removePhoto" value="yes" /> {m.removePhoto}
+          </label>
+        ) : null}
+        <DialogFooter
+          closeHref="/admin/family-members"
+          submit={t.common.save}
+          remove={{ form: "remove-member", label: m.remove(edited.name) }}
+        />
+      </form>
+      <RemoveForm id="remove-member" action={`/admin/family-members/${edited.id}/remove`} />
+    </Dialog>
+  ) : adding ? (
     <Dialog id="add-member" eyebrow={m.eyebrow} title={m.dialogTitle} closeHref="/admin/family-members">
       <form method="post" action="/admin/family-members" enctype="multipart/form-data" class="fam-dialog__form">
         <Problem message={adding.problem} />
@@ -640,35 +735,18 @@ export function FamilyMembersPage(props: {
       {props.members.length === 0 ? (
         <p class="fam-empty">{m.none}</p>
       ) : (
-        <ul class="fam-panel fam-entries">
-          {props.members.map((member) => (
-            <li>
-              <EditableEntry lead={<Avatar member={member} />} name={member.name} meta={member.hasPhoto ? m.withPhoto : m.withInitial}>
-                <form method="post" action={`/admin/family-members/${member.id}`} enctype="multipart/form-data">
-                  <div class="fam-field">
-                    <label for={`name-${member.id}`}>{m.name}</label>
-                    <input id={`name-${member.id}`} name="name" required maxlength={maximumNameLength} value={member.name} />
-                  </div>
-                  <div class="fam-field">
-                    <label for={`photo-${member.id}`}>{member.hasPhoto ? m.replacePhoto : m.photo}</label>
-                    <input id={`photo-${member.id}`} name="photo" type="file" accept={photoTypes.join(",")} />
-                  </div>
-                  {member.hasPhoto ? (
-                    <label>
-                      <input type="checkbox" name="removePhoto" value="yes" /> {m.removePhoto}
-                    </label>
-                  ) : null}
-                  <button type="submit">{t.common.save}</button>
-                </form>
-                <form method="post" action={`/admin/family-members/${member.id}/remove`}>
-                  <button type="submit" class="fam-button fam-button--danger">
-                    {m.remove(member.name)}
-                  </button>
-                </form>
-              </EditableEntry>
-            </li>
-          ))}
-        </ul>
+        <section class="fam-sheet">
+          <ul class="fam-rows">
+            {props.members.map((member) => (
+              <ListRow
+                href={`/admin/family-members/${member.id}`}
+                lead={<Avatar member={member} />}
+                name={member.name}
+                meta={member.hasPhoto ? m.withPhoto : m.withInitial}
+              />
+            ))}
+          </ul>
+        </section>
       )}
     </AdminLayout>
   );
@@ -681,12 +759,38 @@ export function ViewsPage(props: {
   problem?: string;
   /** The create dialog, open with why it was refused. */
   creating?: { problem?: string };
+  /** A View's dialog, open with why a change was refused. */
+  editing?: { id: ViewId; problem?: string };
 }) {
   const memberOf = (id: string) => props.members.find((member) => member.id === id);
-  const { creating } = props;
+  const { creating, editing } = props;
   const { t } = useTranslation();
   const v = t.views;
-  const dialog = creating ? (
+  const namesOf = (view: ViewSummary) => {
+    const names = view.preselected.flatMap((id) => memberOf(id)?.name ?? []);
+    return names.length > 0 ? names.join(", ") : null;
+  };
+  const edited = editing ? props.views.find((view) => view.id === editing.id) : undefined;
+  const dialog = edited ? (
+    <Dialog id="edit-view" eyebrow={v.eyebrow} title={v.entry(namesOf(edited) ?? v.everyone, edited.horizonDays)} closeHref="/admin/views">
+      <form method="post" action={`/admin/views/${edited.id}`} class="fam-dialog__form">
+        <Problem message={editing?.problem} />
+        <dl class="fam-addresses">
+          <dt>{v.address}</dt>
+          <dd>
+            <a href={viewUrl(edited.id)}>{viewUrl(edited.id)}</a>
+          </dd>
+          <dt>{v.feed}</dt>
+          <dd>
+            <a href={`${viewUrl(edited.id)}/feed.ics`}>{`${viewUrl(edited.id)}/feed.ics`}</a>
+          </dd>
+        </dl>
+        <ViewSettingsFields members={props.members} view={edited} idSuffix={edited.id} />
+        <DialogFooter closeHref="/admin/views" submit={t.common.save} remove={{ form: "remove-view", label: v.remove }} />
+      </form>
+      <RemoveForm id="remove-view" action={`/admin/views/${edited.id}/remove`} />
+    </Dialog>
+  ) : creating ? (
     <Dialog id="create-view" eyebrow={v.eyebrow} title={v.dialogTitle} closeHref="/admin/views">
       <form method="post" action="/admin/views" class="fam-dialog__form">
         <Problem message={creating.problem} />
@@ -702,13 +806,14 @@ export function ViewsPage(props: {
       {props.views.length === 0 ? (
         <p class="fam-empty">{v.none}</p>
       ) : (
-        <ul class="fam-panel fam-entries">
-          {props.views.map((view) => {
-            const preselected = view.preselected.map(memberOf).filter((member) => member !== undefined);
-            const names = preselected.length > 0 ? preselected.map((member) => member.name).join(", ") : null;
-            return (
-              <li>
-                <EditableEntry
+        <section class="fam-sheet">
+          <ul class="fam-rows">
+            {props.views.map((view) => {
+              const preselected = view.preselected.map(memberOf).filter((member) => member !== undefined);
+              const names = namesOf(view);
+              return (
+                <ListRow
+                  href={`/admin/views/${view.id}`}
                   lead={
                     preselected.length > 0 ? (
                       <span class="fam-avatars">
@@ -722,31 +827,11 @@ export function ViewsPage(props: {
                   }
                   name={v.entry(names ?? v.everyone, view.horizonDays)}
                   meta={v.shows(names)}
-                >
-                  <form method="post" action={`/admin/views/${view.id}`}>
-                    <ViewSettingsFields members={props.members} view={view} idSuffix={view.id} />
-                    <button type="submit">{t.common.save}</button>
-                  </form>
-                  <form method="post" action={`/admin/views/${view.id}/remove`}>
-                    <button type="submit" class="fam-button fam-button--danger">
-                      {v.remove}
-                    </button>
-                  </form>
-                </EditableEntry>
-                <dl class="fam-entry__links">
-                  <dt>{v.address}</dt>
-                  <dd>
-                    <a href={viewUrl(view.id)}>{viewUrl(view.id)}</a>
-                  </dd>
-                  <dt>{v.feed}</dt>
-                  <dd>
-                    <a href={`${viewUrl(view.id)}/feed.ics`}>{`${viewUrl(view.id)}/feed.ics`}</a>
-                  </dd>
-                </dl>
-              </li>
-            );
-          })}
-        </ul>
+                />
+              );
+            })}
+          </ul>
+        </section>
       )}
     </AdminLayout>
   );
@@ -784,6 +869,7 @@ function ViewSettingsFields(props: { members: FamilyMemberSummary[]; view?: View
           required
           min={horizonDaysRange.min}
           max={horizonDaysRange.max}
+          autofocus
           value={String(props.view?.horizonDays ?? defaultHorizonDays)}
           class="fam-input--short"
         />
@@ -945,19 +1031,16 @@ export function SourceTypePage(props: {
         status={status}
         description={sourceType ? text(sourceType.description) : s.notInstalled}
       />
-      {sourceType ? (
-        <p class="fam-entry__meta">
-          {types.version(sourceType.version)}
-          {sourceType.needsLlm ? types.needsLlm : null}
-        </p>
-      ) : null}
       {sourceType && sourceType.notLoadable !== null ? <p class="fam-problem">{types.notLoadable(sourceType.notLoadable)}</p> : null}
       <Problem message={props.problem} />
       {switchable ? (
         <section class="fam-sheet">
           <SettingRow
             title={<span class="fam-row__label">{types.use(name)}</span>}
-            hints={[switchable.enabled && props.sources.length > 0 ? types.lockedHint(name) : null]}
+            hints={[
+              `${types.version(switchable.version)}${switchable.needsLlm ? types.needsLlm : ""}`,
+              switchable.enabled && props.sources.length > 0 ? types.lockedHint(name) : null,
+            ]}
             control={
               <EnableSwitch
                 id="enable-source-type"
@@ -1324,7 +1407,7 @@ function AddAtEntry(props: { form: SourceForm; entryId: string; name: string }) 
     );
   }
   return (
-    <form method="post" action="/admin/sources" class="fam-entry__form">
+    <form method="post" action="/admin/sources" class="fam-row__form">
       <input type="hidden" name="sourceTypeId" value={form.sourceTypeId} />
       <input type="hidden" name={`plain.${configKey}`} value={entryId} />
       <button type="submit" class="fam-button fam-button--quiet fam-button--add" aria-label={s.addAccountOf(props.name)}>
@@ -1789,19 +1872,9 @@ export function AttributionRulesPage(props: {
       <Dialog id="add-rule" eyebrow={a.chooseEyebrow} title={a.chooseTitle} closeHref={close}>
         <div class="fam-dialog__form">
           <p class="fam-section-header__description">{a.chooseIntro}</p>
-          <ul class="fam-options">
+          <ul class="fam-rows">
             {props.targets.map((target, index) => (
-              <li>
-                <a class="fam-option" href={newHref(target)} autofocus={index === 0}>
-                  <span class="fam-option__label">
-                    {text(target.attributeLabel)}
-                    <small class="fam-entry__meta"> · {sourceOf(target)}</small>
-                  </span>
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <path d="M9 6l6 6-6 6"></path>
-                  </svg>
-                </a>
-              </li>
+              <ListRow href={newHref(target)} name={text(target.attributeLabel)} meta={sourceOf(target)} autofocus={index === 0} />
             ))}
           </ul>
           <div class="fam-dialog__footer">
@@ -1837,15 +1910,10 @@ export function AttributionRulesPage(props: {
             closeHref={close}
             submit={shown.rule ? t.common.save : a.add}
             {...(!shown.rule && props.targets.length > 1 ? { backHref: `${close}/new` } : {})}
+            {...(shown.rule ? { remove: { form: "remove-rule", label: a.remove } } : {})}
           />
         </form>
-        {shown.rule ? (
-          <form method="post" action={`${close}/${shown.rule.id}/remove`} class="fam-dialog__form">
-            <button type="submit" class="fam-button fam-button--danger">
-              {a.remove}
-            </button>
-          </form>
-        ) : null}
+        {shown.rule ? <RemoveForm id="remove-rule" action={`${close}/${shown.rule.id}/remove`} /> : null}
       </Dialog>
     ) : undefined;
   return (
@@ -1859,33 +1927,33 @@ export function AttributionRulesPage(props: {
       {props.rules.length === 0 ? (
         <p class="fam-empty">{a.none}</p>
       ) : (
-        <ul class="fam-panel fam-entries">
-          {props.rules.map((rule) => {
-            const concerned = rule.concerns === "whole-family" ? [] : props.members.filter((member) => rule.concerns.includes(member.id));
-            const who =
-              rule.concerns === "whole-family" ? a.wholeFamily : concerned.length > 0 ? concerned.map((member) => member.name).join(", ") : a.noOne;
-            return (
-              <li class="fam-entry">
-                {concerned.length > 0 ? (
-                  <span class="fam-avatars">
-                    {concerned.map((member) => (
-                      <Avatar member={member} size="sm" />
-                    ))}
-                  </span>
-                ) : (
-                  <span class="fam-avatar fam-avatar--all fam-avatar--sm" aria-hidden="true"></span>
-                )}
-                <span class="fam-entry__main">
-                  <span class="fam-entry__name">{a.entry(text(rule.attributeLabel), rule.value)}</span>
-                  <span class="fam-entry__meta">{`${who} · ${sourceOf(rule)}`}</span>
-                </span>
-                <a class="fam-button fam-button--quiet" href={`${close}/${rule.id}`}>
-                  {t.common.edit}
-                </a>
-              </li>
-            );
-          })}
-        </ul>
+        <section class="fam-sheet">
+          <ul class="fam-rows">
+            {props.rules.map((rule) => {
+              const concerned = rule.concerns === "whole-family" ? [] : props.members.filter((member) => rule.concerns.includes(member.id));
+              const who =
+                rule.concerns === "whole-family" ? a.wholeFamily : concerned.length > 0 ? concerned.map((member) => member.name).join(", ") : a.noOne;
+              return (
+                <ListRow
+                  href={`${close}/${rule.id}`}
+                  lead={
+                    concerned.length > 0 ? (
+                      <span class="fam-avatars">
+                        {concerned.map((member) => (
+                          <Avatar member={member} size="sm" />
+                        ))}
+                      </span>
+                    ) : (
+                      <span class="fam-avatar fam-avatar--all fam-avatar--sm" aria-hidden="true"></span>
+                    )
+                  }
+                  name={a.entry(text(rule.attributeLabel), rule.value)}
+                  meta={`${who} · ${sourceOf(rule)}`}
+                />
+              );
+            })}
+          </ul>
+        </section>
       )}
     </AdminLayout>
   );
@@ -1965,38 +2033,50 @@ export function LlmEndpointPage(props: {
         <p class="fam-callout">{l.none}</p>
       )}
       <Problem message={props.problem} />
-      <form method="post" action="/admin/llm" class="fam-form-wide">
-        <div class="fam-field">
-          <label for="baseUrl">{l.baseUrl}</label>
-          <input id="baseUrl" name="baseUrl" type="url" required value={shown?.baseUrl} />
-          <small>{l.baseUrlHint}</small>
-        </div>
-        <div class="fam-field">
-          <label for="model">{l.model}</label>
-          <input id="model" name="model" required value={shown?.model} />
-        </div>
-        <div class="fam-field">
-          <label for="apiKey">{l.apiKey}</label>
-          <input
-            id="apiKey"
-            name="apiKey"
-            type="password"
-            autocomplete="off"
-            placeholder={endpoint?.hasApiKey ? t.common.storedSecret : undefined}
-          />
-        </div>
-        {endpoint?.hasApiKey ? (
-          <label>
-            <input type="checkbox" name="removeApiKey" value="yes" /> {l.removeApiKey}
-          </label>
-        ) : null}
-        <label>
-          <input type="checkbox" name="vision" value="yes" checked={shown?.vision} /> {l.vision}
-        </label>
-        <label>
-          <input type="checkbox" name="thirdPartiesAcknowledged" value="yes" /> {l.thirdParties}
-        </label>
-        <button type="submit">{t.common.save}</button>
+      <form method="post" action="/admin/llm" class="fam-sheet fam-sheet__form">
+        <Group title={l.connection} level={2}>
+          <div class="fam-group__fields">
+            <div class="fam-field">
+              <label for="baseUrl">{l.baseUrl}</label>
+              <input id="baseUrl" name="baseUrl" type="url" required value={shown?.baseUrl} />
+              <small>{l.baseUrlHint}</small>
+            </div>
+            <div class="fam-field">
+              <label for="model">{l.model}</label>
+              <input id="model" name="model" required value={shown?.model} />
+            </div>
+            <div class="fam-field">
+              <label for="apiKey">{l.apiKey}</label>
+              <input
+                id="apiKey"
+                name="apiKey"
+                type="password"
+                autocomplete="off"
+                placeholder={endpoint?.hasApiKey ? t.common.storedSecret : undefined}
+              />
+            </div>
+            {endpoint?.hasApiKey ? (
+              <label>
+                <input type="checkbox" name="removeApiKey" value="yes" /> {l.removeApiKey}
+              </label>
+            ) : null}
+          </div>
+        </Group>
+        <Group title={l.options} level={2}>
+          <div class="fam-group__fields">
+            <label>
+              <input type="checkbox" name="vision" value="yes" checked={shown?.vision} /> {l.vision}
+            </label>
+            <label>
+              <input type="checkbox" name="thirdPartiesAcknowledged" value="yes" /> {l.thirdParties}
+            </label>
+          </div>
+          <div class="fam-group__actions">
+            <button type="submit" class="fam-button fam-button--primary">
+              {t.common.save}
+            </button>
+          </div>
+        </Group>
       </form>
     </AdminLayout>
   );
@@ -2006,11 +2086,11 @@ export function LlmEndpointPage(props: {
 const ocrList = (languages: OcrLanguage[]) => languages.join("+");
 
 /** A form that saves the OCR languages as they would be after its one button. */
-function OcrLanguagesButton(props: { languages: OcrLanguage[]; label: string; quiet?: boolean }) {
+function OcrLanguagesButton(props: { languages: OcrLanguage[]; label: string }) {
   return (
-    <form method="post" action="/admin/language/ocr" class="fam-entry__form">
+    <form method="post" action="/admin/language/ocr" class="fam-row__form">
       <input type="hidden" name="ocrLanguages" value={ocrList(props.languages)} />
-      <button type="submit" class={`fam-button ${props.quiet ? "fam-button--quiet" : "fam-button--secondary"}`}>
+      <button type="submit" class="fam-button fam-button--quiet">
         {props.label}
       </button>
     </form>
@@ -2021,9 +2101,9 @@ function OcrLanguagesButton(props: { languages: OcrLanguage[]; label: string; qu
 function DownloadButton(props: { language: OcrLanguage }) {
   const { t, ocrLanguageName } = useTranslation();
   return (
-    <form method="post" action="/admin/language/models" class="fam-entry__form">
+    <form method="post" action="/admin/language/models" class="fam-row__form">
       <input type="hidden" name="language" value={props.language} />
-      <button type="submit" class="fam-button fam-button--secondary">
+      <button type="submit" class="fam-button fam-button--quiet">
         {t.language.downloadLanguage(ocrLanguageName(props.language))}
       </button>
     </form>
@@ -2043,94 +2123,106 @@ export function LanguagePage(props: { admin: SignedInAdmin; languages: LanguageS
     <AdminLayout title={l.title} admin={props.admin} current="language">
       <SectionHeader title={l.title} description={l.description} />
       <Problem message={props.problem} />
-      <h2>{l.familyLanguage}</h2>
-      <form method="post" action="/admin/language" class="fam-form-wide">
-        <div class="fam-field">
-          <label for="language">{l.familyLanguage}</label>
-          <select id="language" name="language">
-            <FamilyLanguageOptions selected={languages.language} />
-          </select>
-          <small>{l.familyLanguageHint}</small>
-        </div>
-        <button type="submit">{t.common.save}</button>
+      <form method="post" action="/admin/language" class="fam-sheet fam-sheet__form">
+        <Group title={l.familyLanguage} level={2}>
+          <div class="fam-group__fields">
+            <div class="fam-field">
+              {/* The group's title names it already. */}
+              <label for="language" class="fam-visually-hidden">
+                {l.familyLanguage}
+              </label>
+              <select id="language" name="language">
+                <FamilyLanguageOptions selected={languages.language} />
+              </select>
+              <small>{l.familyLanguageHint}</small>
+            </div>
+          </div>
+          <div class="fam-group__actions">
+            <button type="submit" class="fam-button fam-button--primary">
+              {t.common.save}
+            </button>
+          </div>
+        </Group>
       </form>
 
-      <h2>{l.ocrLanguages}</h2>
-      <p>{l.ocrIntro}</p>
-      <ul class="fam-panel fam-entries">
-        {languages.ocrLanguages.map((ocr, index) => (
-          <li class="fam-entry fam-entry--wrap">
-            <span class="fam-entry__main">
-              <span class="fam-entry__name">{ocrLanguageName(ocr.language)}</span>
-              {ocr.installed ? (
-                <span class="fam-entry__meta">{l.tried(index + 1)}</span>
-              ) : (
-                <span class="fam-status fam-status--waiting">{l.notInstalled}</span>
-              )}
-            </span>
-            {ocr.installed ? null : <DownloadButton language={ocr.language} />}
-            {index > 0 ? <OcrLanguagesButton languages={movedUp(index)} label={l.moveUp} /> : null}
-            {selected.length > 1 ? <OcrLanguagesButton languages={without(ocr.language)} label={l.remove} quiet /> : null}
-          </li>
-        ))}
-      </ul>
-      {languages.ocrLanguages.some((ocr) => !ocr.installed) ? (
-        <p class="fam-problem">{l.missingModel}</p>
-      ) : null}
-      {addable.length > 0 ? (
-        <form method="post" action="/admin/language/ocr" class="fam-form-wide">
-          <div class="fam-field">
-            <label for="add-ocr">{l.addOcrLanguage}</label>
-            <select id="add-ocr" name="ocrLanguages">
-              {addable.map((language) => (
-                <option value={ocrList([...selected, language])}>{ocrLanguageName(language)}</option>
-              ))}
-            </select>
-          </div>
-          <button type="submit" class="fam-button fam-button--secondary">
-            {l.add}
-          </button>
-        </form>
-      ) : null}
-
-      <h2>{l.models}</h2>
-      <p>{l.modelsIntro((code) => <code>{code}</code>)}</p>
-      <ul class="fam-panel fam-entries">
-        {languages.models.map((model) => (
-          <li class="fam-entry fam-entry--wrap">
-            <span class="fam-entry__main">
-              <span class="fam-entry__name">{ocrLanguageName(model.language)}</span>
-              <span class="fam-entry__meta">
-                {model.bundled ? l.bundled : l.downloaded}
-                {model.selected ? l.usedForOcr : null}
-              </span>
-            </span>
-            {model.bundled || model.selected ? null : (
-              <form method="post" action={`/admin/language/models/${model.language}/remove`} class="fam-entry__form">
-                <button type="submit" class="fam-button fam-button--danger">
-                  {l.removeModel(ocrLanguageName(model.language))}
+      <section class="fam-sheet">
+        <Group title={l.ocrLanguages} level={2} intro={l.ocrIntro}>
+          <ul class="fam-rows">
+            {languages.ocrLanguages.map((ocr, index) => (
+              <li class="fam-row">
+                <span class="fam-row__main">
+                  <span class="fam-row__label">{ocrLanguageName(ocr.language)}</span>
+                  {ocr.installed ? (
+                    <span class="fam-row__hint">{l.tried(index + 1)}</span>
+                  ) : (
+                    <span class="fam-status fam-status--waiting">{l.notInstalled}</span>
+                  )}
+                </span>
+                {ocr.installed ? null : <DownloadButton language={ocr.language} />}
+                {index > 0 ? <OcrLanguagesButton languages={movedUp(index)} label={l.moveUp} /> : null}
+                {selected.length > 1 ? <OcrLanguagesButton languages={without(ocr.language)} label={l.remove} /> : null}
+              </li>
+            ))}
+          </ul>
+          {languages.ocrLanguages.some((ocr) => !ocr.installed) ? <p class="fam-problem">{l.missingModel}</p> : null}
+          {addable.length > 0 ? (
+            <form method="post" action="/admin/language/ocr" class="fam-inline-add">
+              <label for="add-ocr">{l.addOcrLanguage}</label>
+              <div class="fam-inline-add__controls">
+                <select id="add-ocr" name="ocrLanguages">
+                  {addable.map((language) => (
+                    <option value={ocrList([...selected, language])}>{ocrLanguageName(language)}</option>
+                  ))}
+                </select>
+                <button type="submit" class="fam-button fam-button--quiet fam-button--add">
+                  {l.add}
                 </button>
-              </form>
-            )}
-          </li>
-        ))}
-      </ul>
-      {languages.downloadable.length > 0 ? (
-        <form method="post" action="/admin/language/models" class="fam-form-wide">
-          <div class="fam-field">
-            <label for="download">{l.downloadModel}</label>
-            <select id="download" name="language">
-              {[...languages.downloadable].sort(byName).map((language) => (
-                <option value={language}>{ocrLanguageName(language)}</option>
-              ))}
-            </select>
-            <small>{l.downloadHint}</small>
-          </div>
-          <button type="submit" class="fam-button fam-button--secondary">
-            {l.download}
-          </button>
-        </form>
-      ) : null}
+              </div>
+            </form>
+          ) : null}
+        </Group>
+      </section>
+
+      <section class="fam-sheet">
+        <Group title={l.models} level={2} intro={l.modelsIntro((code) => <code>{code}</code>)}>
+          <ul class="fam-rows">
+            {languages.models.map((model) => (
+              <li class="fam-row">
+                <span class="fam-row__main">
+                  <span class="fam-row__label">{ocrLanguageName(model.language)}</span>
+                  <span class="fam-row__hint">
+                    {model.bundled ? l.bundled : l.downloaded}
+                    {model.selected ? l.usedForOcr : null}
+                  </span>
+                </span>
+                {model.bundled || model.selected ? null : (
+                  <form method="post" action={`/admin/language/models/${model.language}/remove`} class="fam-row__form">
+                    <button type="submit" class="fam-button fam-button--danger">
+                      {l.removeModel(ocrLanguageName(model.language))}
+                    </button>
+                  </form>
+                )}
+              </li>
+            ))}
+          </ul>
+          {languages.downloadable.length > 0 ? (
+            <form method="post" action="/admin/language/models" class="fam-inline-add">
+              <label for="download">{l.downloadModel}</label>
+              <div class="fam-inline-add__controls">
+                <select id="download" name="language">
+                  {[...languages.downloadable].sort(byName).map((language) => (
+                    <option value={language}>{ocrLanguageName(language)}</option>
+                  ))}
+                </select>
+                <button type="submit" class="fam-button fam-button--quiet">
+                  {l.download}
+                </button>
+              </div>
+              <small>{l.downloadHint}</small>
+            </form>
+          ) : null}
+        </Group>
+      </section>
     </AdminLayout>
   );
 }
