@@ -345,6 +345,30 @@ describe("chats", () => {
     expect(await choicesOf(config, second.state)).toEqual([{ value: room, label: "Klasse 5b Eltern" }]);
   });
 
+  it("are joined on a later run when the homeserver refused to at first", async () => {
+    homeserver.limitedJoins = 1;
+    const first = await poll(config);
+    expect(homeserver.isMember(room, userOf(config))).toBe(false);
+
+    const second = await poll(config, first.state);
+
+    expect(homeserver.isMember(room, userOf(config))).toBe(true);
+    expect(await choicesOf(config, second.state)).toEqual([{ value: room, label: "Klasse 5b Eltern" }]);
+  });
+
+  it("are joined when invited before the state kept invitations", async () => {
+    homeserver.limitedJoins = 1;
+    const first = await poll(config);
+    // A state written before invitations were kept.
+    const older = JSON.parse(first.state ?? "{}") as Record<string, unknown>;
+    delete older.invites;
+
+    const second = await poll(config, JSON.stringify(older));
+
+    expect(homeserver.isMember(room, userOf(config))).toBe(true);
+    expect(await choicesOf(config, second.state)).toEqual([{ value: room, label: "Klasse 5b Eltern" }]);
+  });
+
   it("are never written to, marked read or shown as typing, and nobody else's invitation is accepted", async () => {
     const stranger = homeserver.createRoom("Gewinnspiel");
     homeserver.invite(stranger, userOf(config), "@spam:other.example");

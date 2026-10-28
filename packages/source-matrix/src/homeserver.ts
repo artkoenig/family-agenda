@@ -18,11 +18,14 @@ export type JoinedRoom = {
   timeline?: { events?: MatrixEvent[]; limited?: boolean; prev_batch?: string };
 };
 
+/** Invitations by room, with the stripped state the inviter shared. */
+export type Invites = Record<string, { invite_state?: { events?: MatrixEvent[] } }>;
+
 export type SyncResponse = {
   next_batch: string;
   rooms?: {
     join?: Record<string, JoinedRoom>;
-    invite?: Record<string, { invite_state?: { events?: MatrixEvent[] } }>;
+    invite?: Invites;
     leave?: Record<string, unknown>;
   };
 };
@@ -51,6 +54,18 @@ const syncFilter = JSON.stringify({
     account_data: { not_types: ["*"] },
     state: { lazy_load_members: true },
     timeline: { limit: 50 },
+  },
+});
+
+/** Leaves out everything an initial `/sync` would bring but the invitations. */
+const invitesFilter = JSON.stringify({
+  presence: { not_types: ["*"] },
+  account_data: { not_types: ["*"] },
+  room: {
+    ephemeral: { not_types: ["*"] },
+    account_data: { not_types: ["*"] },
+    state: { types: [] },
+    timeline: { types: [], limit: 1 },
   },
 });
 
@@ -95,6 +110,13 @@ export function homeserverClient(options: HomeserverOptions) {
       const query = new URLSearchParams({ filter: syncFilter, timeout: "0", set_presence: "offline" });
       if (since) query.set("since", since);
       return call("GET", `/_matrix/client/v3/sync?${query.toString()}`, { token });
+    },
+
+    /** The invitations the user has not answered, through an initial `/sync` that only keeps them. */
+    async invites(token: string): Promise<Invites> {
+      const query = new URLSearchParams({ filter: invitesFilter, timeout: "0", set_presence: "offline" });
+      const sync = await call<SyncResponse>("GET", `/_matrix/client/v3/sync?${query.toString()}`, { token });
+      return sync.rooms?.invite ?? {};
     },
 
     /** Events of a room before `from`, newest first, down to `to` if given. */

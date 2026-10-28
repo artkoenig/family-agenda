@@ -169,6 +169,11 @@ allow_public_rooms_without_auth: false
 presence:
   enabled: false
 url_preview_enabled: false
+# A newly linked account brings dozens of chats at once, whose invitations a Source accepts in one run.
+rc_joins:
+  local:
+    per_second: 10
+    burst_count: 1000
 app_service_config_files:
 ${registrations.map((file) => `  - ${q(file)}`).join("\n")}
 `;

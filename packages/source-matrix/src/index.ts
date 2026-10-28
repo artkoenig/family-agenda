@@ -19,8 +19,8 @@ import {
   homeserverClient,
   type BridgeClient,
   type HomeserverClient,
+  type Invites,
   type MatrixEvent,
-  type SyncResponse,
 } from "./homeserver";
 import { defaultInstanceFile, instanceReader, type MatrixInstance } from "./instance";
 import { messengerOf, messengers, type Messenger } from "./messengers";
@@ -42,7 +42,8 @@ export type MatrixPluginOptions = {
 
 /**
  * The state blob: where `/sync` resumes, the names of the joined rooms and of the senders seen,
- * whether each joined room is a group chat, the allow-listed rooms read so far, so that a room
+ * whether each joined room is a group chat, the bridge's invitations not accepted yet, which
+ * `/sync` names only once, the allow-listed rooms read so far, so that a room
  * allow-listed later is read back first, and the edits of each message read, which go with it
  * when it is redacted.
  */
@@ -50,6 +51,7 @@ type State = {
   since: string;
   rooms: Record<string, string>;
   groups: Record<string, boolean>;
+  invites: Record<string, string>;
   names: Record<string, string>;
   read: string[];
   edits: Record<string, string[]>;
@@ -173,6 +175,7 @@ export function createMatrixPlugin(options: MatrixPluginOptions = {}): SourcePlu
         since: sync.next_batch,
         rooms: { ...previous?.rooms },
         groups: { ...previous?.groups },
+        invites: { ...previous?.invites },
         names: { ...previous?.names },
         read: [],
         edits: { ...previous?.edits },
@@ -180,9 +183,21 @@ export function createMatrixPlugin(options: MatrixPluginOptions = {}): SourcePlu
       const left = new Set(Object.keys(sync.rooms?.leave ?? {}));
       state.rooms = Object.fromEntries(Object.entries(state.rooms).filter(([roomId]) => !left.has(roomId)));
       state.groups = Object.fromEntries(Object.entries(state.groups).filter(([roomId]) => !left.has(roomId)));
+      const bridge = { userId, messenger, serverName: instance.homeserver.serverName };
+      // A state from before invitations were kept does not know those `/sync` named back then.
+      const invitations = previous && previous.invites === null ? await homeserver.invites(token) : {};
+      Object.assign(state.invites, invitationsOf(invitations, bridge), invitationsOf(sync.rooms?.invite ?? {}, bridge));
+      const pending = Object.entries(state.invites).filter(([roomId]) => !left.has(roomId));
+      state.invites = {};
       // A chat joined now can be allow-listed at once, though its messages come with the next run.
-      for (const [roomId, name] of await acceptInvites(sync, { homeserver, userId, token, messenger, serverName: instance.homeserver.serverName })) {
-        state.rooms[roomId] = name;
+      for (const [roomId, name] of pending) {
+        try {
+          await homeserver.join(token, roomId);
+          state.rooms[roomId] = name;
+        } catch {
+          // An invitation that cannot be accepted now, such as past the homeserver's rate limit, is accepted on a later run.
+          state.invites[roomId] = name;
+        }
       }
 
       for (const [roomId, room] of Object.entries(sync.rooms?.join ?? {})) {
@@ -478,30 +493,21 @@ function linked(messenger: Messenger): PluginText {
 }
 
 /**
- * Joins the rooms the Messenger's bridge invites the user to; every other invitation stays
- * unanswered. Returns the rooms joined, with their names.
+ * The rooms the Messenger's bridge invites the user to, with their names; every other invitation
+ * stays unanswered.
  */
-async function acceptInvites(
-  sync: SyncResponse,
-  bridge: { homeserver: HomeserverClient; userId: string; token: string; messenger: Messenger; serverName: string },
-): Promise<Map<string, string>> {
-  const joined = new Map<string, string>();
-  for (const [roomId, room] of Object.entries(sync.rooms?.invite ?? {})) {
+function invitationsOf(invites: Invites, bridge: { userId: string; messenger: Messenger; serverName: string }): Record<string, string> {
+  const invited: Record<string, string> = {};
+  for (const [roomId, room] of Object.entries(invites)) {
     const events = room.invite_state?.events ?? [];
     const invitation = events.find(
       (event) => event.type === "m.room.member" && event.state_key === bridge.userId && event.content.membership === "invite",
     );
     if (!invitation || !isOfBridge(invitation.sender, bridge.messenger, bridge.serverName)) continue;
-    try {
-      await bridge.homeserver.join(bridge.token, roomId);
-    } catch {
-      // An invitation that cannot be accepted now stays, and is accepted on a later run.
-      continue;
-    }
     const name = events.find((event) => event.type === "m.room.name")?.content.name;
-    joined.set(roomId, typeof name === "string" && name.trim() !== "" ? name.trim() : roomId);
+    invited[roomId] = typeof name === "string" && name.trim() !== "" ? name.trim() : roomId;
   }
-  return joined;
+  return invited;
 }
 
 /** Whether a Matrix user is the Messenger's bridge bot or one of its ghosts on this homeserver. */
@@ -641,7 +647,8 @@ function chatsOf(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((chat): chat is string => typeof chat === "string") : [];
 }
 
-function parseState(state: string | null): State | null {
+/** A state blob as read; `invites` is null in one written before invitations were kept. */
+function parseState(state: string | null): (Omit<State, "invites"> & { invites: Record<string, string> | null }) | null {
   if (!state) return null;
   try {
     const parsed = JSON.parse(state) as Partial<State>;
@@ -650,6 +657,7 @@ function parseState(state: string | null): State | null {
       since: parsed.since,
       rooms: isObject(parsed.rooms) ? parsed.rooms : {},
       groups: isObject(parsed.groups) ? parsed.groups : {},
+      invites: isObject(parsed.invites) ? parsed.invites : null,
       names: isObject(parsed.names) ? parsed.names : {},
       read: Array.isArray(parsed.read) ? parsed.read.filter((room): room is string => typeof room === "string") : [],
       edits: isObject(parsed.edits) ? parsed.edits : {},
