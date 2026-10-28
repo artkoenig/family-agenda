@@ -721,7 +721,7 @@ export function ViewsPage(props: {
                     )
                   }
                   name={v.entry(names ?? v.everyone, view.horizonDays)}
-                  meta={v.startsWith(names)}
+                  meta={v.shows(names)}
                 >
                   <form method="post" action={`/admin/views/${view.id}`}>
                     <ViewSettingsFields members={props.members} view={view} idSuffix={view.id} />
