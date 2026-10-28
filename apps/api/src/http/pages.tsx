@@ -100,7 +100,6 @@ export type SettingsSummary = {
   /** How many Sources are Failing, which the whole Admin area shows a banner for. */
   failingSources: number;
   rules: number;
-  enabledSourceTypes: number;
   llm: { model: string; local: boolean } | null;
   admins: number;
   kitSaved: boolean;
@@ -117,7 +116,6 @@ type SectionId =
   | "language"
   | "sources"
   | "attribution"
-  | "source-types"
   | "llm"
   | "admins"
   | "recovery-kit";
@@ -167,25 +165,18 @@ function settingsGroups(translation: Translation): SettingsGroup[] {
           id: "sources",
           href: "/admin/sources",
           label: t.sources.title,
-          summary: ({ settings }) =>
+          summary: ({ settings, newSourceTypes }) =>
             settings.failingSources > 0
               ? { text: s.failing(settings.failingSources), tone: "attention" }
-              : { text: settings.sources > 0 ? s.sources(settings.sources) : s.noneYet },
+              : newSourceTypes
+                ? { text: s.newOnes, tone: "attention" }
+                : { text: settings.sources > 0 ? s.sources(settings.sources) : s.noneYet },
         },
         {
           id: "attribution",
           href: "/admin/attribution-rules",
           label: t.attribution.title,
           summary: ({ settings }) => ({ text: settings.rules > 0 ? s.rules(settings.rules) : s.noRules }),
-        },
-        {
-          id: "source-types",
-          href: "/admin/source-types",
-          label: t.sourceTypes.title,
-          summary: (admin) =>
-            admin.newSourceTypes
-              ? { text: s.newOnes, tone: "attention" }
-              : { text: s.enabled(admin.settings.enabledSourceTypes) },
         },
         {
           id: "llm",
@@ -251,14 +242,6 @@ function SectionIcon(props: { id: SectionId }) {
         <path d="M8 12h6M11.5 9l3 3-3 3"></path>
         <circle cx="19" cy="9" r="2.5"></circle>
         <path d="M15.5 18c.6-2.2 1.9-3.5 3.5-3.5s2.9 1.3 3.5 3.5"></path>
-      </>
-    ),
-    "source-types": (
-      <>
-        <rect x="3.5" y="3.5" width="7" height="7" rx="2"></rect>
-        <rect x="13.5" y="3.5" width="7" height="7" rx="2"></rect>
-        <rect x="3.5" y="13.5" width="7" height="7" rx="2"></rect>
-        <path d="M17 14v6M14 17h6"></path>
       </>
     ),
     llm: (
@@ -340,14 +323,14 @@ function AdminLayout(props: {
           ))}
         </nav>
         <main class="fam-settings__main">
-          {admin.newSourceTypes && current !== "source-types" ? (
+          {admin.newSourceTypes && current !== "sources" ? (
             <div class="fam-banner fam-banner--attention" role="status">
               <span class="fam-banner__glyph" aria-hidden="true">
                 !
               </span>
               <span class="fam-banner__title">{t.settings.newSourceTypes}</span>
               <div class="fam-banner__body">
-                <a href="/admin/source-types">{t.settings.lookAtThem}</a>
+                <a href="/admin/sources">{t.settings.lookAtThem}</a>
               </div>
             </div>
           ) : null}
@@ -802,50 +785,263 @@ function ViewSettingsFields(props: { members: FamilyMemberSummary[]; view?: View
   );
 }
 
-export function SourceTypesPage(props: {
-  admin: SignedInAdmin;
-  sourceTypes: SourceTypeSummary[];
-  /** The catalogues of the enabled Source Types, such as the Messengers of the Matrix plugin. */
-  catalogues: CatalogueSummary[];
-  problem?: string;
-}) {
+/** Where a Source Type's page is: its Sources, its catalogue, and enabling or disabling it. */
+export const sourceTypeHref = (id: string) => `/admin/source-types/${encodeURIComponent(id)}`;
+
+/**
+ * The Sources: a card for each installed Source Type, and for each one no longer installed that
+ * still has Sources, each leading to its page.
+ */
+export function SourcesPage(props: { admin: SignedInAdmin; sourceTypes: SourceTypeSummary[]; sources: SourceSummary[] }) {
   const { t, text } = useTranslation();
-  const s = t.sourceTypes;
+  const s = t.sources;
+  const sourcesOf = (id: string) => props.sources.filter((source) => source.sourceTypeId === id);
+  const installed = new Set<string>(props.sourceTypes.map((type) => type.id));
+  const leftBehind = [
+    ...new Map(props.sources.filter((source) => !installed.has(source.sourceTypeId)).map((source) => [source.sourceTypeId, source])).values(),
+  ];
   return (
-    <AdminLayout title={s.title} admin={props.admin} current="source-types">
+    <AdminLayout title={s.title} admin={props.admin} current="sources">
       <SectionHeader title={s.title} description={s.description} />
-      <Problem message={props.problem} />
-      {props.sourceTypes.length === 0 ? <p class="fam-empty">{s.none}</p> : null}
-      <ul class="fam-panel fam-entries">
-        {props.sourceTypes.map((type) => {
-          const name = text(type.displayName);
-          return (
-            <li class="fam-entry fam-entry--wrap">
-              <div class="fam-entry__main">
-                <h2 class="fam-entry__name">
-                  {name} {type.isNew ? <span class="fam-tag">{s.newIn(type.firstSeenIn)}</span> : null}
-                </h2>
-                <p class="fam-entry__meta">{text(type.description)}</p>
-                <p class="fam-entry__meta">
-                  {s.version(type.version)}
-                  {type.needsLlm ? s.needsLlm : null}
-                </p>
-                {type.notLoadable !== null ? <p class="fam-problem">{s.notLoadable(type.notLoadable)}</p> : null}
-              </div>
-              {type.enabled ? <CatalogueEntries catalogue={props.catalogues.find((catalogue) => catalogue.sourceTypeId === type.id)} /> : null}
-              <Enablement
-                name={name}
-                action={`/admin/source-types/${type.id}`}
-                enabled={type.enabled}
-                unavailable={type.notLoadable !== null ? null : undefined}
-                riskNotice={type.riskNotice}
-                disableHint={s.disableHint}
-              />
-            </li>
-          );
-        })}
+      {props.sourceTypes.length === 0 && leftBehind.length === 0 ? <p class="fam-empty">{s.none}</p> : null}
+      <ul class="fam-type-cards">
+        {props.sourceTypes.map((type) => (
+          <li>
+            <a class={type.enabled ? "fam-type-card" : "fam-type-card fam-type-card--off"} href={sourceTypeHref(type.id)}>
+              <span class="fam-type-card__name">
+                {text(type.displayName)}
+                {type.isNew ? <span class="fam-tag">{t.sourceTypes.newIn(type.firstSeenIn)}</span> : null}
+              </span>
+              <span class="fam-type-card__description">{text(type.description)}</span>
+              {type.notLoadable !== null ? (
+                <span class="fam-status fam-status--problem">{s.cannotLoad}</span>
+              ) : type.enabled ? (
+                <SourcesSummary sources={sourcesOf(type.id)} />
+              ) : (
+                <span class="fam-status fam-status--waiting">{s.notEnabled}</span>
+              )}
+            </a>
+          </li>
+        ))}
+        {leftBehind.map((source) => (
+          <li>
+            <a class="fam-type-card" href={sourceTypeHref(source.sourceTypeId)}>
+              <span class="fam-type-card__name">{text(source.displayName)}</span>
+              <span class="fam-type-card__description">{s.notInstalled}</span>
+              <SourcesSummary sources={sourcesOf(source.sourceTypeId)} />
+            </a>
+          </li>
+        ))}
       </ul>
     </AdminLayout>
+  );
+}
+
+/** How many Sources a Source Type has, and how many of them need an Admin. */
+function SourcesSummary(props: { sources: SourceSummary[] }) {
+  const { t } = useTranslation();
+  const s = t.sources;
+  const { length } = props.sources;
+  const failing = props.sources.filter((source) => source.health.status === "failing").length;
+  const silent = props.sources.filter((source) => source.health.status === "silent").length;
+  return (
+    <span class="fam-type-card__summary">
+      <span>{length > 0 ? s.count(length) : s.noSources}</span>
+      {failing > 0 ? (
+        <span class="fam-status fam-status--problem">{s.failingCount(failing)}</span>
+      ) : silent > 0 ? (
+        <span class="fam-status fam-status--waiting">{s.silentCount(silent)}</span>
+      ) : length > 0 ? (
+        <span class="fam-status fam-status--ok">{s.allOk}</span>
+      ) : null}
+    </span>
+  );
+}
+
+/** A Source being added: its Source Type's form, filled in again with what was entered when refused. */
+export type SourceAdding = { form: SourceForm; entered?: { plain: Record<string, string>; interval: string }; problem?: string };
+
+/** What a live setup step of a Source shows now, with its QR code drawn as SVG. */
+export type LiveStep = { sourceId: string; stepId: string; progress: SetupProgress; qrSvg: string | null };
+
+/**
+ * A Source Type's page: enabling it, its Sources, the entries of its catalogue such as its
+ * Messengers, and disabling it. Adding, fixing and setting up a Source open in a dialog over it.
+ */
+export function SourceTypePage(props: {
+  admin: SignedInAdmin;
+  sourceTypeId: string;
+  /** Null once its plugin is no longer installed, for the Sources it left behind. */
+  sourceType: SourceTypeSummary | null;
+  displayName: MultilingualText;
+  /** Its Sources. */
+  sources: SourceSummary[];
+  /** The form of its Sources, while it is enabled and can be loaded. */
+  form: SourceForm | undefined;
+  catalogue: CatalogueSummary | undefined;
+  /** The IANA time zone the Family lives in, which times are shown in. */
+  timeZone: string;
+  problem?: string;
+  adding?: SourceAdding;
+  /** The Source whose Fix button was pressed: its form, in the dialog adding a Source uses. */
+  fixing?: SourceSummary;
+  /** The Source just added, whose live setup steps an Admin goes through now. */
+  settingUp?: SourceSummary;
+  /** What the live setup steps of the Source being fixed or set up show. */
+  liveSteps?: LiveStep[];
+}) {
+  const { sourceType, form, adding } = props;
+  const { t, text } = useTranslation();
+  const s = t.sources;
+  const types = t.sourceTypes;
+  const href = sourceTypeHref(props.sourceTypeId);
+  const name = text(props.displayName);
+  const enablement = (enabled: boolean) =>
+    sourceType ? (
+      <Enablement
+        name={name}
+        action={href}
+        enabled={enabled}
+        unavailable={sourceType.notLoadable !== null ? null : undefined}
+        riskNotice={sourceType.riskNotice}
+        disableHint={types.disableHint}
+      />
+    ) : null;
+  const dialog = adding ? (
+    <Dialog id="add-source" eyebrow={s.addEyebrow} title={text(adding.form.displayName)} closeHref={href}>
+      <form method="post" action="/admin/sources" class="fam-dialog__form">
+        <Problem message={adding.problem} />
+        <input type="hidden" name="sourceTypeId" value={adding.form.sourceTypeId} />
+        <SetupSteps form={adding.form} />
+        <SourceFields form={adding.form} prefix={`new-${adding.form.sourceTypeId}`} {...(adding.entered ? { entered: adding.entered } : {})} autofocus />
+        <DialogFooter closeHref={href} submit={s.addType(text(adding.form.displayName))} />
+      </form>
+    </Dialog>
+  ) : props.fixing && form ? (
+    <FixDialog source={props.fixing} form={form} closeHref={href} timeZone={props.timeZone} liveSteps={props.liveSteps ?? []} />
+  ) : props.settingUp && form ? (
+    <Dialog id="set-up-source" eyebrow={s.setupEyebrow} title={text(props.settingUp.displayName)} closeHref={href}>
+      <div class="fam-dialog__form">
+        <SetupSteps form={form} liveSteps={props.liveSteps ?? []} />
+        <div class="fam-dialog__footer">
+          <span class="fam-dialog__spacer"></span>
+          <a class="fam-button fam-button--primary" href={href}>
+            {s.finish}
+          </a>
+        </div>
+      </div>
+    </Dialog>
+  ) : undefined;
+  return (
+    <AdminLayout title={name} admin={props.admin} current="sources" dialog={dialog}>
+      <nav class="fam-breadcrumb" aria-label={s.breadcrumb}>
+        <a href="/admin/sources">{s.title}</a> <span aria-hidden="true">›</span> <span aria-current="page">{name}</span>
+      </nav>
+      <SectionHeader
+        title={name}
+        description={sourceType ? text(sourceType.description) : s.notInstalled}
+        action={sourceType?.enabled && form ? addButton(`/admin/sources/new?type=${encodeURIComponent(props.sourceTypeId)}`, s.addType(name)) : undefined}
+      />
+      {sourceType ? (
+        <p class="fam-entry__meta">
+          {types.version(sourceType.version)}
+          {sourceType.needsLlm ? types.needsLlm : null}
+        </p>
+      ) : null}
+      {sourceType && sourceType.notLoadable !== null ? <p class="fam-problem">{types.notLoadable(sourceType.notLoadable)}</p> : null}
+      <Problem message={props.problem} />
+      {sourceType && !sourceType.enabled ? enablement(false) : null}
+      {sourceType?.enabled || props.sources.length > 0 ? (
+        <section class="fam-type-section" aria-labelledby="sources-title">
+          <h2 id="sources-title" class="fam-type-section__title">
+            {s.title}
+          </h2>
+          <p class="fam-section-header__description">{s.sourcesIntro}</p>
+          {props.sources.length === 0 ? (
+            <p class="fam-empty">{s.noSources}</p>
+          ) : (
+            <ul class="fam-panel fam-entries">
+              {props.sources.map((source) => (
+                <li>
+                  <SourceEntry source={source} form={form} timeZone={props.timeZone} />
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      ) : null}
+      {sourceType?.enabled ? <CatalogueEntries catalogue={props.catalogue} /> : null}
+      {sourceType?.enabled ? <section class="fam-type-section">{enablement(true)}</section> : null}
+    </AdminLayout>
+  );
+}
+
+/** A Source in its Source Type's list, opening in place for editing, hiding and removing it. */
+function SourceEntry(props: { source: SourceSummary; form: SourceForm | undefined; timeZone: string }) {
+  const { source, form } = props;
+  const { t, text } = useTranslation();
+  const s = t.sources;
+  const name = text(source.displayName);
+  return (
+    <EditableEntry
+      name={name}
+      meta={
+        <>
+          {sourceMeta(source, form, t)}
+          <HealthLine health={source.health} timeZone={props.timeZone} />
+        </>
+      }
+      action={
+        source.health.status === "failing" && form ? (
+          <a class="fam-button fam-button--secondary" href={`/admin/sources/${source.id}/fix`}>
+            {s.fix}
+          </a>
+        ) : undefined
+      }
+    >
+      {form ? (
+        <form method="post" action={`/admin/sources/${source.id}`}>
+          <SourceFields form={form} prefix={source.id} source={source} />
+          <button type="submit">{t.common.save}</button>
+        </form>
+      ) : (
+        <p class="fam-problem">{s.notRead}</p>
+      )}
+      <form method="post" action={`/admin/sources/${source.id}/shown`} class="fam-entry__form">
+        <input type="hidden" name="shown" value={source.shown ? "no" : "yes"} />
+        {source.shown ? (
+          <span class="fam-status fam-status--ok">{s.shown}</span>
+        ) : (
+          <span class="fam-status fam-status--waiting">{s.hidden}</span>
+        )}
+        <button type="submit" class="fam-button fam-button--secondary">
+          {source.shown ? s.hide : s.show}
+        </button>
+        <small>{s.hiddenHint}</small>
+      </form>
+      <form method="post" action={`/admin/sources/${source.id}/remove`}>
+        <button type="submit" class="fam-button fam-button--danger">
+          {s.remove(name)}
+        </button>
+      </form>
+    </EditableEntry>
+  );
+}
+
+/** The dialog a Fix button opens: the form adding a Source uses, filled in with the Source's settings. */
+function FixDialog(props: { source: SourceSummary; form: SourceForm; closeHref: string; timeZone: string; liveSteps: LiveStep[] }) {
+  const { source, form } = props;
+  const { t, text } = useTranslation();
+  const s = t.sources;
+  return (
+    <Dialog id="fix-source" eyebrow={s.fixEyebrow} title={text(source.displayName)} closeHref={props.closeHref}>
+      <form method="post" action={`/admin/sources/${source.id}`} class="fam-dialog__form">
+        <HealthLine health={source.health} timeZone={props.timeZone} />
+        <SetupSteps form={form} liveSteps={props.liveSteps} />
+        <SourceFields form={form} prefix={`fix-${source.id}`} source={source} autofocus />
+        <DialogFooter closeHref={props.closeHref} submit={s.saveAndRead} />
+      </form>
+    </Dialog>
   );
 }
 
@@ -899,18 +1095,20 @@ function CatalogueEntries(props: { catalogue: CatalogueSummary | undefined }) {
   const { t, text } = useTranslation();
   const s = t.sourceTypes;
   if (!catalogue || catalogue.entries.length === 0) return null;
-  const base = `/admin/source-types/${catalogue.sourceTypeId}/catalogue`;
+  const base = `${sourceTypeHref(catalogue.sourceTypeId)}/catalogue`;
   return (
-    <section class="fam-catalogue">
-      <h3 class="fam-entry__name">{text(catalogue.title)}</h3>
-      <p class="fam-entry__meta">{s.catalogueIntro}</p>
-      <ul class="fam-entries">
+    <section class="fam-type-section" aria-labelledby="catalogue-title">
+      <h2 id="catalogue-title" class="fam-type-section__title">
+        {text(catalogue.title)}
+      </h2>
+      <p class="fam-section-header__description">{s.catalogueIntro}</p>
+      <ul class="fam-panel fam-entries">
         {catalogue.entries.map((entry) => {
           const name = text(entry.displayName);
           return (
             <li class="fam-entry fam-entry--wrap">
               <div class="fam-entry__main">
-                <h4 class="fam-entry__name">{name}</h4>
+                <h3 class="fam-entry__name">{name}</h3>
                 <p class="fam-entry__meta">{text(entry.description)}</p>
               </div>
               <Enablement
@@ -926,180 +1124,6 @@ function CatalogueEntries(props: { catalogue: CatalogueSummary | undefined }) {
         })}
       </ul>
     </section>
-  );
-}
-
-/** What adding a Source shows in its dialog: the Source Types to choose from, or one's form. */
-export type SourceAdding =
-  | { step: "choose" }
-  | { step: "form"; form: SourceForm; entered?: { plain: Record<string, string>; interval: string }; problem?: string };
-
-/** What a live setup step of a Source shows now, with its QR code drawn as SVG. */
-export type LiveStep = { sourceId: string; stepId: string; progress: SetupProgress; qrSvg: string | null };
-
-export function SourcesPage(props: {
-  admin: SignedInAdmin;
-  sources: SourceSummary[];
-  forms: SourceForm[];
-  /** The IANA time zone the Family lives in, which times are shown in. */
-  timeZone: string;
-  problem?: string;
-  adding?: SourceAdding;
-  /** The Source whose Fix button was pressed: its form, in the dialog adding a Source uses. */
-  fixing?: SourceSummary;
-  /** The Source just added, whose live setup steps an Admin goes through now. */
-  settingUp?: SourceSummary;
-  /** What the live setup steps of the Source being fixed or set up show. */
-  liveSteps?: LiveStep[];
-}) {
-  const formOf = (id: string) => props.forms.find((form) => form.sourceTypeId === id);
-  const settingUpForm = props.settingUp ? formOf(props.settingUp.sourceTypeId) : undefined;
-  const fixingForm = props.fixing ? formOf(props.fixing.sourceTypeId) : undefined;
-  const { adding } = props;
-  const { t, text } = useTranslation();
-  const s = t.sources;
-  const sourceTypesLink = (label: string) => <a href="/admin/source-types">{label}</a>;
-  const dialog =
-    adding?.step === "choose" ? (
-      <Dialog id="add-source" eyebrow={s.chooseEyebrow} title={s.chooseTitle} closeHref="/admin/sources">
-        <div class="fam-dialog__form">
-          <p class="fam-section-header__description">{s.chooseIntro}</p>
-          <ul class="fam-options">
-            {props.forms.map((form, index) => (
-              <li>
-                <a class="fam-option" href={`/admin/sources/new?type=${encodeURIComponent(form.sourceTypeId)}`} autofocus={index === 0}>
-                  <span class="fam-option__label">{text(form.displayName)}</span>
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <path d="M9 6l6 6-6 6"></path>
-                  </svg>
-                </a>
-              </li>
-            ))}
-          </ul>
-          <small>{s.missingOne(sourceTypesLink)}</small>
-          <div class="fam-dialog__footer">
-            <span class="fam-dialog__spacer"></span>
-            <a class="fam-button fam-button--quiet" href="/admin/sources">
-              {t.common.cancel}
-            </a>
-          </div>
-        </div>
-      </Dialog>
-    ) : adding?.step === "form" ? (
-      <Dialog
-        id="add-source"
-        eyebrow={props.forms.length > 1 ? s.formEyebrow : s.onlyFormEyebrow}
-        title={text(adding.form.displayName)}
-        closeHref="/admin/sources"
-      >
-        <form method="post" action="/admin/sources" class="fam-dialog__form">
-          <Problem message={adding.problem} />
-          <input type="hidden" name="sourceTypeId" value={adding.form.sourceTypeId} />
-          <SetupSteps form={adding.form} />
-          <SourceFields form={adding.form} prefix={`new-${adding.form.sourceTypeId}`} {...(adding.entered ? { entered: adding.entered } : {})} autofocus />
-          <DialogFooter
-            closeHref="/admin/sources"
-            submit={s.addType(text(adding.form.displayName))}
-            {...(props.forms.length > 1 ? { backHref: "/admin/sources/new" } : {})}
-          />
-        </form>
-      </Dialog>
-    ) : props.fixing && fixingForm ? (
-      <FixDialog source={props.fixing} form={fixingForm} timeZone={props.timeZone} liveSteps={props.liveSteps ?? []} />
-    ) : props.settingUp && settingUpForm ? (
-      <Dialog id="set-up-source" eyebrow={s.setupEyebrow} title={text(props.settingUp.displayName)} closeHref="/admin/sources">
-        <div class="fam-dialog__form">
-          <SetupSteps form={settingUpForm} liveSteps={props.liveSteps ?? []} />
-          <div class="fam-dialog__footer">
-            <span class="fam-dialog__spacer"></span>
-            <a class="fam-button fam-button--primary" href="/admin/sources">
-              {s.finish}
-            </a>
-          </div>
-        </div>
-      </Dialog>
-    ) : undefined;
-  return (
-    <AdminLayout title={s.title} admin={props.admin} current="sources" dialog={dialog}>
-      <SectionHeader
-        title={s.title}
-        description={s.description}
-        action={props.forms.length > 0 ? addButton("/admin/sources/new", s.add) : undefined}
-      />
-      <Problem message={props.problem} />
-      {props.forms.length === 0 ? <p class="fam-empty">{s.noneEnabled(sourceTypesLink)}</p> : null}
-      {props.sources.length === 0 ? null : (
-        <ul class="fam-panel fam-entries">
-          {props.sources.map((source) => {
-            const form = formOf(source.sourceTypeId);
-            const name = text(source.displayName);
-            return (
-              <li>
-                <EditableEntry
-                  name={name}
-                  meta={
-                    <>
-                      {sourceMeta(source, form, t)}
-                      <HealthLine health={source.health} timeZone={props.timeZone} />
-                    </>
-                  }
-                  action={
-                    source.health.status === "failing" && form ? (
-                      <a class="fam-button fam-button--secondary" href={`/admin/sources/${source.id}/fix`}>
-                        {s.fix}
-                      </a>
-                    ) : undefined
-                  }
-                >
-                  {form ? (
-                    <form method="post" action={`/admin/sources/${source.id}`}>
-                      <SourceFields form={form} prefix={source.id} source={source} />
-                      <button type="submit">{t.common.save}</button>
-                    </form>
-                  ) : (
-                    <p class="fam-problem">{s.notRead}</p>
-                  )}
-                  <form method="post" action={`/admin/sources/${source.id}/shown`} class="fam-entry__form">
-                    <input type="hidden" name="shown" value={source.shown ? "no" : "yes"} />
-                    {source.shown ? (
-                      <span class="fam-status fam-status--ok">{s.shown}</span>
-                    ) : (
-                      <span class="fam-status fam-status--waiting">{s.hidden}</span>
-                    )}
-                    <button type="submit" class="fam-button fam-button--secondary">
-                      {source.shown ? s.hide : s.show}
-                    </button>
-                    <small>{s.hiddenHint}</small>
-                  </form>
-                  <form method="post" action={`/admin/sources/${source.id}/remove`}>
-                    <button type="submit" class="fam-button fam-button--danger">
-                      {s.remove(name)}
-                    </button>
-                  </form>
-                </EditableEntry>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-    </AdminLayout>
-  );
-}
-
-/** The dialog a Fix button opens: the form adding a Source uses, filled in with the Source's settings. */
-function FixDialog(props: { source: SourceSummary; form: SourceForm; timeZone: string; liveSteps: LiveStep[] }) {
-  const { source, form } = props;
-  const { t, text } = useTranslation();
-  const s = t.sources;
-  return (
-    <Dialog id="fix-source" eyebrow={s.fixEyebrow} title={text(source.displayName)} closeHref="/admin/sources">
-      <form method="post" action={`/admin/sources/${source.id}`} class="fam-dialog__form">
-        <HealthLine health={source.health} timeZone={props.timeZone} />
-        <SetupSteps form={form} liveSteps={props.liveSteps} />
-        <SourceFields form={form} prefix={`fix-${source.id}`} source={source} autofocus />
-        <DialogFooter closeHref="/admin/sources" submit={s.saveAndRead} />
-      </form>
-    </Dialog>
   );
 }
 
@@ -1320,7 +1344,7 @@ function CatalogueField(props: {
     <div class="fam-field">
       {label}
       {entries.length === 0 ? (
-        <p class="fam-problem">{t.sources.noEntries((name) => <a href="/admin/source-types">{name}</a>)}</p>
+        <p class="fam-problem">{t.sources.noEntries((label) => <a href={sourceTypeHref(form.sourceTypeId)}>{label}</a>)}</p>
       ) : (
         <select id={id} name={`plain.${field.key}`} required autofocus={props.autofocus}>
           {entries.map((entry) => (

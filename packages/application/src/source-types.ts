@@ -108,6 +108,9 @@ export function createSourceTypeAccess(deps: SourceTypesDeps) {
       return (await summaries()).some((type) => type.isNew);
     },
 
+    /** Every installed Source Type, new ones first, leaving the banner as it is. */
+    list: summaries,
+
     /**
      * Every installed Source Type, new ones first, as an Admin opens the list. Opening it ends the
      * banner, so the next list shows none as new.

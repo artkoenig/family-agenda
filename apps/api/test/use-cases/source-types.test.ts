@@ -123,6 +123,8 @@ describe("Source Types", () => {
     await installAndRestart([{ sourceTypeId: "calendar" }], "1.1.0");
 
     expect(await instance.app.sourceTypes.hasNew()).toBe(true);
+    expect((await instance.app.sourceTypes.list()).filter((type) => type.isNew)).toHaveLength(2);
+    expect(await instance.app.sourceTypes.hasNew(), "listing them without opening keeps the banner").toBe(true);
     const opened = await instance.app.sourceTypes.open();
     expect(opened.map(({ id, isNew, firstSeenIn, enabled }) => [id, isNew, firstSeenIn, enabled])).toEqual([
       ["calendar", true, "1.1.0", false],
