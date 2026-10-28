@@ -528,11 +528,21 @@ export class PostgresCatalogueRepository implements CatalogueRepository {
     return rows.map(({ entryId, enabled, firstSeenIn }) => ({ entryId, enabled, firstSeenIn }));
   }
 
-  async setEnabled(sourceTypeId: SourceTypeId, entryId: string, enabled: boolean): Promise<void> {
+  async enable(sourceTypeId: SourceTypeId, entryId: string): Promise<void> {
     await this.db
       .update(catalogueEntries)
-      .set({ enabled })
+      .set({ enabled: true })
       .where(and(eq(catalogueEntries.sourceTypeId, sourceTypeId), eq(catalogueEntries.entryId, entryId)));
+  }
+
+  async disableIfUnused(sourceTypeId: SourceTypeId, entryId: string, configKey: string): Promise<boolean> {
+    const unused = sql`NOT EXISTS (SELECT 1 FROM ${sources} WHERE ${sources.sourceTypeId} = ${sourceTypeId} AND ${sources.config} ->> ${configKey} = ${entryId})`;
+    const updated = await this.db
+      .update(catalogueEntries)
+      .set({ enabled: false })
+      .where(and(eq(catalogueEntries.sourceTypeId, sourceTypeId), eq(catalogueEntries.entryId, entryId), unused))
+      .returning({ entryId: catalogueEntries.entryId });
+    return updated.length === 1;
   }
 }
 

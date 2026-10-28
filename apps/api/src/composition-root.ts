@@ -221,7 +221,6 @@ export async function bootApplication(config: ApplicationConfig): Promise<Applic
     registry,
     sourceTypes: sourceTypeRepository,
     catalogues: catalogueRepository,
-    sources: sourceRepository,
   });
   const sources = createSourceAccess({
     clock,

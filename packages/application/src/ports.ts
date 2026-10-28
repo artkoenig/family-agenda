@@ -317,7 +317,12 @@ export interface CatalogueRepository {
   /** Records the entries not stored yet as disabled; keeps the others as they are. */
   recordDiscovered(sourceTypeId: SourceTypeId, entryIds: string[], applicationVersion: string, at: Date): Promise<void>;
   list(sourceTypeId: SourceTypeId): Promise<CatalogueRecord[]>;
-  setEnabled(sourceTypeId: SourceTypeId, entryId: string, enabled: boolean): Promise<void>;
+  enable(sourceTypeId: SourceTypeId, entryId: string): Promise<void>;
+  /**
+   * Disables the entry unless a Source of the Source Type names it in its plain `configKey`
+   * field. Returns whether it is disabled now.
+   */
+  disableIfUnused(sourceTypeId: SourceTypeId, entryId: string, configKey: string): Promise<boolean>;
 }
 
 export interface SourceTypeRepository {

@@ -555,35 +555,25 @@ export function createHttpApp(application: Application, options: HttpOptions) {
 
   app.get("/admin/source-types", (c) => sourceTypesPage(c));
 
-  app.post("/admin/source-types/:id/enable", async (c) => {
-    const form = await c.req.parseBody();
-    const result = await sourceTypes.enable(c.req.param("id"), {
-      riskAcknowledged: field(form, "riskAcknowledged") === "yes",
+  /** Enabling or disabling a Source Type or a catalogue entry: the same form, refused the same way. */
+  const enablement = (
+    path: string,
+    act: (params: Record<string, string>, riskAcknowledged: boolean) => Promise<{ ok: true } | { ok: false; problem: ProblemKey }>,
+  ) => {
+    app.post(path, async (c) => {
+      const form = await c.req.parseBody();
+      const result = await act(c.req.param(), field(form, "riskAcknowledged") === "yes");
+      if (!result.ok) return sourceTypesPage(c, problemIn(c, result.problem));
+      return c.redirect("/admin/source-types", 303);
     });
-    if (!result.ok) return sourceTypesPage(c, problemIn(c, result.problem));
-    return c.redirect("/admin/source-types", 303);
-  });
+  };
 
-  app.post("/admin/source-types/:id/catalogue/:entry/enable", async (c) => {
-    const form = await c.req.parseBody();
-    const result = await catalogues.enable(c.req.param("id"), c.req.param("entry"), {
-      riskAcknowledged: field(form, "riskAcknowledged") === "yes",
-    });
-    if (!result.ok) return sourceTypesPage(c, problemIn(c, result.problem));
-    return c.redirect("/admin/source-types", 303);
-  });
-
-  app.post("/admin/source-types/:id/catalogue/:entry/disable", async (c) => {
-    const result = await catalogues.disable(c.req.param("id"), c.req.param("entry"));
-    if (!result.ok) return sourceTypesPage(c, problemIn(c, result.problem));
-    return c.redirect("/admin/source-types", 303);
-  });
-
-  app.post("/admin/source-types/:id/disable", async (c) => {
-    const result = await sourceTypes.disable(c.req.param("id"));
-    if (!result.ok) return sourceTypesPage(c, problemIn(c, result.problem));
-    return c.redirect("/admin/source-types", 303);
-  });
+  enablement("/admin/source-types/:id/enable", ({ id = "" }, riskAcknowledged) => sourceTypes.enable(id, { riskAcknowledged }));
+  enablement("/admin/source-types/:id/disable", ({ id = "" }) => sourceTypes.disable(id));
+  enablement("/admin/source-types/:id/catalogue/:entry/enable", ({ id = "", entry = "" }, riskAcknowledged) =>
+    catalogues.enable(id, entry, { riskAcknowledged }),
+  );
+  enablement("/admin/source-types/:id/catalogue/:entry/disable", ({ id = "", entry = "" }) => catalogues.disable(id, entry));
 
   /** What the live setup steps of a Source show now, such as a QR code to scan. */
   const liveStepsOf = async (source: SourceSummary): Promise<LiveStep[]> => {

@@ -4,11 +4,11 @@ import type {
   CatalogueRepository,
   Clock,
   LoadedSourceType,
-  SourceRepository,
   SourceTypeRegistry,
   SourceTypeRepository,
 } from "./ports";
 import { enabledSourceType } from "./enabled-source-type";
+import { disableIfUnused, enableIfAllowed, type DisableResult, type Enableable, type EnableResult } from "./enablement";
 
 export type CataloguesDeps = {
   clock: Clock;
@@ -17,7 +17,6 @@ export type CataloguesDeps = {
   registry: SourceTypeRegistry;
   sourceTypes: SourceTypeRepository;
   catalogues: CatalogueRepository;
-  sources: SourceRepository;
 };
 
 export type CatalogueEntrySummary = CatalogueEntrySpec & {
@@ -33,7 +32,8 @@ export type CatalogueSummary = {
   entries: CatalogueEntrySummary[];
 };
 
-export type CatalogueProblem = "unknown-entry" | "not-installed" | "risk-not-acknowledged" | "entry-in-use";
+/** How enabling and disabling an entry is refused. */
+const problems = { unknown: "unknown-entry", unavailable: "not-installed", inUse: "entry-in-use" } as const;
 
 /**
  * The entries of a catalogue that a Source can use: enabled by an Admin, and installed. An entry
@@ -55,7 +55,7 @@ export async function usableEntries(
  * update, and one that a Source uses cannot be disabled.
  */
 export function createCatalogueAccess(deps: CataloguesDeps) {
-  const { clock, applicationVersion, registry, sourceTypes, catalogues, sources } = deps;
+  const { clock, applicationVersion, registry, sourceTypes, catalogues } = deps;
 
   /** The enabled Source Types that have a catalogue, with their plugins. */
   async function withCatalogues(): Promise<{ id: SourceTypeId; sourceType: LoadedSourceType }[]> {
@@ -86,13 +86,23 @@ export function createCatalogueAccess(deps: CataloguesDeps) {
     };
   }
 
-  async function entryOf(sourceTypeId: string, entryId: string) {
+  /** An entry of an enabled Source Type's catalogue, as an Admin enables or disables it. */
+  async function enableable(sourceTypeId: string, entryId: string): Promise<Enableable | null> {
     const found = (await withCatalogues()).find((candidate) => candidate.id === sourceTypeId);
     if (!found) return null;
     const { catalogue } = found.sourceType;
     const summary = await summaryOf(found.id, found.sourceType);
     const entry = summary?.entries.find((candidate) => candidate.id === entryId);
-    return catalogue && entry ? { id: found.id, configKey: catalogue.configKey, entry } : null;
+    if (!catalogue || !entry) return null;
+    return {
+      available: () => Promise.resolve(entry.installed),
+      riskNotice: entry.riskNotice,
+      async enable() {
+        await catalogues.enable(found.id, entryId);
+        return true;
+      },
+      disableIfUnused: () => catalogues.disableIfUnused(found.id, entryId, catalogue.configKey),
+    };
   }
 
   return {
@@ -116,25 +126,13 @@ export function createCatalogueAccess(deps: CataloguesDeps) {
       sourceTypeId: string,
       entryId: string,
       input: { riskAcknowledged?: boolean } = {},
-    ): Promise<{ ok: true } | { ok: false; problem: CatalogueProblem }> {
-      const found = await entryOf(sourceTypeId, entryId);
-      if (!found) return { ok: false, problem: "unknown-entry" };
-      if (!found.entry.installed) return { ok: false, problem: "not-installed" };
-      if (found.entry.riskNotice !== null && input.riskAcknowledged !== true) {
-        return { ok: false, problem: "risk-not-acknowledged" };
-      }
-      await catalogues.setEnabled(found.id, entryId, true);
-      return { ok: true };
+    ): Promise<EnableResult<typeof problems>> {
+      return enableIfAllowed(await enableable(sourceTypeId, entryId), input, problems);
     },
 
     /** Only an entry no Source uses can be disabled; an Admin removes those Sources first. */
-    async disable(sourceTypeId: string, entryId: string): Promise<{ ok: true } | { ok: false; problem: CatalogueProblem }> {
-      const found = await entryOf(sourceTypeId, entryId);
-      if (!found) return { ok: false, problem: "unknown-entry" };
-      const used = (await sources.listOfType(found.id)).some((source) => source.plain[found.configKey] === entryId);
-      if (used) return { ok: false, problem: "entry-in-use" };
-      await catalogues.setEnabled(found.id, entryId, false);
-      return { ok: true };
+    async disable(sourceTypeId: string, entryId: string): Promise<DisableResult<typeof problems>> {
+      return disableIfUnused(await enableable(sourceTypeId, entryId), problems);
     },
   };
 }

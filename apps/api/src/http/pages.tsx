@@ -28,6 +28,7 @@ import {
   photoTypes,
   silentAfterMs,
   type FamilyLanguage,
+  type MultilingualText,
   type OcrLanguage,
 } from "@family-agenda/domain";
 import type { Child } from "hono/jsx";
@@ -832,32 +833,63 @@ export function SourceTypesPage(props: {
                 {type.notLoadable !== null ? <p class="fam-problem">{s.notLoadable(type.notLoadable)}</p> : null}
               </div>
               {type.enabled ? <CatalogueEntries catalogue={props.catalogues.find((catalogue) => catalogue.sourceTypeId === type.id)} /> : null}
-              {type.enabled ? (
-                <form method="post" action={`/admin/source-types/${type.id}/disable`} class="fam-entry__form">
-                  <span class="fam-status fam-status--ok">{s.enabled}</span>
-                  <button type="submit" class="fam-button fam-button--secondary">
-                    {s.disable(name)}
-                  </button>
-                  <small>{s.disableHint}</small>
-                </form>
-              ) : type.notLoadable !== null ? null : (
-                <form method="post" action={`/admin/source-types/${type.id}/enable`} class="fam-entry__form">
-                  {type.riskNotice !== null ? (
-                    <>
-                      <p class="fam-problem">{text(type.riskNotice)}</p>
-                      <label>
-                        <input type="checkbox" name="riskAcknowledged" value="yes" required /> {s.acknowledgeRisk}
-                      </label>
-                    </>
-                  ) : null}
-                  <button type="submit">{s.enable(name)}</button>
-                </form>
-              )}
+              <Enablement
+                name={name}
+                action={`/admin/source-types/${type.id}`}
+                enabled={type.enabled}
+                unavailable={type.notLoadable !== null ? null : undefined}
+                riskNotice={type.riskNotice}
+                disableHint={s.disableHint}
+              />
             </li>
           );
         })}
       </ul>
     </AdminLayout>
+  );
+}
+
+/**
+ * Enabling or disabling something an Admin enables on its own, a Source Type or a catalogue
+ * entry: posts to `<action>/enable` or `<action>/disable`. One with a risk notice is enabled only
+ * once it is acknowledged; one that cannot run shows `unavailable` instead, if anything.
+ */
+function Enablement(props: {
+  name: string;
+  action: string;
+  enabled: boolean;
+  /** Shown instead of the form while it cannot run; undefined while it can. */
+  unavailable: Child | undefined;
+  riskNotice: MultilingualText | null;
+  disableHint: string;
+}) {
+  const { name, riskNotice } = props;
+  const { t, text } = useTranslation();
+  const s = t.sourceTypes;
+  if (props.enabled) {
+    return (
+      <form method="post" action={`${props.action}/disable`} class="fam-entry__form">
+        <span class="fam-status fam-status--ok">{s.enabled}</span>
+        <button type="submit" class="fam-button fam-button--secondary">
+          {s.disable(name)}
+        </button>
+        <small>{props.disableHint}</small>
+      </form>
+    );
+  }
+  if (props.unavailable !== undefined) return <>{props.unavailable}</>;
+  return (
+    <form method="post" action={`${props.action}/enable`} class="fam-entry__form">
+      {riskNotice !== null ? (
+        <>
+          <p class="fam-problem">{text(riskNotice)}</p>
+          <label>
+            <input type="checkbox" name="riskAcknowledged" value="yes" required /> {s.acknowledgeRisk}
+          </label>
+        </>
+      ) : null}
+      <button type="submit">{s.enable(name)}</button>
+    </form>
   );
 }
 
@@ -881,29 +913,14 @@ function CatalogueEntries(props: { catalogue: CatalogueSummary | undefined }) {
                 <h4 class="fam-entry__name">{name}</h4>
                 <p class="fam-entry__meta">{text(entry.description)}</p>
               </div>
-              {entry.enabled ? (
-                <form method="post" action={`${base}/${entry.id}/disable`} class="fam-entry__form">
-                  <span class="fam-status fam-status--ok">{s.enabled}</span>
-                  <button type="submit" class="fam-button fam-button--secondary">
-                    {s.disable(name)}
-                  </button>
-                  <small>{s.entryDisableHint}</small>
-                </form>
-              ) : !entry.installed ? (
-                <span class="fam-status fam-status--waiting">{s.notInstalled}</span>
-              ) : (
-                <form method="post" action={`${base}/${entry.id}/enable`} class="fam-entry__form">
-                  {entry.riskNotice !== null ? (
-                    <>
-                      <p class="fam-problem">{text(entry.riskNotice)}</p>
-                      <label>
-                        <input type="checkbox" name="riskAcknowledged" value="yes" required /> {s.acknowledgeRisk}
-                      </label>
-                    </>
-                  ) : null}
-                  <button type="submit">{s.enable(name)}</button>
-                </form>
-              )}
+              <Enablement
+                name={name}
+                action={`${base}/${entry.id}`}
+                enabled={entry.enabled}
+                unavailable={entry.installed ? undefined : <span class="fam-status fam-status--waiting">{s.notInstalled}</span>}
+                riskNotice={entry.riskNotice}
+                disableHint={s.entryDisableHint}
+              />
             </li>
           );
         })}

@@ -3,6 +3,7 @@ export * from "./admin-access";
 export * from "./attribution-rules";
 export * from "./catalogues";
 export * from "./enabled-source-type";
+export * from "./enablement";
 export * from "./extraction";
 export * from "./family-members";
 export * from "./languages";
