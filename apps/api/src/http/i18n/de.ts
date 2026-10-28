@@ -217,7 +217,7 @@ export const de: Catalogue = {
     disableHint: "Er lässt sich deaktivieren, sobald er keine Quellen mehr hat.",
     acknowledgeRisk: "Ich verstehe das Risiko.",
     enable: (name) => `${name} aktivieren`,
-    catalogueIntro: "Aktiviere die, die deine Familie nutzt. Nur sie werden angeboten, wenn eine Quelle dieses Quellentyps hinzugefügt wird.",
+    catalogueIntro: "Aktiviere die, die deine Familie nutzt, und füge dann bei jedem davon Quellen hinzu.",
     notInstalled: "Auf dieser Instanz nicht installiert",
     entryDisableHint: "Kann deaktiviert werden, sobald keine Quelle es nutzt.",
   },

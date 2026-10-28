@@ -896,6 +896,7 @@ export function SourceTypePage(props: {
   const types = t.sourceTypes;
   const href = sourceTypeHref(props.sourceTypeId);
   const name = text(props.displayName);
+  const added = adding ? addedEntry(adding) : undefined;
   const enablement = (enabled: boolean) =>
     sourceType ? (
       <Enablement
@@ -908,13 +909,13 @@ export function SourceTypePage(props: {
       />
     ) : null;
   const dialog = adding ? (
-    <Dialog id="add-source" eyebrow={s.addEyebrow} title={text(adding.form.displayName)} closeHref={href}>
+    <Dialog id="add-source" eyebrow={s.addEyebrow} title={text(added?.displayName ?? adding.form.displayName)} closeHref={href}>
       <form method="post" action="/admin/sources" class="fam-dialog__form">
         <Problem message={adding.problem} />
         <input type="hidden" name="sourceTypeId" value={adding.form.sourceTypeId} />
         <SetupSteps form={adding.form} />
         <SourceFields form={adding.form} prefix={`new-${adding.form.sourceTypeId}`} {...(adding.entered ? { entered: adding.entered } : {})} autofocus />
-        <DialogFooter closeHref={href} submit={s.addType(text(adding.form.displayName))} />
+        <DialogFooter closeHref={href} submit={s.addType(text(added?.displayName ?? adding.form.displayName))} />
       </form>
     </Dialog>
   ) : props.fixing && form ? (
@@ -940,7 +941,7 @@ export function SourceTypePage(props: {
       <SectionHeader
         title={name}
         description={sourceType ? text(sourceType.description) : s.notInstalled}
-        action={sourceType?.enabled && form ? addButton(`/admin/sources/new?type=${encodeURIComponent(props.sourceTypeId)}`, s.addType(name)) : undefined}
+        action={sourceType?.enabled && form && !form.catalogue ? addButton(`/admin/sources/new?type=${encodeURIComponent(props.sourceTypeId)}`, s.addType(name)) : undefined}
       />
       {sourceType ? (
         <p class="fam-entry__meta">
@@ -970,10 +971,17 @@ export function SourceTypePage(props: {
           )}
         </section>
       ) : null}
-      {sourceType?.enabled ? <CatalogueEntries catalogue={props.catalogue} /> : null}
+      {sourceType?.enabled ? <CatalogueEntries catalogue={props.catalogue} form={form} /> : null}
       {sourceType?.enabled ? <section class="fam-type-section">{enablement(true)}</section> : null}
     </AdminLayout>
   );
+}
+
+/** The catalogue entry a Source being added uses, such as its Messenger, once it is chosen. */
+function addedEntry(adding: SourceAdding) {
+  const { catalogue } = adding.form;
+  const chosen = catalogue ? adding.entered?.plain[catalogue.configKey] : undefined;
+  return catalogue?.entries.find((entry) => entry.id === chosen);
 }
 
 /** A Source in its Source Type's list, opening in place for editing, hiding and removing it. */
@@ -1089,9 +1097,13 @@ function Enablement(props: {
   );
 }
 
-/** The entries an Admin enables within a Source Type, such as its Messengers, each like a Source Type. */
-function CatalogueEntries(props: { catalogue: CatalogueSummary | undefined }) {
+/**
+ * The entries an Admin enables within a Source Type, such as its Messengers, each like a Source
+ * Type. A Source is added at the entry it uses, so each usable entry has its own add button.
+ */
+function CatalogueEntries(props: { catalogue: CatalogueSummary | undefined; form: SourceForm | undefined }) {
   const { catalogue } = props;
+  const usable = new Set(props.form?.catalogue?.entries.map((entry) => entry.id));
   const { t, text } = useTranslation();
   const s = t.sourceTypes;
   if (!catalogue || catalogue.entries.length === 0) return null;
@@ -1111,14 +1123,19 @@ function CatalogueEntries(props: { catalogue: CatalogueSummary | undefined }) {
                 <h3 class="fam-entry__name">{name}</h3>
                 <p class="fam-entry__meta">{text(entry.description)}</p>
               </div>
-              <Enablement
-                name={name}
-                action={`${base}/${entry.id}`}
-                enabled={entry.enabled}
-                unavailable={entry.installed ? undefined : <span class="fam-status fam-status--waiting">{s.notInstalled}</span>}
-                riskNotice={entry.riskNotice}
-                disableHint={s.entryDisableHint}
-              />
+              <div class="fam-entry__form">
+                {usable.has(entry.id)
+                  ? addButton(`/admin/sources/new?type=${encodeURIComponent(catalogue.sourceTypeId)}&entry=${encodeURIComponent(entry.id)}`, t.sources.addType(name))
+                  : null}
+                <Enablement
+                  name={name}
+                  action={`${base}/${entry.id}`}
+                  enabled={entry.enabled}
+                  unavailable={entry.installed ? undefined : <span class="fam-status fam-status--waiting">{s.notInstalled}</span>}
+                  riskNotice={entry.riskNotice}
+                  disableHint={s.entryDisableHint}
+                />
+              </div>
             </li>
           );
         })}
@@ -1316,8 +1333,8 @@ function SourceFields(props: {
 }
 
 /**
- * The field naming the catalogue entry a Source uses, such as its Messenger: a choice among the
- * enabled entries when adding a Source, and fixed once it exists.
+ * The field naming the catalogue entry a Source uses, such as its Messenger: fixed once it exists
+ * or is added at its entry, and a choice among the enabled entries otherwise.
  */
 function CatalogueField(props: {
   field: SourceForm["fields"][number];
@@ -1331,12 +1348,13 @@ function CatalogueField(props: {
   const { t, text } = useTranslation();
   const entries = form.catalogue?.entries ?? [];
   const label = <label for={id}>{text(field.label)}</label>;
-  if (props.existing) {
-    const entry = entries.find((candidate) => candidate.id === chosen);
+  const entry = entries.find((candidate) => candidate.id === chosen);
+  if (props.existing || entry) {
     return (
       <div class="fam-field">
         {label}
         <input id={id} value={entry ? text(entry.displayName) : chosen} disabled />
+        {props.existing ? null : <input type="hidden" name={`plain.${field.key}`} value={chosen} />}
       </div>
     );
   }

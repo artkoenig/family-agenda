@@ -652,6 +652,11 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     if (type === undefined) return c.redirect("/admin/sources");
     const form = (await sources.forms()).find((candidate) => candidate.sourceTypeId === type);
     if (!form) return c.redirect(sourceTypeHref(type));
+    // Added at a catalogue entry, such as a Messenger, the Source uses that entry.
+    const entry = c.req.query("entry");
+    if (form.catalogue && entry !== undefined) {
+      return sourceTypePage(c, type, { adding: { form, entered: { plain: { [form.catalogue.configKey]: entry }, interval: "" } } });
+    }
     return sourceTypePage(c, type, { adding: { form } });
   });
 

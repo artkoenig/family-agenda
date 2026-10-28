@@ -52,6 +52,27 @@ describe("Sources of a Source Type with a catalogue and a live setup step", () =
     expect(await (await instance.get("/admin/source-types/bridged", { cookie })).text()).toContain("Disable WhatsApp");
   });
 
+  it("adds Sources at each enabled Messenger, not at the Source Type", async () => {
+    const before = await (await instance.get("/admin/source-types/bridged", { cookie })).text();
+    expect(before).not.toContain("Add Matrix");
+    expect(before).not.toContain("/admin/sources/new");
+
+    await instance.app.catalogues.enable("bridged", "whatsapp", { riskAcknowledged: true });
+    const page = await (await instance.get("/admin/source-types/bridged", { cookie })).text();
+    expect(page).toContain('href="/admin/sources/new?type=bridged&amp;entry=whatsapp">Add WhatsApp</a>');
+    expect(page).not.toContain("Add Matrix");
+    expect(page).not.toContain("entry=signal");
+  });
+
+  it("opens the form of a Messenger's Source with that Messenger chosen", async () => {
+    await instance.app.catalogues.enable("bridged", "whatsapp", { riskAcknowledged: true });
+    const form = await (await instance.get("/admin/sources/new?type=bridged&entry=whatsapp", { cookie })).text();
+    expect(form).not.toMatch(/<select[^>]*name="plain.messenger"/);
+    expect(form).toMatch(/<input type="hidden" name="plain.messenger" value="whatsapp"\/?>/);
+    expect(form).toContain(">Add WhatsApp</button>");
+    expect(form).not.toContain("Add Matrix");
+  });
+
   it("asks to enable a Messenger before a Source can be added", async () => {
     const form = await (await instance.get("/admin/sources/new?type=bridged", { cookie })).text();
     expect(form).toContain("None is enabled yet.");

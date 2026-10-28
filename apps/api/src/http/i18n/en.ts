@@ -231,7 +231,7 @@ export const en = {
     disableHint: "It can be disabled once it has no Sources.",
     acknowledgeRisk: "I understand the risk.",
     enable: (name: string) => `Enable ${name}`,
-    catalogueIntro: "Enable the ones your Family uses. Only they are offered when adding a Source of this Source Type.",
+    catalogueIntro: "Enable the ones your Family uses, then add Sources at each of them.",
     notInstalled: "Not installed on this Instance",
     entryDisableHint: "It can be disabled once no Source uses it.",
   },
