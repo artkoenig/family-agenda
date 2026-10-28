@@ -77,8 +77,8 @@ describe("Events extracted from mail", () => {
     const page = await instance.app.views.open(view, { access: openViewAccess });
     const row = page?.days[3]?.items[0];
     expect(row).toMatchObject({ place: "Raum 104", links: [] });
-    expect(row?.messages).toHaveLength(1);
-    const message = await instance.app.messages.open(row!.messages[0]!);
+    expect(row?.messages.map((message) => message.source)).toEqual(["mailbox"]);
+    const message = await instance.app.messages.open(row!.messages[0]!.id);
     expect(message).toMatchObject({ text: invitation, attributes: { sender: "klasse5b@schule.example.org" } });
   });
 

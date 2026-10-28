@@ -926,15 +926,28 @@ export class PostgresItemRepository implements ItemRepository {
     if (rows.length === 0) return [];
     const ids = rows.map((row) => row.id);
     const links = await this.db
-      .selectDistinct({ itemId: revisions.itemId, link: origins.link, firstSeenAt: origins.firstSeenAt })
+      .selectDistinct({
+        itemId: revisions.itemId,
+        link: origins.link,
+        sourceTypeId: sources.sourceTypeId,
+        firstSeenAt: origins.firstSeenAt,
+      })
       .from(revisions)
       .innerJoin(origins, eq(origins.id, revisions.originId))
+      .innerJoin(sources, eq(sources.id, origins.sourceId))
       .where(and(inArray(revisions.itemId, ids), isNotNull(origins.link)))
       .orderBy(asc(origins.firstSeenAt));
     const messages = await this.db
-      .selectDistinct({ itemId: revisions.itemId, id: rawMessages.id, sentAt: rawMessages.sentAt })
+      .selectDistinct({
+        itemId: revisions.itemId,
+        id: rawMessages.id,
+        sourceTypeId: sources.sourceTypeId,
+        sentAt: rawMessages.sentAt,
+      })
       .from(revisions)
       .innerJoin(rawMessages, eq(rawMessages.originId, revisions.originId))
+      .innerJoin(origins, eq(origins.id, revisions.originId))
+      .innerJoin(sources, eq(sources.id, origins.sourceId))
       // A message whose Revisions were all rejected said nothing that shows.
       .where(and(inArray(revisions.itemId, ids), eq(revisions.accepted, true)))
       .orderBy(asc(rawMessages.sentAt));
@@ -951,8 +964,12 @@ export class PostgresItemRepository implements ItemRepository {
               id: row.id as ItemId,
               kind: row.kind as ItemKind,
               folded: row.folded,
-              links: links.flatMap((link) => (link.itemId === row.id && link.link ? [link.link] : [])),
-              messages: messages.flatMap((message) => (message.itemId === row.id ? [message.id as RawMessageId] : [])),
+              links: links.flatMap(({ itemId, link, sourceTypeId }) =>
+                itemId === row.id && link ? [{ url: link, sourceTypeId: sourceTypeId as SourceTypeId }] : [],
+              ),
+              messages: messages.flatMap(({ itemId, id, sourceTypeId }) =>
+                itemId === row.id ? [{ id: id as RawMessageId, sourceTypeId: sourceTypeId as SourceTypeId }] : [],
+              ),
               origins: originsOfItems.flatMap(({ itemId, sourceId, attributes }) =>
                 itemId === row.id ? [{ sourceId: sourceId as SourceId, attributes }] : [],
               ),
