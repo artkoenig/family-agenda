@@ -129,7 +129,7 @@ function shareSdkWith(directories: string[]): void {
 }
 
 function loadedSourceType(plugin: SourcePlugin): LoadedSourceType {
-  const { configuration, setupSteps, ingestion, originAttributes, health, catalogue } = plugin;
+  const { configuration, setupSteps, ingestion, originAttributes, health, catalogue, services } = plugin;
   return {
     configuration: {
       version: configuration.version,
@@ -164,6 +164,7 @@ function loadedSourceType(plugin: SourcePlugin): LoadedSourceType {
           },
         }
       : null,
+    services: services ? { reconcile: (enabled) => services.reconcile(enabled), stop: () => services.stop() } : null,
     async choices(key, context) {
       const field = configuration.fields.find((candidate) => candidate.key === key);
       try {

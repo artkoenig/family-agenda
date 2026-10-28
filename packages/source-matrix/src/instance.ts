@@ -1,8 +1,8 @@
 import { readFile } from "node:fs/promises";
 
 /**
- * How the plugin reaches the Instance's homeserver and bridges, as the Matrix Compose profile
- * writes it into a file shared with the `api` and `worker` containers.
+ * How the plugin reaches the Instance's homeserver and bridges, as the worker that runs them
+ * writes it into a file shared with the `api` container.
  */
 export type MatrixInstance = {
   homeserver: {
@@ -17,12 +17,12 @@ export type MatrixInstance = {
   bridges: Record<string, { url: string; provisioningSecret: string }>;
 };
 
-/** The default place of the file, in the volume the Matrix profile shares with the Instance. */
+/** The default place of the file, in the volume the worker shares with the `api` container. */
 export const defaultInstanceFile = "/var/lib/family-agenda/matrix/instance.json";
 
 /**
- * The Instance's Matrix setup: given, or read from its file each time, so that a profile enabled
- * later is seen without restarting. Null when the Matrix profile has not run.
+ * The Instance's Matrix setup: given, or read from its file each time, so that a Messenger
+ * enabled later is seen without restarting. Null until the worker has set Matrix up.
  */
 export function instanceReader(source: MatrixInstance | string): () => Promise<MatrixInstance | null> {
   if (typeof source !== "string") return () => Promise.resolve(source);

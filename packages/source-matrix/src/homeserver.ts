@@ -165,16 +165,6 @@ export function bridgeClient(options: { url: string; secret: string; timeoutMs: 
   }
 
   return {
-    /** Whether the bridge runs: any answer means it does. */
-    async running(): Promise<boolean> {
-      try {
-        await fetch(new URL("/_matrix/mau/live", url), { signal: AbortSignal.timeout(timeoutMs) });
-        return true;
-      } catch {
-        return false;
-      }
-    },
-
     async logins(userId: string): Promise<BridgeLogin[]> {
       const whoami = await call<{ logins?: RawLogin[] }>("GET", "/whoami", userId);
       return (whoami.logins ?? []).map((login) => ({

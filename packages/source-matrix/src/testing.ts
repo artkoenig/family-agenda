@@ -3,6 +3,10 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import type { AddressInfo } from "node:net";
 import type { MatrixEvent, SyncResponse } from "./homeserver";
 import type { MatrixInstance } from "./instance";
+import type { MatrixPrograms } from "./services";
+
+/** Programs that exist, so that the plugin counts WhatsApp as installed; they are never run. */
+export const installedPrograms: MatrixPrograms = { synapse: process.execPath, bridges: { whatsapp: process.execPath } };
 
 type StoredEvent = { position: number; roomId: string; event: MatrixEvent };
 
@@ -43,7 +47,7 @@ export class FakeHomeserver {
     return `http://127.0.0.1:${this.port}`;
   }
 
-  /** The Instance's Matrix setup, as the Matrix profile would write it, with the bridge on the same server. */
+  /** The Instance's Matrix setup, as the worker would write it, with the bridge on the same server. */
   instance(): MatrixInstance {
     return {
       homeserver: { url: this.url, serverName: this.serverName, registrationSharedSecret: this.registrationSharedSecret },

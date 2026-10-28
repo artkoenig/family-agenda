@@ -12,7 +12,7 @@ x-app: &app
     BLOB_DIRECTORY: /var/lib/family-agenda/blobs
     PLUGIN_DIRECTORY: /var/lib/family-agenda/plugins
     TESSDATA_DIRECTORY: /var/lib/family-agenda/tessdata
-    # How the Matrix plugin reaches Synapse and the bridges; written by the Matrix profile (ADR-0011).
+    # How the Matrix plugin reaches Synapse and the bridges, which the worker runs (ADR-0011).
     MATRIX_INSTANCE_FILE: /var/lib/family-agenda/matrix/instance.json
     # The Family's time zone, which decides where a View's days start.
     TZ: ${TZ:-Europe/Berlin}
@@ -26,7 +26,7 @@ x-app: &app
     # Tesseract models: the bundled ones linked on start, the ones Admins download, and any put
     # here by hand as <code>.traineddata for an Instance without internet access (ADR-0012).
     - tessdata:/var/lib/family-agenda/tessdata
-    # Empty unless the Matrix profile runs; then it holds how to reach Synapse and the bridges.
+    # Empty until an Admin enables a Messenger; then it holds how to reach Synapse and the bridges.
     - matrix-instance:/var/lib/family-agenda/matrix:ro
   depends_on:
     postgres:
@@ -46,6 +46,19 @@ services:
   worker:
     <<: *app
     working_dir: /app/apps/worker
+    # Reaps the processes of Synapse and the bridges, which the worker starts while a Messenger is
+    # enabled (ADR-0011). They are reachable only on the Instance's own network, at `worker`.
+    init: true
+    volumes:
+      - master-key:/var/lib/family-agenda/master-key
+      - blobs:/var/lib/family-agenda/blobs
+      - plugins:/var/lib/family-agenda/plugins
+      - tessdata:/var/lib/family-agenda/tessdata
+      # The worker writes how the api reaches Synapse and the bridges.
+      - matrix-instance:/var/lib/family-agenda/matrix
+      # Synapse's configuration and media and the bridges' Messenger sessions, in SQLite outside
+      # Postgres (ADR-0006). Synapse's own database is on the Postgres server, created by the worker.
+      - matrix-data:/var/lib/family-agenda/matrix-data
 
   postgres:
     image: postgres:17
@@ -62,85 +75,6 @@ services:
       timeout: 5s
       retries: 10
 
-  # Messengers are read through Matrix bridges (ADR-0011), opt in with Compose profiles:
-  # `matrix` runs Synapse, and each Messenger's profile its bridge, such as
-  # COMPOSE_PROFILES=matrix,whatsapp docker compose up -d
-  # Nothing here publishes a port: Synapse and the bridges are reachable only on the Instance's
-  # own network, and Synapse neither federates nor lets anyone register.
-
-  # Creates Synapse's own database on the Instance's Postgres server, with the C collation it needs.
-  matrix-database:
-    image: postgres:17
-    profiles: [matrix]
-    restart: "no"
-    environment:
-      PGHOST: postgres
-      PGUSER: family_agenda
-      PGPASSWORD: ${POSTGRES_PASSWORD:-family_agenda}
-      PGDATABASE: family_agenda
-      SYNAPSE_POSTGRES_PASSWORD: ${SYNAPSE_POSTGRES_PASSWORD:-synapse}
-    command:
-      - sh
-      - -c
-      - |
-        set -e
-        psql -tAc "SELECT 1 FROM pg_roles WHERE rolname = 'synapse'" | grep -q 1 \
-          || psql -v ON_ERROR_STOP=1 -c "CREATE ROLE synapse LOGIN PASSWORD '$$SYNAPSE_POSTGRES_PASSWORD'"
-        psql -tAc "SELECT 1 FROM pg_database WHERE datname = 'synapse'" | grep -q 1 \
-          || psql -v ON_ERROR_STOP=1 -c "CREATE DATABASE synapse OWNER synapse ENCODING 'UTF8' LC_COLLATE 'C' LC_CTYPE 'C' TEMPLATE template0"
-    depends_on:
-      postgres:
-        condition: service_healthy
-
-  # Writes the configuration of Synapse and the bridges on every start, its secrets kept.
-  matrix-config:
-    image: family-agenda:local
-    build: .
-    profiles: [matrix]
-    restart: "no"
-    # As root, to hand each file to the container that reads it.
-    user: "0"
-    working_dir: /app/apps/api
-    command: ["node", "--import", "tsx", "/app/packages/source-matrix/deploy/generate.ts"]
-    environment:
-      MATRIX_SERVER_NAME: ${MATRIX_SERVER_NAME:-family-agenda.local}
-      SYNAPSE_POSTGRES_PASSWORD: ${SYNAPSE_POSTGRES_PASSWORD:-synapse}
-    volumes:
-      - synapse-data:/synapse
-      - matrix-instance:/var/lib/family-agenda/matrix
-      - whatsapp-bridge:/bridges/whatsapp
-
-  synapse:
-    image: matrixdotorg/synapse:v1.163.2
-    profiles: [matrix]
-    restart: unless-stopped
-    environment:
-      SYNAPSE_CONFIG_PATH: /data/homeserver.yaml
-    volumes:
-      - synapse-data:/data
-      # Its own media volume, apart from Family Agenda's blobs.
-      - synapse-media:/media
-      - whatsapp-bridge:/bridges/whatsapp:ro
-    depends_on:
-      postgres:
-        condition: service_healthy
-      matrix-database:
-        condition: service_completed_successfully
-      matrix-config:
-        condition: service_completed_successfully
-
-  # WhatsApp, with the risk ADR-0001 accepts: an unofficial client linked as a device.
-  mautrix-whatsapp:
-    image: dock.mau.dev/mautrix/whatsapp:v0.2609.0
-    profiles: [whatsapp]
-    restart: unless-stopped
-    volumes:
-      # Its configuration, registration and WhatsApp sessions, in SQLite outside Postgres (ADR-0006).
-      - whatsapp-bridge:/data
-    depends_on:
-      synapse:
-        condition: service_healthy
-
 volumes:
   postgres-data:
   master-key:
@@ -148,6 +82,4 @@ volumes:
   plugins:
   tessdata:
   matrix-instance:
-  synapse-data:
-  synapse-media:
-  whatsapp-bridge:
+  matrix-data:
