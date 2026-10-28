@@ -196,6 +196,13 @@ export type CatalogueSpec = {
   entries(): Promise<CatalogueEntrySpec[]>;
 };
 
+/** Programs a Source Type runs on the Instance, which the worker reconciles with what is enabled. */
+export type ServicesSpec = {
+  /** Starts what is enabled and stops the rest; `entries` are the enabled catalogue entries. */
+  reconcile(enabled: { enabled: boolean; entries: string[] }): Promise<void>;
+  stop(): Promise<void>;
+};
+
 /** What a plugin is given for one run of a Source. */
 export type SourceRunContext = {
   plain: PlainConfig;
@@ -262,6 +269,8 @@ export type LoadedSourceType = {
   silentApplies: boolean;
   /** What an Admin enables within it, such as Messengers; null if it has none. */
   catalogue: CatalogueSpec | null;
+  /** Programs it runs on the Instance while enabled, such as a homeserver; null if it has none. */
+  services: ServicesSpec | null;
   /** The values a choice field offers for an existing Source; none if asking the plugin failed. */
   choices(key: string, context: SourceRunContext): Promise<KnownValue[]>;
   /** What a live setup step of an existing Source shows now. */

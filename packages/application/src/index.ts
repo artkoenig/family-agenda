@@ -12,6 +12,7 @@ export * from "./messages";
 export * from "./polling";
 export * from "./ports";
 export * from "./recovery-kit";
+export * from "./services";
 export * from "./source-health";
 export * from "./source-types";
 export * from "./sources";

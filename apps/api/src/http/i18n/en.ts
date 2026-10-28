@@ -81,7 +81,7 @@ export const en = {
     "rule-exists": "This Source already has a rule for this value.",
     "unknown-rule": "This Attribution Rule does not exist.",
     "unknown-entry": "This entry is not in the catalogue.",
-    "not-installed": "This is not installed on the Instance. Its Compose profile has to be enabled first.",
+    "not-installed": "This is not installed on the Instance. It needs an image of Family Agenda that includes it.",
     "entry-in-use": "Remove the Sources that use it before disabling it.",
     "invalid-interval": `The polling interval must be between ${pollIntervalRange.minSeconds / 60} minute and ${pollIntervalRange.maxSeconds / 86_400} days.`,
   },

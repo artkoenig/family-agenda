@@ -166,6 +166,13 @@ importers:
       '@family-agenda/source-sdk':
         specifier: workspace:*
         version: link:../source-sdk
+      pg:
+        specifier: ^8.23.1
+        version: 8.23.1
+    devDependencies:
+      '@types/pg':
+        specifier: ^8.23.1
+        version: 8.23.1
 
   packages/source-sdk:
     dependencies:

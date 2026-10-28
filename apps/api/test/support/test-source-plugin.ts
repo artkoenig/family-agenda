@@ -24,6 +24,9 @@ const catalogueEntries = new Map<string, CatalogueEntry[]>();
 const setupProgress = new Map<string, SetupProgress>();
 const addingFails = new Set<string>();
 const removed = new Map<string, RunContext[]>();
+const reconciled = new Map<string, { enabled: boolean; entries: string[] }[]>();
+const stopped = new Map<string, number>();
+const reconcilingFails = new Set<string>();
 let accounts = 0;
 
 /** Controls what the test plugin of a Source Type does on its next run. */
@@ -51,6 +54,18 @@ export const testPluginControls = {
   removed(sourceTypeId: string): RunContext[] {
     return removed.get(sourceTypeId) ?? [];
   },
+  /** What the plugin's services were reconciled with so far, oldest first. */
+  reconciled(sourceTypeId: string): { enabled: boolean; entries: string[] }[] {
+    return reconciled.get(sourceTypeId) ?? [];
+  },
+  /** How often the plugin's services were stopped. */
+  stopped(sourceTypeId: string): number {
+    return stopped.get(sourceTypeId) ?? 0;
+  },
+  /** Makes reconciling the plugin's services fail next time. */
+  failReconciling(sourceTypeId: string): void {
+    reconcilingFails.add(sourceTypeId);
+  },
   failNext(sourceTypeId: string, kind: "definite" | "temporary"): void {
     pending.set(sourceTypeId, { origins: [], failure: new SourceError(`${sourceTypeId} failed`, kind) });
   },
@@ -74,6 +89,8 @@ export type TestPluginOptions = {
   catalogue?: { configKey: string };
   /** Setup steps driven live through `testPluginControls.setupShows`. */
   liveSteps?: string[];
+  /** Services whose reconciling `testPluginControls.reconciled` records. */
+  services?: boolean;
 };
 
 /**
@@ -103,6 +120,21 @@ export function testSourcePlugin(options: TestPluginOptions): SourcePlugin {
             title: "Networks",
             configKey: options.catalogue.configKey,
             entries: () => Promise.resolve(catalogueEntries.get(sourceTypeId) ?? []),
+          },
+        }
+      : {}),
+    ...(options.services
+      ? {
+          services: {
+            reconcile: (enabled: { enabled: boolean; entries: string[] }) => {
+              reconciled.set(sourceTypeId, [...(reconciled.get(sourceTypeId) ?? []), enabled]);
+              if (reconcilingFails.delete(sourceTypeId)) return Promise.reject(new Error("the homeserver did not start"));
+              return Promise.resolve();
+            },
+            stop: () => {
+              stopped.set(sourceTypeId, (stopped.get(sourceTypeId) ?? 0) + 1);
+              return Promise.resolve();
+            },
           },
         }
       : {}),
@@ -188,6 +220,7 @@ export type TestPluginPackage = {
   setupSteps?: SetupStep[];
   catalogue?: { configKey: string };
   liveSteps?: string[];
+  services?: boolean;
 };
 
 const pluginModule = fileURLToPath(new URL("./test-source-plugin.ts", import.meta.url));
@@ -220,9 +253,10 @@ export async function writeTestPluginPackage(directory: string, plugin: TestPlug
   const setupSteps = plugin.setupSteps ? `, setupSteps: ${JSON.stringify(plugin.setupSteps)}` : "";
   const catalogue = plugin.catalogue ? `, catalogue: ${JSON.stringify(plugin.catalogue)}` : "";
   const liveSteps = plugin.liveSteps ? `, liveSteps: ${JSON.stringify(plugin.liveSteps)}` : "";
+  const services = plugin.services ? ", services: true" : "";
   await writeFile(
     join(packageDirectory, "index.ts"),
     `import { testSourcePlugin } from ${JSON.stringify(pluginModule)};\n` +
-      `export default testSourcePlugin({ sourceTypeId: ${JSON.stringify(plugin.sourceTypeId)}${configuration}${silentApplies}${setupSteps}${catalogue}${liveSteps} });\n`,
+      `export default testSourcePlugin({ sourceTypeId: ${JSON.stringify(plugin.sourceTypeId)}${configuration}${silentApplies}${setupSteps}${catalogue}${liveSteps}${services} });\n`,
   );
 }

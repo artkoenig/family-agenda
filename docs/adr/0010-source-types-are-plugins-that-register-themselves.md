@@ -34,7 +34,7 @@ Installed is not enabled. An Admin enables each Source Type the Family uses, and
 ## Consequences
 
 - A plugin runs in the `api` and `worker` processes with their full rights, and sees decrypted credentials of its own Sources. Plugins are not sandboxed, so an operator installs only plugins they trust, as with Home Assistant's custom integrations.
-- A plugin that needs a process of its own, such as the Go whatsmeow sidecar (ADR-0001), ships it as a container and talks to the Instance only through its push ingest endpoint. The plugin package holds the TypeScript side; the container is enabled with a Compose profile.
+- A plugin that needs programs of its own, such as the Matrix plugin's homeserver and bridges (ADR-0011), declares them as `services`: the image brings the programs, and the worker starts them while the Source Type and the catalogue entries that need them are enabled, and stops them once they are not. A plugin added to the `plugins/` volume can only run programs the image has.
 - An update can bring new Source Types, but never turns one on. A plugin that is installed and disabled costs nothing at run time, because its code is not loaded.
 - When a plugin is removed, its Sources stay, with their Origins and Revisions, and show as Failing with "Source Type not installed". Reinstalling the plugin resumes them from their stored state.
 - Every Source Type, built in or added, is bound by ADR-0004: it runs on the Instance, never in Agenda Cloud.

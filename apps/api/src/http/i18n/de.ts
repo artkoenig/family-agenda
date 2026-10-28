@@ -68,7 +68,7 @@ export const de: Catalogue = {
     "rule-exists": "Diese Quelle hat schon eine Regel für diesen Wert.",
     "unknown-rule": "Diese Zuordnungsregel gibt es nicht.",
     "unknown-entry": "Diesen Eintrag gibt es im Katalog nicht.",
-    "not-installed": "Das ist auf der Instanz nicht installiert. Zuerst muss sein Compose-Profil aktiviert werden.",
+    "not-installed": "Das ist auf der Instanz nicht installiert. Es braucht ein Image von Family Agenda, das es enthält.",
     "entry-in-use": "Entferne die Quellen, die es nutzen, bevor du es deaktivierst.",
     "invalid-interval": `Das Abrufintervall muss zwischen ${pollIntervalRange.minSeconds / 60} Minute und ${pollIntervalRange.maxSeconds / 86_400} Tagen liegen.`,
   },

@@ -1,5 +1,7 @@
 import { randomBytes } from "node:crypto";
+import { setTimeout as sleep } from "node:timers/promises";
 import {
+  englishOf,
   sdkVersion,
   SourceError,
   type Attachment,
@@ -8,6 +10,7 @@ import {
   type PluginText,
   type RunContext,
   type SetupProgress,
+  type Services,
   type SourcePlugin,
 } from "@family-agenda/source-sdk";
 import {
@@ -21,15 +24,20 @@ import {
 } from "./homeserver";
 import { defaultInstanceFile, instanceReader, type MatrixInstance } from "./instance";
 import { messengerOf, messengers, type Messenger } from "./messengers";
+import { defaultPrograms, isInstalled, matrixServices, readProblem, type MatrixPrograms } from "./services";
 
 export type { MatrixInstance } from "./instance";
 export { messengers } from "./messengers";
 
 export type MatrixPluginOptions = {
-  /** The Instance's Matrix setup, or the file the Matrix profile writes it to. */
+  /** The Instance's Matrix setup, or the file the worker writes it to. */
   instance?: MatrixInstance | string;
   /** How long a request to the homeserver or a bridge may take before the run fails. */
   timeoutMs?: number;
+  /** Synapse and the bridges the image ships; by default at their places in the image. */
+  programs?: MatrixPrograms;
+  /** How long adding a Source waits for the homeserver, which takes a while to start the first time. */
+  startTimeoutMs?: number;
 };
 
 /**
@@ -77,8 +85,24 @@ type LoginSession = { qrCode: string | null; outcome: "waiting" | "done" | { fai
  */
 export function createMatrixPlugin(options: MatrixPluginOptions = {}): SourcePlugin {
   const timeoutMs = options.timeoutMs ?? 30_000;
-  const readInstance = instanceReader(options.instance ?? process.env.MATRIX_INSTANCE_FILE ?? defaultInstanceFile);
+  const startTimeoutMs = options.startTimeoutMs ?? 90_000;
+  const programs = options.programs ?? programsFromEnvironment();
+  const instanceSource = options.instance ?? process.env.MATRIX_INSTANCE_FILE ?? defaultInstanceFile;
+  const readInstance = instanceReader(instanceSource);
   const sessions = new Map<string, LoginSession>();
+  let services: Services | null = null;
+
+  /** Why the worker could not start Synapse or a bridge, if it said so. */
+  const problem = () => (typeof instanceSource === "string" ? readProblem(instanceSource) : Promise.resolve(null));
+
+  /** Why a Messenger cannot be reached now: not installed, broken, or still starting. */
+  async function unavailable(messenger: Messenger): Promise<SourceError> {
+    const name = messenger.attributeValue;
+    if (!(await isInstalled(programs, messenger))) return SourceError.definite(`${name} is not installed on this Instance.`);
+    const found = await problem();
+    if (found) return SourceError.definite(found);
+    return SourceError.temporary(englishOf(starting(messenger)));
+  }
 
   /** The homeserver and the bridge of a Source's Messenger, or why it cannot be read. */
   async function connectionOf(plain: RunContext["config"]["plain"]): Promise<{
@@ -95,9 +119,8 @@ export function createMatrixPlugin(options: MatrixPluginOptions = {}): SourcePlu
     } catch (error) {
       throw SourceError.temporary(`The Matrix setup could not be read: ${messageOf(error)}`);
     }
-    if (!instance) throw SourceError.definite("Matrix is not set up on this Instance: enable the Matrix Compose profile.");
-    const bridge = instance.bridges[messenger.id];
-    if (!bridge) throw SourceError.definite(`The ${messenger.attributeValue} bridge is not set up on this Instance.`);
+    const bridge = instance?.bridges[messenger.id];
+    if (!instance || !bridge) throw await unavailable(messenger);
     return {
       instance,
       messenger,
@@ -119,6 +142,7 @@ export function createMatrixPlugin(options: MatrixPluginOptions = {}): SourcePlu
     try {
       logins = await bridge.logins(userId);
     } catch (error) {
+      if (!(error instanceof HomeserverError)) throw await unavailable(messenger);
       throw SourceError.temporary(`The ${messenger.attributeValue} bridge could not be reached: ${messageOf(error)}`);
     }
     if (logins.some((login) => workingStates.has(login.stateEvent))) return;
@@ -209,7 +233,13 @@ export function createMatrixPlugin(options: MatrixPluginOptions = {}): SourcePlu
   }
 
   async function progress(context: RunContext): Promise<SetupProgress> {
-    const { messenger, bridge } = await connectionOf(context.config.plain);
+    let connection;
+    try {
+      connection = await connectionOf(context.config.plain);
+    } catch (error) {
+      return notYet(error, messengerOf(context.config.plain.messenger));
+    }
+    const { messenger, bridge } = connection;
     const { userId } = accountOf(context);
     const session = sessions.get(userId);
     if (session && session.outcome !== "waiting") {
@@ -230,8 +260,15 @@ export function createMatrixPlugin(options: MatrixPluginOptions = {}): SourcePlu
       void awaitScan(bridge, userId, step, started);
       return waiting(messenger, started.qrCode);
     } catch (error) {
+      if (!(error instanceof HomeserverError)) return notYet(await unavailable(messenger), messenger);
       return { status: "failed", message: `The ${messenger.attributeValue} bridge could not start the login: ${messageOf(error)}` };
     }
+  }
+
+  /** While the Messenger starts, the step waits; otherwise it failed. */
+  function notYet(error: unknown, messenger: Messenger | undefined): SetupProgress {
+    if (messenger && error instanceof SourceError && error.kind === "temporary") return { status: "waiting", message: starting(messenger) };
+    return { status: "failed", message: messageOf(error) };
   }
 
   return {
@@ -306,11 +343,9 @@ export function createMatrixPlugin(options: MatrixPluginOptions = {}): SourcePlu
       title: { en: "Messengers", de: "Messenger" },
       configKey: "messenger",
       async entries() {
-        const instance = await readInstance().catch(() => null);
         const entries = [];
         for (const messenger of messengers) {
-          const bridge = instance?.bridges[messenger.id];
-          const installed = bridge ? await bridgeClient({ url: bridge.url, secret: bridge.provisioningSecret, timeoutMs: 3000 }).running() : false;
+          const installed = await isInstalled(programs, messenger);
           entries.push({
             id: messenger.id,
             displayName: messenger.displayName,
@@ -322,13 +357,30 @@ export function createMatrixPlugin(options: MatrixPluginOptions = {}): SourcePlu
         return entries;
       },
     },
+    services: {
+      reconcile(enabled) {
+        services ??= matrixServices(servicesFromEnvironment(programs, typeof instanceSource === "string" ? instanceSource : defaultInstanceFile));
+        return services.reconcile(enabled);
+      },
+      stop: () => services?.stop() ?? Promise.resolve(),
+    },
     async sourceAdded(context) {
-      const { instance, homeserver } = await connectionOf(context.config.plain);
-      try {
-        const account = await homeserver.register(`family-agenda-${randomBytes(6).toString("hex")}`, instance.homeserver.registrationSharedSecret);
-        return { plain: { userId: account.userId }, secrets: { accessToken: account.accessToken } };
-      } catch (error) {
-        throw SourceError.temporary(`The homeserver could not create a Matrix user: ${messageOf(error)}`);
+      // An Admin may add a Source right after enabling a Messenger, while the worker starts Synapse.
+      const deadline = Date.now() + startTimeoutMs;
+      for (;;) {
+        try {
+          const { instance, homeserver } = await connectionOf(context.config.plain);
+          const account = await homeserver.register(`family-agenda-${randomBytes(6).toString("hex")}`, instance.homeserver.registrationSharedSecret);
+          return { plain: { userId: account.userId }, secrets: { accessToken: account.accessToken } };
+        } catch (error) {
+          const unreachable = !(error instanceof SourceError || error instanceof HomeserverError);
+          if ((unreachable || (error instanceof SourceError && error.kind === "temporary")) && Date.now() < deadline) {
+            await sleep(1000);
+            continue;
+          }
+          if (error instanceof SourceError) throw error;
+          throw SourceError.temporary(`The homeserver could not create a Matrix user: ${messageOf(error)}`);
+        }
       }
     },
     async sourceRemoved(context) {
@@ -343,6 +395,40 @@ export function createMatrixPlugin(options: MatrixPluginOptions = {}): SourcePlu
 }
 
 export default createMatrixPlugin();
+
+/** The programs at the places the environment names, or where the image has them. */
+function programsFromEnvironment(): MatrixPrograms {
+  return {
+    synapse: process.env.SYNAPSE_PYTHON ?? defaultPrograms.synapse,
+    bridges: { whatsapp: process.env.MAUTRIX_WHATSAPP ?? defaultPrograms.bridges.whatsapp },
+  };
+}
+
+/** Where the worker keeps Synapse and the bridges, as the environment of the image says. */
+function servicesFromEnvironment(programs: MatrixPrograms, instanceFile: string) {
+  const databaseUrl = process.env.DATABASE_URL;
+  if (!databaseUrl) throw new Error("DATABASE_URL is not set, so Synapse has no database.");
+  const database = new URL(databaseUrl);
+  return {
+    programs,
+    databaseUrl,
+    dataDirectory: process.env.MATRIX_DATA_DIRECTORY ?? "/var/lib/family-agenda/matrix-data",
+    instanceFile,
+    host: process.env.MATRIX_HOST ?? "worker",
+    serverName: process.env.MATRIX_SERVER_NAME ?? "family-agenda.local",
+    ports: { synapse: 8008, bridges: { whatsapp: 29318 } },
+    database: { host: database.hostname, port: Number(database.port || 5432), name: "synapse", user: "synapse" },
+  };
+}
+
+/** That a Messenger's bridge or the homeserver is still starting. */
+function starting(messenger: Messenger): PluginText {
+  const name = messenger.attributeValue;
+  return {
+    en: `${name} is starting on this Instance. This takes up to a minute the first time.`,
+    de: `${name} startet auf dieser Instanz. Beim ersten Mal dauert das bis zu einer Minute.`,
+  };
+}
 
 /** Waits for the QR code to be scanned in the background, showing each new code the bridge sends. */
 async function awaitScan(
