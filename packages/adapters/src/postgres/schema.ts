@@ -112,6 +112,23 @@ export const sourceTypes = pgTable("source_types", {
 });
 
 /**
+ * Per entry of a Source Type's catalogue, such as a Messenger of the Matrix plugin, whether an
+ * Admin enabled it and when it was discovered (ADR-0011).
+ */
+export const catalogueEntries = pgTable(
+  "catalogue_entries",
+  {
+    sourceTypeId: text("source_type_id").notNull(),
+    entryId: text("entry_id").notNull(),
+    enabled: boolean("enabled").notNull().default(false),
+    /** The application version the entry was first discovered in. */
+    firstSeenIn: text("first_seen_in").notNull(),
+    firstSeenAt: timestamp("first_seen_at", { withTimezone: true }).notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.sourceTypeId, table.entryId] })],
+);
+
+/**
  * Sources of every Source Type, so that a new one needs no migration. A Source keeps its
  * Source Type id even when the plugin is removed, and resumes once it is installed again.
  */
@@ -206,6 +223,11 @@ export const origins = pgTable(
     attributes: jsonb("attributes").$type<Record<string, string>>().notNull(),
     link: text("link"),
     firstSeenAt: timestamp("first_seen_at", { withTimezone: true }).notNull(),
+    /**
+     * When the Source said the Origin was deleted, such as a redacted message: its raw message is
+     * gone and its Revisions are rejected, and it never comes back.
+     */
+    withdrawnAt: timestamp("withdrawn_at", { withTimezone: true }),
   },
   (table) => [unique("origins_source_external_id_unique").on(table.sourceId, table.externalId)],
 );

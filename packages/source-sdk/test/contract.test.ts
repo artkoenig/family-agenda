@@ -88,6 +88,50 @@ describe("a plugin that is not loadable", () => {
 
     expect(problemsWith(plugin)).toEqual(["the suggested polling interval must be positive"]);
   });
+
+  it("names a secret choice, and a catalogue without a plain field an Admin sets", () => {
+    const plugin = examplePlugin({
+      configuration: {
+        version: 1,
+        fields: [
+          { key: "chats", label: "Chats", secret: true, required: false, choices: () => Promise.resolve([]) },
+          { key: "account", label: "Account", secret: false, required: true, setByPlugin: true },
+        ],
+      },
+      catalogue: { title: "Messengers", configKey: "account", entries: () => Promise.resolve([]) },
+    });
+
+    expect(problemsWith(plugin)).toEqual([
+      'configuration field "chats" is a choice, so it cannot be secret',
+      'the catalogue\'s field "account" is no plain field an Admin sets',
+    ]);
+  });
+});
+
+describe("a plugin with a catalogue", () => {
+  describeSourcePluginContract(
+    () =>
+      examplePlugin({
+        configuration: { version: 1, fields: [{ key: "messenger", label: { en: "Messenger", de: "Messenger" }, secret: false, required: true }] },
+        catalogue: {
+          title: { en: "Messengers", de: "Messenger" },
+          configKey: "messenger",
+          entries: () =>
+            Promise.resolve([
+              {
+                id: "chat",
+                displayName: { en: "Chat", de: "Chat" },
+                description: { en: "Reads chats.", de: "Liest Chats." },
+                installed: true,
+                riskNotice: { en: "Risky.", de: "Riskant." },
+              },
+            ]),
+        },
+        identity: { sourceTypeId: "example", displayName: { en: "Example", de: "Beispiel" }, version: "1.0.0", sdkVersion },
+        originAttributes: [],
+      }),
+    { languages: ["de"] },
+  );
 });
 
 describe("Origins", () => {

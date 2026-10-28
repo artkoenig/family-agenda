@@ -157,10 +157,44 @@ export type ConfigFieldSpec = {
   secret: boolean;
   required: boolean;
   description: MultilingualText | null;
+  /** Set by the plugin when the Source is added, never by an Admin. */
+  setByPlugin: boolean;
+  /** A choice among values the plugin offers for an existing Source; its value is the list of the chosen ones. */
+  choice: boolean;
 };
 
 /** An interactive step of a Source's form, as a plugin declares it. */
-export type SetupStepSpec = { id: string; title: MultilingualText; description: MultilingualText };
+export type SetupStepSpec = {
+  id: string;
+  title: MultilingualText;
+  description: MultilingualText;
+  /** Driven live for an existing Source, such as a QR code login, through `setupProgress`. */
+  live: boolean;
+};
+
+/** What a live setup step shows now. */
+export type SetupProgress =
+  | { status: "waiting"; qrCode: string | null; message: MultilingualText | null }
+  | { status: "done"; message: MultilingualText | null }
+  | { status: "failed"; message: MultilingualText };
+
+/** An entry of a Source Type's catalogue, such as a Messenger, as its plugin lists it. */
+export type CatalogueEntrySpec = {
+  id: string;
+  displayName: MultilingualText;
+  description: MultilingualText;
+  installed: boolean;
+  riskNotice: MultilingualText | null;
+};
+
+/** What an Admin enables one by one within a Source Type; each Source uses one entry. */
+export type CatalogueSpec = {
+  title: MultilingualText;
+  /** The plain field naming the entry a Source uses. */
+  configKey: string;
+  /** Every entry; none if asking the plugin failed. */
+  entries(): Promise<CatalogueEntrySpec[]>;
+};
 
 /** What a plugin is given for one run of a Source. */
 export type SourceRunContext = {
@@ -199,7 +233,8 @@ export type IngestedOrigin = {
 };
 
 export type SourceRunResult =
-  | { ok: true; origins: IngestedOrigin[]; state: string | null }
+  /** `withdrawn` are the external ids of Origins the Source deleted since, such as redacted messages. */
+  | { ok: true; origins: IngestedOrigin[]; state: string | null; withdrawn: string[] }
   /** A definite error needs an Admin; a temporary one is retried. */
   | { ok: false; kind: "definite" | "temporary"; message: string };
 
@@ -225,6 +260,21 @@ export type LoadedSourceType = {
   originAttributes: OriginAttributeSpec[];
   /** Whether its Sources count as Silent when no new Origin comes for a while. */
   silentApplies: boolean;
+  /** What an Admin enables within it, such as Messengers; null if it has none. */
+  catalogue: CatalogueSpec | null;
+  /** The values a choice field offers for an existing Source; none if asking the plugin failed. */
+  choices(key: string, context: SourceRunContext): Promise<KnownValue[]>;
+  /** What a live setup step of an existing Source shows now. */
+  setupProgress(stepId: string, context: SourceRunContext): Promise<SetupProgress>;
+  /**
+   * Prepares a Source being added, such as by creating an account for it; returns the values of
+   * the fields the plugin sets, or why the Source cannot be added.
+   */
+  sourceAdded(
+    context: Omit<SourceRunContext, "state">,
+  ): Promise<{ ok: true; plain: PlainConfig; secrets: Record<string, string> } | { ok: false; message: string }>;
+  /** Cleans up after a removed Source; failures are ignored. */
+  sourceRemoved(context: SourceRunContext): Promise<void>;
 };
 
 /** An Origin attribute a plugin declares. */
@@ -254,6 +304,21 @@ export type SourceTypeRecord = {
   /** Whether it was discovered since an Admin last opened the list. */
   isNew: boolean;
 };
+
+/** What the Instance stores per entry of a Source Type's catalogue. */
+export type CatalogueRecord = {
+  entryId: string;
+  enabled: boolean;
+  /** The application version the entry was first discovered in. */
+  firstSeenIn: string;
+};
+
+export interface CatalogueRepository {
+  /** Records the entries not stored yet as disabled; keeps the others as they are. */
+  recordDiscovered(sourceTypeId: SourceTypeId, entryIds: string[], applicationVersion: string, at: Date): Promise<void>;
+  list(sourceTypeId: SourceTypeId): Promise<CatalogueRecord[]>;
+  setEnabled(sourceTypeId: SourceTypeId, entryId: string, enabled: boolean): Promise<void>;
+}
 
 export interface SourceTypeRepository {
   /** Records the ids not stored yet as new and disabled; keeps the others as they are. */
@@ -319,7 +384,7 @@ export interface SourceRepository {
 }
 
 /** Why a Revision was rejected automatically (ADR-0009). */
-export type Rejection = "invalid-fields" | "evidence-not-found" | "weekday-mismatch" | "no-date";
+export type Rejection = "invalid-fields" | "evidence-not-found" | "weekday-mismatch" | "no-date" | "origin-withdrawn";
 
 /** A Revision ready to append, checked by the core. */
 export type NewRevision = {
@@ -353,6 +418,8 @@ export type SourceRun = {
   at: Date;
   /** The plugin's state after the run. */
   state: string | null;
+  /** External ids of Origins the Source deleted, whose Revisions are rejected and whose messages go. */
+  withdrawn: string[];
   origins: {
     externalId: string;
     /** When it was sent, for a message. */
@@ -438,12 +505,15 @@ export interface ItemRepository {
    * Records a run in one transaction: the Origins, their Revisions unless the same Revision is
    * already recorded, and the Source's state. An Item is found by the Source and the Revision's
    * Item key, or created; every Item a new Revision reached is recomputed with `recompute` from all
-   * its Revisions.
+   * its Revisions. A withdrawn Origin's Revisions are rejected, its raw message is removed, and it
+   * is never recorded again.
+   * Returns the external ids of messages recorded before or withdrawn, whose new files the
+   * caller removes, and the files of the withdrawn messages, for the caller to remove.
    */
   recordRun(
     run: SourceRun,
     recompute: (kind: ItemKind, revisions: FoldableRevision[]) => ItemProjection,
-  ): Promise<{ knownMessages: string[] }>;
+  ): Promise<{ knownMessages: string[]; withdrawnFiles: BlobRef[] }>;
   /** Raw messages not yet extracted successfully, oldest first. */
   pendingMessages(limit: number): Promise<PendingMessage[]>;
   /** The Items earlier messages of a thread in a Source stated, in the order they were created. */

@@ -129,19 +129,80 @@ function shareSdkWith(directories: string[]): void {
 }
 
 function loadedSourceType(plugin: SourcePlugin): LoadedSourceType {
-  const { configuration, setupSteps, ingestion, originAttributes, health } = plugin;
+  const { configuration, setupSteps, ingestion, originAttributes, health, catalogue } = plugin;
   return {
     configuration: {
       version: configuration.version,
-      fields: configuration.fields.map(({ key, label, secret, required, description }) => ({
+      fields: configuration.fields.map(({ key, label, secret, required, description, setByPlugin, choices }) => ({
         key,
         label,
         secret,
         required,
         description: description ?? null,
+        setByPlugin: setByPlugin === true,
+        choice: choices !== undefined,
       })),
     },
-    setupSteps: setupSteps.map(({ id, title, description }) => ({ id, title, description })),
+    setupSteps: setupSteps.map(({ id, title, description, progress }) => ({ id, title, description, live: progress !== undefined })),
+    catalogue: catalogue
+      ? {
+          title: catalogue.title,
+          configKey: catalogue.configKey,
+          async entries() {
+            try {
+              return (await catalogue.entries()).map(({ id, displayName, description, installed, riskNotice }) => ({
+                id,
+                displayName,
+                description,
+                installed,
+                riskNotice: riskNotice ?? null,
+              }));
+            } catch (error) {
+              console.warn(`Listing the catalogue of Source Type "${plugin.identity.sourceTypeId}" failed:`, error);
+              return [];
+            }
+          },
+        }
+      : null,
+    async choices(key, context) {
+      const field = configuration.fields.find((candidate) => candidate.key === key);
+      try {
+        const values = (await field?.choices?.(runContextOf(context))) ?? [];
+        return values.filter((choice) => typeof choice.value === "string" && typeof choice.label === "string");
+      } catch {
+        // Without them, the field offers what was chosen before.
+        return [];
+      }
+    },
+    async setupProgress(stepId, context) {
+      const step = setupSteps.find((candidate) => candidate.id === stepId);
+      try {
+        const progress = step?.progress ? await step.progress(runContextOf(context)) : null;
+        if (!progress) return { status: "failed", message: `The setup step "${stepId}" is not driven live.` };
+        if (progress.status === "waiting") {
+          return { status: "waiting", qrCode: progress.qrCode ?? null, message: progress.message ?? null };
+        }
+        return progress.status === "done" ? { status: "done", message: progress.message ?? null } : progress;
+      } catch (error) {
+        return { status: "failed", message: error instanceof Error ? error.message : String(error) };
+      }
+    },
+    async sourceAdded({ plain, secrets, now, timeZone }) {
+      if (!plugin.sourceAdded) return { ok: true, plain: {}, secrets: {} };
+      try {
+        const prepared = await plugin.sourceAdded({ config: { plain: plain as JsonObject, secrets }, now, timeZone });
+        return { ok: true, plain: prepared.plain, secrets: prepared.secrets };
+      } catch (error) {
+        return { ok: false, message: error instanceof Error ? error.message : String(error) };
+      }
+    },
+    async sourceRemoved(context) {
+      try {
+        await plugin.sourceRemoved?.(runContextOf(context));
+      } catch (error) {
+        console.warn(`Cleaning up after a removed Source of type "${plugin.identity.sourceTypeId}" failed:`, error);
+      }
+    },
     ingestion:
       ingestion.mode === "polling"
         ? {
@@ -198,6 +259,7 @@ async function run(ingest: () => Promise<IngestResult>): Promise<SourceRunResult
   return {
     ok: true,
     state: result.state,
+    withdrawn: (result.withdrawn ?? []).filter((id) => typeof id === "string" && id !== ""),
     origins: result.origins.map((origin) => ({
       externalId: origin.externalId,
       occurredAt: origin.occurredAt,

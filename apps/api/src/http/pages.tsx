@@ -2,6 +2,7 @@ import {
   pollIntervalRange,
   type AdminSummary,
   type AttributionRuleSummary,
+  type CatalogueSummary,
   type FamilyMemberSummary,
   type LanguageSettings,
   type LlmEndpointSummary,
@@ -10,6 +11,7 @@ import {
   type RecoveryKit,
   type RuleForm,
   type RuleTarget,
+  type SetupProgress,
   type SourceForm,
   type SourceHealth,
   type SourceSummary,
@@ -29,6 +31,7 @@ import {
   type OcrLanguage,
 } from "@family-agenda/domain";
 import type { Child } from "hono/jsx";
+import { raw } from "hono/html";
 import { useTranslation, type Translation } from "./i18n/translation";
 import type { Catalogue } from "./i18n/en";
 import { Layout, Problem } from "./layout";
@@ -801,6 +804,8 @@ function ViewSettingsFields(props: { members: FamilyMemberSummary[]; view?: View
 export function SourceTypesPage(props: {
   admin: SignedInAdmin;
   sourceTypes: SourceTypeSummary[];
+  /** The catalogues of the enabled Source Types, such as the Messengers of the Matrix plugin. */
+  catalogues: CatalogueSummary[];
   problem?: string;
 }) {
   const { t, text } = useTranslation();
@@ -826,6 +831,7 @@ export function SourceTypesPage(props: {
                 </p>
                 {type.notLoadable !== null ? <p class="fam-problem">{s.notLoadable(type.notLoadable)}</p> : null}
               </div>
+              {type.enabled ? <CatalogueEntries catalogue={props.catalogues.find((catalogue) => catalogue.sourceTypeId === type.id)} /> : null}
               {type.enabled ? (
                 <form method="post" action={`/admin/source-types/${type.id}/disable`} class="fam-entry__form">
                   <span class="fam-status fam-status--ok">{s.enabled}</span>
@@ -855,10 +861,64 @@ export function SourceTypesPage(props: {
   );
 }
 
+/** The entries an Admin enables within a Source Type, such as its Messengers, each like a Source Type. */
+function CatalogueEntries(props: { catalogue: CatalogueSummary | undefined }) {
+  const { catalogue } = props;
+  const { t, text } = useTranslation();
+  const s = t.sourceTypes;
+  if (!catalogue || catalogue.entries.length === 0) return null;
+  const base = `/admin/source-types/${catalogue.sourceTypeId}/catalogue`;
+  return (
+    <section class="fam-catalogue">
+      <h3 class="fam-entry__name">{text(catalogue.title)}</h3>
+      <p class="fam-entry__meta">{s.catalogueIntro}</p>
+      <ul class="fam-entries">
+        {catalogue.entries.map((entry) => {
+          const name = text(entry.displayName);
+          return (
+            <li class="fam-entry fam-entry--wrap">
+              <div class="fam-entry__main">
+                <h4 class="fam-entry__name">{name}</h4>
+                <p class="fam-entry__meta">{text(entry.description)}</p>
+              </div>
+              {entry.enabled ? (
+                <form method="post" action={`${base}/${entry.id}/disable`} class="fam-entry__form">
+                  <span class="fam-status fam-status--ok">{s.enabled}</span>
+                  <button type="submit" class="fam-button fam-button--secondary">
+                    {s.disable(name)}
+                  </button>
+                  <small>{s.entryDisableHint}</small>
+                </form>
+              ) : !entry.installed ? (
+                <span class="fam-status fam-status--waiting">{s.notInstalled}</span>
+              ) : (
+                <form method="post" action={`${base}/${entry.id}/enable`} class="fam-entry__form">
+                  {entry.riskNotice !== null ? (
+                    <>
+                      <p class="fam-problem">{text(entry.riskNotice)}</p>
+                      <label>
+                        <input type="checkbox" name="riskAcknowledged" value="yes" required /> {s.acknowledgeRisk}
+                      </label>
+                    </>
+                  ) : null}
+                  <button type="submit">{s.enable(name)}</button>
+                </form>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+}
+
 /** What adding a Source shows in its dialog: the Source Types to choose from, or one's form. */
 export type SourceAdding =
   | { step: "choose" }
   | { step: "form"; form: SourceForm; entered?: { plain: Record<string, string>; interval: string }; problem?: string };
+
+/** What a live setup step of a Source shows now, with its QR code drawn as SVG. */
+export type LiveStep = { sourceId: string; stepId: string; progress: SetupProgress; qrSvg: string | null };
 
 export function SourcesPage(props: {
   admin: SignedInAdmin;
@@ -870,8 +930,13 @@ export function SourcesPage(props: {
   adding?: SourceAdding;
   /** The Source whose Fix button was pressed: its form, in the dialog adding a Source uses. */
   fixing?: SourceSummary;
+  /** The Source just added, whose live setup steps an Admin goes through now. */
+  settingUp?: SourceSummary;
+  /** What the live setup steps of the Source being fixed or set up show. */
+  liveSteps?: LiveStep[];
 }) {
   const formOf = (id: string) => props.forms.find((form) => form.sourceTypeId === id);
+  const settingUpForm = props.settingUp ? formOf(props.settingUp.sourceTypeId) : undefined;
   const fixingForm = props.fixing ? formOf(props.fixing.sourceTypeId) : undefined;
   const { adding } = props;
   const { t, text } = useTranslation();
@@ -923,7 +988,19 @@ export function SourcesPage(props: {
         </form>
       </Dialog>
     ) : props.fixing && fixingForm ? (
-      <FixDialog source={props.fixing} form={fixingForm} timeZone={props.timeZone} />
+      <FixDialog source={props.fixing} form={fixingForm} timeZone={props.timeZone} liveSteps={props.liveSteps ?? []} />
+    ) : props.settingUp && settingUpForm ? (
+      <Dialog id="set-up-source" eyebrow={s.setupEyebrow} title={text(props.settingUp.displayName)} closeHref="/admin/sources">
+        <div class="fam-dialog__form">
+          <SetupSteps form={settingUpForm} liveSteps={props.liveSteps ?? []} />
+          <div class="fam-dialog__footer">
+            <span class="fam-dialog__spacer"></span>
+            <a class="fam-button fam-button--primary" href="/admin/sources">
+              {s.finish}
+            </a>
+          </div>
+        </div>
+      </Dialog>
     ) : undefined;
   return (
     <AdminLayout title={s.title} admin={props.admin} current="sources" dialog={dialog}>
@@ -993,7 +1070,7 @@ export function SourcesPage(props: {
 }
 
 /** The dialog a Fix button opens: the form adding a Source uses, filled in with the Source's settings. */
-function FixDialog(props: { source: SourceSummary; form: SourceForm; timeZone: string }) {
+function FixDialog(props: { source: SourceSummary; form: SourceForm; timeZone: string; liveSteps: LiveStep[] }) {
   const { source, form } = props;
   const { t, text } = useTranslation();
   const s = t.sources;
@@ -1001,7 +1078,7 @@ function FixDialog(props: { source: SourceSummary; form: SourceForm; timeZone: s
     <Dialog id="fix-source" eyebrow={s.fixEyebrow} title={text(source.displayName)} closeHref="/admin/sources">
       <form method="post" action={`/admin/sources/${source.id}`} class="fam-dialog__form">
         <HealthLine health={source.health} timeZone={props.timeZone} />
-        <SetupSteps form={form} />
+        <SetupSteps form={form} liveSteps={props.liveSteps} />
         <SourceFields form={form} prefix={`fix-${source.id}`} source={source} autofocus />
         <DialogFooter closeHref="/admin/sources" submit={s.saveAndRead} />
       </form>
@@ -1009,18 +1086,68 @@ function FixDialog(props: { source: SourceSummary; form: SourceForm; timeZone: s
   );
 }
 
-/** The interactive steps a plugin declares for its Sources, such as pairing an account. */
-function SetupSteps(props: { form: SourceForm }) {
+/**
+ * The interactive steps a plugin declares for its Sources, such as pairing an account. A live
+ * step of an existing Source shows its progress too, such as the QR code to scan.
+ */
+function SetupSteps(props: { form: SourceForm; liveSteps?: LiveStep[] }) {
   const { text } = useTranslation();
   if (props.form.setupSteps.length === 0) return null;
   return (
     <ol class="fam-setup-steps">
-      {props.form.setupSteps.map((step) => (
-        <li>
-          <strong>{text(step.title)}</strong> <span>{text(step.description)}</span>
-        </li>
-      ))}
+      {props.form.setupSteps.map((step) => {
+        const live = props.liveSteps?.find((candidate) => candidate.stepId === step.id);
+        return (
+          <li>
+            <strong>{text(step.title)}</strong> <span>{text(step.description)}</span>
+            {live ? <LiveStepProgress step={live} /> : null}
+          </li>
+        );
+      })}
     </ol>
+  );
+}
+
+/** How often a live setup step asks its plugin again while it waits. */
+const liveStepPollSeconds = 3;
+
+/**
+ * What a live setup step shows now. While it waits, it asks again every few seconds and replaces
+ * itself, so that a QR code that expires is replaced by the next one.
+ */
+export function LiveStepProgress(props: { step: LiveStep }) {
+  const { sourceId, stepId, progress, qrSvg } = props.step;
+  const { t, text } = useTranslation();
+  const s = t.sources;
+  if (progress.status === "waiting") {
+    return (
+      <div
+        class="fam-live-step"
+        hx-get={`/admin/sources/${sourceId}/setup/${encodeURIComponent(stepId)}`}
+        hx-trigger={`load delay:${liveStepPollSeconds}s`}
+        hx-swap="outerHTML"
+        aria-live="polite"
+      >
+        {qrSvg !== null ? (
+          <figure class="fam-qr" role="img" aria-label={s.qrCode}>
+            {raw(qrSvg)}
+          </figure>
+        ) : null}
+        <small>{progress.message !== null ? text(progress.message) : s.setupWaiting}</small>
+      </div>
+    );
+  }
+  if (progress.status === "done") {
+    return (
+      <div class="fam-live-step" aria-live="polite">
+        <span class="fam-status fam-status--ok">{progress.message !== null ? text(progress.message) : s.setupDone}</span>
+      </div>
+    );
+  }
+  return (
+    <div class="fam-live-step" aria-live="polite">
+      <p class="fam-problem">{text(progress.message)}</p>
+    </div>
   );
 }
 
@@ -1103,6 +1230,10 @@ function SourceFields(props: {
       {form.fields.map((field, index) => {
         const stored = field.secret && source?.storedSecrets.includes(field.key);
         const focus = props.autofocus === true && index === 0;
+        if (form.catalogue?.configKey === field.key) {
+          return <CatalogueField field={field} form={form} id={id(field.key)} chosen={plainValue(field.key)} existing={source !== undefined} autofocus={focus} />;
+        }
+        if (field.choice) return <ChoiceField field={field} id={id(field.key)} source={source} />;
         return (
           <div class="fam-field">
             <label for={id(field.key)}>{field.required ? text(field.label) : t.common.optional(text(field.label))}</label>
@@ -1140,6 +1271,90 @@ function SourceFields(props: {
         </div>
       ) : null}
     </>
+  );
+}
+
+/**
+ * The field naming the catalogue entry a Source uses, such as its Messenger: a choice among the
+ * enabled entries when adding a Source, and fixed once it exists.
+ */
+function CatalogueField(props: {
+  field: SourceForm["fields"][number];
+  form: SourceForm;
+  id: string;
+  chosen: string | undefined;
+  existing: boolean;
+  autofocus: boolean;
+}) {
+  const { field, form, id, chosen } = props;
+  const { t, text } = useTranslation();
+  const entries = form.catalogue?.entries ?? [];
+  const label = <label for={id}>{text(field.label)}</label>;
+  if (props.existing) {
+    const entry = entries.find((candidate) => candidate.id === chosen);
+    return (
+      <div class="fam-field">
+        {label}
+        <input id={id} value={entry ? text(entry.displayName) : chosen} disabled />
+      </div>
+    );
+  }
+  return (
+    <div class="fam-field">
+      {label}
+      {entries.length === 0 ? (
+        <p class="fam-problem">{t.sources.noEntries((name) => <a href="/admin/source-types">{name}</a>)}</p>
+      ) : (
+        <select id={id} name={`plain.${field.key}`} required autofocus={props.autofocus}>
+          {entries.map((entry) => (
+            <option value={entry.id} selected={entry.id === chosen}>
+              {text(entry.displayName)}
+            </option>
+          ))}
+        </select>
+      )}
+      {field.description ? <small>{text(field.description)}</small> : null}
+    </div>
+  );
+}
+
+/**
+ * A choice among what the plugin offers for an existing Source, such as the chats to read: one
+ * checkbox each, the chosen ones ticked, also those it no longer offers. A Source being added has
+ * none to offer yet.
+ */
+function ChoiceField(props: { field: SourceForm["fields"][number]; id: string; source: SourceSummary | undefined }) {
+  const { field, source } = props;
+  const { t, text } = useTranslation();
+  const label = field.required ? text(field.label) : t.common.optional(text(field.label));
+  if (!source) {
+    return (
+      <div class="fam-field">
+        <span class="fam-field__label">{label}</span>
+        <small>{t.sources.choicesAfterSetup}</small>
+      </div>
+    );
+  }
+  const stored = source.plain[field.key];
+  const chosen = Array.isArray(stored) ? stored.filter((value): value is string => typeof value === "string") : [];
+  const offered = source.choices[field.key] ?? [];
+  const options = [
+    ...offered,
+    ...chosen.filter((value) => !offered.some((choice) => choice.value === value)).map((value) => ({ value, label: value })),
+  ];
+  return (
+    <fieldset class="fam-field" id={props.id}>
+      <legend>{label}</legend>
+      {/* Sent with nothing ticked too, so that unticking every box clears the choice. */}
+      <input type="hidden" name={`choice.${field.key}`} value="" />
+      {options.length === 0 ? <small>{t.sources.noChoices}</small> : null}
+      {options.map((option) => (
+        <label>
+          <input type="checkbox" name={`choice.${field.key}`} value={option.value} checked={chosen.includes(option.value)} /> {option.label}
+        </label>
+      ))}
+      {field.description ? <small>{text(field.description)}</small> : null}
+    </fieldset>
   );
 }
 
