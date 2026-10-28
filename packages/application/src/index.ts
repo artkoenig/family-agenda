@@ -1,6 +1,5 @@
 export * from "./activity";
 export * from "./admin-access";
-export * from "./attribution-rules";
 export * from "./catalogues";
 export * from "./enabled-source-type";
 export * from "./enablement";

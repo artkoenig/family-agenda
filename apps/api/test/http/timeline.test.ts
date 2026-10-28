@@ -66,17 +66,14 @@ describe("Events in a View over HTTP", () => {
     if (!mia.ok) throw new Error("adding failed");
     const [source] = await instance.app.sources.list();
     if (!source) throw new Error("no Source");
-    await instance.app.attributionRules.create({ sourceId: source.id, attribute: "sender", value: "Music school", concerns: [mia.id] });
     const span = { allDay: false, start: "2026-09-15T14:00:00Z", end: "2026-09-15T15:00:00Z" };
-    await arrive(
-      event("piano", { title: "Piano lesson", span }, { attributes: { sender: "Music school" } }),
-      event("fair", { title: "School fair", span }),
-    );
+    await arrive(event("piano", { title: "Piano lesson", span }));
+    expect(rowOf(await (await instance.get(path)).text(), "Piano lesson")).not.toContain("fam-event__who");
 
+    await instance.app.sources.assign(source.id, [mia.id]);
     const page = await (await instance.get(path)).text();
 
     expect(rowOf(page, "Piano lesson")).toMatch(/<summary>.*<span class="fam-event__who" aria-label="Mia" role="img">.*>M<\/span>.*<\/summary>/s);
-    expect(rowOf(page, "School fair")).not.toContain("fam-event__who");
   });
 
   it("strikes cancelled Events through and dims those of today that are over", async () => {

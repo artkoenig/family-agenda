@@ -41,7 +41,6 @@ export default {
   configuration: { version: 1, fields: [] },
   setupSteps: [],
   ingestion: { mode: "polling", suggestedIntervalSeconds: 600, poll: () => Promise.reject(SourceError.definite("wrong password")) },
-  originAttributes: [],
   health: { silentApplies: true },
 } satisfies SourcePlugin;
 `,

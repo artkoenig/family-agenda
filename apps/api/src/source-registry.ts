@@ -129,7 +129,7 @@ function shareSdkWith(directories: string[]): void {
 }
 
 function loadedSourceType(plugin: SourcePlugin): LoadedSourceType {
-  const { configuration, setupSteps, ingestion, originAttributes, health, catalogue, services } = plugin;
+  const { configuration, setupSteps, ingestion, health, catalogue, services } = plugin;
   return {
     configuration: {
       version: configuration.version,
@@ -212,19 +212,6 @@ function loadedSourceType(plugin: SourcePlugin): LoadedSourceType {
             poll: (context) => run(() => ingestion.poll(runContextOf(context))),
           }
         : { mode: "push" },
-    originAttributes: originAttributes.map((attribute) => ({
-      key: attribute.key,
-      label: attribute.label,
-      async knownValues(context) {
-        try {
-          const values = await attribute.knownValues(runContextOf(context));
-          return values.filter((known) => typeof known.value === "string" && typeof known.label === "string");
-        } catch {
-          // Suggestions only: without them, an Admin types the value.
-          return [];
-        }
-      },
-    })),
     silentApplies: health.silentApplies,
     migrateConfig(plain: PlainConfig, fromVersion: number): PlainConfig {
       let migrated = plain as JsonObject;

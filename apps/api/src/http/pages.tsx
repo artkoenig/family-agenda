@@ -1,16 +1,12 @@
 import {
   pollIntervalRange,
   type AdminSummary,
-  type AttributionRuleSummary,
   type CatalogueSummary,
   type FamilyMemberSummary,
   type LanguageSettings,
   type LlmEndpointSummary,
   type MessageDetails,
-  type PlainConfig,
   type RecoveryKit,
-  type RuleForm,
-  type RuleTarget,
   type SetupProgress,
   type SourceForm,
   type SourceHealth,
@@ -22,7 +18,6 @@ import {
   defaultHorizonDays,
   familyLanguages,
   horizonDaysRange,
-  maximumAttributeValueLength,
   maximumNameLength,
   minimumPasswordLength,
   photoTypes,
@@ -137,7 +132,6 @@ export type SettingsSummary = {
   sources: number;
   /** How many Sources are Failing, which the whole Admin area shows a banner for. */
   failingSources: number;
-  rules: number;
   llm: { model: string; local: boolean } | null;
   admins: number;
   kitSaved: boolean;
@@ -153,7 +147,6 @@ type SectionId =
   | "views"
   | "language"
   | "sources"
-  | "attribution"
   | "llm"
   | "admins"
   | "recovery-kit";
@@ -211,12 +204,6 @@ function settingsGroups(translation: Translation): SettingsGroup[] {
                 : { text: settings.sources > 0 ? s.sources(settings.sources) : s.noneYet },
         },
         {
-          id: "attribution",
-          href: "/admin/attribution-rules",
-          label: t.attribution.title,
-          summary: ({ settings }) => ({ text: settings.rules > 0 ? s.rules(settings.rules) : s.noRules }),
-        },
-        {
           id: "llm",
           href: "/admin/llm",
           label: t.llm.title,
@@ -272,14 +259,6 @@ function SectionIcon(props: { id: SectionId }) {
       <>
         <path d="M3 13l2.5-7h13L21 13v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
         <path d="M3 13h5l1.5 2.5h5L16 13h5"></path>
-      </>
-    ),
-    attribution: (
-      <>
-        <circle cx="5.5" cy="12" r="2.5"></circle>
-        <path d="M8 12h6M11.5 9l3 3-3 3"></path>
-        <circle cx="19" cy="9" r="2.5"></circle>
-        <path d="M15.5 18c.6-2.2 1.9-3.5 3.5-3.5s2.9 1.3 3.5 3.5"></path>
       </>
     ),
     llm: (
@@ -975,6 +954,8 @@ export function SourceTypePage(props: {
   /** The form of its Sources, while it is enabled and can be loaded. */
   form: SourceForm | undefined;
   catalogue: CatalogueSummary | undefined;
+  /** The Family's Members, named on the rows of the Sources assigned to them. */
+  members: FamilyMemberSummary[];
   /** The IANA time zone the Family lives in, which times are shown in. */
   timeZone: string;
   problem?: string;
@@ -1055,12 +1036,12 @@ export function SourceTypePage(props: {
         </section>
       ) : null}
       {catalogue && configKey !== undefined ? (
-        <CatalogueEntries catalogue={catalogue} form={form} configKey={configKey} sources={props.sources} timeZone={props.timeZone} />
+        <CatalogueEntries catalogue={catalogue} form={form} configKey={configKey} sources={props.sources} members={props.members} timeZone={props.timeZone} />
       ) : null}
       {(sourceType?.enabled && !catalogue) || listed.length > 0 ? (
         <section class="fam-sheet">
           <Group title={s.title} level={2} intro={s.sourcesIntro}>
-            <SourceRows sources={listed} form={form} timeZone={props.timeZone} empty={s.noSources} />
+            <SourceRows sources={listed} form={form} members={props.members} timeZone={props.timeZone} empty={s.noSources} />
             {sourceType?.enabled && form && !form.catalogue ? (
               <div class="fam-group__actions">
                 <a class="fam-button fam-button--quiet fam-button--add" href={`/admin/sources/new?type=${encodeURIComponent(props.sourceTypeId)}`}>
@@ -1084,6 +1065,8 @@ export function SourcePage(props: {
   source: SourceSummary;
   /** The form of its Source Type, while that is enabled and can be loaded. */
   form: SourceForm | undefined;
+  /** The Family's Members, whom it can be assigned to. */
+  members: FamilyMemberSummary[];
   /** The IANA time zone the Family lives in, which times are shown in. */
   timeZone: string;
   problem?: string;
@@ -1151,6 +1134,27 @@ export function SourcePage(props: {
             </div>
           </Group>
         </form>
+        {props.members.length > 0 ? (
+          <form method="post" action={`${href}/concerns`} class="fam-sheet__form">
+            <Group title={s.concerns} level={2} intro={s.concernsHint}>
+              <div class="fam-group__fields">
+                <div class="fam-choices">
+                  {props.members.map((member) => (
+                    <label class="fam-choice">
+                      <input type="checkbox" name="concerns" value={member.id} checked={source.concerns.includes(member.id)} />{" "}
+                      <Avatar member={member} size="sm" /> {member.name}
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <div class="fam-group__actions">
+                <button type="submit" class="fam-button fam-button--primary">
+                  {t.common.save}
+                </button>
+              </div>
+            </Group>
+          </form>
+        ) : null}
         <Group title={s.timeline} level={2}>
           <ul class="fam-rows">
             <li class="fam-row">
@@ -1223,23 +1227,30 @@ const Chevron = () => (
 );
 
 /** Sources as rows, each leading to its page, with `empty` while there are none. */
-function SourceRows(props: { sources: SourceSummary[]; form: SourceForm | undefined; timeZone: string; empty: string }) {
+function SourceRows(props: {
+  sources: SourceSummary[];
+  form: SourceForm | undefined;
+  members: FamilyMemberSummary[];
+  timeZone: string;
+  empty: string;
+}) {
   if (props.sources.length === 0) return <p class="fam-group__empty">{props.empty}</p>;
   return (
     <ul class="fam-rows">
       {props.sources.map((source) => (
-        <SourceRow source={source} form={props.form} timeZone={props.timeZone} />
+        <SourceRow source={source} form={props.form} members={props.members} timeZone={props.timeZone} />
       ))}
     </ul>
   );
 }
 
-/** A Source's row: what tells it apart, its status, and a Fix button while it is Failing. */
-function SourceRow(props: { source: SourceSummary; form: SourceForm | undefined; timeZone: string }) {
+/** A Source's row: what tells it apart, whom it concerns, its status, and a Fix button while it is Failing. */
+function SourceRow(props: { source: SourceSummary; form: SourceForm | undefined; members: FamilyMemberSummary[]; timeZone: string }) {
   const { source, form } = props;
   const translation = useTranslation();
   const s = translation.t.sources;
   const { name, meta } = sourceLabel(source, form, translation);
+  const concerns = props.members.filter((member) => source.concerns.includes(member.id)).map((member) => member.name);
   return (
     <li class="fam-row fam-row--link">
       <a class="fam-row__link" href={sourceHref(source.id)}>
@@ -1249,6 +1260,7 @@ function SourceRow(props: { source: SourceSummary; form: SourceForm | undefined;
             {source.shown ? null : <span class="fam-chip fam-chip--small">{s.hidden}</span>}
           </span>
           {meta !== "" ? <span class="fam-row__hint">{meta}</span> : null}
+          {concerns.length > 0 ? <span class="fam-row__hint">{s.concernsList(concerns.join(", "))}</span> : null}
           {/* Its page tells when it was last read; its row only once something went wrong. */}
           {source.health.status !== "ok" || source.health.problem !== null ? (
             <span class="fam-row__hint fam-health">
@@ -1451,6 +1463,7 @@ function CatalogueEntries(props: {
   /** The field naming the entry a Source uses. */
   configKey: string;
   sources: SourceSummary[];
+  members: FamilyMemberSummary[];
   timeZone: string;
 }) {
   const { catalogue, form } = props;
@@ -1492,7 +1505,7 @@ function CatalogueEntries(props: {
               {entry.enabled ? (
                 <>
                   <Group title={s.accounts} level={4}>
-                    <SourceRows sources={accounts} form={form} timeZone={props.timeZone} empty={s.noAccounts} />
+                    <SourceRows sources={accounts} form={form} members={props.members} timeZone={props.timeZone} empty={s.noAccounts} />
                     {form && usable.has(entry.id) ? (
                       <div class="fam-group__actions">
                         <AddAtEntry form={form} entryId={entry.id} name={name} />
@@ -1639,13 +1652,6 @@ function HealthDetails(props: { health: SourceHealth; timeZone: string }) {
       {problemText !== null ? <span class="fam-problem">{problemText}</span> : null}
     </>
   );
-}
-
-/** A Source's plain settings that tell it apart from others of its Source Type, such as its address. */
-function plainValues(plain: PlainConfig, except?: string): string[] {
-  return Object.entries(plain)
-    .filter(([key, value]) => key !== except && ((typeof value === "string" && value !== "") || typeof value === "number"))
-    .map(([, value]) => String(value));
 }
 
 /**
@@ -1834,180 +1840,6 @@ function ChoiceField(props: { field: SourceForm["fields"][number]; id: string; s
       ))}
       {field.description ? <small>{text(field.description)}</small> : null}
     </fieldset>
-  );
-}
-
-/**
- * What the rules page shows in its dialog: what a new rule can match on, or the form of a new rule
- * or of an existing one, with what was entered and why it was refused.
- */
-export type RuleDialog =
-  | { step: "choose" }
-  | {
-      step: "form";
-      form: RuleForm;
-      /** The rule being edited; none for a new one. */
-      rule?: AttributionRuleSummary;
-      entered?: { value: string; concerns: string[] };
-      problem?: string;
-    };
-
-export function AttributionRulesPage(props: {
-  admin: SignedInAdmin;
-  rules: AttributionRuleSummary[];
-  targets: RuleTarget[];
-  members: FamilyMemberSummary[];
-  dialog?: RuleDialog;
-}) {
-  const { dialog: shown } = props;
-  const { t, text } = useTranslation();
-  const a = t.attribution;
-  const close = "/admin/attribution-rules";
-  const sourceOf = (target: RuleTarget) =>
-    [text(target.sourceName), ...(target.sourceTitle !== null ? [target.sourceTitle] : plainValues(target.sourcePlain))].join(" · ");
-  const newHref = (target: RuleTarget) =>
-    `/admin/attribution-rules/new?source=${encodeURIComponent(target.sourceId)}&attribute=${encodeURIComponent(target.attribute)}`;
-  const dialog =
-    shown?.step === "choose" ? (
-      <Dialog id="add-rule" eyebrow={a.chooseEyebrow} title={a.chooseTitle} closeHref={close}>
-        <div class="fam-dialog__form">
-          <p class="fam-section-header__description">{a.chooseIntro}</p>
-          <ul class="fam-rows">
-            {props.targets.map((target, index) => (
-              <ListRow href={newHref(target)} name={text(target.attributeLabel)} meta={sourceOf(target)} autofocus={index === 0} />
-            ))}
-          </ul>
-          <div class="fam-dialog__footer">
-            <span class="fam-dialog__spacer"></span>
-            <a class="fam-button fam-button--quiet" href={close}>
-              {t.common.cancel}
-            </a>
-          </div>
-        </div>
-      </Dialog>
-    ) : shown?.step === "form" ? (
-      <Dialog
-        id="rule"
-        eyebrow={shown.rule ? a.editEyebrow : props.targets.length > 1 ? a.formEyebrow : a.onlyFormEyebrow}
-        title={sourceOf(shown.form)}
-        closeHref={close}
-      >
-        <form method="post" action={shown.rule ? `${close}/${shown.rule.id}` : close} class="fam-dialog__form">
-          <Problem message={shown.problem} />
-          {shown.rule ? null : (
-            <>
-              <input type="hidden" name="sourceId" value={shown.form.sourceId} />
-              <input type="hidden" name="attribute" value={shown.form.attribute} />
-            </>
-          )}
-          <RuleFields
-            form={shown.form}
-            members={props.members}
-            value={shown.entered?.value ?? shown.rule?.value ?? ""}
-            concerns={shown.entered?.concerns ?? concernsOf(shown.rule)}
-          />
-          <DialogFooter
-            closeHref={close}
-            submit={shown.rule ? t.common.save : a.add}
-            {...(!shown.rule && props.targets.length > 1 ? { backHref: `${close}/new` } : {})}
-            {...(shown.rule ? { remove: { form: "remove-rule", label: a.remove } } : {})}
-          />
-        </form>
-        {shown.rule ? <RemoveForm id="remove-rule" action={`${close}/${shown.rule.id}/remove`} /> : null}
-      </Dialog>
-    ) : undefined;
-  return (
-    <AdminLayout title={a.title} admin={props.admin} current="attribution" dialog={dialog}>
-      <SectionHeader
-        title={a.title}
-        description={a.description}
-        action={props.targets.length > 0 ? addButton(`${close}/new`, a.add) : undefined}
-      />
-      {props.targets.length === 0 ? <p class="fam-empty">{a.noTargets((label) => <a href="/admin/sources">{label}</a>)}</p> : null}
-      {props.rules.length === 0 ? (
-        <p class="fam-empty">{a.none}</p>
-      ) : (
-        <section class="fam-sheet">
-          <ul class="fam-rows">
-            {props.rules.map((rule) => {
-              const concerned = rule.concerns === "whole-family" ? [] : props.members.filter((member) => rule.concerns.includes(member.id));
-              const who =
-                rule.concerns === "whole-family" ? a.wholeFamily : concerned.length > 0 ? concerned.map((member) => member.name).join(", ") : a.noOne;
-              return (
-                <ListRow
-                  href={`${close}/${rule.id}`}
-                  lead={
-                    concerned.length > 0 ? (
-                      <span class="fam-avatars">
-                        {concerned.map((member) => (
-                          <Avatar member={member} size="sm" />
-                        ))}
-                      </span>
-                    ) : (
-                      <span class="fam-avatar fam-avatar--all fam-avatar--sm" aria-hidden="true"></span>
-                    )
-                  }
-                  name={a.entry(text(rule.attributeLabel), rule.value)}
-                  meta={`${who} · ${sourceOf(rule)}`}
-                />
-              );
-            })}
-          </ul>
-        </section>
-      )}
-    </AdminLayout>
-  );
-}
-
-/** The concerns a rule's form starts with: its Family Members, or the whole Family. */
-function concernsOf(rule: AttributionRuleSummary | undefined): string[] {
-  if (!rule) return [];
-  return rule.concerns === "whole-family" ? ["whole-family"] : rule.concerns;
-}
-
-/** The value a rule matches, offering the known ones, and whom it concerns. */
-function RuleFields(props: { form: RuleForm; members: FamilyMemberSummary[]; value: string; concerns: string[] }) {
-  const { form } = props;
-  const { t, text } = useTranslation();
-  const a = t.attribution;
-  return (
-    <>
-      <div class="fam-field">
-        <label for="rule-value">{text(form.attributeLabel)}</label>
-        <input
-          id="rule-value"
-          name="value"
-          required
-          autofocus
-          maxlength={maximumAttributeValueLength}
-          list="rule-known-values"
-          autocomplete="off"
-          value={props.value}
-        />
-        <datalist id="rule-known-values">
-          {form.knownValues.map((known) => (
-            <option value={known.value}>{known.label}</option>
-          ))}
-        </datalist>
-        <small>{a.valueHint}</small>
-      </div>
-      <fieldset>
-        <legend>{a.concerns}</legend>
-        <small>{a.concernsHint}</small>
-        <div class="fam-choices">
-          <label class="fam-choice">
-            <input type="checkbox" name="concerns" value="whole-family" checked={props.concerns.includes("whole-family")} />{" "}
-            <span class="fam-avatar fam-avatar--all fam-avatar--sm" aria-hidden="true"></span> {a.wholeFamily}
-          </label>
-          {props.members.map((member) => (
-            <label class="fam-choice">
-              <input type="checkbox" name="concerns" value={member.id} checked={props.concerns.includes(member.id)} />{" "}
-              <Avatar member={member} size="sm" /> {member.name}
-            </label>
-          ))}
-        </div>
-      </fieldset>
-    </>
   );
 }
 

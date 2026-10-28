@@ -1,10 +1,11 @@
 import { randomUUID } from "node:crypto";
-import { parseName, textIn, type MultilingualText, type SourceId, type SourceTypeId } from "@family-agenda/domain";
+import { parseName, textIn, type FamilyMemberId, type MultilingualText, type SourceId, type SourceTypeId } from "@family-agenda/domain";
 import type {
   BlobStore,
   CatalogueRepository,
   Clock,
   ConfigFieldSpec,
+  FamilyMemberRepository,
   FamilyRepository,
   KnownValue,
   LoadedSourceType,
@@ -27,6 +28,7 @@ import { healthOf, type SourceHealth } from "./source-health";
 export type SourcesDeps = {
   clock: Clock;
   families: FamilyRepository;
+  members: FamilyMemberRepository;
   registry: SourceTypeRegistry;
   sourceTypes: SourceTypeRepository;
   catalogues: CatalogueRepository;
@@ -51,6 +53,8 @@ export type SourceSummary = {
   shown: boolean;
   /** As an Admin named it; null for the name the Admin area derives from its settings. */
   name: string | null;
+  /** The Family Members it is assigned to, in the Family's order, whom its Items concern; none for the whole Family. */
+  concerns: FamilyMemberId[];
   health: SourceHealth;
   /** The values each choice field offers, such as the chats of a linked account, by field key. */
   choices: Record<string, KnownValue[]>;
@@ -100,7 +104,7 @@ export type EditSourceResult =
   | SourceProblem;
 
 export function createSourceAccess(deps: SourcesDeps) {
-  const { clock, families, registry, sourceTypes, catalogues, sources, secrets, blobs, timeZone } = deps;
+  const { clock, families, members, registry, sourceTypes, catalogues, sources, secrets, blobs, timeZone } = deps;
 
   const enabled = (sourceTypeId: SourceTypeId) => enabledSourceType(sourceTypeId, { registry, sourceTypes });
 
@@ -179,6 +183,7 @@ export function createSourceAccess(deps: SourcesDeps) {
           pollIntervalSeconds: source.pollIntervalSeconds,
           shown: source.shown,
           name: source.name,
+          concerns: source.concerns,
           health: await healthOf(source, { clock, registry, sourceTypes, sources }),
           choices: await choicesOf(source),
         });
@@ -253,6 +258,7 @@ export function createSourceAccess(deps: SourcesDeps) {
         pollIntervalSeconds: input.pollIntervalSeconds ?? null,
         shown: true,
         name: null,
+        concerns: [],
         lastRunAt: null,
         lastSuccessAt: null,
         failure: null,
@@ -326,7 +332,25 @@ export function createSourceAccess(deps: SourcesDeps) {
       return { ok: true };
     },
 
-    /** Removes the Source with its secrets, its Attribution Rules and everything it brought in: Origins, messages, Revisions and Items. */
+    /**
+     * Assigns the Source to Family Members, whom its Items then concern, also those it brought in
+     * before; none for the whole Family. Nothing within the Source, such as a sender, counts.
+     */
+    async assign(
+      id: SourceId,
+      concerns: FamilyMemberId[],
+    ): Promise<{ ok: true } | { ok: false; problem: "unknown-source" | "unknown-member" }> {
+      if (!(await sources.findById(id))) return { ok: false, problem: "unknown-source" };
+      const family = await members.list(await families.theFamily());
+      if (concerns.some((member) => !family.some((known) => known.id === member))) return { ok: false, problem: "unknown-member" };
+      await sources.assign(
+        id,
+        family.filter((member) => concerns.includes(member.id)).map((member) => member.id),
+      );
+      return { ok: true };
+    },
+
+    /** Removes the Source with its secrets, whom it is assigned to and everything it brought in: Origins, messages, Revisions and Items. */
     async remove(id: SourceId): Promise<void> {
       const source = await sources.findById(id);
       if (!source) return;

@@ -29,7 +29,6 @@ async function textsOf(plugin: SourcePlugin, packageJson: unknown): Promise<[str
   for (const step of plugin.setupSteps) {
     texts.push([`setup step ${step.id}'s title`, step.title], [`setup step ${step.id}'s description`, step.description]);
   }
-  for (const attribute of plugin.originAttributes) texts.push([`Origin attribute ${attribute.key}'s label`, attribute.label]);
   if (plugin.catalogue) {
     texts.push(["the catalogue's title", plugin.catalogue.title]);
     for (const entry of await plugin.catalogue.entries()) {
@@ -60,11 +59,8 @@ export function describeSourcePluginContract(
       expect(problemsWith(createPlugin())).toEqual([]);
     });
 
-    it("declares Origin attributes and setup steps once each", () => {
-      const plugin = createPlugin();
-      const attributes = plugin.originAttributes.map((attribute) => attribute.key);
-      const steps = plugin.setupSteps.map((step) => step.id);
-      expect(new Set(attributes).size).toBe(attributes.length);
+    it("declares setup steps once each", () => {
+      const steps = createPlugin().setupSteps.map((step) => step.id);
       expect(new Set(steps).size).toBe(steps.length);
     });
 
@@ -96,12 +92,8 @@ export function describeSourcePluginContract(
       it("emits valid Origins and state for a Source", async () => {
         const plugin = createPlugin();
         if (plugin.ingestion.mode !== "polling") return;
-        const known = new Set(plugin.originAttributes.map((attribute) => attribute.key));
         const result = await plugin.ingestion.poll({ config, state: null, now, timeZone: "Europe/Berlin" });
-        for (const origin of result.origins) {
-          expect(problemsWithOrigin(origin)).toEqual([]);
-          for (const key of Object.keys(origin.attributes)) expect(known).toContain(key);
-        }
+        for (const origin of result.origins) expect(problemsWithOrigin(origin)).toEqual([]);
         expect(result.state === null || typeof result.state === "string").toBe(true);
         const again = await plugin.ingestion.poll({ config, state: result.state, now, timeZone: "Europe/Berlin" });
         expect(again.origins, "a second run with the state of the first emits no Origin again").toEqual([]);
