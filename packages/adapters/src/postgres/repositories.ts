@@ -937,6 +937,7 @@ export class PostgresItemRepository implements ItemRepository {
         itemId: revisions.itemId,
         link: origins.link,
         sourceTypeId: sources.sourceTypeId,
+        sourceName: sources.name,
         firstSeenAt: origins.firstSeenAt,
       })
       .from(revisions)
@@ -949,6 +950,7 @@ export class PostgresItemRepository implements ItemRepository {
         itemId: revisions.itemId,
         id: rawMessages.id,
         sourceTypeId: sources.sourceTypeId,
+        sourceName: sources.name,
         sentAt: rawMessages.sentAt,
       })
       .from(revisions)
@@ -971,11 +973,11 @@ export class PostgresItemRepository implements ItemRepository {
               id: row.id as ItemId,
               kind: row.kind as ItemKind,
               folded: row.folded,
-              links: links.flatMap(({ itemId, link, sourceTypeId }) =>
-                itemId === row.id && link ? [{ url: link, sourceTypeId: sourceTypeId as SourceTypeId }] : [],
+              links: links.flatMap(({ itemId, link, sourceTypeId, sourceName }) =>
+                itemId === row.id && link ? [{ url: link, sourceTypeId: sourceTypeId as SourceTypeId, sourceName }] : [],
               ),
-              messages: messages.flatMap(({ itemId, id, sourceTypeId }) =>
-                itemId === row.id ? [{ id: id as RawMessageId, sourceTypeId: sourceTypeId as SourceTypeId }] : [],
+              messages: messages.flatMap(({ itemId, id, sourceTypeId, sourceName }) =>
+                itemId === row.id ? [{ id: id as RawMessageId, sourceTypeId: sourceTypeId as SourceTypeId, sourceName }] : [],
               ),
               origins: originsOfItems.flatMap(({ itemId, sourceId, attributes }) =>
                 itemId === row.id ? [{ sourceId: sourceId as SourceId, attributes }] : [],
