@@ -73,7 +73,8 @@ describe("Sources in the Admin area", () => {
     // Its row is named after its first setting and leads to its own page, where it is edited.
     const list = await page();
     expect(list).toMatch(new RegExp(`<a class="fam-row__link" href="/admin/sources/${source!.id}">[\\s\\S]*?https://calendar.example.org`));
-    expect(list).toContain("secret stored · every 10 minutes");
+    expect(list).toContain('<span class="fam-row__hint">every 10 minutes</span>');
+    expect(list, "whether a secret is stored says nothing in a row").not.toContain("secret stored");
     const own = await get(`/admin/sources/${source!.id}`);
     expect(own).toContain('<a href="/admin/source-types/calendar">Calendar</a>');
     expect(own).toContain('value="https://calendar.example.org"');
@@ -110,15 +111,16 @@ describe("Sources in the Admin area", () => {
     expect((await instance.get(`/admin/sources/${added.id}`, { cookie })).headers.get("location")).toBe("/admin/sources");
   });
 
-  it("offers to disable a Source Type only once it has no Sources", async () => {
+  it("switches a Source Type off only while it has no Sources", async () => {
+    expect(await page()).toMatch(/<button type="submit" role="switch" aria-checked="false" aria-label="Enable Calendar" class="fam-switch">/);
     await instance.app.sourceTypes.enable("calendar");
-    expect(await page()).toMatch(/<button type="submit" class="fam-button fam-button--secondary" aria-label="Disable Calendar">/);
+    expect(await page()).toMatch(/<button type="submit" role="switch" aria-checked="true" aria-label="Enable Calendar" class="fam-switch">/);
 
     await instance.app.sources.add({ sourceTypeId: "calendar", plain: { url: "https://calendar.example.org" }, secrets: {} });
 
     const list = await page();
-    expect(list).toMatch(/<button type="submit" class="fam-button fam-button--secondary" disabled="" aria-label="Disable Calendar">/);
-    expect(list).toContain("It can be disabled once it has no Sources.");
+    expect(list).toMatch(/<button type="submit" role="switch" aria-checked="true" aria-label="Enable Calendar" disabled="" class="fam-switch">/);
+    expect(list).toContain("Locked while Calendar has Sources.");
   });
 
   it("hides a Source from the timeline and shows it again", async () => {

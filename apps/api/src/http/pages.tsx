@@ -874,8 +874,8 @@ export type SourceAdding = { form: SourceForm; entered?: { plain: Record<string,
 export type LiveStep = { sourceId: string; stepId: string; progress: SetupProgress; qrSvg: string | null };
 
 /**
- * A Source Type's page: enabling it, its Sources, the entries of its catalogue such as its
- * Messengers with their accounts, and disabling it. Adding and setting up a Source open in a
+ * A Source Type's page: its switch, its Sources, and the entries of its catalogue such as its
+ * Messengers with their accounts. Adding and setting up a Source open in a
  * dialog over it; a Source opens on a page of its own.
  */
 export function SourceTypePage(props: {
@@ -933,19 +933,29 @@ export function SourceTypePage(props: {
   const catalogue = configKey !== undefined && props.catalogue && props.catalogue.entries.length > 0 ? props.catalogue : undefined;
   const entryIds = new Set(catalogue?.entries.map((entry) => entry.id));
   const listed = props.sources.filter((source) => configKey === undefined || !entryIds.has(String(source.plain[configKey])));
-  const status = !sourceType ? null : sourceType.notLoadable !== null ? (
-    <span class="fam-chip fam-chip--problem">{s.cannotLoad}</span>
-  ) : sourceType.enabled ? (
-    <span class="fam-chip fam-chip--ok">{types.enabled}</span>
-  ) : (
-    <span class="fam-chip">{types.notEnabled}</span>
-  );
+  const status = sourceType && sourceType.notLoadable !== null ? <span class="fam-chip fam-chip--problem">{s.cannotLoad}</span> : undefined;
+  const switchable = sourceType && sourceType.notLoadable === null ? sourceType : undefined;
   return (
     <AdminLayout title={name} admin={props.admin} current="sources" dialog={dialog}>
       <nav class="fam-breadcrumb" aria-label={s.breadcrumb}>
         <a href="/admin/sources">{s.title}</a> <span aria-hidden="true">›</span> <span aria-current="page">{name}</span>
       </nav>
-      <SectionHeader title={name} status={status} description={sourceType ? text(sourceType.description) : s.notInstalled} />
+      <SectionHeader
+        title={name}
+        status={status}
+        description={sourceType ? text(sourceType.description) : s.notInstalled}
+        action={
+          switchable ? (
+            <EnableSwitch
+              id="enable-source-type"
+              name={name}
+              action={href}
+              enabled={switchable.enabled}
+              lockedHint={props.sources.length > 0 ? types.lockedHint(name) : null}
+            />
+          ) : undefined
+        }
+      />
       {sourceType ? (
         <p class="fam-entry__meta">
           {types.version(sourceType.version)}
@@ -954,9 +964,9 @@ export function SourceTypePage(props: {
       ) : null}
       {sourceType && sourceType.notLoadable !== null ? <p class="fam-problem">{types.notLoadable(sourceType.notLoadable)}</p> : null}
       <Problem message={props.problem} />
-      {sourceType && !sourceType.enabled && sourceType.notLoadable === null ? (
+      {switchable && !switchable.enabled && switchable.riskNotice !== null ? (
         <section class="fam-sheet">
-          <EnableForm name={name} action={href} riskNotice={sourceType.riskNotice} />
+          <RiskNotice form="enable-source-type" notice={switchable.riskNotice} />
         </section>
       ) : null}
       {catalogue && configKey !== undefined ? (
@@ -969,13 +979,6 @@ export function SourceTypePage(props: {
             {sourceType?.enabled && form && !form.catalogue ? (
               <div class="fam-group__actions">{addButton(`/admin/sources/new?type=${encodeURIComponent(props.sourceTypeId)}`, s.addType(name))}</div>
             ) : null}
-          </Group>
-        </section>
-      ) : null}
-      {sourceType?.enabled ? (
-        <section class="fam-sheet">
-          <Group title={types.management} level={2}>
-            <DisableRow name={name} action={href} inUse={props.sources.length > 0} hint={types.disableHint} />
           </Group>
         </section>
       ) : null}
@@ -1180,58 +1183,63 @@ function SourceRow(props: { source: SourceSummary; form: SourceForm | undefined;
 }
 
 /**
- * Enabling something an Admin enables on its own, a Source Type or a catalogue entry: posts to
- * `<action>/enable`. One with a risk notice is enabled only once the risk is acknowledged.
+ * Whether something an Admin enables on its own, a Source Type or a catalogue entry, is enabled,
+ * as one switch posting to `<action>/enable` or `<action>/disable`. While something uses it, it
+ * stays locked on, saying why. One with a risk notice is enabled only once the `RiskNotice` tied
+ * to the switch's form by its `id` is acknowledged.
  */
-function EnableForm(props: { name: string; action: string; riskNotice: MultilingualText | null }) {
-  const { t, text } = useTranslation();
+function EnableSwitch(props: { id: string; name: string; action: string; enabled: boolean; lockedHint: string | null }) {
+  const { t } = useTranslation();
   const s = t.sourceTypes;
+  const locked = props.enabled && props.lockedHint !== null;
   return (
-    <form method="post" action={`${props.action}/enable`} class="fam-enable">
-      {props.riskNotice !== null ? (
-        <>
-          <div class="fam-banner fam-banner--attention">
-            <span class="fam-banner__glyph" aria-hidden="true">
-              !
-            </span>
-            <span class="fam-banner__title">{s.riskTitle}</span>
-            <div class="fam-banner__body">
-              <p>{text(props.riskNotice)}</p>
-            </div>
-          </div>
-          <label>
-            <input type="checkbox" name="riskAcknowledged" value="yes" required /> {s.acknowledgeRisk}
-          </label>
-        </>
-      ) : null}
-      <button type="submit" class="fam-button fam-button--primary">
-        {s.enable(props.name)}
+    <form method="post" action={`${props.action}/${props.enabled ? "disable" : "enable"}`} id={props.id} class="fam-toggle">
+      <span class="fam-toggle__state" aria-hidden="true">
+        {props.enabled ? s.enabled : s.notEnabled}
+      </span>
+      <button type="submit" role="switch" aria-checked={props.enabled ? "true" : "false"} aria-label={s.enable(props.name)} disabled={locked} class="fam-switch">
+        {locked ? (
+          <svg
+            class="fam-switch__lock"
+            width="12"
+            height="12"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="3"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <rect x="5" y="11" width="14" height="10" rx="2"></rect>
+            <path d="M8 11V7a4 4 0 0 1 8 0v4"></path>
+          </svg>
+        ) : null}
       </button>
+      {locked ? <span class="fam-toggle__hint">{props.lockedHint}</span> : null}
     </form>
   );
 }
 
-/**
- * Disabling a Source Type or a catalogue entry: posts to `<action>/disable`, offered only while
- * nothing uses it, and saying why otherwise.
- */
-function DisableRow(props: { name: string; action: string; inUse: boolean; hint: string }) {
-  const { t } = useTranslation();
+/** A risk notice to acknowledge before enabling, its checkbox belonging to the switch's `form`. */
+function RiskNotice(props: { form: string; notice: MultilingualText }) {
+  const { t, text } = useTranslation();
   const s = t.sourceTypes;
   return (
-    <ul class="fam-rows">
-      <li class="fam-row">
-        <span class="fam-row__main">
-          <span class="fam-row__label">{s.disable(props.name)}</span>
-          {props.inUse ? <span class="fam-row__hint">{props.hint}</span> : null}
+    <div class="fam-enable">
+      <div class="fam-banner fam-banner--attention">
+        <span class="fam-banner__glyph" aria-hidden="true">
+          !
         </span>
-        <form method="post" action={`${props.action}/disable`} class="fam-row__form">
-          <button type="submit" class="fam-button fam-button--secondary" disabled={props.inUse} aria-label={s.disable(props.name)}>
-            {s.disableButton}
-          </button>
-        </form>
-      </li>
-    </ul>
+        <span class="fam-banner__title">{s.riskTitle}</span>
+        <div class="fam-banner__body">
+          <p>{text(props.notice)}</p>
+        </div>
+      </div>
+      <label>
+        <input type="checkbox" name="riskAcknowledged" value="yes" form={props.form} required /> {s.acknowledgeRisk}
+      </label>
+    </div>
   );
 }
 
@@ -1332,8 +1340,8 @@ function FixDialog(props: { source: SourceSummary; form: SourceForm; closeHref: 
 }
 
 /**
- * The entries an Admin enables within a Source Type, such as its Messengers, a sheet each: once
- * one is enabled, its accounts, the interval they are polled at, and disabling it.
+ * The entries an Admin enables within a Source Type, such as its Messengers, a sheet each with its
+ * switch: once one is enabled, its accounts and the interval they are polled at.
  */
 function CatalogueEntries(props: {
   catalogue: CatalogueSummary;
@@ -1362,17 +1370,23 @@ function CatalogueEntries(props: {
           return (
             <li class="fam-sheet">
               <div class="fam-sheet__header">
-                <h3 class="fam-sheet__title">{name}</h3>
-                {!entry.installed ? (
-                  <span class="fam-chip">{s.notInstalled}</span>
-                ) : entry.enabled ? (
-                  <span class="fam-chip fam-chip--ok">{s.enabled}</span>
+                <div class="fam-sheet__heading">
+                  <h3 class="fam-sheet__title">{name}</h3>
+                  <p class="fam-sheet__description">{text(entry.description)}</p>
+                </div>
+                {entry.installed ? (
+                  <EnableSwitch
+                    id={`enable-${entry.id}`}
+                    name={name}
+                    action={`${base}/${entry.id}`}
+                    enabled={entry.enabled}
+                    lockedHint={accounts.length > 0 ? s.entryLockedHint(name) : null}
+                  />
                 ) : (
-                  <span class="fam-chip">{s.notEnabled}</span>
+                  <span class="fam-chip">{s.notInstalled}</span>
                 )}
               </div>
-              <p class="fam-sheet__description">{text(entry.description)}</p>
-              {entry.installed && !entry.enabled ? <EnableForm name={name} action={`${base}/${entry.id}`} riskNotice={entry.riskNotice} /> : null}
+              {entry.installed && !entry.enabled && entry.riskNotice !== null ? <RiskNotice form={`enable-${entry.id}`} notice={entry.riskNotice} /> : null}
               {entry.enabled ? (
                 <>
                   <Group title={s.accounts} level={4}>
@@ -1398,9 +1412,6 @@ function CatalogueEntries(props: {
                       </form>
                     </Group>
                   ) : null}
-                  <Group title={s.management} level={4}>
-                    <DisableRow name={name} action={`${base}/${entry.id}`} inUse={accounts.length > 0} hint={s.entryDisableHint} />
-                  </Group>
                 </>
               ) : null}
             </li>
@@ -1536,19 +1547,34 @@ function plainValues(plain: PlainConfig, except?: string): string[] {
 }
 
 /**
- * A Source's name, its first plain setting such as its address or its account, else its Source
- * Type's; and what else tells it apart: its other plain settings, whether a secret is stored, and
- * how often it is checked. The catalogue entry it uses, such as its Messenger, it is listed with.
+ * A Source's name and what else tells it apart, from what an Admin set: its first plain setting
+ * such as its address, else its catalogue entry's name such as its Messenger's, else its Source
+ * Type's; its other plain settings, what it is set to read among its choices, and how often it is
+ * checked. Values the plugin sets, such as an account id, and secrets are left out. Without its
+ * form, its Source Type no longer loading, it shows its plain settings as they are.
  */
 function sourceLabel(source: SourceSummary, form: SourceForm | undefined, translation: Translation): { name: string; meta: string } {
   const { t, text } = translation;
-  const [first, ...rest] = plainValues(source.plain, form?.catalogue?.configKey);
-  const name = first ?? text(source.displayName);
-  const secrets = source.storedSecrets.length > 0 ? [t.sources.secretStored] : [];
+  const configKey = form?.catalogue?.configKey;
+  const fields = form?.fields.filter((field) => !field.secret && field.key !== configKey);
+  const shown = (value: unknown): value is string | number => (typeof value === "string" && value !== "") || typeof value === "number";
+  const [first, ...rest] = (fields ? fields.filter((field) => !field.choice).map((field) => source.plain[field.key]) : Object.values(source.plain))
+    .filter(shown)
+    .map(String);
+  const entry = configKey !== undefined ? form?.catalogue?.entries.find((candidate) => candidate.id === source.plain[configKey]) : undefined;
+  const name = first ?? text(entry?.displayName ?? source.displayName);
+  const chosen = (fields ?? [])
+    .filter((field) => field.choice)
+    .map((field) => {
+      const stored = source.plain[field.key];
+      const values = Array.isArray(stored) ? stored.filter((value) => typeof value === "string") : [];
+      const labels = values.map((value) => source.choices[field.key]?.find((choice) => choice.value === value)?.label ?? value);
+      return `${text(field.label)}: ${labels.length > 0 ? labels.join(", ") : t.sources.noneChosen}`;
+    });
   // A Source using a catalogue entry is polled at the entry's interval, shown with the entry.
   const seconds = form?.catalogue ? null : (source.pollIntervalSeconds ?? form?.suggestedIntervalSeconds ?? null);
   const interval = seconds !== null ? [t.sources.every(seconds / 60)] : [];
-  return { name, meta: [...rest, ...secrets, ...interval].join(" · ") };
+  return { name, meta: [...rest, ...chosen, ...interval].join(" · ") };
 }
 
 /** The fields a plugin declares; a secret is never shown, only whether one is stored. */

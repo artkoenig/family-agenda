@@ -382,11 +382,12 @@ h2.fam-entry__name, h3.fam-entry__name { font-size: 16px; line-height: 24px; }
   background: var(--surface-raised); border: 1px solid var(--line); border-radius: var(--radius-lg); box-shadow: var(--shadow-raised);
 }
 .fam-sheet > * { margin: 0; }
-.fam-sheet__header { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); }
+.fam-sheet__header { display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--space-2) var(--space-4); }
+.fam-sheet__heading { flex: 1 1 280px; }
 .fam-sheet__title { flex: 1; margin: 0; font-size: 19px; line-height: 26px; font-weight: 700; }
 .fam-sheet__description { margin: var(--space-1) 0 0; color: var(--ink-muted); }
 :where(.fam-admin) .fam-sheet__form { display: block; margin: 0; }
-:where(.fam-admin) .fam-enable { gap: var(--space-4); margin: var(--space-4) 0 var(--space-2); }
+.fam-enable { display: grid; gap: var(--space-4); margin: var(--space-4) 0 var(--space-2); }
 .fam-sheet > .fam-enable:first-child { margin-top: 0; }
 .fam-group { margin: var(--space-5) 0 0; }
 .fam-sheet > .fam-group:first-child, .fam-sheet > .fam-sheet__form:first-child > .fam-group:first-child { margin-top: 0; }
@@ -449,7 +450,17 @@ h2.fam-entry__name, h3.fam-entry__name { font-size: 16px; line-height: 24px; }
 .fam-switch[aria-checked="true"] { background: var(--hearth); border-color: var(--hearth); }
 .fam-switch[aria-checked="true"]:hover { background: var(--hearth-strong); border-color: var(--hearth-strong); }
 .fam-switch[aria-checked="true"]::after { left: 24px; background: var(--on-hearth); }
+.fam-switch:disabled { cursor: not-allowed; }
+.fam-switch[aria-checked="true"]:disabled:hover { background: var(--hearth); border-color: var(--hearth); }
+.fam-switch__lock { position: absolute; top: 8px; left: 28px; z-index: 1; color: var(--hearth); }
 @media (prefers-reduced-motion: reduce) { .fam-switch, .fam-switch::after { transition: none; } }
+/* An enable switch with its state beside it and, while it is locked, why below. */
+:where(.fam-admin) .fam-toggle {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--space-1) var(--space-3);
+  max-width: 280px; margin: 0 0 0 auto;
+}
+.fam-toggle__state { font-weight: 600; }
+.fam-toggle__hint { flex-basis: 100%; font-size: 14px; line-height: 20px; color: var(--ink-muted); text-align: right; }
 
 /* Entries that open in place for editing ------------------------------- */
 .fam-edit > summary { list-style: none; }
