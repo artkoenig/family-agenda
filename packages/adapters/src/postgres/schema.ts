@@ -153,6 +153,8 @@ export const sources = pgTable(
     pollIntervalSeconds: integer("poll_interval_seconds"),
     /** Whether its Items show on the timeline; a hidden Source is still read. */
     shown: boolean("shown").notNull().default(true),
+    /** As an Admin named it; null for the name the Admin area derives from its settings. */
+    name: text("name"),
     lastRunAt: timestamp("last_run_at", { withTimezone: true }),
     /** When it last ran successfully, which the Admin area shows. */
     lastSuccessAt: timestamp("last_success_at", { withTimezone: true }),

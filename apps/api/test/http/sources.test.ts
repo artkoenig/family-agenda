@@ -73,7 +73,8 @@ describe("Sources in the Admin area", () => {
     // Its row is named after its first setting and leads to its own page, where it is edited.
     const list = await page();
     expect(list).toMatch(new RegExp(`<a class="fam-row__link" href="/admin/sources/${source!.id}">[\\s\\S]*?https://calendar.example.org`));
-    expect(list).toContain("secret stored · every 10 minutes");
+    expect(list).toContain('<span class="fam-row__hint">every 10 minutes</span>');
+    expect(list, "whether a secret is stored says nothing in a row").not.toContain("secret stored");
     const own = await get(`/admin/sources/${source!.id}`);
     expect(own).toContain('<a href="/admin/source-types/calendar">Calendar</a>');
     expect(own).toContain('value="https://calendar.example.org"');
@@ -110,15 +111,16 @@ describe("Sources in the Admin area", () => {
     expect((await instance.get(`/admin/sources/${added.id}`, { cookie })).headers.get("location")).toBe("/admin/sources");
   });
 
-  it("offers to disable a Source Type only once it has no Sources", async () => {
+  it("switches a Source Type off only while it has no Sources", async () => {
+    expect(await page()).toMatch(/<button type="submit" role="switch" aria-checked="false" aria-label="Enable Calendar" class="fam-switch">/);
     await instance.app.sourceTypes.enable("calendar");
-    expect(await page()).toMatch(/<button type="submit" class="fam-button fam-button--secondary" aria-label="Disable Calendar">/);
+    expect(await page()).toMatch(/<button type="submit" role="switch" aria-checked="true" aria-label="Enable Calendar" class="fam-switch">/);
 
     await instance.app.sources.add({ sourceTypeId: "calendar", plain: { url: "https://calendar.example.org" }, secrets: {} });
 
     const list = await page();
-    expect(list).toMatch(/<button type="submit" class="fam-button fam-button--secondary" disabled="" aria-label="Disable Calendar">/);
-    expect(list).toContain("It can be disabled once it has no Sources.");
+    expect(list).toMatch(/<button type="submit" role="switch" aria-checked="true" aria-label="Enable Calendar" disabled="" class="fam-switch">/);
+    expect(list).toContain("Locked while Calendar has Sources.");
   });
 
   it("hides a Source from the timeline and shows it again", async () => {
@@ -137,6 +139,40 @@ describe("Sources in the Admin area", () => {
 
     await instance.post(`/admin/sources/${added.id}/shown`, { shown: "yes" }, { cookie });
     expect(await instance.app.sources.list()).toMatchObject([{ shown: true }]);
+  });
+
+  it("renames a Source, listing it by that name and its address after it, and back once the name is emptied", async () => {
+    await instance.app.sourceTypes.enable("calendar");
+    const added = await instance.app.sources.add({ sourceTypeId: "calendar", plain: { url: "https://calendar.example.org" }, secrets: {} });
+    if (!added.ok) throw new Error("adding failed");
+    const own = () => get(`/admin/sources/${added.id}`);
+    expect(await own()).toMatch(/<input id="[^"]*-name" name="name" maxlength="40" placeholder="https:\/\/calendar.example.org"\/>/);
+
+    const renamed = await instance.post(`/admin/sources/${added.id}/name`, { name: "  School calendar " }, { cookie });
+    expect(renamed.status).toBe(303);
+    expect(renamed.headers.get("location")).toBe(`/admin/sources/${added.id}`);
+    expect(await instance.app.sources.list()).toMatchObject([{ name: "School calendar" }]);
+    expect(await own()).toContain('value="School calendar"');
+    expect(await page()).toMatch(
+      /<span class="fam-row__label">School calendar<\/span><span class="fam-row__hint">https:\/\/calendar.example.org · every 10 minutes<\/span>/,
+    );
+
+    const tooLong = await instance.post(`/admin/sources/${added.id}/name`, { name: "x".repeat(41) }, { cookie });
+    expect(tooLong.status).toBe(400);
+    expect(await tooLong.text()).toContain("Enter a name of at most 40 characters.");
+    expect(await instance.app.sources.list()).toMatchObject([{ name: "School calendar" }]);
+
+    await instance.post(`/admin/sources/${added.id}/name`, { name: " " }, { cookie });
+    expect(await instance.app.sources.list()).toMatchObject([{ name: null }]);
+    expect(await page()).toMatch(/<span class="fam-row__label">https:\/\/calendar.example.org<\/span><span class="fam-row__hint">every 10 minutes<\/span>/);
+
+    // The Source's one form saves its name with its settings; a name it refuses leaves both as they were.
+    const refused = await instance.post(`/admin/sources/${added.id}`, { name: "x".repeat(41), "plain.url": "https://other.example.org" }, { cookie });
+    expect(refused.status).toBe(400);
+    expect(await instance.app.sources.list()).toMatchObject([{ name: null, plain: { url: "https://calendar.example.org" } }]);
+    const saved = await instance.post(`/admin/sources/${added.id}`, { name: "Club", "plain.url": "https://club.example.org" }, { cookie });
+    expect(saved.status).toBe(303);
+    expect(await instance.app.sources.list()).toMatchObject([{ name: "Club", plain: { url: "https://club.example.org" } }]);
   });
 
   it("shows why a Source cannot be saved", async () => {

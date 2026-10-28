@@ -14,6 +14,7 @@ import type {
   FamilyMemberRepository,
   FamilyRepository,
   KnownValue,
+  LoadedSourceType,
   OriginAttributeSpec,
   PlainConfig,
   SecretStore,
@@ -43,8 +44,10 @@ export type RuleTarget = {
   sourceId: SourceId;
   /** The Source Type's name, or its id if its plugin is no longer installed. */
   sourceName: MultilingualText;
-  /** The Source's plain settings, to tell Sources of one Source Type apart. */
+  /** The Source's plain settings an Admin set, to tell Sources of one Source Type apart. */
   sourcePlain: PlainConfig;
+  /** As an Admin named the Source; null if they did not. */
+  sourceTitle: string | null;
   attribute: string;
   /** As the plugin labels the attribute, or its key if the plugin cannot be loaded. */
   attributeLabel: MultilingualText;
@@ -74,12 +77,15 @@ export function createAttributionRuleAccess(deps: AttributionRulesDeps) {
 
   const enabled = (sourceTypeId: SourceTypeId) => enabledSourceType(sourceTypeId, { registry, sourceTypes });
 
-  function targetOf(source: Source, attribute: string, spec: OriginAttributeSpec | undefined): RuleTarget {
+  function targetOf(source: Source, attribute: string, spec: OriginAttributeSpec | undefined, sourceType: LoadedSourceType | null): RuleTarget {
     const installed = registry.installed().find((type) => type.id === source.sourceTypeId);
+    // What the plugin set, such as an account id, says nothing to an Admin.
+    const setByPlugin = new Set(sourceType?.configuration.fields.filter((field) => field.setByPlugin).map((field) => field.key));
     return {
       sourceId: source.id,
       sourceName: installed?.displayName ?? source.sourceTypeId,
-      sourcePlain: source.plain,
+      sourcePlain: Object.fromEntries(Object.entries(source.plain).filter(([key]) => !setByPlugin.has(key))),
+      sourceTitle: source.name,
       attribute,
       attributeLabel: spec?.label ?? attribute,
     };
@@ -89,8 +95,9 @@ export function createAttributionRuleAccess(deps: AttributionRulesDeps) {
   async function declared(sourceId: SourceId, attribute: string) {
     const source = await sources.findById(sourceId);
     if (!source) return null;
-    const spec = (await enabled(source.sourceTypeId))?.originAttributes.find((candidate) => candidate.key === attribute);
-    return { source, spec };
+    const sourceType = await enabled(source.sourceTypeId);
+    const spec = sourceType?.originAttributes.find((candidate) => candidate.key === attribute);
+    return { source, spec, sourceType };
   }
 
   /** Who the input says a rule concerns, the Family Members in the Family's order, or a problem. */
@@ -110,7 +117,7 @@ export function createAttributionRuleAccess(deps: AttributionRulesDeps) {
   async function summaryOf(rule: AttributionRule): Promise<AttributionRuleSummary | null> {
     const found = await declared(rule.sourceId, rule.attribute);
     if (!found) return null;
-    return { ...targetOf(found.source, rule.attribute, found.spec), id: rule.id, value: rule.value, concerns: rule.concerns };
+    return { ...targetOf(found.source, rule.attribute, found.spec, found.sourceType), id: rule.id, value: rule.value, concerns: rule.concerns };
   }
 
   return {
@@ -130,7 +137,7 @@ export function createAttributionRuleAccess(deps: AttributionRulesDeps) {
       const targets: RuleTarget[] = [];
       for (const source of await sources.list(await families.theFamily())) {
         const sourceType = await enabled(source.sourceTypeId);
-        for (const spec of sourceType?.originAttributes ?? []) targets.push(targetOf(source, spec.key, spec));
+        for (const spec of sourceType?.originAttributes ?? []) targets.push(targetOf(source, spec.key, spec, sourceType));
       }
       return targets;
     },
@@ -143,7 +150,7 @@ export function createAttributionRuleAccess(deps: AttributionRulesDeps) {
     async form(sourceId: SourceId, attribute: string): Promise<RuleForm | null> {
       const found = await declared(sourceId, attribute);
       if (!found?.spec) return null;
-      const { source, spec } = found;
+      const { source, spec, sourceType } = found;
       const offered = new Map<string, string>();
       for (const value of await rules.seenValues(sourceId, attribute)) offered.set(value, value);
       const context = await runContextOf(source, { secrets, now: clock.now(), timeZone });
@@ -154,7 +161,7 @@ export function createAttributionRuleAccess(deps: AttributionRulesDeps) {
       const knownValues = [...offered]
         .map(([value, label]) => ({ value, label }))
         .sort((a, b) => a.label.localeCompare(b.label));
-      return { ...targetOf(source, attribute, spec), knownValues };
+      return { ...targetOf(source, attribute, spec, sourceType), knownValues };
     },
 
     /** Adds a rule on an Origin attribute the Source's plugin declares; it applies to past Items too. */
