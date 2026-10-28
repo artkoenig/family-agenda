@@ -3,6 +3,7 @@ import type { SourceId } from "@family-agenda/domain";
 import type { ActivityLog } from "./activity";
 import type {
   BlobStore,
+  CatalogueRepository,
   Clock,
   IngestedMessage,
   ItemRepository,
@@ -24,6 +25,8 @@ export type PollingDeps = {
   timeZone: string;
   registry: SourceTypeRegistry;
   sourceTypes: SourceTypeRepository;
+  /** Where a catalogue entry's polling interval is, which its Sources are polled at. */
+  catalogues: CatalogueRepository;
   sources: SourceRepository;
   secrets: SecretStore;
   items: ItemRepository;
@@ -40,7 +43,7 @@ export type PollReport = {
 };
 
 export function createSourcePolling(deps: PollingDeps) {
-  const { clock, timeZone, registry, sourceTypes, sources, secrets, items, blobs, activity } = deps;
+  const { clock, timeZone, registry, sourceTypes, catalogues, sources, secrets, items, blobs, activity } = deps;
 
   async function store(contents: Uint8Array): Promise<StoredFile> {
     const sha256 = createHash("sha256").update(contents).digest("hex");
@@ -99,7 +102,8 @@ export function createSourcePolling(deps: PollingDeps) {
   return {
     /**
      * Runs every polling Source of an enabled Source Type whose interval has passed since its last
-     * run, as the worker does on each tick. A failed run waits for the next interval too.
+     * run, as the worker does on each tick. A failed run waits for the next interval too. A Source
+     * using a catalogue entry, such as a Messenger, is polled at the entry's interval.
      */
     async pollDue(): Promise<PollReport> {
       const report: PollReport = { polled: [], failed: [] };
@@ -109,10 +113,14 @@ export function createSourcePolling(deps: PollingDeps) {
       for (const type of enabled) {
         const loaded = await registry.load(type);
         if (!loaded.ok) continue;
-        const { ingestion } = loaded.sourceType;
+        const { ingestion, catalogue } = loaded.sourceType;
         if (ingestion.mode !== "polling") continue;
+        const entryIntervals = new Map(
+          catalogue ? (await catalogues.list(type)).map((record) => [record.entryId, record.pollIntervalSeconds]) : [],
+        );
         for (const source of await sources.listOfType(type)) {
-          const interval = (source.pollIntervalSeconds ?? ingestion.suggestedIntervalSeconds) * 1000;
+          const own = catalogue ? (entryIntervals.get(String(source.plain[catalogue.configKey])) ?? null) : source.pollIntervalSeconds;
+          const interval = (own ?? ingestion.suggestedIntervalSeconds) * 1000;
           if (source.lastRunAt && now - source.lastRunAt.getTime() < interval) continue;
           due.push({ source, ingestion });
         }

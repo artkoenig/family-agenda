@@ -21,6 +21,7 @@ import type {
 } from "./ports";
 import { usableEntries } from "./catalogues";
 import { enabledSourceType } from "./enabled-source-type";
+import { isPollInterval } from "./poll-interval";
 import { healthOf, type SourceHealth } from "./source-health";
 
 export type SourcesDeps = {
@@ -70,9 +71,6 @@ export type SourceForm = {
   suggestedIntervalSeconds: number | null;
 };
 
-/** How often an Admin may have a Source polled. */
-export const pollIntervalRange = { minSeconds: 60, maxSeconds: 7 * 24 * 60 * 60 };
-
 export type SourceInput = {
   plain: PlainConfig;
   /** A secret left empty keeps the stored one when editing. */
@@ -116,13 +114,7 @@ export function createSourceAccess(deps: SourcesDeps) {
     stored: string[] = [],
     usable: string[] | null = null,
   ): SourceProblem | null {
-    const interval = input.pollIntervalSeconds;
-    if (
-      interval != null &&
-      !(Number.isInteger(interval) && interval >= pollIntervalRange.minSeconds && interval <= pollIntervalRange.maxSeconds)
-    ) {
-      return { ok: false, problem: "invalid-interval" };
-    }
+    if (!isPollInterval(input.pollIntervalSeconds)) return { ok: false, problem: "invalid-interval" };
     const invalid = new Set<string>();
     const given = (key: string, secret: boolean) => {
       const value = secret ? input.secrets[key] : input.plain[key];
