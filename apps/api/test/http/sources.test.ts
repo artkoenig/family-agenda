@@ -70,10 +70,16 @@ describe("Sources in the Admin area", () => {
     expect(added.headers.get("location")).toBe("/admin/source-types/calendar");
     const [source] = await instance.app.sources.list();
     expect(source).toMatchObject({ plain: { url: "https://calendar.example.org" }, storedSecrets: ["password"], pollIntervalSeconds: null });
+    // Its row is named after its first setting and leads to its own page, where it is edited.
     const list = await page();
-    expect(list).toContain('value="https://calendar.example.org"');
-    expect(list).not.toContain("hunter2");
-    expect(list).toContain("Stored; leave empty to keep it");
+    expect(list).toMatch(new RegExp(`<a class="fam-row__link" href="/admin/sources/${source!.id}">[\\s\\S]*?https://calendar.example.org`));
+    expect(list).toContain("secret stored · every 10 minutes");
+    const own = await get(`/admin/sources/${source!.id}`);
+    expect(own).toContain('<a href="/admin/source-types/calendar">Calendar</a>');
+    expect(own).toContain('value="https://calendar.example.org"');
+    expect(own).not.toContain("hunter2");
+    expect(own).toContain("Stored; leave empty to keep it");
+    expect(own).toMatch(/<input[^>]*name="pollIntervalMinutes"[^>]*placeholder="10"/);
   });
 
   it("edits a Source's configuration and polling interval, and removes it", async () => {
@@ -91,27 +97,43 @@ describe("Sources in the Admin area", () => {
       { cookie },
     );
     expect(edited.status).toBe(303);
+    expect(edited.headers.get("location")).toBe(`/admin/sources/${added.id}`);
     expect(await instance.app.sources.list()).toMatchObject([
       { plain: { url: "https://other.example.org" }, storedSecrets: ["password"], pollIntervalSeconds: 3600 },
     ]);
 
+    expect(await get(`/admin/sources/${added.id}`)).toContain(`action="/admin/sources/${added.id}/remove"`);
     const removed = await instance.post(`/admin/sources/${added.id}/remove`, {}, { cookie });
     expect(removed.status).toBe(303);
+    expect(removed.headers.get("location")).toBe("/admin/source-types/calendar");
     expect(await instance.app.sources.list()).toEqual([]);
+    expect((await instance.get(`/admin/sources/${added.id}`, { cookie })).headers.get("location")).toBe("/admin/sources");
+  });
+
+  it("offers to disable a Source Type only once it has no Sources", async () => {
+    await instance.app.sourceTypes.enable("calendar");
+    expect(await page()).toMatch(/<button type="submit" class="fam-button fam-button--secondary" aria-label="Disable Calendar">/);
+
+    await instance.app.sources.add({ sourceTypeId: "calendar", plain: { url: "https://calendar.example.org" }, secrets: {} });
+
+    const list = await page();
+    expect(list).toMatch(/<button type="submit" class="fam-button fam-button--secondary" disabled="" aria-label="Disable Calendar">/);
+    expect(list).toContain("It can be disabled once it has no Sources.");
   });
 
   it("hides a Source from the timeline and shows it again", async () => {
     await instance.app.sourceTypes.enable("calendar");
     const added = await instance.app.sources.add({ sourceTypeId: "calendar", plain: { url: "https://calendar.example.org" }, secrets: {} });
     if (!added.ok) throw new Error("adding failed");
-    expect(await page()).toContain("Hide from the timeline");
+    const own = () => get(`/admin/sources/${added.id}`);
+    expect(await own()).toMatch(/<input type="hidden" name="shown" value="no"\/><button type="submit" role="switch" aria-checked="true"/);
 
     const hidden = await instance.post(`/admin/sources/${added.id}/shown`, { shown: "no" }, { cookie });
     expect(hidden.status).toBe(303);
+    expect(hidden.headers.get("location")).toBe(`/admin/sources/${added.id}`);
     expect(await instance.app.sources.list()).toMatchObject([{ shown: false }]);
-    const list = await page();
-    expect(list).toContain("hidden from the timeline");
-    expect(list).toContain("Show on the timeline");
+    expect(await own()).toMatch(/<input type="hidden" name="shown" value="yes"\/><button type="submit" role="switch" aria-checked="false"/);
+    expect(await page()).toContain('<span class="fam-chip fam-chip--small">Hidden</span>');
 
     await instance.post(`/admin/sources/${added.id}/shown`, { shown: "yes" }, { cookie });
     expect(await instance.app.sources.list()).toMatchObject([{ shown: true }]);
@@ -123,6 +145,12 @@ describe("Sources in the Admin area", () => {
     const missing = await instance.post("/admin/sources", { sourceTypeId: "calendar", "plain.url": "" }, { cookie });
     expect(missing.status).toBe(400);
     expect(await missing.text()).toContain("Check URL.");
+
+    const added = await instance.app.sources.add({ sourceTypeId: "calendar", plain: { url: "https://calendar.example.org" }, secrets: {} });
+    if (!added.ok) throw new Error("adding failed");
+    const edited = await instance.post(`/admin/sources/${added.id}`, { "plain.url": "", pollIntervalMinutes: "" }, { cookie });
+    expect(edited.status).toBe(400);
+    expect(await edited.text()).toContain("Check URL.");
 
     const tooOften = await instance.post(
       "/admin/sources",

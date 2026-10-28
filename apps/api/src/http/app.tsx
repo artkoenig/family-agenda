@@ -48,7 +48,9 @@ import {
   recoveryKitText,
   SignInPage,
   SourcesPage,
+  SourcePage,
   SourceTypePage,
+  sourceHref,
   sourceTypeHref,
   ViewsPage,
   type LiveStep,
@@ -553,19 +555,18 @@ export function createHttpApp(application: Application, options: HttpOptions) {
   app.get("/admin/source-types", (c) => c.redirect("/admin/sources", 301));
 
   /**
-   * A Source Type's page, with a dialog over it while one of its Sources is added, fixed or set
-   * up; the Sources page for a Source Type that is neither installed nor has Sources.
+   * A Source Type's page, with a dialog over it while one of its Sources is added or set up; the
+   * Sources page for a Source Type that is neither installed nor has Sources.
    */
   const sourceTypePage = async (
     c: Context<Env>,
     id: string,
-    shown: { problem?: string; adding?: SourceAdding; fixing?: SourceSummary; settingUp?: SourceSummary } = {},
+    shown: { problem?: string; adding?: SourceAdding; settingUp?: SourceSummary } = {},
   ) => {
     const sourceType = (await sourceTypes.list()).find((type) => type.id === id) ?? null;
     const ofType = (await sources.list()).filter((source) => source.sourceTypeId === id);
     const displayName = sourceType?.displayName ?? ofType[0]?.displayName;
     if (!displayName) return c.redirect("/admin/sources");
-    const setUp = shown.fixing ?? shown.settingUp;
     const page = (
       <SourceTypePage
         admin={c.get("admin")}
@@ -578,9 +579,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
         timeZone={timeZone}
         {...(shown.problem ? { problem: shown.problem } : {})}
         {...(shown.adding ? { adding: shown.adding } : {})}
-        {...(shown.fixing ? { fixing: shown.fixing } : {})}
-        {...(shown.settingUp ? { settingUp: shown.settingUp } : {})}
-        {...(setUp ? { liveSteps: await liveStepsOf(setUp) } : {})}
+        {...(shown.settingUp ? { settingUp: shown.settingUp, liveSteps: await liveStepsOf(shown.settingUp) } : {})}
       />
     );
     const refused = shown.problem || shown.adding?.problem;
@@ -699,11 +698,32 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     return render(c, <LiveStepProgress step={live} />);
   });
 
+  /** A Source's page, with its Fix dialog over it once its Fix button is pressed. */
+  const sourcePage = async (c: Context<Env>, source: SourceSummary, shown: { problem?: string; fixing?: boolean } = {}) => {
+    const page = (
+      <SourcePage
+        admin={c.get("admin")}
+        source={source}
+        form={(await sources.forms()).find((form) => form.sourceTypeId === source.sourceTypeId)}
+        timeZone={timeZone}
+        {...(shown.problem ? { problem: shown.problem } : {})}
+        {...(shown.fixing ? { fixing: true, liveSteps: await liveStepsOf(source) } : {})}
+      />
+    );
+    return render(c, page, shown.problem ? 400 : 200);
+  };
+
+  app.get("/admin/sources/:id", async (c) => {
+    const source = await sourceOf(c.req.param("id"));
+    if (!source) return c.redirect("/admin/sources");
+    return sourcePage(c, source);
+  });
+
   // A Fix button opens the Source's form in the dialog adding a Source uses.
   app.get("/admin/sources/:id/fix", async (c) => {
     const fixing = await sourceOf(c.req.param("id"));
     if (!fixing) return c.redirect("/admin/sources");
-    return sourceTypePage(c, fixing.sourceTypeId, { fixing });
+    return sourcePage(c, fixing, { fixing: true });
   });
 
   app.post("/admin/sources/:id", async (c) => {
@@ -711,8 +731,8 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     if (!source) return c.redirect("/admin/sources", 303);
     const form = await c.req.parseBody({ all: true });
     const result = await sources.edit(source.id, sourceInputOf(form));
-    if (!result.ok) return sourceTypePage(c, source.sourceTypeId, { problem: await sourceProblem(c, result) });
-    return c.redirect(sourceTypeHref(source.sourceTypeId), 303);
+    if (!result.ok) return sourcePage(c, source, { problem: await sourceProblem(c, result) });
+    return c.redirect(sourceHref(source.id), 303);
   });
 
   app.post("/admin/sources/:id/shown", async (c) => {
@@ -720,7 +740,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     if (!source) return c.redirect("/admin/sources", 303);
     const form = await c.req.parseBody();
     await sources.setShown(source.id, field(form, "shown") === "yes");
-    return c.redirect(sourceTypeHref(source.sourceTypeId), 303);
+    return c.redirect(sourceHref(source.id), 303);
   });
 
   app.post("/admin/sources/:id/remove", async (c) => {
