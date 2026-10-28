@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { textIn, type MultilingualText, type SourceId, type SourceTypeId } from "@family-agenda/domain";
+import { parseName, textIn, type MultilingualText, type SourceId, type SourceTypeId } from "@family-agenda/domain";
 import type {
   BlobStore,
   CatalogueRepository,
@@ -49,6 +49,8 @@ export type SourceSummary = {
   pollIntervalSeconds: number | null;
   /** Whether its Items show on the timeline and in the feeds; a hidden Source is still read. */
   shown: boolean;
+  /** As an Admin named it; null for the name the Admin area derives from its settings. */
+  name: string | null;
   health: SourceHealth;
   /** The values each choice field offers, such as the chats of a linked account, by field key. */
   choices: Record<string, KnownValue[]>;
@@ -176,6 +178,7 @@ export function createSourceAccess(deps: SourcesDeps) {
           storedSecrets: Object.keys(source.secrets).sort(),
           pollIntervalSeconds: source.pollIntervalSeconds,
           shown: source.shown,
+          name: source.name,
           health: await healthOf(source, { clock, registry, sourceTypes, sources }),
           choices: await choicesOf(source),
         });
@@ -249,6 +252,7 @@ export function createSourceAccess(deps: SourcesDeps) {
         state: null,
         pollIntervalSeconds: input.pollIntervalSeconds ?? null,
         shown: true,
+        name: null,
         lastRunAt: null,
         lastSuccessAt: null,
         failure: null,
@@ -304,6 +308,22 @@ export function createSourceAccess(deps: SourcesDeps) {
      */
     async setShown(id: SourceId, shown: boolean): Promise<void> {
       await sources.setShown(id, shown);
+    },
+
+    /**
+     * Names the Source as an Admin calls it, such as after the chats of a Messenger account. An
+     * empty name brings back the one derived from its settings. It is as long as a Family Member's
+     * name can be.
+     */
+    async rename(id: SourceId, name: string): Promise<{ ok: true } | { ok: false; problem: "invalid-name" }> {
+      if (name.trim() === "") {
+        await sources.rename(id, null);
+        return { ok: true };
+      }
+      const parsed = parseName(name);
+      if (parsed === null) return { ok: false, problem: "invalid-name" };
+      await sources.rename(id, parsed);
+      return { ok: true };
     },
 
     /** Removes the Source with its secrets, its Attribution Rules and everything it brought in: Origins, messages, Revisions and Items. */

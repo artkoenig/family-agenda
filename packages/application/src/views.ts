@@ -79,9 +79,9 @@ export type TimelineEvent = {
   cancelled: boolean;
   /** Over before now; earlier rows of today are dimmed. */
   earlier: boolean;
-  /** Where the original can be looked at, each with the display name of its Source Type. */
+  /** Where the original can be looked at, each with its Source's name, else its Source Type's. */
   links: { url: string; source: MultilingualText }[];
-  /** The raw messages it was extracted from, which Admins can open, each with the display name of its Source Type. */
+  /** The raw messages it was extracted from, which Admins can open, each with its Source's name, else its Source Type's. */
   messages: { id: RawMessageId; source: MultilingualText }[];
   /** Whom it concerns, by the Attribution Rules, the Family Members in the Family's order. */
   concerns: Attribution;
@@ -140,9 +140,12 @@ export const openViewAccess: ViewAccessPolicy = { mayOpen: () => Promise.resolve
 export function createViewAccess(deps: ViewsDeps) {
   const { clock, timeZone, families, members, views, items, rules, registry, activity, sourceHealth } = deps;
 
-  /** The display name of the Source Type, or its id if it is not installed. */
-  function sourceTypeName(sourceTypeId: string, installed: InstalledSourceType[]): MultilingualText {
-    return installed.find((type) => type.id === sourceTypeId)?.displayName ?? sourceTypeId;
+  /**
+   * The name an Admin gave the Source, else the display name of its Source Type, or that type's id
+   * if it is not installed.
+   */
+  function sourceName(origin: { sourceTypeId: string; sourceName: string | null }, installed: InstalledSourceType[]): MultilingualText {
+    return origin.sourceName ?? installed.find((type) => type.id === origin.sourceTypeId)?.displayName ?? origin.sourceTypeId;
   }
 
   /**
@@ -164,8 +167,8 @@ export function createViewAccess(deps: ViewsDeps) {
       const attribution = attributionOf(item.origins, familyRules);
       if (showing !== "all" && !isShownTo(attribution, showing)) return [];
       const concerns = attribution === "whole-family" ? attribution : order.filter((id) => attribution.includes(id));
-      const links = item.links.map(({ url, sourceTypeId }) => ({ url, source: sourceTypeName(sourceTypeId, installed) }));
-      const messages = item.messages.map(({ id, sourceTypeId }) => ({ id, source: sourceTypeName(sourceTypeId, installed) }));
+      const links = item.links.map((link) => ({ url: link.url, source: sourceName(link, installed) }));
+      const messages = item.messages.map((message) => ({ id: message.id, source: sourceName(message, installed) }));
       return [{ id: item.id, event, links, messages, concerns }];
     });
   }

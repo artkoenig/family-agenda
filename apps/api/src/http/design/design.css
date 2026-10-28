@@ -229,7 +229,7 @@
 .fam-status--ok { color: var(--sage-strong); }
 .fam-status--problem { color: var(--danger); }
 .fam-status--waiting { color: var(--ink-muted); }
-.fam-health { display: flex; flex-wrap: wrap; align-items: center; column-gap: var(--space-3); row-gap: var(--space-1); }
+.fam-health { display: flex; flex-wrap: wrap; align-items: center; column-gap: var(--space-2); row-gap: var(--space-1); }
 .fam-setup-steps { margin: 0; padding-left: var(--space-5); }
 .fam-live-step { display: grid; gap: var(--space-2); justify-items: start; margin-top: var(--space-2); }
 /* A QR code stays black on white in both themes, so that phones read it. */
@@ -382,26 +382,21 @@ h2.fam-entry__name, h3.fam-entry__name { font-size: 16px; line-height: 24px; }
   background: var(--surface-raised); border: 1px solid var(--line); border-radius: var(--radius-lg); box-shadow: var(--shadow-raised);
 }
 .fam-sheet > * { margin: 0; }
-.fam-sheet__header { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); }
 .fam-sheet__title { flex: 1; margin: 0; font-size: 19px; line-height: 26px; font-weight: 700; }
-.fam-sheet__description { margin: var(--space-1) 0 0; color: var(--ink-muted); }
 :where(.fam-admin) .fam-sheet__form { display: block; margin: 0; }
-:where(.fam-admin) .fam-enable { gap: var(--space-4); margin: var(--space-4) 0 var(--space-2); }
-.fam-sheet > .fam-enable:first-child { margin-top: 0; }
 .fam-group { margin: var(--space-5) 0 0; }
 .fam-sheet > .fam-group:first-child, .fam-sheet > .fam-sheet__form:first-child > .fam-group:first-child { margin-top: 0; }
 .fam-group > * { margin: 0; }
-:where(.fam-admin) .fam-group__title {
-  margin: 0 0 var(--space-2); font-size: 13px; line-height: 16px; font-weight: 800;
-  letter-spacing: .08em; text-transform: uppercase; color: var(--ink-muted);
-}
+:where(.fam-admin) .fam-group__title { margin: 0 0 var(--space-1); font-size: 14px; line-height: 20px; font-weight: 700; color: var(--hearth-strong); }
 .fam-group__intro { margin: calc(-1 * var(--space-1)) 0 var(--space-2); font-size: 14px; line-height: 20px; color: var(--ink-muted); }
-.fam-group__fields { display: grid; gap: var(--space-5); padding-top: var(--space-4); border-top: 1px solid var(--line); }
+.fam-group__fields { display: grid; gap: var(--space-5); padding-top: var(--space-3); }
+:where(.fam-admin) .fam-group__fields fieldset { padding: 0; border: 0; }
+:where(.fam-admin) .fam-group__fields legend { padding: 0 0 var(--space-1); }
 .fam-group__fields > * { max-width: 560px; }
 :where(.fam-admin) .fam-group__fields > form { margin: 0; }
 .fam-group__actions { display: flex; flex-wrap: wrap; gap: var(--space-2); padding: var(--space-4) 0 var(--space-3); }
 .fam-group__actions > form { margin: 0; }
-.fam-group__empty { padding: var(--space-3) 0; border-top: 1px solid var(--line); color: var(--ink-muted); }
+.fam-group__empty { padding: var(--space-3) 0; color: var(--ink-muted); }
 .fam-rows { list-style: none; margin: 0; padding: 0; }
 .fam-row {
   display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-4);
@@ -413,6 +408,7 @@ h2.fam-entry__name, h3.fam-entry__name { font-size: 16px; line-height: 24px; }
 :where(.fam-admin) .fam-row__hint { margin: 0; }
 .fam-row__hint.fam-health { display: flex; }
 :where(.fam-admin) .fam-row__form { display: flex; align-items: center; gap: var(--space-2); margin: 0; }
+.fam-rows > .fam-row:first-child { border-top: 0; }
 .fam-row--link { padding: 0; }
 .fam-row__link {
   flex: 1 1 280px; min-width: 0; display: flex; align-items: center; gap: var(--space-4);
@@ -449,7 +445,26 @@ h2.fam-entry__name, h3.fam-entry__name { font-size: 16px; line-height: 24px; }
 .fam-switch[aria-checked="true"] { background: var(--hearth); border-color: var(--hearth); }
 .fam-switch[aria-checked="true"]:hover { background: var(--hearth-strong); border-color: var(--hearth-strong); }
 .fam-switch[aria-checked="true"]::after { left: 24px; background: var(--on-hearth); }
+.fam-switch:disabled { cursor: not-allowed; }
+.fam-switch[aria-checked="true"]:disabled:hover { background: var(--hearth); border-color: var(--hearth); }
+.fam-switch__lock { position: absolute; top: 8px; left: 28px; z-index: 1; color: var(--hearth); }
 @media (prefers-reduced-motion: reduce) { .fam-switch, .fam-switch::after { transition: none; } }
+/* A setting as a list row: title and hints, its control at the end. */
+.fam-setting { display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--space-2) var(--space-4); }
+.fam-setting__text { flex: 1 1 200px; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.fam-setting__text > * { margin: 0; }
+.fam-setting__hint { margin: 0; color: var(--ink-muted); }
+.fam-setting > .fam-row__form { padding-top: 2px; }
+/* A risk to acknowledge before switching something on. */
+.fam-risk { display: grid; gap: var(--space-3); margin: var(--space-4) 0 var(--space-2); padding: var(--space-3) var(--space-4); border-radius: var(--radius-md); background: var(--honey-tint); }
+.fam-risk > * { margin: 0; }
+.fam-risk__text { display: flex; gap: var(--space-3); }
+.fam-risk__glyph {
+  flex: none; display: grid; place-items: center; width: 22px; height: 22px; margin-top: 1px; border-radius: var(--radius-full);
+  background: var(--honey); color: var(--ink); font-size: 13px; font-weight: 800; line-height: 1;
+}
+/* An action adding something to the list above it. */
+.fam-button--add::before { content: "+"; font-size: 20px; font-weight: 500; line-height: 1; }
 
 /* Entries that open in place for editing ------------------------------- */
 .fam-edit > summary { list-style: none; }

@@ -730,8 +730,21 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     const source = await sourceOf(c.req.param("id"));
     if (!source) return c.redirect("/admin/sources", 303);
     const form = await c.req.parseBody({ all: true });
+    // Its name is saved with the rest of its form; a name it refuses leaves everything as it was.
+    if (typeof form.name === "string") {
+      const renamed = await sources.rename(source.id, form.name);
+      if (!renamed.ok) return sourcePage(c, source, { problem: problemIn(c, renamed.problem) });
+    }
     const result = await sources.edit(source.id, sourceInputOf(form));
-    if (!result.ok) return sourcePage(c, source, { problem: await sourceProblem(c, result) });
+    if (!result.ok) return sourcePage(c, (await sourceOf(source.id)) ?? source, { problem: await sourceProblem(c, result) });
+    return c.redirect(sourceHref(source.id), 303);
+  });
+
+  app.post("/admin/sources/:id/name", async (c) => {
+    const source = await sourceOf(c.req.param("id"));
+    if (!source) return c.redirect("/admin/sources", 303);
+    const result = await sources.rename(source.id, field(await c.req.parseBody(), "name"));
+    if (!result.ok) return sourcePage(c, source, { problem: problemIn(c, result.problem) });
     return c.redirect(sourceHref(source.id), 303);
   });
 

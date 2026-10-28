@@ -178,6 +178,15 @@ describe("calendar Events on the timeline", () => {
     expect(page?.days[1]?.items[0]?.links).toEqual([{ url: "https://calendar.example.org/event/piano", source: "calendar" }]);
   });
 
+  it("names an Event's link after its Source once an Admin named it", async () => {
+    await arrive({ ...piano(), link: "https://calendar.example.org/event/piano" });
+    const [source] = await instance.app.sources.list();
+    await instance.app.sources.rename(source!.id, "Music school");
+
+    const page = await instance.app.views.open(view, { access: openViewAccess });
+    expect(page?.days[1]?.items[0]?.links).toEqual([{ url: "https://calendar.example.org/event/piano", source: "Music school" }]);
+  });
+
   it("rejects a Revision whose fields an Event cannot have, and keeps the rest", async () => {
     await arrive(piano());
     await arrive(entry("piano", "change", "2026-09-11T08:00:00Z", { title: "" }));

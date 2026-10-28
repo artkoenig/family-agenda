@@ -42,6 +42,8 @@ describe("Sources of a Source Type with a catalogue and a live setup step", () =
     expect(page).toContain("Against WhatsApp&#39;s terms.");
     expect(page).toContain("Not installed on this Instance");
     expect(page).not.toContain("/catalogue/signal/enable");
+    expect(page, "the risk is acknowledged with the switch").toContain('<form method="post" action="/admin/source-types/bridged/catalogue/whatsapp/enable" id="enable-whatsapp"');
+    expect(page).toContain('<input type="checkbox" name="riskAcknowledged" value="yes" form="enable-whatsapp" required=""/>');
 
     const refused = await instance.post("/admin/source-types/bridged/catalogue/whatsapp/enable", {}, { cookie });
     expect(refused.status).toBe(400);
@@ -49,7 +51,9 @@ describe("Sources of a Source Type with a catalogue and a live setup step", () =
 
     const enabled = await instance.post("/admin/source-types/bridged/catalogue/whatsapp/enable", { riskAcknowledged: "yes" }, { cookie });
     expect(enabled.status).toBe(303);
-    expect(await (await instance.get("/admin/source-types/bridged", { cookie })).text()).toContain("Disable WhatsApp");
+    const after = await (await instance.get("/admin/source-types/bridged", { cookie })).text();
+    expect(after).toContain('action="/admin/source-types/bridged/catalogue/whatsapp/disable"');
+    expect(after).not.toContain("Against WhatsApp&#39;s terms.");
   });
 
   it("adds an account at each enabled Messenger, starting its setup at once", async () => {
@@ -69,11 +73,11 @@ describe("Sources of a Source Type with a catalogue and a live setup step", () =
     expect(added.headers.get("location")).toBe(`/admin/sources/${source!.id}/setup`);
   });
 
-  it("lists a Messenger's accounts in its sheet, and offers to disable it only once it has none", async () => {
+  it("lists a Messenger's accounts in its sheet, and switches it off only once it has none", async () => {
     await instance.app.catalogues.enable("bridged", "whatsapp", { riskAcknowledged: true });
     const empty = await (await instance.get("/admin/source-types/bridged", { cookie })).text();
     expect(empty).toContain("No accounts yet.");
-    expect(empty).toMatch(/<button type="submit" class="fam-button fam-button--secondary" aria-label="Disable WhatsApp">/);
+    expect(empty).toMatch(/<button type="submit" role="switch" aria-checked="true" aria-label="Enable WhatsApp" class="fam-switch">/);
 
     const added = await instance.app.sources.add({ sourceTypeId: "bridged", plain: { messenger: "whatsapp" }, secrets: {} });
     if (!added.ok) throw new Error("adding failed");
@@ -82,8 +86,15 @@ describe("Sources of a Source Type with a catalogue and a live setup step", () =
     expect(page).not.toContain("No accounts yet.");
     expect(page).toContain(`href="/admin/sources/${added.id}"`);
     expect(page, "its accounts are not listed again as the Source Type's Sources").not.toContain('<h2 class="fam-group__title">Sources</h2>');
-    expect(page).toMatch(/<button type="submit" class="fam-button fam-button--secondary" disabled="" aria-label="Disable WhatsApp">/);
-    expect(page).toContain("It can be disabled once no Source uses it.");
+    expect(page).toMatch(/<button type="submit" role="switch" aria-checked="true" aria-label="Enable WhatsApp" disabled="" class="fam-switch">/);
+    expect(page).toContain("Locked while a Source uses WhatsApp.");
+    // Named after its Messenger, with the chats it reads rather than what the plugin set.
+    expect(page).toMatch(/<span class="fam-row__label">WhatsApp<\/span><span class="fam-row__hint">Chats: none yet<\/span>/);
+    expect(page).not.toContain("account-1");
+
+    await instance.post(`/admin/sources/${added.id}/name`, { name: "Class 3b" }, { cookie });
+    const renamed = await (await instance.get("/admin/source-types/bridged", { cookie })).text();
+    expect(renamed).toMatch(/<span class="fam-row__label">Class 3b<\/span><span class="fam-row__hint">Chats: none yet<\/span>/);
   });
 
   it("opens the form of a Messenger's account with that Messenger given, not shown", async () => {
