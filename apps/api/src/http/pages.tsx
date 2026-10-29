@@ -12,12 +12,15 @@ import {
   type SourceHealth,
   type SourceSummary,
   type SourceTypeSummary,
+  type TaskSummary,
+  type Tick,
   type ViewSummary,
 } from "@family-agenda/application";
 import {
   defaultHorizonDays,
   familyLanguages,
   horizonDaysRange,
+  localDateTime,
   maximumNameLength,
   minimumPasswordLength,
   photoTypes,
@@ -34,7 +37,7 @@ import { raw } from "hono/html";
 import { useTranslation, type Translation } from "./i18n/translation";
 import type { Catalogue } from "./i18n/en";
 import { Layout, Problem } from "./layout";
-import { Avatar, viewUrl } from "./view-page";
+import { Avatar, dateLabel, viewUrl } from "./view-page";
 
 /** The Family Languages to choose from, the given one selected. */
 function FamilyLanguageOptions(props: { selected: FamilyLanguage }) {
@@ -129,6 +132,8 @@ export function SignInPage(props: { email?: string; problem?: string }) {
 export type SettingsSummary = {
   members: string[];
   views: number;
+  /** How many Tasks are pinned: Due or Overdue, and not done. */
+  tasks: number;
   sources: number;
   /** How many Sources are Failing, which the whole Admin area shows a banner for. */
   failingSources: number;
@@ -145,6 +150,7 @@ export type SignedInAdmin = AdminSummary & { newSourceTypes: boolean; settings: 
 type SectionId =
   | "members"
   | "views"
+  | "tasks"
   | "language"
   | "sources"
   | "llm"
@@ -177,6 +183,12 @@ function settingsGroups(translation: Translation): SettingsGroup[] {
           href: "/admin/views",
           label: t.views.title,
           summary: ({ settings }) => ({ text: settings.views > 0 ? s.views(settings.views) : s.noneYet }),
+        },
+        {
+          id: "tasks",
+          href: "/admin/tasks",
+          label: t.tasks.title,
+          summary: ({ settings }) => ({ text: s.tasks(settings.tasks) }),
         },
         {
           id: "language",
@@ -247,6 +259,12 @@ function SectionIcon(props: { id: SectionId }) {
       <>
         <rect x="3" y="4" width="18" height="13" rx="2.5"></rect>
         <path d="M9 21h6M12 17v4"></path>
+      </>
+    ),
+    tasks: (
+      <>
+        <rect x="4" y="4" width="16" height="16" rx="3"></rect>
+        <path d="M8.5 12l2.5 2.5 4.5-5"></path>
       </>
     ),
     language: (
@@ -807,6 +825,92 @@ export function ViewsPage(props: {
                   name={v.entry(names ?? v.everyone, view.horizonDays)}
                   meta={v.shows(names)}
                 />
+              );
+            })}
+          </ul>
+        </section>
+      )}
+    </AdminLayout>
+  );
+}
+
+/**
+ * The Family's Tasks, with a tick for each, and who ticked them done or took the tick back, and
+ * when (decisions in #13).
+ */
+export function TasksPage(props: {
+  admin: SignedInAdmin;
+  tasks: TaskSummary[];
+  admins: AdminSummary[];
+  views: ViewSummary[];
+  members: FamilyMemberSummary[];
+  timeZone: string;
+}) {
+  const { t, locale } = useTranslation();
+  const k = t.tasks;
+  const v = t.view;
+  const at = (instant: Date) => {
+    const local = localDateTime(instant, props.timeZone);
+    return `${dateLabel(local.date, locale)}, ${local.time}`;
+  };
+  /** The View by whom it preselects, as the Views section names it, or the Admin by their email. */
+  const who = (by: Tick["by"]) => {
+    if (by.kind === "admin") {
+      const email = props.admins.find((admin) => admin.id === by.adminId)?.email;
+      return email ? k.byAdmin(email) : k.byRemovedAdmin;
+    }
+    const view = props.views.find((candidate) => candidate.id === by.viewId);
+    if (!view) return k.inRemovedView;
+    const names = props.members.filter((member) => view.preselected.includes(member.id)).map((member) => member.name);
+    return k.inView(names.length > 0 ? names.join(", ") : k.everyone);
+  };
+  return (
+    <AdminLayout title={k.title} admin={props.admin} current="tasks">
+      <SectionHeader title={k.title} description={k.description} />
+      {props.tasks.length === 0 ? (
+        <p class="fam-empty">{k.none}</p>
+      ) : (
+        <section class="fam-sheet">
+          <ul class="fam-tasks__list">
+            {props.tasks.map((task) => {
+              const done = task.status === "done";
+              const action = `/admin/tasks/${task.itemId}/${done ? "undone" : "done"}`;
+              const deadline = task.deadline ? v.by(dateLabel(task.deadline, locale)) : k.noDeadline;
+              const status = done ? v.done : task.status === "overdue" ? v.overdue : task.status === "due" ? v.due : null;
+              const classes = ["fam-task", `fam-task--${task.status}`, task.cancelled ? "fam-task--cancelled" : ""].filter(Boolean).join(" ");
+              return (
+                <li class={classes}>
+                  <form method="post" action={action}>
+                    <button
+                      type="submit"
+                      class="fam-task__tick"
+                      aria-pressed={done ? "true" : "false"}
+                      aria-label={done ? v.markNotDone(task.title) : v.markDone(task.title)}
+                    >
+                      <span aria-hidden="true">{done ? "✓" : ""}</span>
+                    </button>
+                  </form>
+                  <span class="fam-task__text">
+                    <span class="fam-task__title">
+                      {task.cancelled ? (
+                        <>
+                          <s>{task.title}</s> <span class="fam-event__tag">{v.cancelled}</span>
+                        </>
+                      ) : (
+                        task.title
+                      )}
+                    </span>
+                    <span class="fam-task__meta">{[status, deadline].filter(Boolean).join(" · ")}</span>
+                    {task.bring.length > 0 ? (
+                      <span class="fam-task__bring">
+                        {v.bring}: {task.bring.join(", ")}
+                      </span>
+                    ) : null}
+                    {task.ticks.map((tick) => (
+                      <span class="fam-task__tick-history">{(tick.done ? k.ticked : k.unticked)(who(tick.by), at(tick.at))}</span>
+                    ))}
+                  </span>
+                </li>
               );
             })}
           </ul>

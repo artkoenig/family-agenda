@@ -1,5 +1,6 @@
 import type {
   ExtractedEvent,
+  ExtractedTask,
   ExtractionRequest,
   ExtractionResult,
   Extractor,
@@ -28,9 +29,17 @@ export function extracted(
   };
 }
 
+/** A Task as a model reads it from a message; unstated parts are null or empty. */
+export function extractedTask(
+  task: Partial<Omit<ExtractedTask, "deadline">> & Pick<ExtractedTask, "evidence"> & { deadline?: Partial<DateMention> },
+): ExtractedTask {
+  const { deadline, ...rest } = task;
+  return { updates: null, cancelled: false, title: null, bring: [], ...rest, deadline: { ...noDate, ...deadline } };
+}
+
 /**
  * Answers with the canned output for the first script whose text the message contains, and with
- * no Events for any other message. Reads the words of page images a `FakeTextExtractor` rendered.
+ * no Items for any other message. Reads the words of page images a `FakeTextExtractor` rendered.
  * Remembers every request.
  */
 export class ScriptedExtractor implements Extractor {
@@ -38,9 +47,9 @@ export class ScriptedExtractor implements Extractor {
   readonly transcriptions: TranscriptionRequest[] = [];
   private readonly scripts: { contains: string; result: ExtractionResult }[] = [];
 
-  /** The Events a message containing `contains` yields. */
-  script(contains: string, events: ExtractedEvent[]): void {
-    this.scripts.unshift({ contains, result: { ok: true, events } });
+  /** The Events and Tasks a message containing `contains` yields. */
+  script(contains: string, events: ExtractedEvent[], tasks: ExtractedTask[] = []): void {
+    this.scripts.unshift({ contains, result: { ok: true, events, tasks } });
   }
 
   /** Makes the endpoint fail for every message, until scripted again. */
@@ -63,6 +72,6 @@ export class ScriptedExtractor implements Extractor {
   extract(request: ExtractionRequest): Promise<ExtractionResult> {
     this.requests.push(request);
     const script = this.scripts.find(({ contains }) => request.message.text.includes(contains));
-    return Promise.resolve(script?.result ?? { ok: true, events: [] });
+    return Promise.resolve(script?.result ?? { ok: true, events: [], tasks: [] });
   }
 }

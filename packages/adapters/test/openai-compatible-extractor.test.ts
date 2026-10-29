@@ -58,6 +58,15 @@ const event = {
   evidence: "Elternabend am Donnerstag, 17.09., um 19:30 Uhr",
 };
 
+const task = {
+  updates: null,
+  cancelled: false,
+  title: "Sachen für den Ausflug",
+  deadline: { day: 18, month: 9, year: null, weekday: "friday", daysAfter: null, weeksAfter: null },
+  bring: ["Regenjacke", "Brotdose"],
+  evidence: "für den Ausflug am Freitag, 18.09., bitte mitgeben: Regenjacke und Brotdose",
+};
+
 describe("the OpenAI-compatible Extractor", () => {
   let server: Awaited<ReturnType<typeof startServer>>;
   beforeEach(async () => {
@@ -74,32 +83,38 @@ describe("the OpenAI-compatible Extractor", () => {
       sent: { date: "2026-09-14" as LocalDate, time: "08:12" as LocalTime, weekday: "monday" },
     },
     knownEvents: [{ ref: "E1", title: "Sportfest", when: "2026-09-20, all day", place: null }],
+    knownTasks: [
+      { ref: "T1", title: "Formular unterschreiben", deadline: null, bring: [] },
+      { ref: "T2", title: "Sachen fürs Sportfest", deadline: "2026-09-20" as LocalDate, bring: ["Turnschuhe"] },
+    ],
   });
 
-  it("asks for JSON-schema output and reads the Events from the answer", async () => {
-    server.answer(200, completion(JSON.stringify({ events: [event] })));
+  it("asks for JSON-schema output and reads the Events and Tasks from the answer", async () => {
+    server.answer(200, completion(JSON.stringify({ events: [event], tasks: [task] })));
 
     const result = await new OpenAiCompatibleExtractor().extract(request());
 
-    expect(result).toEqual({ ok: true, events: [event] });
+    expect(result).toEqual({ ok: true, events: [event], tasks: [task] });
     const [sent] = server.received;
     expect(sent?.path).toBe("/v1/chat/completions");
     expect(sent?.headers.authorization).toBe("Bearer sk-test");
     expect(sent?.body).toMatchObject({
       model: "qwen3.5:9b",
       reasoning_effort: "low",
-      response_format: { type: "json_schema", json_schema: { name: "events", strict: true } },
+      response_format: { type: "json_schema", json_schema: { name: "items", strict: true } },
     });
     const prompt = JSON.stringify(sent?.body.messages);
     expect(prompt).toContain("sent on monday, 2026-09-14 at 08:12");
     expect(prompt).toContain("E1: Sportfest, 2026-09-20, all day");
+    expect(prompt).toContain("T1: Formular unterschreiben, no deadline");
+    expect(prompt).toContain("T2: Sachen fürs Sportfest, by 2026-09-20, bring: Turnschuhe");
     expect(prompt).toContain("findet in Raum 104 statt.");
   });
 
   it("sends no API key to an endpoint without one", async () => {
-    server.answer(200, completion(JSON.stringify({ events: [] })));
+    server.answer(200, completion(JSON.stringify({ events: [], tasks: [] })));
 
-    expect(await new OpenAiCompatibleExtractor().extract(request(null))).toEqual({ ok: true, events: [] });
+    expect(await new OpenAiCompatibleExtractor().extract(request(null))).toEqual({ ok: true, events: [], tasks: [] });
     expect(server.received[0]?.headers.authorization).toBeUndefined();
   });
 
@@ -119,15 +134,19 @@ describe("the OpenAI-compatible Extractor", () => {
     const extractor = new OpenAiCompatibleExtractor();
     for (const content of [
       "Sure! Here are the events:",
-      JSON.stringify({ events: [{ ...event, evidence: undefined }] }),
-      JSON.stringify({ events: [{ ...event, date: { ...event.date, weekday: "donnerstag" } }] }),
-      JSON.stringify({ events: [{ ...event, date: { ...event.date, day: "17" } }] }),
+      JSON.stringify({ events: [{ ...event, evidence: undefined }], tasks: [] }),
+      JSON.stringify({ events: [{ ...event, date: { ...event.date, weekday: "donnerstag" } }], tasks: [] }),
+      JSON.stringify({ events: [{ ...event, date: { ...event.date, day: "17" } }], tasks: [] }),
+      JSON.stringify({ events: [event] }),
+      JSON.stringify({ events: [], tasks: [{ ...task, bring: "Regenjacke" }] }),
+      JSON.stringify({ events: [], tasks: [{ ...task, bring: [1] }] }),
+      JSON.stringify({ events: [], tasks: [{ ...task, deadline: null }] }),
     ]) {
       server.answer(200, completion(content));
       expect(await extractor.extract(request()), content).toMatchObject({ ok: false, problem: "invalid-output" });
     }
 
-    server.answer(200, completion(JSON.stringify({ events: [event] }).slice(0, 40), "length"));
+    server.answer(200, completion(JSON.stringify({ events: [event], tasks: [] }).slice(0, 40), "length"));
     expect(await extractor.extract(request())).toMatchObject({ ok: false, problem: "invalid-output" });
   });
 

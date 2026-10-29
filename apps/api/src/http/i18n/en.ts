@@ -129,6 +129,7 @@ export const en = {
     noneYet: "None yet",
     views: (count: number) =>
       plural(count, { one: `${count} View on the home network`, other: `${count} Views on the home network` }),
+    tasks: (count: number) => (count === 0 ? "Nothing to do" : `${count} to do`),
     language: (family: string, ocr: string) => `${family}; OCR in ${ocr}`,
     sources: (count: number) => plural(count, { one: `${count} Source`, other: `${count} Sources` }),
     newOnes: "New ones are available",
@@ -195,6 +196,19 @@ export const en = {
     remove: (name: string) => `Remove ${name}`,
   },
 
+  tasks: {
+    title: "Tasks",
+    description: "What the Family has to do or bring. Anyone with a View can tick a Task done too; each tick lists who made it and when.",
+    none: "No Tasks.",
+    noDeadline: "No deadline",
+    inView: (who: string) => `in the View for ${who}`,
+    everyone: "everyone",
+    inRemovedView: "in a removed View",
+    byAdmin: (email: string) => `by ${email}`,
+    byRemovedAdmin: "by a removed Admin",
+    ticked: (who: string, at: string) => `Done ${who} at ${at}`,
+    unticked: (who: string, at: string) => `Marked not done ${who} at ${at}`,
+  },
   views: {
     title: "Views",
     description: "What the Family opens on the home network, without signing in. Anyone on your Wi-Fi can open them.",
@@ -399,6 +413,16 @@ export const en = {
       "room-change": (room: string | null) => (room ? `moved to room ${room}` : "room change"),
     },
     instead: (previous: string) => `instead of ${previous}`,
+    /** The pinned Tasks at the top of a View. */
+    toDo: "To do",
+    by: (date: string) => `By ${date}`,
+    due: "Due",
+    overdue: "Overdue",
+    overdueBy: (date: string) => `Overdue · by ${date}`,
+    done: "Done",
+    bring: "Bring",
+    markDone: (title: string) => `Mark “${title}” done`,
+    markNotDone: (title: string) => `Mark “${title}” not done`,
   },
 };
 

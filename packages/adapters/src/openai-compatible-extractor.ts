@@ -6,6 +6,7 @@ import {
 import type {
   EndpointFailure,
   ExtractedEvent,
+  ExtractedTask,
   ExtractionRequest,
   ExtractionResult,
   Extractor,
@@ -42,7 +43,7 @@ const dateMentionSchema = {
 export const extractionSchema = {
   type: "object",
   additionalProperties: false,
-  required: ["events"],
+  required: ["events", "tasks"],
   properties: {
     events: {
       type: "array",
@@ -62,25 +63,46 @@ export const extractionSchema = {
         },
       },
     },
+    tasks: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["updates", "cancelled", "title", "deadline", "bring", "evidence"],
+        properties: {
+          updates: nullable("string"),
+          cancelled: { type: "boolean" },
+          title: nullable("string"),
+          deadline: dateMentionSchema,
+          bring: { type: "array", items: { type: "string" } },
+          evidence: { type: "string" },
+        },
+      },
+    },
   },
 };
 
-const instructions = `You read messages a family receives, such as school mails, and list the events in them that someone has to attend: appointments with a date, such as a parents' evening, a school trip or a match.
+const instructions = `You read messages a family receives, such as school mails, and list what someone has to attend, do or bring.
+
+"events" are appointments with a date that someone has to attend, such as a parents' evening, a school trip or a match.
+"tasks" are things someone has to do or bring, such as signing a form, paying for a trip or bringing sports kit, optionally by a deadline.
 
 Rules:
-- List every such event, each once. List nothing for a message that only informs and has nothing to attend; then "events" is empty.
-- Do not list deadlines, things to do or bring, or timetable changes; only events.
+- List every such event and task, each once. List nothing for a message that only informs; then "events" and "tasks" are empty.
+- A list of things to bring for one occasion is one task, with the things in "bring", each as written. "bring" is empty for a task that is not about bringing things.
+- Do not list timetable changes.
 - The message may be followed by the text of its attachments, each after a line "Attachment <file name>:". Read them as part of the message.
-- "evidence" is the shortest passage of the message that states the event and its date, copied character for character. Never rephrase, translate or shorten words inside it.
+- "evidence" is the shortest passage of the message that states the event or task and its date, copied character for character. Never rephrase, translate or shorten words inside it.
 - "title" is short, in the language of the message, without the date.
 - Never compute dates. Fill in only the date parts the message states, and leave the others null:
   - "day", "month", "year" as written ("year" null if the message gives none);
   - "weekday" in English lower case if the message names one, such as "monday";
   - "daysAfter" for a date relative to the day the message was sent: 0 for today, 1 for tomorrow, 2 for the day after tomorrow, 14 for "in two weeks";
   - "weeksAfter" with a weekday alone: 0 for this week, 1 for next week; null if the message only names the weekday.
+- A task's "deadline" is the date by which it must be done; every part is null if the message gives none.
 - "startTime" and "endTime" as HH:MM in 24-hour time, or null.
 - "place" as written, or null.
-- When the message changes, moves or cancels one of the known events listed below, set "updates" to its id (such as "E1"), "cancelled" to true for a cancellation, and fill in only what changes: "title" null unless it is renamed, a new date or times if it moves. Otherwise "updates" is null and "cancelled" false.`;
+- When the message changes, moves or cancels one of the known events or tasks listed below, set "updates" to its id (such as "E1" or "T1"), "cancelled" to true for a cancellation, and fill in only what changes: "title" null unless it is renamed, a new date or times if it moves, and for a task the whole new list in "bring" if it changes, else an empty list. Otherwise "updates" is null and "cancelled" false.`;
 
 /** Statuses with which an endpoint refuses a request it cannot handle, such as images for a model without vision. */
 const refusedRequests = [400, 413, 415, 422];
@@ -110,7 +132,7 @@ export class OpenAiCompatibleExtractor implements Extractor {
       ],
       response_format: {
         type: "json_schema",
-        json_schema: { name: "events", strict: true, schema: extractionSchema },
+        json_schema: { name: "items", strict: true, schema: extractionSchema },
       },
     });
     if (!answer.ok) return answer;
@@ -121,8 +143,9 @@ export class OpenAiCompatibleExtractor implements Extractor {
       return { ok: false, problem: "invalid-output", message: "The answer is no JSON." };
     }
     const events = eventsOf(output);
-    if (!events) return { ok: false, problem: "invalid-output", message: "The answer does not fit the schema." };
-    return { ok: true, events };
+    const tasks = tasksOf(output);
+    if (!events || !tasks) return { ok: false, problem: "invalid-output", message: "The answer does not fit the schema." };
+    return { ok: true, events, tasks };
   }
 
   /** Reads each page in a chat completion of its own, so that no page is skipped or merged. */
@@ -196,18 +219,33 @@ export class OpenAiCompatibleExtractor implements Extractor {
 }
 
 function promptOf(request: ExtractionRequest): string {
-  const { message, knownEvents } = request;
+  const { message, knownEvents, knownTasks } = request;
   const known =
     knownEvents.length === 0
       ? "None."
       : knownEvents
           .map((event) => `- ${event.ref}: ${event.title}, ${event.when}${event.place ? `, ${event.place}` : ""}`)
           .join("\n");
+  const tasks =
+    knownTasks.length === 0
+      ? "None."
+      : knownTasks
+          .map((task) =>
+            [
+              `- ${task.ref}: ${task.title}`,
+              task.deadline ? `by ${task.deadline}` : "no deadline",
+              ...(task.bring.length > 0 ? [`bring: ${task.bring.join(", ")}`] : []),
+            ].join(", "),
+          )
+          .join("\n");
   return [
     `The message was sent on ${message.sent.weekday}, ${message.sent.date} at ${message.sent.time}.`,
     "",
     "Known events from earlier messages of its conversation:",
     known,
+    "",
+    "Known tasks from earlier messages of its conversation:",
+    tasks,
     "",
     "The message:",
     "<<<",
@@ -243,6 +281,35 @@ function eventsOf(output: unknown): ExtractedEvent[] | null {
     });
   }
   return events;
+}
+
+/** The tasks of an answer, or null if it does not fit the schema. */
+function tasksOf(output: unknown): ExtractedTask[] | null {
+  if (!isObject(output) || !Array.isArray(output.tasks)) return null;
+  const tasks: ExtractedTask[] = [];
+  for (const raw of output.tasks) {
+    if (!isObject(raw) || !isObject(raw.deadline) || !Array.isArray(raw.bring)) return null;
+    const deadline = dateOf(raw.deadline);
+    const bring: unknown[] = raw.bring;
+    if (
+      !deadline ||
+      typeof raw.cancelled !== "boolean" ||
+      typeof raw.evidence !== "string" ||
+      ![raw.updates, raw.title].every(isTextOrNull) ||
+      !bring.every((thing) => typeof thing === "string")
+    ) {
+      return null;
+    }
+    tasks.push({
+      updates: raw.updates as string | null,
+      cancelled: raw.cancelled,
+      title: raw.title as string | null,
+      deadline,
+      bring,
+      evidence: raw.evidence,
+    });
+  }
+  return tasks;
 }
 
 function dateOf(raw: Record<string, unknown>): DateMention | null {

@@ -16,6 +16,7 @@ import {
   type AdminId,
   type FamilyLanguage,
   type FamilyMemberId,
+  type ItemId,
   type RawMessageId,
   type SourceId,
   type ViewId,
@@ -47,6 +48,7 @@ import {
   SourcesPage,
   SourcePage,
   SourceTypePage,
+  TasksPage,
   sourceHref,
   sourceTypeHref,
   ViewsPage,
@@ -119,6 +121,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     familyMembers,
     languages,
     views,
+    tasks,
     sourceTypes,
     catalogues,
     sources,
@@ -278,6 +281,29 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     return render(c, <ActivityIndicator viewId={id} activity={activity} />);
   });
 
+  // Ticking a Task done, or taking the tick back, is the one write a View makes, without a session.
+  app.post("/views/:id/tasks/:task/:tick{done|undone}", async (c) => {
+    const id = c.req.param("id") as ViewId;
+    const result = await tasks.tickFromView(id, c.req.param("task") as ItemId, {
+      done: c.req.param("tick") === "done",
+      access: options.viewAccess,
+    });
+    if (!result.ok) return c.notFound();
+    if (c.req.header("hx-request") !== "true") return c.redirect(viewUrl(id), 303);
+    // htmx swaps the timeline as it was, the days scrolled to and the quick filter included.
+    const form = await c.req.parseBody();
+    const days = timelineDaysOf(field(form, "from") || undefined, field(form, "until") || undefined);
+    const show = field(form, "show");
+    const page = await views.open(id, {
+      access: options.viewAccess,
+      ...showingOf(show === "" ? undefined : show),
+      ...(days === "invalid" ? {} : days),
+    });
+    if (!page) return c.notFound();
+    c.header("cache-control", "no-store");
+    return render(c, <ViewTimeline page={page} />);
+  });
+
   // A View's feed follows the View's access, so that calendar apps can subscribe without a session.
   app.get("/views/:id/feed.ics", async (c) => {
     const feed = await views.feed(c.req.param("id") as ViewId, { access: options.viewAccess });
@@ -325,6 +351,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     return {
       members: (await familyMembers.list()).map((member) => member.name),
       views: (await views.list()).length,
+      tasks: (await tasks.list()).filter((task) => task.pinned).length,
       sources: allSources.length,
       failingSources: allSources.filter((source) => source.health.status === "failing").length,
       llm: endpoint ? { model: endpoint.model, local: endpoint.local } : null,
@@ -855,6 +882,25 @@ export function createHttpApp(application: Application, options: HttpOptions) {
       return render(c, page, 400);
     }
     return c.redirect("/admin/llm", 303);
+  });
+
+  app.get("/admin/tasks", async (c) =>
+    render(
+      c,
+      <TasksPage
+        admin={c.get("admin")}
+        tasks={await tasks.list()}
+        admins={await admins.listAdmins()}
+        views={await views.list()}
+        members={await familyMembers.list()}
+        timeZone={timeZone}
+      />,
+    ),
+  );
+
+  app.post("/admin/tasks/:task/:tick{done|undone}", async (c) => {
+    await tasks.tickAsAdmin(c.get("admin").id, c.req.param("task") as ItemId, { done: c.req.param("tick") === "done" });
+    return c.redirect("/admin/tasks", 303);
   });
 
   // Raw messages are third parties' words: only Admins open them, never a View.

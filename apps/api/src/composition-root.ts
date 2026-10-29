@@ -47,6 +47,7 @@ import {
   createServiceSupervision,
   createSourcePolling,
   createSourceTypeAccess,
+  createTaskAccess,
   createViewAccess,
   signInLimits,
   type AdminAccess,
@@ -68,6 +69,7 @@ import {
   type SourcePolling,
   type SourceTypeAccess,
   type TextExtractor,
+  type TaskAccess,
   type ViewAccess,
 } from "@family-agenda/application";
 import { SourceRegistry } from "./source-registry";
@@ -120,6 +122,8 @@ export type Application = {
   /** The Family Language and the OCR languages. */
   languages: LanguageAccess;
   views: ViewAccess;
+  /** Ticking Tasks done, from a View or the Admin area. */
+  tasks: TaskAccess;
   sourceTypes: SourceTypeAccess;
   /** What an Admin enables within a Source Type, such as Messengers. */
   catalogues: CatalogueAccess;
@@ -197,18 +201,20 @@ export async function bootApplication(config: ApplicationConfig): Promise<Applic
     sourceTypes: sourceTypeRepository,
     sources: sourceRepository,
   });
+  const viewRepository = new PostgresViewRepository(postgres.db);
   const views = createViewAccess({
     clock,
     timeZone,
     families,
     members,
-    views: new PostgresViewRepository(postgres.db),
+    views: viewRepository,
     items,
     sources: sourceRepository,
     registry,
     activity,
     sourceHealth,
   });
+  const tasks = createTaskAccess({ clock, timeZone, items, sources: sourceRepository, views: viewRepository });
 
   const sourceTypes = createSourceTypeAccess({
     clock,
@@ -283,6 +289,7 @@ export async function bootApplication(config: ApplicationConfig): Promise<Applic
     familyMembers,
     languages,
     views,
+    tasks,
     sourceTypes,
     catalogues,
     sources,
