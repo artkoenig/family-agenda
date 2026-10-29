@@ -41,6 +41,7 @@ import {
   createLlmEndpointAccess,
   createMessageAccess,
   createRecoveryKitAccess,
+  createSecretSweep,
   createSourceAccess,
   createSourceHealth,
   createServiceSupervision,
@@ -61,6 +62,7 @@ import {
   type MessageAccess,
   type RecoveryKitAccess,
   type SecretStore,
+  type SecretSweep,
   type SourceAccess,
   type ServiceSupervision,
   type SourcePolling,
@@ -111,6 +113,8 @@ export type Application = {
   timeZone: string;
   admins: AdminAccess;
   secrets: SecretStore;
+  /** Removes the secrets nothing refers to any more; the worker does when it starts. */
+  secretSweep: SecretSweep;
   recoveryKit: RecoveryKitAccess;
   familyMembers: FamilyMemberAccess;
   /** The Family Language and the OCR languages. */
@@ -247,6 +251,7 @@ export async function bootApplication(config: ApplicationConfig): Promise<Applic
   const services = createServiceSupervision({ registry, sourceTypes: sourceTypeRepository, catalogues: catalogueRepository });
   const endpoints = new PostgresLlmEndpointRepository(postgres.db);
   const llmEndpoint = createLlmEndpointAccess({ clock, endpoints, secrets });
+  const secretSweep = createSecretSweep({ clock, secrets, sources: sourceRepository, endpoints });
   const extraction = createExtraction({
     clock,
     timeZone,
@@ -273,6 +278,7 @@ export async function bootApplication(config: ApplicationConfig): Promise<Applic
     timeZone,
     admins,
     secrets,
+    secretSweep,
     recoveryKit,
     familyMembers,
     languages,

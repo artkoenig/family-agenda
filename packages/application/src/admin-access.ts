@@ -1,4 +1,4 @@
-import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import {
   isAcceptablePassword,
   isFamilyLanguage,
@@ -7,6 +7,7 @@ import {
   type Admin,
   type AdminId,
   type Email,
+  newId,
 } from "@family-agenda/domain";
 import type {
   AdminRepository,
@@ -58,7 +59,10 @@ export function createAdminAccess(deps: AdminAccessDeps) {
 
   async function startSession(adminId: AdminId): Promise<string> {
     const token = randomBytes(32).toString("base64url");
-    const expiresAt = new Date(clock.now().getTime() + sessionLifetimeMs);
+    const now = clock.now();
+    // Sessions no one used again until they expired go here, rather than never.
+    await sessions.removeExpired(now);
+    const expiresAt = new Date(now.getTime() + sessionLifetimeMs);
     await sessions.add({ id: hashToken(token), adminId, expiresAt });
     return token;
   }
@@ -71,7 +75,7 @@ export function createAdminAccess(deps: AdminAccessDeps) {
     if (!email) return { ok: false, problem: "invalid-email" };
     if (!isAcceptablePassword(password)) return { ok: false, problem: "password-too-short" };
     const admin: Admin = {
-      id: randomUUID() as AdminId,
+      id: newId() as AdminId,
       email,
       passwordHash: await passwordHasher.hash(password),
       createdAt: clock.now(),

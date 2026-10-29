@@ -1,5 +1,6 @@
-import { createCipheriv, createDecipheriv, randomBytes, randomUUID } from "node:crypto";
+import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 import type { SecretRef, SecretStore } from "@family-agenda/application";
+import { newId } from "@family-agenda/domain";
 import { eq } from "drizzle-orm";
 import { masterKeyLength } from "../file-master-key";
 import type { Database } from "./database";
@@ -29,7 +30,7 @@ export class EnvelopeSecretStore implements SecretStore {
   }
 
   async put(plaintext: string): Promise<SecretRef> {
-    const id = randomUUID();
+    const id = newId();
     // Both ciphertexts are bound to the id, so that rows cannot be swapped.
     const context = Buffer.from(id);
     const dataKey = randomBytes(dataKeyLength);
@@ -61,6 +62,11 @@ export class EnvelopeSecretStore implements SecretStore {
   async remove(ref: SecretRef): Promise<void> {
     if (!uuidPattern.test(ref)) return;
     await this.db.delete(secrets).where(eq(secrets.id, ref));
+  }
+
+  async list(): Promise<{ ref: SecretRef; storedAt: Date }[]> {
+    const rows = await this.db.select({ id: secrets.id, createdAt: secrets.createdAt }).from(secrets);
+    return rows.map((row) => ({ ref: row.id as SecretRef, storedAt: row.createdAt }));
   }
 }
 

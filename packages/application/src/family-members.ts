@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import {
   initialOf,
   maximumPhotoBytes,
@@ -8,6 +7,7 @@ import {
   type FamilyMemberId,
   type Photo,
   type PhotoType,
+  newId,
 } from "@family-agenda/domain";
 import type { BlobStore, Clock, FamilyMemberRepository } from "./ports";
 
@@ -63,7 +63,7 @@ export function createFamilyMemberAccess(deps: FamilyMembersDeps) {
         if (!stored.ok) return stored;
         photo = stored.photo;
       }
-      const id = randomUUID() as FamilyMemberId;
+      const id = newId() as FamilyMemberId;
       await members.add({ id, name, photo, createdAt: clock.now() });
       return { ok: true, id };
     },

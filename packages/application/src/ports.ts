@@ -98,6 +98,8 @@ export interface AdminSessionRepository {
   find(id: string): Promise<AdminSession | null>;
   remove(id: string): Promise<void>;
   removeAllOf(adminId: AdminId): Promise<void>;
+  /** Removes the sessions that expired at `now` or before. */
+  removeExpired(now: Date): Promise<void>;
 }
 
 /** Sign-in attempts that have not succeeded, counted per key (an account or a client). */
@@ -118,6 +120,8 @@ export interface SecretStore {
   /** The plaintext, or null if no secret has this reference. */
   get(ref: SecretRef): Promise<string | null>;
   remove(ref: SecretRef): Promise<void>;
+  /** Every secret it holds, with when it was stored. */
+  list(): Promise<{ ref: SecretRef; storedAt: Date }[]>;
 }
 
 /** Keeps files, such as photos and attachments, outside Postgres (ADR-0006). */
@@ -389,10 +393,11 @@ export interface SourceRepository {
   /** Assigns the Source to the Family Members, replacing those it was assigned to; none for the whole Family. */
   assign(id: SourceId, concerns: FamilyMemberId[]): Promise<void>;
   /**
-   * Removes the Source in one transaction with its Origins, raw messages, Revisions and Items.
+   * Removes the Source in one transaction with its Origins, raw messages and Revisions, and the
+   * Items no other Source names; those another Source names are recomputed with `recompute`.
    * Returns the BlobStore files of its raw messages, for the caller to remove.
    */
-  remove(id: SourceId): Promise<BlobRef[]>;
+  remove(id: SourceId, recompute: (kind: ItemKind, revisions: FoldableRevision[]) => ItemProjection): Promise<BlobRef[]>;
 }
 
 /** Why a Revision was rejected automatically (ADR-0009). */

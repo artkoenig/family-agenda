@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import {
   addDays,
   attributionOf,
@@ -21,6 +20,7 @@ import {
   type RawMessageId,
   type TimeSpan,
   type ViewId,
+  newId,
 } from "@family-agenda/domain";
 import type { ActivityLog, CurrentActivity } from "./activity";
 import { summariseFamilyMember, type FamilyMemberSummary } from "./family-members";
@@ -249,7 +249,7 @@ export function createViewAccess(deps: ViewsDeps) {
     ): Promise<{ ok: true; id: ViewId } | { ok: false; problem: ViewProblem }> {
       const checked = await checkSettings(input);
       if (!checked.ok) return checked;
-      const id = randomUUID() as ViewId;
+      const id = newId() as ViewId;
       await views.add({
         id,
         ...checked.settings,

@@ -1,5 +1,4 @@
-import { randomUUID } from "node:crypto";
-import { parseName, textIn, type FamilyMemberId, type MultilingualText, type SourceId, type SourceTypeId } from "@family-agenda/domain";
+import { newId, parseName, textIn, type FamilyMemberId, type MultilingualText, type SourceId, type SourceTypeId } from "@family-agenda/domain";
 import type {
   BlobStore,
   CatalogueRepository,
@@ -22,6 +21,7 @@ import type {
 import { usableEntries } from "./catalogues";
 import { enabledSourceType } from "./enabled-source-type";
 import { isPollInterval } from "./poll-interval";
+import { project } from "./revisions";
 import { healthOf, type SourceHealth } from "./source-health";
 
 export type SourcesDeps = {
@@ -244,7 +244,7 @@ export function createSourceAccess(deps: SourcesDeps) {
       for (const [key, value] of [...Object.entries(given.secrets), ...ofPlugin(prepared.secrets)]) {
         refs[key] = await secrets.put(String(value));
       }
-      const id = randomUUID() as SourceId;
+      const id = newId() as SourceId;
       await sources.add({
         id,
         sourceTypeId,
@@ -353,7 +353,7 @@ export function createSourceAccess(deps: SourcesDeps) {
       if (!source) return;
       const sourceType = await enabled(source.sourceTypeId);
       const context = await contextOf(source);
-      const files = await sources.remove(id);
+      const files = await sources.remove(id, project);
       await sourceType?.sourceRemoved(context);
       for (const ref of Object.values(source.secrets)) await secrets.remove(ref);
       for (const file of files) await blobs.remove(file);

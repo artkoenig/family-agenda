@@ -33,6 +33,39 @@ describe.each([
     expect(await secrets.get(ref)).toBeNull();
     expect(await secrets.get("not-a-reference" as SecretRef)).toBeNull();
   });
+
+  it("lists the secrets it holds", async () => {
+    instance = await boot();
+    const { secrets } = instance.app;
+    const kept = await secrets.put("hunter2");
+    await secrets.remove(await secrets.put("gone"));
+
+    expect((await secrets.list()).map((secret) => secret.ref)).toEqual([kept]);
+  });
+});
+
+describe("the secret sweep", () => {
+  let instance: TestInstance;
+  afterEach(async () => {
+    await instance.close();
+  });
+
+  it("removes the secrets nothing refers to, once they are an hour old", async () => {
+    instance = await bootForTest();
+    const { secrets, secretSweep, llmEndpoint } = instance.app;
+    await llmEndpoint.save({ baseUrl: "https://llm.example.org/v1", model: "large", apiKey: "sk-key", thirdPartiesAcknowledged: true });
+    const forgotten = await secrets.put("left behind by a crash");
+    const fresh = await secrets.put("about to be referred to");
+    // The clock stands at 07:00; all but the fresh one were stored two hours before.
+    await instance.query(`UPDATE secrets SET created_at = '2026-09-14T05:00:00Z' WHERE id <> '${fresh}'`);
+
+    expect(await secretSweep.sweep()).toBe(1);
+
+    expect(await secrets.get(forgotten)).toBeNull();
+    expect(await secrets.get(fresh)).toBe("about to be referred to");
+    expect(await llmEndpoint.current()).toMatchObject({ hasApiKey: true });
+    expect((await secrets.list()).length).toBe(2);
+  });
 });
 
 describe("secrets at rest", () => {

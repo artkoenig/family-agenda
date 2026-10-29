@@ -10,6 +10,10 @@ const servicesTickMs = 5_000;
 const worker = await bootWorker(readConfig());
 console.log("Family Agenda worker started");
 
+worker.secretSweep.sweep().catch((error: unknown) => {
+  console.error("Removing secrets nothing refers to failed:", error);
+});
+
 let polling: Promise<void> | null = null;
 const poll = () => {
   // A tick that finds the last one still running skips, rather than polling a Source twice.

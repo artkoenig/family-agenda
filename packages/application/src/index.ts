@@ -12,6 +12,7 @@ export * from "./poll-interval";
 export * from "./polling";
 export * from "./ports";
 export * from "./recovery-kit";
+export * from "./secret-sweep";
 export * from "./services";
 export * from "./source-health";
 export * from "./source-types";
