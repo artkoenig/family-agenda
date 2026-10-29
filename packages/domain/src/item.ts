@@ -5,10 +5,14 @@ export type OriginId = string & { readonly __brand: "OriginId" };
 /** A message, such as a mail, kept with its attachments for extraction (ADR-0006). */
 export type RawMessageId = string & { readonly __brand: "RawMessageId" };
 
-export type ItemKind = "event" | "lesson" | "timetable-change" | "task" | "notice";
+export const itemKinds = ["event", "lesson", "timetable-change", "task", "notice"] as const;
+
+export type ItemKind = (typeof itemKinds)[number];
 
 /** What a Revision states about its Item (ADR-0009). */
-export type Act = "create" | "change" | "move" | "cancel";
+export const acts = ["create", "change", "move", "cancel"] as const;
+
+export type Act = (typeof acts)[number];
 
 /** One statement about an Item, appended and never changed except for being rejected or restored. */
 export type Revision = {

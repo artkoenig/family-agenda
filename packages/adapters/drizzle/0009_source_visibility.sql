@@ -1,1 +1,0 @@
-ALTER TABLE "sources" ADD COLUMN "shown" boolean DEFAULT true NOT NULL;

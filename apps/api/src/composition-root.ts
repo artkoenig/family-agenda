@@ -41,6 +41,7 @@ import {
   createLlmEndpointAccess,
   createMessageAccess,
   createRecoveryKitAccess,
+  createSecretSweep,
   createSourceAccess,
   createSourceHealth,
   createServiceSupervision,
@@ -61,6 +62,7 @@ import {
   type MessageAccess,
   type RecoveryKitAccess,
   type SecretStore,
+  type SecretSweep,
   type SourceAccess,
   type ServiceSupervision,
   type SourcePolling,
@@ -111,6 +113,8 @@ export type Application = {
   timeZone: string;
   admins: AdminAccess;
   secrets: SecretStore;
+  /** Removes the secrets nothing refers to any more; the worker does when it starts. */
+  secretSweep: SecretSweep;
   recoveryKit: RecoveryKitAccess;
   familyMembers: FamilyMemberAccess;
   /** The Family Language and the OCR languages. */
@@ -162,7 +166,7 @@ export async function bootApplication(config: ApplicationConfig): Promise<Applic
 
   const blobs = config.blobStore ?? new FileBlobStore(config.blobDirectory);
   const members = new PostgresFamilyMemberRepository(postgres.db);
-  const familyMembers = createFamilyMemberAccess({ clock, families, members, blobs });
+  const familyMembers = createFamilyMemberAccess({ clock, members, blobs });
 
   const ocrModels = new TessdataDirectory({
     directory: config.tessdataDirectory,
@@ -180,7 +184,7 @@ export async function bootApplication(config: ApplicationConfig): Promise<Applic
 
   const timeZone = config.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
   const items = new PostgresItemRepository(postgres.db);
-  const activity = createActivityLog({ clock, families, activities: new PostgresActivityRepository(postgres.db) });
+  const activity = createActivityLog({ clock, activities: new PostgresActivityRepository(postgres.db) });
   const registry = await SourceRegistry.discover([
     config.workspacePackages ?? defaultWorkspacePackages,
     config.pluginDirectory,
@@ -189,7 +193,6 @@ export async function bootApplication(config: ApplicationConfig): Promise<Applic
   const sourceRepository = new PostgresSourceRepository(postgres.db);
   const sourceHealth = createSourceHealth({
     clock,
-    families,
     registry,
     sourceTypes: sourceTypeRepository,
     sources: sourceRepository,
@@ -225,7 +228,6 @@ export async function bootApplication(config: ApplicationConfig): Promise<Applic
   const sources = createSourceAccess({
     clock,
     timeZone,
-    families,
     members,
     registry,
     sourceTypes: sourceTypeRepository,
@@ -248,7 +250,8 @@ export async function bootApplication(config: ApplicationConfig): Promise<Applic
   });
   const services = createServiceSupervision({ registry, sourceTypes: sourceTypeRepository, catalogues: catalogueRepository });
   const endpoints = new PostgresLlmEndpointRepository(postgres.db);
-  const llmEndpoint = createLlmEndpointAccess({ clock, families, endpoints, secrets });
+  const llmEndpoint = createLlmEndpointAccess({ clock, endpoints, secrets });
+  const secretSweep = createSecretSweep({ clock, secrets, sources: sourceRepository, endpoints });
   const extraction = createExtraction({
     clock,
     timeZone,
@@ -275,6 +278,7 @@ export async function bootApplication(config: ApplicationConfig): Promise<Applic
     timeZone,
     admins,
     secrets,
+    secretSweep,
     recoveryKit,
     familyMembers,
     languages,

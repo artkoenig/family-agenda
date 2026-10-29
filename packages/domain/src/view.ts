@@ -1,5 +1,4 @@
 import { daysBetween, type LocalDate } from "./calendar";
-import type { FamilyId } from "./family";
 import type { FamilyMemberId } from "./family-member";
 
 export type ViewId = string & { readonly __brand: "ViewId" };
@@ -7,7 +6,6 @@ export type ViewId = string & { readonly __brand: "ViewId" };
 /** A View's only settings are its preselected Family Members and its horizon. */
 export type View = {
   id: ViewId;
-  familyId: FamilyId;
   /** Whom the View is for, and its quick filter offers; none means the whole Family. */
   preselected: FamilyMemberId[];
   /** How many days the timeline shows, today included. */

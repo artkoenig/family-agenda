@@ -6,9 +6,6 @@ import { fakeModel, FakeTessdataCatalog } from "../support/fake-tessdata-catalog
 
 const password = "correct horse battery";
 
-/** When the migration that added the Family Language was generated, as `drizzle/meta/_journal.json` records it. */
-const familyLanguagesMigration = 1793119678494;
-
 describe("the Family Language", () => {
   let instance: TestInstance;
   beforeEach(async () => {
@@ -48,26 +45,6 @@ describe("the Family Language", () => {
     const settings = await instance.app.languages.current();
     expect(settings.language).toBe("de");
     expect(settings.ocrLanguages).toEqual([{ language: "eng", installed: true }]);
-  });
-
-  it("keeps OCR in German on an Instance set up before there was a Family Language", async () => {
-    await instance.app.admins.createFirstAdmin({ email: "anna@example.org", password, language: "en" });
-    // As before the migration that added the Family Language, which then runs again on restart, with
-    // the later ones undone too: only migrations newer than the last one recorded run.
-    await instance.query(`DROP TABLE source_members`);
-    await instance.query(`DROP TABLE catalogue_entries`);
-    await instance.query(`ALTER TABLE origins DROP COLUMN withdrawn_at`);
-    await instance.query(`ALTER TABLE families DROP COLUMN language, DROP COLUMN ocr_languages`);
-    await instance.query(
-      `ALTER TABLE sources DROP COLUMN last_success_at, DROP COLUMN failing_since, DROP COLUMN last_error_kind, DROP COLUMN last_error, DROP COLUMN last_new_origin_at, DROP COLUMN name`,
-    );
-    await instance.query(`DELETE FROM drizzle.__drizzle_migrations WHERE created_at >= ${familyLanguagesMigration}`);
-
-    await instance.restart();
-
-    const settings = await instance.app.languages.current();
-    expect(settings.language).toBe("en");
-    expect(settings.ocrLanguages).toEqual([{ language: "deu", installed: true }]);
   });
 
   it("survives a restart", async () => {

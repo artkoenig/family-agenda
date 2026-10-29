@@ -62,6 +62,11 @@ export class EnvelopeSecretStore implements SecretStore {
     if (!uuidPattern.test(ref)) return;
     await this.db.delete(secrets).where(eq(secrets.id, ref));
   }
+
+  async list(): Promise<{ ref: SecretRef; storedAt: Date }[]> {
+    const rows = await this.db.select({ id: secrets.id, createdAt: secrets.createdAt }).from(secrets);
+    return rows.map((row) => ({ ref: row.id as SecretRef, storedAt: row.createdAt }));
+  }
 }
 
 function seal(key: Buffer, plaintext: Buffer, context: Buffer): Buffer {

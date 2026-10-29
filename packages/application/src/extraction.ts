@@ -100,7 +100,7 @@ export function createExtraction(deps: ExtractionDeps) {
 
   async function readScans(pdf: Uint8Array, pages: number[], endpoint: LlmEndpoint): Promise<AttachmentReading<string[]>> {
     if (!endpoint.vision) {
-      const { ocrLanguages } = await families.languages(await families.theFamily());
+      const { ocrLanguages } = await families.languages();
       // Without a chosen model OCR would read worse in the others, so the scan stays unread.
       const installed = new Set((await ocrModels.installed()).map((model) => model.language));
       const missing = ocrLanguages.find((language) => !installed.has(language));
@@ -153,7 +153,6 @@ export function createExtraction(deps: ExtractionDeps) {
     await items.recordExtraction(
       {
         messageId: message.id,
-        familyId: message.familyId,
         sourceId: message.sourceId,
         at: clock.now(),
         revisions,
@@ -172,7 +171,6 @@ export function createExtraction(deps: ExtractionDeps) {
       await items.recordExtraction(
         {
           messageId: message.id,
-          familyId: message.familyId,
           sourceId: message.sourceId,
           at: clock.now(),
           revisions: [],
