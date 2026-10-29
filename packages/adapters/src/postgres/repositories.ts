@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import type {
   ActivityKind,
   ActivityRepository,
@@ -51,8 +51,8 @@ import type {
   View,
   ViewId,
 } from "@family-agenda/domain";
-import { defaultFamilyLanguage, isFamilyLanguage, newId } from "@family-agenda/domain";
-import { and, asc, eq, gt, inArray, isNotNull, isNull, lt, lte, or, sql, type SQL } from "drizzle-orm";
+import { defaultFamilyLanguage, isFamilyLanguage } from "@family-agenda/domain";
+import { and, asc, eq, gt, gte, inArray, isNotNull, isNull, lt, lte, or, sql, type SQL } from "drizzle-orm";
 import { uuidPattern } from "../uuid";
 import type { Database } from "./database";
 import {
@@ -632,7 +632,7 @@ export class PostgresItemRepository implements ItemRepository {
         const [row] = await tx
           .insert(origins)
           .values({
-            id: newId(),
+            id: randomUUID(),
             sourceId: run.sourceId,
             externalId: origin.externalId,
             attributes: origin.attributes,
@@ -844,12 +844,13 @@ export class PostgresItemRepository implements ItemRepository {
       .where(
         and(
           isNotNull(items.folded),
-          sql`${items.window} && tstzrange(${from}::timestamptz, ${to}::timestamptz, '[]')`,
+          to ? lte(items.windowFrom, to) : undefined,
+          gte(items.windowTo, from),
           // Items of a hidden Source stay recorded, but leave the timeline and the feeds.
           sql`NOT EXISTS (SELECT 1 FROM ${itemKeys} INNER JOIN ${sources} ON ${sources.id} = ${itemKeys.sourceId} WHERE ${itemKeys.itemId} = ${items.id} AND NOT ${sources.shown})`,
         ),
       )
-      .orderBy(sql`lower(${items.window})`, asc(items.createdAt));
+      .orderBy(asc(items.windowFrom), asc(items.createdAt));
     if (rows.length === 0) return [];
     const ids = rows.map((row) => row.id);
     const links = await this.db
@@ -918,7 +919,7 @@ export class PostgresItemRepository implements ItemRepository {
       const appended = await tx
         .insert(revisions)
         .values({
-          id: newId(),
+          id: randomUUID(),
           itemId: item.id,
           originId: origin.originId,
           act: revision.act,
@@ -948,7 +949,7 @@ export class PostgresItemRepository implements ItemRepository {
       .innerJoin(items, eq(items.id, itemKeys.itemId))
       .where(and(eq(itemKeys.sourceId, origin.sourceId), eq(itemKeys.itemKey, revision.itemKey)));
     if (known) return { id: known.id as ItemId, kind: known.kind as ItemKind };
-    const id = newId() as ItemId;
+    const id = randomUUID() as ItemId;
     await tx.insert(items).values({ id, kind: revision.itemKind, createdAt: origin.at });
     await tx.insert(itemKeys).values({ sourceId: origin.sourceId, itemKey: revision.itemKey, itemId: id });
     return { id, kind: revision.itemKind };
@@ -971,7 +972,11 @@ async function recomputeAll(tx: Transaction, reached: Map<ItemId, ItemKind>, rec
     const projection = recompute(kind, all as FoldableRevision[]);
     await tx
       .update(items)
-      .set({ folded: projection.folded, window: projection.window })
+      .set({
+        folded: projection.folded,
+        windowFrom: projection.window?.from ?? null,
+        windowTo: projection.window?.to ?? null,
+      })
       .where(eq(items.id, id));
   }
 }

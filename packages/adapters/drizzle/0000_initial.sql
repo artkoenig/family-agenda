@@ -56,8 +56,11 @@ CREATE TABLE "items" (
 	"id" uuid PRIMARY KEY NOT NULL,
 	"kind" text NOT NULL,
 	"folded" jsonb,
-	"window" "tstzrange",
+	"window_from" timestamp with time zone,
+	"window_to" timestamp with time zone,
 	"created_at" timestamp with time zone NOT NULL,
+	CONSTRAINT "items_window_complete" CHECK ((("items"."window_from" IS NULL) = ("items"."window_to" IS NULL))),
+	CONSTRAINT "items_window_ordered" CHECK ("items"."window_from" <= "items"."window_to"),
 	CONSTRAINT "items_kind_known" CHECK ("items"."kind" IN ('event', 'lesson', 'timetable-change', 'task', 'notice'))
 );
 --> statement-breakpoint
@@ -223,7 +226,7 @@ ALTER TABLE "view_preselections" ADD CONSTRAINT "view_preselections_family_membe
 CREATE INDEX "admin_sessions_admin_id_idx" ON "admin_sessions" USING btree ("admin_id");--> statement-breakpoint
 CREATE INDEX "admin_sessions_expires_at_idx" ON "admin_sessions" USING btree ("expires_at");--> statement-breakpoint
 CREATE INDEX "item_keys_item_id_idx" ON "item_keys" USING btree ("item_id");--> statement-breakpoint
-CREATE INDEX "items_window_idx" ON "items" USING gist ("window");--> statement-breakpoint
+CREATE INDEX "items_window_idx" ON "items" USING btree ("window_from","window_to");--> statement-breakpoint
 CREATE INDEX "raw_messages_pending_idx" ON "raw_messages" USING btree ("received_at") WHERE "raw_messages"."extracted_at" IS NULL;--> statement-breakpoint
 CREATE INDEX "raw_messages_thread_idx" ON "raw_messages" USING btree ("thread");--> statement-breakpoint
 CREATE INDEX "revisions_item_id_idx" ON "revisions" USING btree ("item_id");--> statement-breakpoint

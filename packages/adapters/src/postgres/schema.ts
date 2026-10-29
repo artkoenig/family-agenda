@@ -20,12 +20,6 @@ import {
 
 const bytea = customType<{ data: Buffer }>({ dataType: () => "bytea" });
 
-/** Two instants, both included; written only, as queries compare it in SQL. */
-const tstzrange = customType<{ data: { from: Date; to: Date }; driverData: string }>({
-  dataType: () => "tstzrange",
-  toDriver: ({ from, to }) => `[${from.toISOString()},${to.toISOString()}]`,
-});
-
 /**
  * The key of a table that holds at most one row, as an Instance serves exactly one Family
  * (ADR-0013); together with `singleRow`, it can only be `true`.
@@ -308,11 +302,14 @@ export const items = pgTable(
     kind: text("kind").notNull(),
     folded: jsonb("folded").$type<{ fields: Record<string, unknown>; cancelled: boolean }>(),
     /** Instants certainly before and after the Item's time, to find it by. */
-    window: tstzrange("window"),
+    windowFrom: timestamptz("window_from"),
+    windowTo: timestamptz("window_to"),
     createdAt: timestamptz("created_at").notNull(),
   },
   (table) => [
-    index("items_window_idx").using("gist", table.window),
+    index("items_window_idx").on(table.windowFrom, table.windowTo),
+    check("items_window_complete", allOrNone(table.windowFrom, table.windowTo)),
+    check("items_window_ordered", sql`${table.windowFrom} <= ${table.windowTo}`),
     oneOf("items_kind_known", table.kind, itemKinds),
   ],
 );

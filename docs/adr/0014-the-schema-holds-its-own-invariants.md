@@ -10,8 +10,7 @@ What the code assumed about the data, Postgres now enforces, so that a bug or a 
 - **Checks rather than enum types.** Kinds, acts and other closed lists of values are `CHECK (… IN (…))` constraints built from the lists in `packages/domain`, as is what columns must hold together, such as a failure's time, kind and message. A check changes in one statement; an enum type cannot lose a value.
 - **No copies.** A raw message is keyed by its Origin, and takes its Source from it.
 - **Run state apart from configuration.** How a Source's runs went is in `source_health`, one row per Source, which the worker writes on every run; `sources` holds what an Admin configures.
-- **Ids that sort.** Ids are UUIDs of version 7, made in the application, so that new rows land at the end of their indexes. Orders are identity columns.
-- **Time windows as ranges.** An Item's window is a `tstzrange` with a GiST index, which finds the Items overlapping a time directly.
+- **Identity columns.** Orders such as a Source's position are identity columns rather than `serial`.
 
 ## Consequences
 
@@ -19,5 +18,7 @@ What the code assumed about the data, Postgres now enforces, so that a bug or a 
 - Removing a Source reads the files of its messages before the cascade, as the BlobStore is outside Postgres.
 
 ## Considered Options
+
+- **UUIDs of version 7 and an Item's window as a `tstzrange` with a GiST index**: sort and search better in theory, but at the size of one Family's data they gain nothing measurable and add an id generator and a column type of our own.
 
 - **Removing secrets in the transaction that stops referring to them**: would need the Postgres repositories to write the SecretStore's table behind its port, and would leave secrets behind with any other SecretStore.

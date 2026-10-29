@@ -10,4 +10,3 @@ export * from "./mention";
 export * from "./network";
 export * from "./language";
 export * from "./attribution";
-export * from "./id";

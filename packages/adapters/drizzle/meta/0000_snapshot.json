@@ -1,5 +1,5 @@
 {
-  "id": "77243d6b-94c7-4ed1-b431-48b7bf7ba9c3",
+  "id": "09e2206f-50c2-4b0b-aeac-ee27a99129ff",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -432,9 +432,15 @@
           "primaryKey": false,
           "notNull": false
         },
-        "window": {
-          "name": "window",
-          "type": "tstzrange",
+        "window_from": {
+          "name": "window_from",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "window_to": {
+          "name": "window_to",
+          "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
         },
@@ -450,7 +456,13 @@
           "name": "items_window_idx",
           "columns": [
             {
-              "expression": "window",
+              "expression": "window_from",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "window_to",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -458,7 +470,7 @@
           ],
           "isUnique": false,
           "concurrently": false,
-          "method": "gist",
+          "method": "btree",
           "with": {}
         }
       },
@@ -467,6 +479,14 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {
+        "items_window_complete": {
+          "name": "items_window_complete",
+          "value": "((\"items\".\"window_from\" IS NULL) = (\"items\".\"window_to\" IS NULL))"
+        },
+        "items_window_ordered": {
+          "name": "items_window_ordered",
+          "value": "\"items\".\"window_from\" <= \"items\".\"window_to\""
+        },
         "items_kind_known": {
           "name": "items_kind_known",
           "value": "\"items\".\"kind\" IN ('event', 'lesson', 'timetable-change', 'task', 'notice')"

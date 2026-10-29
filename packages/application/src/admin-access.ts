@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import {
   isAcceptablePassword,
   isFamilyLanguage,
@@ -7,7 +7,6 @@ import {
   type Admin,
   type AdminId,
   type Email,
-  newId,
 } from "@family-agenda/domain";
 import type {
   AdminRepository,
@@ -75,7 +74,7 @@ export function createAdminAccess(deps: AdminAccessDeps) {
     if (!email) return { ok: false, problem: "invalid-email" };
     if (!isAcceptablePassword(password)) return { ok: false, problem: "password-too-short" };
     const admin: Admin = {
-      id: newId() as AdminId,
+      id: randomUUID() as AdminId,
       email,
       passwordHash: await passwordHasher.hash(password),
       createdAt: clock.now(),

@@ -1,4 +1,5 @@
-import { newId, parseName, textIn, type FamilyMemberId, type MultilingualText, type SourceId, type SourceTypeId } from "@family-agenda/domain";
+import { randomUUID } from "node:crypto";
+import { parseName, textIn, type FamilyMemberId, type MultilingualText, type SourceId, type SourceTypeId } from "@family-agenda/domain";
 import type {
   BlobStore,
   CatalogueRepository,
@@ -244,7 +245,7 @@ export function createSourceAccess(deps: SourcesDeps) {
       for (const [key, value] of [...Object.entries(given.secrets), ...ofPlugin(prepared.secrets)]) {
         refs[key] = await secrets.put(String(value));
       }
-      const id = newId() as SourceId;
+      const id = randomUUID() as SourceId;
       await sources.add({
         id,
         sourceTypeId,
