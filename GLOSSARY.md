@@ -82,6 +82,10 @@ _Avoid_: Class, period
 A deviation from the Timetable for a specific date, such as a cancellation or substitution.
 _Avoid_: Substitution, update
 
+**School Day**:
+The Lessons of a Family Member on one date, which a View shows as one row until the last Lesson that takes place, and a feed as one all-day entry; not an Item of its own.
+_Avoid_: School row, school entry
+
 **Task**:
 Something a Family Member or parent must do or bring, optionally with a Deadline; a packing list is a Task with items to bring.
 _Avoid_: Todo, action item, packing list (as a separate type)

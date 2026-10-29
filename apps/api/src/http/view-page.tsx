@@ -3,7 +3,10 @@ import type {
   FamilyMemberSummary,
   Showing,
   TimelineDays,
+  TimelineDay,
   TimelineEvent,
+  TimelineSchoolDay,
+  TimelineTimetableChange,
   ViewPage,
 } from "@family-agenda/application";
 import { addDays, daysBetween, type FamilyMemberId, type LocalDate } from "@family-agenda/domain";
@@ -207,10 +210,19 @@ export function ViewDays(props: { page: ViewPage; earlier?: boolean; later?: boo
   );
 }
 
-function DayEntry(props: { page: ViewPage; day: ViewPage["days"][number] }) {
+function DayEntry(props: { page: ViewPage; day: TimelineDay }) {
   const { page, day } = props;
   const { t, locale } = useTranslation();
   const relative = t.view.relativeDays[String(daysBetween(page.now.date, day.date))];
+  const rows = rowsOf(day);
+  const show = (row: DayRow) =>
+    row.kind === "event" ? (
+      <EventRow row={row.row} members={page.members} />
+    ) : row.kind === "school" ? (
+      <SchoolDayRow row={row.row} members={page.members} />
+    ) : (
+      <TimetableChangeRow row={row.row} members={page.members} />
+    );
   return (
     <li class={day.date === page.now.date ? "fam-day fam-day--today" : "fam-day"} data-date={day.date}>
       <h2 class="fam-day__header">
@@ -219,15 +231,140 @@ function DayEntry(props: { page: ViewPage; day: ViewPage["days"][number] }) {
       </h2>
       {day.date === page.now.date ? (
         <>
-          {day.items.filter((row) => row.earlier).map((row) => <EventRow row={row} members={page.members} />)}
+          {rows.filter((row) => row.row.earlier).map(show)}
           <div class="fam-now">{t.view.now(page.now.time)}</div>
-          {day.items.filter((row) => !row.earlier).map((row) => <EventRow row={row} members={page.members} />)}
+          {rows.filter((row) => !row.row.earlier).map(show)}
         </>
       ) : (
-        day.items.map((row) => <EventRow row={row} members={page.members} />)
+        rows.map(show)
       )}
-      {day.items.length === 0 ? <p class="fam-empty">{t.view.nothingPlanned}</p> : null}
+      {rows.length === 0 ? <p class="fam-empty">{t.view.nothingPlanned}</p> : null}
     </li>
+  );
+}
+
+type DayRow =
+  | { kind: "event"; row: TimelineEvent }
+  | { kind: "school"; row: TimelineSchoolDay }
+  | { kind: "change"; row: TimelineTimetableChange };
+
+/**
+ * A day's rows in order of time: all-day Events first, and a school day before the Timetable
+ * Changes and Events that start with it.
+ */
+function rowsOf(day: TimelineDay): DayRow[] {
+  const rows: DayRow[] = [
+    ...day.schoolDays.map((row) => ({ kind: "school" as const, row })),
+    ...day.timetableChanges.map((row) => ({ kind: "change" as const, row })),
+    ...day.items.map((row) => ({ kind: "event" as const, row })),
+  ];
+  const key = (row: DayRow) => (row.kind === "event" ? (row.row.span.allDay ? "" : (row.row.from ?? "00:00")) : row.row.from);
+  // A stable sort keeps the Events in the order the timeline gives them.
+  return rows.sort((a, b) => key(a).localeCompare(key(b)));
+}
+
+/** The avatars of the Family Members a row concerns, none if it concerns the whole Family. */
+function Concerned(props: { concerns: TimelineEvent["concerns"]; members: FamilyMemberSummary[] }) {
+  const { concerns } = props;
+  const concerned = concerns === "whole-family" ? [] : props.members.filter((member) => concerns.includes(member.id));
+  return concerned.length > 0 ? (
+    <span class="fam-event__who" aria-label={concerned.map((member) => member.name).join(", ")} role="img">
+      <span class="fam-avatars">
+        {concerned.map((member) => (
+          <Avatar member={member} size="sm" />
+        ))}
+      </span>
+    </span>
+  ) : null;
+}
+
+/** A school day as one row, "School until hh:mm", that lists its Lessons on tap. */
+function SchoolDayRow(props: { row: TimelineSchoolDay; members: FamilyMemberSummary[] }) {
+  const { row } = props;
+  const { t } = useTranslation();
+  const v = t.view;
+  const classes = ["fam-event", row.cancelled ? "fam-event--cancelled" : "", row.earlier ? "fam-event--earlier" : ""]
+    .filter(Boolean)
+    .join(" ");
+  return (
+    <details class={classes}>
+      <summary>
+        <span class="fam-event__time">{row.from}</span>
+        <span class="fam-event__title">
+          {row.cancelled ? (
+            <>
+              <s>{v.school}</s> <span class="fam-event__tag">{v.cancelled}</span>
+            </>
+          ) : (
+            v.schoolUntil(row.until)
+          )}
+        </span>
+        <Concerned concerns={row.concerns} members={props.members} />
+      </summary>
+      <ol class="fam-lessons" aria-label={v.lessons}>
+        {row.lessons.map((lesson) => (
+          <li class={lesson.cancelled ? "fam-lesson fam-lesson--cancelled" : "fam-lesson"}>
+            <span class="fam-lesson__time">
+              {lesson.from} – {lesson.until}
+            </span>
+            <span class="fam-lesson__subject">{lesson.cancelled ? <s>{lesson.subject}</s> : lesson.subject}</span>
+            <span class="fam-lesson__where">{[lesson.room, lesson.teacher].filter(Boolean).join(" · ")}</span>
+          </li>
+        ))}
+      </ol>
+    </details>
+  );
+}
+
+/** A Timetable Change as its own highlighted row, such as "Physics: cancelled", with what changed on tap. */
+function TimetableChangeRow(props: { row: TimelineTimetableChange; members: FamilyMemberSummary[] }) {
+  const { row } = props;
+  const { t } = useTranslation();
+  const v = t.view;
+  const classes = ["fam-event", "fam-event--change", row.earlier ? "fam-event--earlier" : ""].filter(Boolean).join(" ");
+  const label = changeLabel({ ...row, note: null }, t);
+  return (
+    <details class={classes}>
+      <summary>
+        <span class="fam-event__time">
+          {row.from} – {row.until}
+        </span>
+        <span class="fam-event__title">
+          <span aria-hidden="true">⚠ </span>
+          {row.subject}: {label}
+        </span>
+        <Concerned concerns={row.concerns} members={props.members} />
+      </summary>
+      <dl class="fam-event__details">
+        <dt>{v.timetableChange}</dt>
+        <dd>
+          {row.subject}: {label}
+        </dd>
+        {row.room ? (
+          <>
+            <dt>{v.where}</dt>
+            <dd>
+              {row.room}
+              {row.previousRoom && row.previousRoom !== row.room ? ` (${v.instead(row.previousRoom)})` : ""}
+            </dd>
+          </>
+        ) : null}
+        {row.teacher && row.previousTeacher && row.previousTeacher !== row.teacher ? (
+          <>
+            <dt>{v.teacher}</dt>
+            <dd>
+              {row.teacher} ({v.instead(row.previousTeacher)})
+            </dd>
+          </>
+        ) : null}
+        {row.note ? (
+          <>
+            <dt>{v.note}</dt>
+            <dd>{row.note}</dd>
+          </>
+        ) : null}
+      </dl>
+    </details>
   );
 }
 
@@ -237,7 +374,6 @@ function DayEntry(props: { page: ViewPage; day: ViewPage["days"][number] }) {
  */
 function EventRow(props: { row: TimelineEvent; members: FamilyMemberSummary[] }) {
   const { row } = props;
-  const concerned = row.concerns === "whole-family" ? [] : props.members.filter((member) => row.concerns.includes(member.id));
   const translation = useTranslation();
   const { t } = translation;
   const v = t.view;
@@ -257,15 +393,7 @@ function EventRow(props: { row: TimelineEvent; members: FamilyMemberSummary[] })
             row.title
           )}
         </span>
-        {concerned.length > 0 ? (
-          <span class="fam-event__who" aria-label={concerned.map((member) => member.name).join(", ")} role="img">
-            <span class="fam-avatars">
-              {concerned.map((member) => (
-                <Avatar member={member} size="sm" />
-              ))}
-            </span>
-          </span>
-        ) : null}
+        <Concerned concerns={row.concerns} members={props.members} />
       </summary>
       <dl class="fam-event__details">
         <dt>{v.when}</dt>
@@ -312,6 +440,21 @@ function timeLabel(row: TimelineEvent, t: Catalogue): string {
   if (row.from) return t.view.from(row.from);
   if (row.until) return t.view.until(row.until);
   return t.view.allDay;
+}
+
+/**
+ * What a Timetable Change did to its Lesson, after the subject: "cancelled", "substituted by Ms
+ * Weber" or "moved to room 204", with the school's note if it wrote one.
+ */
+export function changeLabel(change: TimelineTimetableChange, t: Catalogue): string {
+  const { changed } = t.view;
+  const label =
+    change.change === "cancellation"
+      ? changed.cancellation
+      : change.change === "substitution"
+        ? changed.substitution(change.teacher)
+        : changed["room-change"](change.room);
+  return change.note ? `${label} (${change.note})` : label;
 }
 
 /** The whole span of an Event, as its details show it, in the Translation's language. */

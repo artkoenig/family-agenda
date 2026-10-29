@@ -178,6 +178,30 @@ export type EventSpan =
  */
 export type EventFields = { title?: string; span?: EventSpan; place?: string | null };
 
+/** When a Lesson takes place, between two ISO 8601 instants; never all day. */
+export type LessonSpan = { allDay: false; start: string; end: string };
+
+/**
+ * The fields of a Lesson, as it takes place. A create states `subject` and `span`, a move states
+ * `span`; a change states any of them. A cancel states that it does not take place, and a later
+ * create that it does again.
+ */
+export type LessonFields = { subject?: string; span?: LessonSpan; room?: string | null; teacher?: string | null };
+
+/**
+ * The fields of a Timetable Change: a Lesson's, as it takes place, with what changed and what it
+ * was before. A create states `change`, `subject` and `span`. A cancel withdraws the Timetable
+ * Change, as a school does that takes a cancellation back. Its Item key is its own, not its
+ * Lesson's.
+ */
+export type TimetableChangeFields = LessonFields & {
+  change?: "cancellation" | "substitution" | "room-change";
+  previousRoom?: string | null;
+  previousTeacher?: string | null;
+  /** What the school wrote about it, such as "Teacher ill". */
+  note?: string | null;
+};
+
 /** One appearance of an Item in a Source. */
 export type Origin = {
   /** Identifies the Origin within its Source, such as a message id. */
