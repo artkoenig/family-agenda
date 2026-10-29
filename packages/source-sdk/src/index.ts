@@ -160,7 +160,7 @@ export type PluginRevision = {
   /** Identifies the Item within the Source, so that later Revisions reach the same Item. */
   itemKey: string;
   action: (typeof revisionActions)[number];
-  /** The Item kind's fields this Revision states, such as `EventFields` for an Event. */
+  /** The Item kind's fields this Revision states, such as `EventFields` for an Event or `TaskFields` for a Task. */
   fields: JsonObject;
 };
 
@@ -201,6 +201,14 @@ export type TimetableChangeFields = LessonFields & {
   /** What the school wrote about it, such as "Teacher ill". */
   note?: string | null;
 };
+
+/**
+ * The fields of a Task: something to do or bring, by `deadline` (`YYYY-MM-DD`) if it has one. A
+ * packing list is one Task with its things in `bring`. A create states `title`, a move states
+ * `deadline`; a change states any of them. Whether a Task is done is never a Source's to say:
+ * only the Family ticks it.
+ */
+export type TaskFields = { title?: string; deadline?: string | null; bring?: string[] };
 
 /** One appearance of an Item in a Source. */
 export type Origin = {

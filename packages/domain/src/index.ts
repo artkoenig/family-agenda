@@ -7,6 +7,7 @@ export * from "./view";
 export * from "./item";
 export * from "./event";
 export * from "./lesson";
+export * from "./task";
 export * from "./mention";
 export * from "./network";
 export * from "./language";

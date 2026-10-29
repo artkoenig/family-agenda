@@ -112,6 +112,7 @@ export const de: Catalogue = {
     failing: (count) => `${count} gestört`,
     noneYet: "Noch keine",
     views: (count) => plural(count, { one: `${count} Ansicht im Heimnetz`, other: `${count} Ansichten im Heimnetz` }),
+    tasks: (count) => (count === 0 ? "Nichts zu erledigen" : `${count} zu erledigen`),
     language: (family, ocr) => `${family}; OCR auf ${ocr}`,
     sources: (count) => plural(count, { one: `${count} Quelle`, other: `${count} Quellen` }),
     newOnes: "Neue sind verfügbar",
@@ -180,6 +181,19 @@ export const de: Catalogue = {
     remove: (name) => `${name} entfernen`,
   },
 
+  tasks: {
+    title: "Aufgaben",
+    description: "Was die Familie erledigen oder mitbringen muss. Auch jeder mit einer Ansicht kann eine Aufgabe abhaken; zu jedem Haken steht, wer ihn wann gesetzt hat.",
+    none: "Keine Aufgaben.",
+    noDeadline: "Ohne Termin",
+    inView: (who) => `in der Ansicht für ${who}`,
+    everyone: "alle",
+    inRemovedView: "in einer entfernten Ansicht",
+    byAdmin: (email) => `von ${email}`,
+    byRemovedAdmin: "von einem entfernten Admin",
+    ticked: (who, at) => `Erledigt ${who} am ${at}`,
+    unticked: (who, at) => `Als nicht erledigt markiert ${who} am ${at}`,
+  },
   views: {
     title: "Ansichten",
     description:
@@ -384,5 +398,14 @@ export const de: Catalogue = {
       "room-change": (room) => (room ? `in Raum ${room}` : "Raumänderung"),
     },
     instead: (previous) => `statt ${previous}`,
+    toDo: "Zu erledigen",
+    by: (date) => `Bis ${date}`,
+    due: "Fällig",
+    overdue: "Überfällig",
+    overdueBy: (date) => `Überfällig · bis ${date}`,
+    done: "Erledigt",
+    bring: "Mitbringen",
+    markDone: (title) => `„${title}“ als erledigt markieren`,
+    markNotDone: (title) => `„${title}“ als nicht erledigt markieren`,
   },
 };

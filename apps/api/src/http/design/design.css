@@ -195,6 +195,30 @@
 .fam-lesson__where { color: var(--ink-muted); }
 .fam-lesson--cancelled .fam-lesson__subject { color: var(--ink-muted); font-weight: 400; }
 
+/* Tasks: pinned at the top while Due, else on their day ----------------- */
+.fam-tasks { margin: var(--space-4) auto 0; padding: 0 var(--space-4); max-width: calc(var(--content-width) + 2 * var(--space-4)); }
+.fam-tasks__title {
+  margin: 0 0 var(--space-1); font-size: 13px; line-height: 16px; font-weight: 800; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--ink);
+}
+.fam-tasks__list { list-style: none; margin: 0; padding: 0; }
+.fam-task { display: flex; gap: var(--space-3); align-items: flex-start; padding: var(--space-3) var(--space-1); border-bottom: 1px solid var(--line); }
+.fam-task form { display: contents; }
+.fam-task__tick {
+  flex: none; display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; margin: -2px 0;
+  border: 2px solid var(--line-strong); border-radius: var(--radius-md); background: var(--surface); color: var(--ink);
+  font: inherit; font-weight: 800; cursor: pointer;
+}
+.fam-task__tick:hover { border-color: var(--hearth); }
+.fam-task__text { flex: 1; display: flex; flex-direction: column; gap: 2px; }
+.fam-task__title { font-weight: 600; }
+.fam-task__meta, .fam-task__bring, .fam-task__tick-history { color: var(--ink-muted); font-size: 14px; line-height: 20px; }
+.fam-task--overdue { background: var(--danger-tint); box-shadow: inset 3px 0 0 var(--danger); }
+.fam-task--overdue .fam-task__meta { color: var(--danger); font-weight: 600; }
+.fam-task--done .fam-task__tick { background: var(--sage-tint); border-color: var(--sage); }
+.fam-task--done .fam-task__title, .fam-task--cancelled .fam-task__title { color: var(--ink-muted); font-weight: 400; }
+.fam-task--cancelled .fam-task__title s { text-decoration: line-through; }
+
 /* Timeline: loading more days ------------------------------------------ */
 .fam-more { display: flex; justify-content: center; padding: var(--space-4) 0; color: var(--ink-muted); font-size: 14px; line-height: 20px; }
 

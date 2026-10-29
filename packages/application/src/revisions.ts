@@ -4,11 +4,15 @@ import {
   lessonOf,
   problemsWithEventRevision,
   problemsWithLessonRevision,
+  problemsWithTaskRevision,
   problemsWithTimetableChangeRevision,
   spanBounds,
+  isOutstanding,
+  taskOf,
   type Act,
   type FoldableRevision,
   type ItemKind,
+  type LocalDate,
 } from "@family-agenda/domain";
 import type { IngestedRevision, ItemProjection, NewRevision } from "./ports";
 
@@ -17,11 +21,12 @@ const problemsByKind: Partial<Record<ItemKind, (act: Act, fields: Record<string,
   event: problemsWithEventRevision,
   lesson: problemsWithLessonRevision,
   "timetable-change": problemsWithTimetableChangeRevision,
+  task: problemsWithTaskRevision,
 };
 
 /**
- * A Revision as it is appended: rejected automatically if its fields cannot apply. Tasks and
- * Notices have no fields defined yet; they come with their own tickets.
+ * A Revision as it is appended: rejected automatically if its fields cannot apply. Notices have
+ * no fields defined yet; they come with their own ticket.
  */
 export function checked(revision: IngestedRevision, sourceTime: Date): NewRevision {
   const problems = problemsByKind[revision.itemKind];
@@ -34,9 +39,16 @@ export function project(kind: ItemKind, revisions: FoldableRevision[]): ItemProj
   const folded = fold(revisions);
   if (kind === "event") {
     const event = eventOf(folded);
-    return { folded, window: event ? spanBounds(event.span) : null };
+    return { folded, window: event ? spanBounds(event.span) : null, outstanding: false };
+  }
+  if (kind === "task") {
+    const task = taskOf(folded);
+    // Without a Deadline, a done Task shows on the day it was ticked, whatever the time zone.
+    const day = task?.deadline ?? task?.doneAt?.toISOString().slice(0, 10);
+    const window = day ? spanBounds({ allDay: true, firstDay: day as LocalDate, lastDay: day as LocalDate }) : null;
+    return { folded, window, outstanding: task ? isOutstanding(task) : false };
   }
   // A Timetable Change has the fields of the Lesson it changes, its span among them.
   const lesson = kind === "lesson" || kind === "timetable-change" ? lessonOf(folded) : null;
-  return { folded, window: lesson ? { from: lesson.span.start, to: lesson.span.end } : null };
+  return { folded, window: lesson ? { from: lesson.span.start, to: lesson.span.end } : null, outstanding: false };
 }
