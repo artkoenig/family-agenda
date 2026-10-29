@@ -180,6 +180,20 @@
 }
 .fam-event__details dt { font-weight: 600; }
 .fam-event__details dd { margin: 0; color: var(--ink); }
+/* A Timetable Change stands out from the rows around it. */
+.fam-event--change > summary { background: var(--honey-tint); box-shadow: inset 3px 0 0 var(--honey); }
+.fam-event--change > summary:hover { background: var(--honey-tint); }
+/* The Lessons a school day lists on tap. */
+.fam-lessons {
+  display: grid; grid-template-columns: auto auto 1fr; gap: var(--space-1) var(--space-3);
+  list-style: none; margin: 0 0 var(--space-3); padding: var(--space-3) var(--space-4);
+  background: var(--surface-raised); border-radius: var(--radius-md); box-shadow: var(--shadow-raised);
+}
+.fam-lesson { display: contents; }
+.fam-lesson__time { color: var(--ink-muted); font-variant-numeric: tabular-nums; }
+.fam-lesson__subject { font-weight: 600; }
+.fam-lesson__where { color: var(--ink-muted); }
+.fam-lesson--cancelled .fam-lesson__subject { color: var(--ink-muted); font-weight: 400; }
 
 /* Timeline: loading more days ------------------------------------------ */
 .fam-more { display: flex; justify-content: center; padding: var(--space-4) 0; color: var(--ink-muted); font-size: 14px; line-height: 20px; }

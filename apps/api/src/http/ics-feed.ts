@@ -1,11 +1,12 @@
-import type { FeedEvent, ViewFeed } from "@family-agenda/application";
+import type { FeedEvent, FeedSchoolDay, TimelineLesson, TimelineTimetableChange, ViewFeed } from "@family-agenda/application";
 import { addDays, type LocalDate } from "@family-agenda/domain";
 import { translationFor, type Translation } from "./i18n/translation";
-import { spanLabel } from "./view-page";
+import { changeLabel, spanLabel } from "./view-page";
 
 /**
  * A View's feed as an iCalendar document (RFC 5545), for calendar apps that subscribe to it. Each
- * Event keeps its Item's id as its UID, so that apps update it in place.
+ * Event keeps its Item's id as its UID, and each school day its key, so that apps update it in
+ * place.
  */
 export function icsFeed(feed: ViewFeed, viewLink: string): string {
   const stamp = instant(feed.generatedAt);
@@ -20,6 +21,7 @@ export function icsFeed(feed: ViewFeed, viewLink: string): string {
     "REFRESH-INTERVAL;VALUE=DURATION:PT1H",
     "X-PUBLISHED-TTL:PT1H",
     ...feed.events.flatMap((event) => vevent(event, stamp, viewLink, translation)),
+    ...feed.schoolDays.flatMap((day) => schoolDayVevent(day, stamp, viewLink, translation)),
     "END:VCALENDAR",
   ];
   return lines.map(folded).join("\r\n") + "\r\n";
@@ -43,6 +45,43 @@ function vevent(event: FeedEvent, stamp: string, viewLink: string, translation: 
     ...(event.cancelled ? ["STATUS:CANCELLED"] : []),
     "END:VEVENT",
   ];
+}
+
+/**
+ * A school day as an all-day entry: "School", after the names of the Family Members it concerns
+ * where the feed names them, marked with ⚠ when the day has a Timetable Change. Its details list
+ * the Lessons, each with its Timetable Change; a day whose every Lesson is cancelled is cancelled.
+ */
+function schoolDayVevent(day: FeedSchoolDay, stamp: string, viewLink: string, { t }: Translation): string[] {
+  const title = day.names.length > 0 ? `${day.names.join(", ")}: ${t.view.school}` : t.view.school;
+  const changeOf = (lesson: TimelineLesson) => day.timetableChanges.find((change) => sameSlot(change, lesson));
+  const lines = day.lessons.map((lesson) => {
+    const change = changeOf(lesson);
+    return `${lesson.from} – ${lesson.until} ${lesson.subject}${change ? `: ${changeLabel(change, t)}` : ""}`;
+  });
+  // A Timetable Change of a Lesson the day does not list, such as one added to it, has a line of its own.
+  for (const change of day.timetableChanges) {
+    if (!day.lessons.some((lesson) => sameSlot(change, lesson))) {
+      lines.push(`${change.from} – ${change.until} ${change.subject}: ${changeLabel(change, t)}`);
+    }
+  }
+  return [
+    "BEGIN:VEVENT",
+    `UID:school-${day.key}@family-agenda`,
+    `DTSTAMP:${stamp}`,
+    `DTSTART;VALUE=DATE:${date(day.date)}`,
+    `DTEND;VALUE=DATE:${date(addDays(day.date, 1))}`,
+    `SUMMARY:${text(day.timetableChanges.length > 0 ? `⚠ ${title}` : title)}`,
+    `DESCRIPTION:${text(`${lines.join("\n")}\n\n${viewLink}`)}`,
+    `URL:${viewLink}`,
+    ...(day.cancelled ? ["STATUS:CANCELLED"] : []),
+    "END:VEVENT",
+  ];
+}
+
+/** Whether a Timetable Change is that of a Lesson: the same subject at the same time. */
+function sameSlot(change: TimelineTimetableChange, lesson: TimelineLesson): boolean {
+  return change.subject === lesson.subject && change.from === lesson.from && change.until === lesson.until;
 }
 
 /** An instant in UTC, as `20260915T140000Z`. */

@@ -9,17 +9,22 @@ import {
   lastDayOf,
   localDateTime,
   isShownTo,
+  lessonOf,
   spanOnDay,
+  timetableChangeOf,
   type Attribution,
   type Event,
   type FamilyLanguage,
   type FamilyMemberId,
   type ItemId,
+  type Lesson,
   type LocalDate,
   type LocalTime,
   type MultilingualText,
   type RawMessageId,
   type TimeSpan,
+  type TimetableChange,
+  type TimetableChangeKind,
   type ViewId,
 } from "@family-agenda/domain";
 import type { ActivityLog, CurrentActivity } from "./activity";
@@ -86,6 +91,52 @@ export type TimelineEvent = {
   concerns: Attribution;
 };
 
+/** A Lesson as a school-day row lists it on tap. */
+export type TimelineLesson = {
+  itemId: ItemId;
+  subject: string;
+  from: LocalTime;
+  until: LocalTime;
+  room: string | null;
+  teacher: string | null;
+  cancelled: boolean;
+};
+
+/**
+ * The Lessons of one day that concern the same Family Members, as one row: "School until hh:mm".
+ * It runs from the first to the last Lesson that takes place, or over all of them if every one is
+ * cancelled, which cancels the day.
+ */
+export type TimelineSchoolDay = {
+  from: LocalTime;
+  until: LocalTime;
+  /** Every Lesson of the day is cancelled. */
+  cancelled: boolean;
+  /** The day has a Timetable Change. */
+  changed: boolean;
+  /** Over before now; earlier rows of today are dimmed. */
+  earlier: boolean;
+  /** In order of time, cancelled ones included. */
+  lessons: TimelineLesson[];
+  concerns: Attribution;
+};
+
+/** A Timetable Change as its own highlighted row; one the school withdrew is gone. */
+export type TimelineTimetableChange = {
+  itemId: ItemId;
+  change: TimetableChangeKind;
+  subject: string;
+  from: LocalTime;
+  until: LocalTime;
+  room: string | null;
+  teacher: string | null;
+  previousRoom: string | null;
+  previousTeacher: string | null;
+  note: string | null;
+  earlier: boolean;
+  concerns: Attribution;
+};
+
 export type ViewPage = {
   id: ViewId;
   /** The Family Language, which dates are formatted in. */
@@ -103,14 +154,21 @@ export type ViewPage = {
   /** How many days one step of scrolling loads: the View's horizon. */
   horizonDays: number;
   /**
-   * One per day shown, each with its Events in order of time: the horizon from today, or the
-   * days scrolled to.
+   * One per day shown, the horizon from today or the days scrolled to, each with its Events, its
+   * school days and its Timetable Changes, each in order of time.
    */
-  days: { date: LocalDate; items: TimelineEvent[] }[];
+  days: TimelineDay[];
   /** What the worker is busy with, such as reading messages; null when it is idle. */
   activity: CurrentActivity | null;
   /** Whether a Source is Failing, which the View says without naming it. */
   mayBeOutOfDate: boolean;
+};
+
+export type TimelineDay = {
+  date: LocalDate;
+  items: TimelineEvent[];
+  schoolDays: TimelineSchoolDay[];
+  timetableChanges: TimelineTimetableChange[];
 };
 
 /** Days of a timeline, from `first` to `last`, both included. */
@@ -127,6 +185,26 @@ export type FeedEvent = {
   cancelled: boolean;
 };
 
+/**
+ * One school day of some Family Members in a View's feed, an all-day entry in place of its
+ * Lessons, which its details list with the day's Timetable Changes.
+ */
+export type FeedSchoolDay = {
+  /** Stays the same while the day concerns the same Family Members, so that apps update it in place. */
+  key: string;
+  date: LocalDate;
+  /** Every Lesson of the day is cancelled. */
+  cancelled: boolean;
+  lessons: TimelineLesson[];
+  timetableChanges: TimelineTimetableChange[];
+  concerns: Attribution;
+  /**
+   * The names of the Family Members it concerns, for its title, in the Family's order: none if it
+   * concerns the whole Family, or if the feed is for one Family Member only.
+   */
+  names: string[];
+};
+
 export type ViewFeed = {
   id: ViewId;
   /** The Family Language, which the details' dates are formatted in. */
@@ -134,6 +212,8 @@ export type ViewFeed = {
   generatedAt: Date;
   /** Those of the last 30 days and all of the future, in order of time. */
   events: FeedEvent[];
+  /** Those of the last 30 days and all of the future, by day. */
+  schoolDays: FeedSchoolDay[];
 };
 
 /** How many days back a feed reaches, today not counted. */
@@ -154,11 +234,12 @@ export function createViewAccess(deps: ViewsDeps) {
   }
 
   /**
-   * The Family's Events that may touch the days from `first` to `last`, or all later days if
-   * `last` is null, that concern someone `showing` shows; the caller decides by the Family's time
-   * zone. Whom its Sources are assigned to now decides whom an Item concerns, whenever it came.
+   * The Family's Items that may touch the days from `first` to `last`, or all later days if
+   * `last` is null, that concern someone `showing` shows, as Events, Lessons and Timetable
+   * Changes; the caller decides by the Family's time zone. Whom its Sources are assigned to now
+   * decides whom an Item concerns, whenever it came.
    */
-  async function eventsAround(first: LocalDate, last: LocalDate | null, showing: Showing) {
+  async function itemsAround(first: LocalDate, last: LocalDate | null, showing: Showing) {
     // A day lasts at most 26 hours, and no time zone is more than 14 hours from UTC.
     const day = 24 * 60 * 60 * 1000;
     const from = new Date(new Date(`${first}T00:00:00Z`).getTime() - day);
@@ -166,16 +247,104 @@ export function createViewAccess(deps: ViewsDeps) {
     const assigned = new Map((await sources.list()).map((source) => [source.id, source.concerns]));
     const order = (await members.list()).map((member) => member.id);
     const installed = registry.installed();
-    return (await items.overlapping(from, to)).flatMap((item) => {
-      const event = item.kind === "event" ? eventOf(item.folded) : null;
-      if (!event) return [];
+    const found: Around = { events: [], lessons: [], changes: [] };
+    for (const item of await items.overlapping(from, to)) {
       const attribution = attributionOf(item.sourceIds.map((id) => assigned.get(id) ?? []));
-      if (showing !== "all" && !isShownTo(attribution, showing)) return [];
+      if (showing !== "all" && !isShownTo(attribution, showing)) continue;
       const concerns = attribution === "whole-family" ? attribution : order.filter((id) => attribution.includes(id));
-      const links = item.links.map((link) => ({ url: link.url, source: sourceName(link, installed) }));
-      const messages = item.messages.map((message) => ({ id: message.id, source: sourceName(message, installed) }));
-      return [{ id: item.id, event, links, messages, concerns }];
+      if (item.kind === "event") {
+        const event = eventOf(item.folded);
+        if (!event) continue;
+        const links = item.links.map((link) => ({ url: link.url, source: sourceName(link, installed) }));
+        const messages = item.messages.map((message) => ({ id: message.id, source: sourceName(message, installed) }));
+        found.events.push({ id: item.id, event, links, messages, concerns });
+      } else if (item.kind === "lesson") {
+        const lesson = lessonOf(item.folded);
+        if (lesson) found.lessons.push({ id: item.id, lesson, concerns });
+      } else if (item.kind === "timetable-change") {
+        const change = timetableChangeOf(item.folded);
+        if (change && !change.cancelled) found.changes.push({ id: item.id, change, concerns });
+      }
+    }
+    return found;
+  }
+
+  /** The Lesson on the Family's clocks. */
+  function lessonRow(id: ItemId, lesson: Lesson): TimelineLesson {
+    const { subject, room, teacher, cancelled } = lesson;
+    return { itemId: id, subject, ...clockTimes(lesson.span), room, teacher, cancelled };
+  }
+
+  function changeRow(id: ItemId, change: TimetableChange, concerns: Attribution, now: Date): TimelineTimetableChange {
+    const { change: kind, subject, room, teacher, previousRoom, previousTeacher, note, span } = change;
+    return {
+      itemId: id,
+      change: kind,
+      subject,
+      ...clockTimes(span),
+      room,
+      teacher,
+      previousRoom,
+      previousTeacher,
+      note,
+      earlier: span.end <= now,
+      concerns,
+    };
+  }
+
+  function clockTimes(span: { start: Date; end: Date }): { from: LocalTime; until: LocalTime } {
+    return { from: localDateTime(span.start, timeZone).time, until: localDateTime(span.end, timeZone).time };
+  }
+
+  /** The day a Lesson or Timetable Change is on, by when it starts. */
+  function dayOf(span: { start: Date }): LocalDate {
+    return localDateTime(span.start, timeZone).date;
+  }
+
+  /**
+   * The Lessons of a day as school days, one per set of Family Members they concern, with the
+   * day's Timetable Changes of the same Family Members.
+   */
+  function schoolDaysOn(date: LocalDate, around: Around, now: Date) {
+    const days = new Map<string, { concerns: Attribution; lessons: { lesson: Lesson; row: TimelineLesson }[]; changes: TimelineTimetableChange[] }>();
+    const dayFor = (concerns: Attribution) => {
+      const key = concernsKey(concerns);
+      const found = days.get(key) ?? { concerns, lessons: [], changes: [] };
+      days.set(key, found);
+      return found;
+    };
+    for (const { id, lesson, concerns } of around.lessons) {
+      if (dayOf(lesson.span) === date) dayFor(concerns).lessons.push({ lesson, row: lessonRow(id, lesson) });
+    }
+    const changes = around.changes
+      .filter(({ change }) => dayOf(change.span) === date)
+      .map(({ id, change, concerns }) => changeRow(id, change, concerns, now))
+      .sort(byFrom);
+    for (const change of changes) days.get(concernsKey(change.concerns))?.changes.push(change);
+    const schoolDays = [...days.entries()].flatMap(([key, day]) => {
+      const lessons = day.lessons.sort((a, b) => a.lesson.span.start.getTime() - b.lesson.span.start.getTime());
+      const takingPlace = lessons.filter(({ lesson }) => !lesson.cancelled);
+      const spanned = takingPlace.length > 0 ? takingPlace : lessons;
+      const first = spanned[0];
+      if (!first) return [];
+      const start = first.lesson.span.start;
+      const end = new Date(Math.max(...spanned.map(({ lesson }) => lesson.span.end.getTime())));
+      return [
+        {
+          key,
+          school: {
+            ...clockTimes({ start, end }),
+            cancelled: takingPlace.length === 0,
+            changed: day.changes.length > 0,
+            earlier: end <= now,
+            lessons: lessons.map(({ row }) => row),
+            concerns: day.concerns,
+          } satisfies TimelineSchoolDay,
+          changes: day.changes,
+        },
+      ];
     });
+    return { schoolDays, changes };
   }
 
   /** The Family's Events on each of the days that concern someone `showing` shows, in order of time. */
@@ -187,16 +356,21 @@ export function createViewAccess(deps: ViewsDeps) {
     const first = dates[0];
     const last = dates.at(-1);
     if (!first || !last) return [];
-    const events = await eventsAround(first, last, showing);
-    return dates.map((date) => ({
-      date,
-      items: events
-        .flatMap(({ id, event, links, messages, concerns }) => {
-          const on = spanOnDay(event.span, date, timeZone);
-          return on ? [row(id, event, { links, messages, concerns }, on, now)] : [];
-        })
-        .sort(byTime),
-    }));
+    const around = await itemsAround(first, last, showing);
+    return dates.map((date) => {
+      const { schoolDays, changes } = schoolDaysOn(date, around, now);
+      return {
+        date,
+        items: around.events
+          .flatMap(({ id, event, links, messages, concerns }) => {
+            const on = spanOnDay(event.span, date, timeZone);
+            return on ? [row(id, event, { links, messages, concerns }, on, now)] : [];
+          })
+          .sort(byTime),
+        schoolDays: schoolDays.map(({ school }) => school).sort(byFrom),
+        timetableChanges: changes,
+      };
+    });
   }
 
   function row(
@@ -335,18 +509,58 @@ export function createViewAccess(deps: ViewsDeps) {
       const generatedAt = clock.now();
       const firstDay = addDays(localDateTime(generatedAt, timeZone).date, -feedDaysBack);
       const showing: Showing = view.preselected.length > 0 ? view.preselected : "all";
-      const events = (await eventsAround(firstDay, null, showing)).flatMap(({ id: itemId, event }) => {
+      const around = await itemsAround(firstDay, null, showing);
+      const events = around.events.flatMap(({ id: itemId, event }) => {
         if (lastDayOf(event.span, timeZone) < firstDay) return [];
         const { title, span, place, cancelled } = event;
         return [{ itemId, title, span, when: onClocks(span), place, cancelled }];
       });
+      const family = await members.list();
+      const named = (concerns: Attribution) =>
+        concerns === "whole-family" || view.preselected.length === 1 ? [] : family.filter((member) => concerns.includes(member.id));
+      const dates = [...new Set(around.lessons.map(({ lesson }) => dayOf(lesson.span)))].filter((date) => date >= firstDay).sort();
+      const schoolDays = dates.flatMap((date) =>
+        schoolDaysOn(date, around, generatedAt)
+          .schoolDays.map(({ key, school, changes }) => ({
+            key: `${date}/${key}`,
+            date,
+            cancelled: school.cancelled,
+            lessons: school.lessons,
+            timetableChanges: changes,
+            concerns: school.concerns,
+            names: named(school.concerns).map((member) => member.name),
+          }))
+          .sort((a, b) => firstIn(family, a.concerns) - firstIn(family, b.concerns)),
+      );
       const { language } = await families.languages();
-      return { id: view.id, language, generatedAt, events: events.sort(byStart) };
+      return { id: view.id, language, generatedAt, events: events.sort(byStart), schoolDays };
     },
   };
 }
 
 export type ViewAccess = ReturnType<typeof createViewAccess>;
+
+/** The Items around some days, by kind, each with whom it concerns. */
+type Around = {
+  events: { id: ItemId; event: Event; links: TimelineEvent["links"]; messages: TimelineEvent["messages"]; concerns: Attribution }[];
+  lessons: { id: ItemId; lesson: Lesson; concerns: Attribution }[];
+  /** Those the school withdrew are left out. */
+  changes: { id: ItemId; change: TimetableChange; concerns: Attribution }[];
+};
+
+/** The same for the same Family Members, whatever their order. */
+function concernsKey(concerns: Attribution): string {
+  return concerns === "whole-family" ? concerns : [...concerns].sort().join(",");
+}
+
+/** Where the first Family Member concerned stands in the Family's order; the whole Family comes first. */
+function firstIn(family: { id: FamilyMemberId }[], concerns: Attribution): number {
+  return concerns === "whole-family" ? -1 : family.findIndex((member) => concerns.includes(member.id));
+}
+
+function byFrom(a: { from: LocalTime }, b: { from: LocalTime }): number {
+  return a.from.localeCompare(b.from);
+}
 
 /** All-day rows first, then by the time they start on the day, earliest first. */
 function byTime(a: TimelineEvent, b: TimelineEvent): number {

@@ -386,6 +386,19 @@ export const en = {
     allDay: "All day",
     onAllDay: (date: string) => `${date}, all day`,
     outOfDate: "Some of this may be out of date.",
+    school: "School",
+    schoolUntil: (time: string) => `School until ${time}`,
+    lessons: "Lessons",
+    timetableChange: "Timetable change",
+    teacher: "Teacher",
+    note: "Note",
+    /** What a Timetable Change did to its Lesson, after the Lesson's subject. */
+    changed: {
+      cancellation: "cancelled",
+      substitution: (teacher: string | null) => (teacher ? `substituted by ${teacher}` : "substitution"),
+      "room-change": (room: string | null) => (room ? `moved to room ${room}` : "room change"),
+    },
+    instead: (previous: string) => `instead of ${previous}`,
   },
 };
 
