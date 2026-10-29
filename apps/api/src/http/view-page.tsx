@@ -6,6 +6,7 @@ import type {
   TimelineDay,
   TimelineEvent,
   TimelineSchoolDay,
+  TimelineTask,
   TimelineTimetableChange,
   ViewPage,
 } from "@family-agenda/application";
@@ -114,6 +115,18 @@ export function ViewTimeline(props: { page: ViewPage }) {
           </nav>
         ) : null}
       </header>
+      {page.pinned.length > 0 ? (
+        <section class="fam-tasks" aria-labelledby="to-do">
+          <h2 class="fam-tasks__title" id="to-do">
+            {t.view.toDo}
+          </h2>
+          <ul class="fam-tasks__list">
+            {page.pinned.map((row) => (
+              <TaskRow row={row} page={page} />
+            ))}
+          </ul>
+        </section>
+      ) : null}
       <ol class="fam-days">
         <ViewDays page={page} earlier later />
       </ol>
@@ -238,7 +251,14 @@ function DayEntry(props: { page: ViewPage; day: TimelineDay }) {
       ) : (
         rows.map(show)
       )}
-      {rows.length === 0 ? <p class="fam-empty">{t.view.nothingPlanned}</p> : null}
+      {day.tasks.length > 0 ? (
+        <ul class="fam-tasks__list">
+          {day.tasks.map((row) => (
+            <TaskRow row={row} page={page} />
+          ))}
+        </ul>
+      ) : null}
+      {rows.length === 0 && day.tasks.length === 0 ? <p class="fam-empty">{t.view.nothingPlanned}</p> : null}
     </li>
   );
 }
@@ -434,6 +454,59 @@ function EventRow(props: { row: TimelineEvent; members: FamilyMemberSummary[] })
   );
 }
 
+/**
+ * A Task as one row with its tick, which posts as htmx swaps the timeline, or as a plain form
+ * without it, and its Deadline and things to bring. A done one is checked and dimmed, and its
+ * tick can be taken back.
+ */
+function TaskRow(props: { row: TimelineTask; page: ViewPage }) {
+  const { row, page } = props;
+  const { t, locale } = useTranslation();
+  const v = t.view;
+  const done = row.status === "done";
+  const action = `/views/${page.id}/tasks/${row.itemId}/${done ? "undone" : "done"}`;
+  const classes = ["fam-task", `fam-task--${row.status}`, row.cancelled ? "fam-task--cancelled" : ""].filter(Boolean).join(" ");
+  const deadline = row.deadline ? dateLabel(row.deadline, locale) : null;
+  const status =
+    row.status === "done"
+      ? v.done
+      : row.status === "overdue" && deadline
+        ? v.overdueBy(deadline)
+        : row.status === "due"
+          ? [v.due, deadline ? v.by(deadline) : null].filter(Boolean).join(" · ")
+          : deadline
+            ? v.by(deadline)
+            : v.due;
+  return (
+    <li class={classes}>
+      <form method="post" action={action} hx-post={action} hx-target="#view" hx-swap="outerHTML" hx-include="#shown-from, #shown-until">
+        <input type="hidden" name="show" value={page.showing === "all" ? "all" : page.showing.join(",")} />
+        <button type="submit" class="fam-task__tick" aria-pressed={done ? "true" : "false"} aria-label={done ? v.markNotDone(row.title) : v.markDone(row.title)}>
+          <span aria-hidden="true">{done ? "✓" : ""}</span>
+        </button>
+      </form>
+      <span class="fam-task__text">
+        <span class="fam-task__title">
+          {row.cancelled ? (
+            <>
+              <s>{row.title}</s> <span class="fam-event__tag">{v.cancelled}</span>
+            </>
+          ) : (
+            row.title
+          )}
+        </span>
+        <span class="fam-task__meta">{status}</span>
+        {row.bring.length > 0 ? (
+          <span class="fam-task__bring">
+            {v.bring}: {row.bring.join(", ")}
+          </span>
+        ) : null}
+      </span>
+      <Concerned concerns={row.concerns} members={page.members} />
+    </li>
+  );
+}
+
 /** How the Event shows on its day: from and until, or all day. */
 function timeLabel(row: TimelineEvent, t: Catalogue): string {
   if (row.from && row.until) return row.from === row.until ? row.from : `${row.from} – ${row.until}`;
@@ -523,7 +596,7 @@ function dayMonthLabel(date: LocalDate, locale: string): string {
   );
 }
 
-function dateLabel(date: LocalDate, locale: string): string {
+export function dateLabel(date: LocalDate, locale: string): string {
   return new Intl.DateTimeFormat(locale, {
     weekday: "short",
     day: "numeric",

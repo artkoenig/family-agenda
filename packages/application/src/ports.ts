@@ -17,6 +17,7 @@ import type {
   MultilingualText,
   OcrLanguage,
   RawMessageId,
+  RevisionAuthor,
   RunError,
   SourceFailure,
   SourceId,
@@ -500,6 +501,8 @@ export type ItemProjection = {
   folded: FoldedItem | null;
   /** Instants certainly before and after the Item's time, to find it by; null if it has none. */
   window: { from: Date; to: Date } | null;
+  /** Whether it waits for someone to act on it whatever its time, as an undone Task does, to find it by. */
+  outstanding: boolean;
 };
 
 export type ProjectedItem = {
@@ -512,6 +515,15 @@ export type ProjectedItem = {
   messages: { id: RawMessageId; sourceTypeId: SourceTypeId; sourceName: string | null }[];
   /** The Sources of the Origins whose accepted Revisions it adds up to, which decide whom it concerns. */
   sourceIds: SourceId[];
+};
+
+/** A Revision by someone other than an Origin, such as one ticking a Task done. */
+export type AuthoredRevision = {
+  act: Act;
+  fields: Record<string, unknown>;
+  /** When it was made. */
+  sourceTime: Date;
+  author: Exclude<RevisionAuthor, { kind: "origin" }>;
 };
 
 /** Items, as projections of their append-only Revisions (ADR-0009). */
@@ -547,6 +559,18 @@ export interface ItemRepository {
    * `to` of null means all of the future. Items of a hidden Source are left out.
    */
   overlapping(from: Date, to: Date | null): Promise<ProjectedItem[]>;
+  /** The Family's outstanding Items, whatever their time, as `overlapping` gives them. */
+  outstanding(): Promise<ProjectedItem[]>;
+  /** The Item as `overlapping` gives it, or null if there is none or it is not shown. */
+  find(id: ItemId): Promise<ProjectedItem | null>;
+  /** Appends a Revision to the Item and recomputes it with `recompute`, in one transaction. */
+  appendAuthored(
+    id: ItemId,
+    revision: AuthoredRevision,
+    recompute: (kind: ItemKind, revisions: FoldableRevision[]) => ItemProjection,
+  ): Promise<void>;
+  /** The Item's Revisions by Views and Admins, in the order they were made. */
+  authoredRevisions(id: ItemId): Promise<AuthoredRevision[]>;
 }
 
 /** The one LLM endpoint of the Family, an OpenAI-compatible server. */
@@ -593,6 +617,27 @@ export type ExtractedEvent = {
 /** An Event earlier messages of the thread stated, which the message may update. */
 export type KnownEvent = { ref: string; title: string; when: string; place: string | null };
 
+/**
+ * A Task a message states, as the model reads it: something to do or bring, a packing list being
+ * one Task with its things to bring. Code resolves its Deadline and checks it.
+ */
+export type ExtractedTask = {
+  /** The `ref` of a known Task of the thread the message changes or cancels; null for a new one. */
+  updates: string | null;
+  cancelled: boolean;
+  /** Null for an update that does not rename it. */
+  title: string | null;
+  /** The Deadline as the message words it; every part null if it states none. */
+  deadline: DateMention;
+  /** The things to bring; none if it states none, or for an update that does not change them. */
+  bring: string[];
+  /** The words of the message that state it, quoted verbatim. */
+  evidence: string;
+};
+
+/** A Task earlier messages of the thread stated, which the message may update. */
+export type KnownTask = { ref: string; title: string; deadline: LocalDate | null; bring: string[] };
+
 export type ExtractionRequest = {
   endpoint: LlmEndpoint;
   message: {
@@ -601,6 +646,7 @@ export type ExtractionRequest = {
     sent: { date: LocalDate; time: LocalTime; weekday: string };
   };
   knownEvents: KnownEvent[];
+  knownTasks: KnownTask[];
 };
 
 /**
@@ -609,7 +655,7 @@ export type ExtractionRequest = {
  */
 export type EndpointFailure = { ok: false; problem: "unreachable" | "unauthorized" | "invalid-output"; message: string };
 
-export type ExtractionResult = { ok: true; events: ExtractedEvent[] } | EndpointFailure;
+export type ExtractionResult = { ok: true; events: ExtractedEvent[]; tasks: ExtractedTask[] } | EndpointFailure;
 
 /** Scanned pages of an attachment, as PNG images, for a vision-capable endpoint to read. */
 export type TranscriptionRequest = { endpoint: LlmEndpoint; images: Uint8Array[] };

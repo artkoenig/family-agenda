@@ -3,6 +3,7 @@ import type {
   ActivityKind,
   ActivityRepository,
   AdminRepository,
+  AuthoredRevision,
   AdminSession,
   AdminSessionRepository,
   BackgroundActivity,
@@ -31,6 +32,7 @@ import type {
   ViewRepository,
 } from "@family-agenda/application";
 import type {
+  Act,
   Admin,
   AdminId,
   BlobRef,
@@ -838,14 +840,71 @@ export class PostgresItemRepository implements ItemRepository {
   }
 
   async overlapping(from: Date, to: Date | null): Promise<ProjectedItem[]> {
+    return this.projected(and(to ? lte(items.windowFrom, to) : undefined, gte(items.windowTo, from)));
+  }
+
+  async outstanding(): Promise<ProjectedItem[]> {
+    return this.projected(eq(items.outstanding, true));
+  }
+
+  async find(id: ItemId): Promise<ProjectedItem | null> {
+    if (!uuidPattern.test(id)) return null;
+    const [item] = await this.projected(eq(items.id, id));
+    return item ?? null;
+  }
+
+  async appendAuthored(id: ItemId, revision: AuthoredRevision, recompute: Recompute): Promise<void> {
+    await this.db.transaction(async (tx) => {
+      const [item] = await tx.select({ kind: items.kind }).from(items).where(eq(items.id, id));
+      if (!item) return;
+      const { author } = revision;
+      await tx.insert(revisions).values({
+        id: randomUUID(),
+        itemId: id,
+        author: author.kind,
+        viewId: author.kind === "view" ? author.viewId : null,
+        adminId: author.kind === "admin" ? author.adminId : null,
+        act: revision.act,
+        fields: revision.fields,
+        sourceTime: revision.sourceTime,
+        receivedAt: revision.sourceTime,
+        accepted: true,
+        rejection: null,
+        evidence: null,
+        // Only an Origin's Revisions are kept from being recorded twice; each tick counts.
+        fingerprint: randomUUID(),
+      });
+      await recomputeAll(tx, new Map([[id, item.kind as ItemKind]]), recompute);
+    });
+  }
+
+  async authoredRevisions(id: ItemId): Promise<AuthoredRevision[]> {
+    if (!uuidPattern.test(id)) return [];
+    const rows = await this.db
+      .select()
+      .from(revisions)
+      .where(and(eq(revisions.itemId, id), inArray(revisions.author, ["view", "admin"])))
+      .orderBy(asc(revisions.sequence));
+    return rows.map((row) => ({
+      act: row.act as Act,
+      fields: row.fields,
+      sourceTime: row.sourceTime,
+      author:
+        row.author === "view"
+          ? { kind: "view", viewId: row.viewId as ViewId | null }
+          : { kind: "admin", adminId: row.adminId as AdminId | null },
+    }));
+  }
+
+  /** The Items that match, with the links of their Origins, leaving out those of a hidden Source. */
+  private async projected(where: SQL | undefined): Promise<ProjectedItem[]> {
     const rows = await this.db
       .select({ id: items.id, kind: items.kind, folded: items.folded })
       .from(items)
       .where(
         and(
           isNotNull(items.folded),
-          to ? lte(items.windowFrom, to) : undefined,
-          gte(items.windowTo, from),
+          where,
           // Items of a hidden Source stay recorded, but leave the timeline and the feeds.
           sql`NOT EXISTS (SELECT 1 FROM ${itemKeys} INNER JOIN ${sources} ON ${sources.id} = ${itemKeys.sourceId} WHERE ${itemKeys.itemId} = ${items.id} AND NOT ${sources.shown})`,
         ),
@@ -976,6 +1035,7 @@ async function recomputeAll(tx: Transaction, reached: Map<ItemId, ItemKind>, rec
         folded: projection.folded,
         windowFrom: projection.window?.from ?? null,
         windowTo: projection.window?.to ?? null,
+        outstanding: projection.outstanding,
       })
       .where(eq(items.id, id));
   }

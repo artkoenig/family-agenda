@@ -1,7 +1,7 @@
-import type { FeedEvent, FeedSchoolDay, TimelineLesson, TimelineTimetableChange, ViewFeed } from "@family-agenda/application";
+import type { FeedEvent, FeedSchoolDay, FeedTask, TimelineLesson, TimelineTimetableChange, ViewFeed } from "@family-agenda/application";
 import { addDays, type LocalDate } from "@family-agenda/domain";
 import { translationFor, type Translation } from "./i18n/translation";
-import { changeLabel, spanLabel } from "./view-page";
+import { changeLabel, dateLabel, spanLabel } from "./view-page";
 
 /**
  * A View's feed as an iCalendar document (RFC 5545), for calendar apps that subscribe to it. Each
@@ -22,6 +22,7 @@ export function icsFeed(feed: ViewFeed, viewLink: string): string {
     "X-PUBLISHED-TTL:PT1H",
     ...feed.events.flatMap((event) => vevent(event, stamp, viewLink, translation)),
     ...feed.schoolDays.flatMap((day) => schoolDayVevent(day, stamp, viewLink, translation)),
+    ...feed.tasks.flatMap((task) => taskVevent(task, stamp, viewLink, translation)),
     "END:VCALENDAR",
   ];
   return lines.map(folded).join("\r\n") + "\r\n";
@@ -75,6 +76,31 @@ function schoolDayVevent(day: FeedSchoolDay, stamp: string, viewLink: string, { 
     `DESCRIPTION:${text(`${lines.join("\n")}\n\n${viewLink}`)}`,
     `URL:${viewLink}`,
     ...(day.cancelled ? ["STATUS:CANCELLED"] : []),
+    "END:VEVENT",
+  ];
+}
+
+/**
+ * A Task as an all-day entry on its Deadline day, not a VTODO, which subscribed calendars ignore
+ * (decisions in #20). Its details say when it is due and what to bring.
+ */
+function taskVevent(task: FeedTask, stamp: string, viewLink: string, { t, locale }: Translation): string[] {
+  const deadline = dateLabel(task.deadline, locale);
+  const details = [
+    task.overdue ? t.view.overdueBy(deadline) : t.view.by(deadline),
+    task.bring.length > 0 ? `${t.view.bring}: ${task.bring.join(", ")}` : null,
+    task.cancelled ? t.view.cancelled : null,
+  ].filter(Boolean);
+  return [
+    "BEGIN:VEVENT",
+    `UID:${task.itemId}@family-agenda`,
+    `DTSTAMP:${stamp}`,
+    `DTSTART;VALUE=DATE:${date(task.deadline)}`,
+    `DTEND;VALUE=DATE:${date(addDays(task.deadline, 1))}`,
+    `SUMMARY:${text(task.title)}`,
+    `DESCRIPTION:${text(`${details.join("\n")}\n\n${viewLink}`)}`,
+    `URL:${viewLink}`,
+    ...(task.cancelled ? ["STATUS:CANCELLED"] : []),
     "END:VEVENT",
   ];
 }

@@ -4,13 +4,16 @@ import {
   instantAt,
   localDateTime,
   problemsWithEventRevision,
+  problemsWithTaskRevision,
   quoteFoundIn,
   resolveDate,
+  taskOf,
   weekdayOf,
   type Act,
   type Event,
   type LocalDate,
   type RawMessageId,
+  type Task,
   type TimeSpan,
 } from "@family-agenda/domain";
 import type { ActivityLog } from "./activity";
@@ -22,11 +25,13 @@ import type {
   Conversion,
   EndpointFailure,
   ExtractedEvent,
+  ExtractedTask,
   ExtractionResult,
   Extractor,
   FamilyRepository,
   ItemRepository,
   KnownEvent,
+  KnownTask,
   LlmEndpoint,
   LlmEndpointRepository,
   NewRevision,
@@ -138,18 +143,20 @@ export function createExtraction(deps: ExtractionDeps) {
   async function extractOne(message: PendingMessage, text: string, problems: AttachmentProblem[], endpoint: LlmEndpoint) {
     const thread = message.thread ? await items.itemsOfThread(message.sourceId, message.thread) : [];
     const known = knownEventsOf(thread, timeZone);
+    const knownTasks = knownTasksOf(thread);
     const sent = localDateTime(message.sentAt, timeZone);
     const result = await extractor.extract({
       endpoint,
       message: { text, sent: { ...sent, weekday: weekdayOf(sent.date) } },
       knownEvents: known.map(({ ref, title, when, place }) => ({ ref, title, when, place })),
+      knownTasks: knownTasks.map(({ ref, title, deadline, bring }) => ({ ref, title, deadline, bring })),
     });
     if (!result.ok) return result;
-    const reading: Reading = { message, text, sentOn: sent.date, timeZone, known };
-    const revisions = result.events.flatMap((event, index) => {
-      const revision = revisionOf(event, index, reading);
-      return revision ? [revision] : [];
-    });
+    const reading: Reading = { message, text, sentOn: sent.date, timeZone, known, knownTasks };
+    const revisions = [
+      ...result.events.map((event, index) => revisionOf(event, index, reading)),
+      ...result.tasks.map((task, index) => taskRevisionOf(task, index, reading)),
+    ].flatMap((revision) => (revision ? [revision] : []));
     await items.recordExtraction(
       {
         messageId: message.id,
@@ -237,13 +244,79 @@ function isPdf(attachment: PendingAttachment): boolean {
 /** An Event of the thread as the model is told about it, with the Item it is. */
 type Known = KnownEvent & { itemKey: string; event: Event };
 
+/** A Task of the thread as the model is told about it, with the Item it is. */
+type KnownTaskItem = KnownTask & { itemKey: string; task: Task };
+
 type Reading = {
   message: PendingMessage;
   text: string;
   sentOn: LocalDate;
   timeZone: string;
   known: Known[];
+  knownTasks: KnownTaskItem[];
 };
+
+/** The Tasks earlier messages of the thread stated, numbered for the model as T1, T2, … */
+function knownTasksOf(thread: ThreadItem[]): KnownTaskItem[] {
+  const tasks = thread.flatMap((item) => {
+    const task = item.kind === "task" ? taskOf(item.folded) : null;
+    return task && !task.cancelled ? [{ itemKey: item.itemKey, task }] : [];
+  });
+  return tasks.map(({ itemKey, task }, index) => ({
+    itemKey,
+    task,
+    ref: `T${index + 1}`,
+    title: task.title,
+    deadline: task.deadline,
+    bring: task.bring,
+  }));
+}
+
+/**
+ * The Revision an extracted Task states, rejected automatically when the message does not quote
+ * it, or its Deadline cannot be resolved or has the wrong weekday; null when it states nothing.
+ * A Task without a Deadline is due at once, so a new one needs no date.
+ */
+function taskRevisionOf(extracted: ExtractedTask, index: number, reading: Reading): NewRevision | null {
+  const { message, text, sentOn } = reading;
+  const target = extracted.updates ? reading.knownTasks.find((known) => known.ref === extracted.updates) : undefined;
+  if (!target && extracted.cancelled) return null;
+
+  let rejection: Rejection | null = quoteFoundIn(extracted.evidence, text) ? null : "evidence-not-found";
+  const mentioned = Object.values(extracted.deadline).some((part) => part !== null);
+  const resolved = mentioned ? resolveDate(extracted.deadline, sentOn) : null;
+  if (resolved && !resolved.ok) rejection ??= resolved.problem;
+  // A rejected Revision keeps the Deadline the message states, for an Admin who restores it.
+  const deadline = resolved && "date" in resolved ? resolved.date : null;
+
+  const fields: Record<string, unknown> = {};
+  let act: Act;
+  if (!target) {
+    act = "create";
+    fields.title = extracted.title;
+    fields.deadline = deadline;
+    fields.bring = extracted.bring;
+  } else if (extracted.cancelled) {
+    act = "cancel";
+  } else {
+    if (extracted.title !== null) fields.title = extracted.title;
+    if (extracted.bring.length > 0) fields.bring = extracted.bring;
+    if (mentioned) fields.deadline = deadline;
+    act = mentioned ? "move" : "change";
+    if (Object.keys(fields).length === 0 && rejection === null) return null;
+  }
+  if (rejection === null && problemsWithTaskRevision(act, fields).length > 0) rejection = "invalid-fields";
+  return {
+    itemKind: "task",
+    itemKey: target?.itemKey ?? `${message.externalId}#task-${index + 1}`,
+    act,
+    fields,
+    sourceTime: message.sentAt,
+    accepted: rejection === null,
+    rejection,
+    evidence: extracted.evidence,
+  };
+}
 
 /** The Events earlier messages of the thread stated, numbered for the model as E1, E2, … */
 function knownEventsOf(thread: ThreadItem[], timeZone: string): Known[] {

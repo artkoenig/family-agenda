@@ -1,5 +1,5 @@
 import type { ActivityKind } from "@family-agenda/application";
-import { acts, familyLanguages, horizonDaysRange, itemKinds, photoTypes, type RunError } from "@family-agenda/domain";
+import { acts, familyLanguages, revisionAuthorKinds, horizonDaysRange, itemKinds, photoTypes, type RunError } from "@family-agenda/domain";
 import { sql, type SQL } from "drizzle-orm";
 import {
   bigint,
@@ -304,10 +304,13 @@ export const items = pgTable(
     /** Instants certainly before and after the Item's time, to find it by. */
     windowFrom: timestamptz("window_from"),
     windowTo: timestamptz("window_to"),
+    /** Whether it waits for someone to act on it whatever its time, as an undone Task does. */
+    outstanding: boolean("outstanding").notNull().default(false),
     createdAt: timestamptz("created_at").notNull(),
   },
   (table) => [
     index("items_window_idx").on(table.windowFrom, table.windowTo),
+    index("items_outstanding_idx").on(table.id).where(sql`${table.outstanding}`),
     check("items_window_complete", allOrNone(table.windowFrom, table.windowTo)),
     check("items_window_ordered", sql`${table.windowFrom} <= ${table.windowTo}`),
     oneOf("items_kind_known", table.kind, itemKinds),
@@ -342,9 +345,14 @@ export const revisions = pgTable(
     itemId: uuid("item_id")
       .notNull()
       .references(() => items.id, { onDelete: "cascade" }),
-    originId: uuid("origin_id")
-      .notNull()
-      .references(() => origins.id, { onDelete: "cascade" }),
+    /** Who stated it: an Origin, or a View or an Admin ticking a Task (ADR-0009). */
+    author: text("author").notNull().default("origin"),
+    /** The Origin that stated it, for an Origin's Revision only. */
+    originId: uuid("origin_id").references(() => origins.id, { onDelete: "cascade" }),
+    /** The View it was made in; null for another author, or once the View is removed, which keeps the Revision. */
+    viewId: uuid("view_id").references(() => views.id, { onDelete: "set null" }),
+    /** The Admin who made it; null for another author, or once the Admin is removed. */
+    adminId: uuid("admin_id").references(() => admins.id, { onDelete: "set null" }),
     act: text("act").notNull(),
     fields: jsonb("fields").$type<Record<string, unknown>>().notNull(),
     sourceTime: timestamptz("source_time").notNull(),
@@ -361,6 +369,10 @@ export const revisions = pgTable(
     index("revisions_item_id_idx").on(table.itemId),
     unique("revisions_origin_fingerprint_unique").on(table.originId, table.fingerprint),
     oneOf("revisions_act_known", table.act, acts),
+    oneOf("revisions_author_known", table.author, revisionAuthorKinds),
+    check("revisions_origin_only_of_origin", sql`(${table.author} = 'origin') = (${table.originId} IS NOT NULL)`),
+    check("revisions_view_only_of_view", sql`${table.viewId} IS NULL OR ${table.author} = 'view'`),
+    check("revisions_admin_only_of_admin", sql`${table.adminId} IS NULL OR ${table.author} = 'admin'`),
     check("revisions_rejection_only_when_rejected", sql`${table.rejection} IS NULL OR NOT ${table.accepted}`),
   ],
 );

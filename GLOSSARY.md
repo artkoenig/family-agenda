@@ -23,7 +23,7 @@ A parent who signs in with their own account to manage settings and Sources, and
 _Avoid_: Owner, superuser, parent account
 
 **View**:
-A read-only, configurable perspective on the Family's Items, such as one showing only Items that concern a given Family Member; opened without signing in.
+A configurable perspective on the Family's Items, such as one showing only Items that concern a given Family Member; opened without signing in, and read-only except for ticking Tasks done.
 _Avoid_: Dashboard, read-only user, kiosk
 
 ### Inputs
@@ -93,6 +93,14 @@ _Avoid_: Todo, action item, packing list (as a separate type)
 **Deadline**:
 The date by which a Task must be done; an attribute of a Task, not an Item of its own.
 _Avoid_: Due date, Frist
+
+**Due**:
+A Task not yet done from its Deadline day on, or from when it arrives if it has none; a Due Task is pinned at the top of every View until someone ticks it done.
+_Avoid_: Open, pending, active
+
+**Overdue**:
+A Task not yet done after its Deadline day; it stays pinned, marked overdue, as nothing completes a Task but a tick.
+_Avoid_: Late, expired, missed
 
 **Notice**:
 Information worth knowing that carries no time slot and nothing to do.

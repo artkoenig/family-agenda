@@ -1,3 +1,6 @@
+import type { AdminId } from "./admin";
+import type { ViewId } from "./view";
+
 export type ItemId = string & { readonly __brand: "ItemId" };
 
 export type OriginId = string & { readonly __brand: "OriginId" };
@@ -22,10 +25,20 @@ export type Revision = {
   fields: Record<string, unknown>;
   /** When the Source said it, such as a calendar entry's `LAST-MODIFIED`. */
   sourceTime: Date;
-  /** Who said it: an Origin; Admins come later. */
-  author: { kind: "origin"; originId: OriginId };
+  author: RevisionAuthor;
   accepted: boolean;
 };
+
+/**
+ * Who said it: an Origin; or anyone with a View, or an Admin, who ticked a Task done or took the
+ * tick back (decisions in #13). A View's or Admin's id is null once they are removed.
+ */
+export type RevisionAuthor =
+  | { kind: "origin"; originId: OriginId }
+  | { kind: "view"; viewId: ViewId | null }
+  | { kind: "admin"; adminId: AdminId | null };
+
+export const revisionAuthorKinds = ["origin", "view", "admin"] as const satisfies readonly RevisionAuthor["kind"][];
 
 /** An Item as its accepted Revisions add up to, before its kind gives the fields a meaning. */
 export type FoldedItem = { fields: Record<string, unknown>; cancelled: boolean };

@@ -3,7 +3,9 @@ import {
   addDays,
   attributionOf,
   daysBetween,
+  dayOfTask,
   eventOf,
+  isPinned,
   isAcceptableHorizon,
   isAcceptableTimelineRange,
   lastDayOf,
@@ -11,6 +13,8 @@ import {
   isShownTo,
   lessonOf,
   spanOnDay,
+  taskOf,
+  taskStatus,
   timetableChangeOf,
   type Attribution,
   type Event,
@@ -22,6 +26,8 @@ import {
   type LocalTime,
   type MultilingualText,
   type RawMessageId,
+  type Task,
+  type TaskStatus,
   type TimeSpan,
   type TimetableChange,
   type TimetableChangeKind,
@@ -137,6 +143,23 @@ export type TimelineTimetableChange = {
   concerns: Attribution;
 };
 
+/**
+ * A Task as a View shows it: pinned at the top while it is Due, else on its day, checked and dimmed
+ * once done; anyone with the View can tick it done or take the tick back.
+ */
+export type TimelineTask = {
+  itemId: ItemId;
+  title: string;
+  deadline: LocalDate | null;
+  bring: string[];
+  status: TaskStatus;
+  /** Struck through, wherever it shows. */
+  cancelled: boolean;
+  links: TimelineEvent["links"];
+  messages: TimelineEvent["messages"];
+  concerns: Attribution;
+};
+
 export type ViewPage = {
   id: ViewId;
   /** The Family Language, which dates are formatted in. */
@@ -153,6 +176,8 @@ export type ViewPage = {
   showing: Showing;
   /** How many days one step of scrolling loads: the View's horizon. */
   horizonDays: number;
+  /** The Tasks Due or Overdue that concern someone it shows, oldest Deadline first, those without one last. */
+  pinned: TimelineTask[];
   /**
    * One per day shown, the horizon from today or the days scrolled to, each with its Events, its
    * school days and its Timetable Changes, each in order of time.
@@ -167,6 +192,8 @@ export type ViewPage = {
 export type TimelineDay = {
   date: LocalDate;
   items: TimelineEvent[];
+  /** The Tasks on the day that are not pinned: not Due yet, or done. */
+  tasks: TimelineTask[];
   schoolDays: TimelineSchoolDay[];
   timetableChanges: TimelineTimetableChange[];
 };
@@ -205,6 +232,16 @@ export type FeedSchoolDay = {
   names: string[];
 };
 
+/** An undone Task with a Deadline in a View's feed, as an all-day entry on its Deadline day. */
+export type FeedTask = {
+  itemId: ItemId;
+  title: string;
+  deadline: LocalDate;
+  bring: string[];
+  overdue: boolean;
+  cancelled: boolean;
+};
+
 export type ViewFeed = {
   id: ViewId;
   /** The Family Language, which the details' dates are formatted in. */
@@ -214,6 +251,8 @@ export type ViewFeed = {
   events: FeedEvent[];
   /** Those of the last 30 days and all of the future, by day. */
   schoolDays: FeedSchoolDay[];
+  /** Those not done whose Deadline is in the last 30 days or the future, by Deadline. */
+  tasks: FeedTask[];
 };
 
 /** How many days back a feed reaches, today not counted. */
@@ -247,17 +286,23 @@ export function createViewAccess(deps: ViewsDeps) {
     const assigned = new Map((await sources.list()).map((source) => [source.id, source.concerns]));
     const order = (await members.list()).map((member) => member.id);
     const installed = registry.installed();
-    const found: Around = { events: [], lessons: [], changes: [] };
-    for (const item of await items.overlapping(from, to)) {
+    const found: Around = { events: [], lessons: [], changes: [], tasks: [] };
+    const overlapping = await items.overlapping(from, to);
+    const seen = new Set(overlapping.map((item) => item.id));
+    // An undone Task stays pinned, whatever its Deadline.
+    const outstanding = (await items.outstanding()).filter((item) => !seen.has(item.id));
+    for (const item of [...overlapping, ...outstanding]) {
       const attribution = attributionOf(item.sourceIds.map((id) => assigned.get(id) ?? []));
       if (showing !== "all" && !isShownTo(attribution, showing)) continue;
       const concerns = attribution === "whole-family" ? attribution : order.filter((id) => attribution.includes(id));
+      const links = item.links.map((link) => ({ url: link.url, source: sourceName(link, installed) }));
+      const messages = item.messages.map((message) => ({ id: message.id, source: sourceName(message, installed) }));
       if (item.kind === "event") {
         const event = eventOf(item.folded);
-        if (!event) continue;
-        const links = item.links.map((link) => ({ url: link.url, source: sourceName(link, installed) }));
-        const messages = item.messages.map((message) => ({ id: message.id, source: sourceName(message, installed) }));
-        found.events.push({ id: item.id, event, links, messages, concerns });
+        if (event) found.events.push({ id: item.id, event, links, messages, concerns });
+      } else if (item.kind === "task") {
+        const task = taskOf(item.folded);
+        if (task) found.tasks.push({ id: item.id, task, links, messages, concerns });
       } else if (item.kind === "lesson") {
         const lesson = lessonOf(item.folded);
         if (lesson) found.lessons.push({ id: item.id, lesson, concerns });
@@ -267,6 +312,12 @@ export function createViewAccess(deps: ViewsDeps) {
       }
     }
     return found;
+  }
+
+  function taskRow(found: Around["tasks"][number], today: LocalDate): TimelineTask {
+    const { id, task, links, messages, concerns } = found;
+    const { title, deadline, bring, cancelled } = task;
+    return { itemId: id, title, deadline, bring, status: taskStatus(task, today), cancelled, links, messages, concerns };
   }
 
   /** The Lesson on the Family's clocks. */
@@ -352,15 +403,25 @@ export function createViewAccess(deps: ViewsDeps) {
     dates: LocalDate[],
     showing: Showing,
     now: Date,
-  ): Promise<ViewPage["days"]> {
+  ): Promise<Pick<ViewPage, "pinned" | "days">> {
     const first = dates[0];
     const last = dates.at(-1);
-    if (!first || !last) return [];
+    if (!first || !last) return { pinned: [], days: [] };
     const around = await itemsAround(first, last, showing);
-    return dates.map((date) => {
+    const today = localDateTime(now, timeZone).date;
+    const pinned = around.tasks
+      .filter(({ task }) => isPinned(task, today))
+      .map((found) => taskRow(found, today))
+      .sort(byDeadline);
+    const unpinned = around.tasks.filter(({ task }) => !isPinned(task, today));
+    const days = dates.map((date) => {
       const { schoolDays, changes } = schoolDaysOn(date, around, now);
       return {
         date,
+        tasks: unpinned
+          .filter(({ task }) => dayOfTask(task, timeZone) === date)
+          .map((found) => taskRow(found, today))
+          .sort((a, b) => a.title.localeCompare(b.title)),
         items: around.events
           .flatMap(({ id, event, links, messages, concerns }) => {
             const on = spanOnDay(event.span, date, timeZone);
@@ -371,6 +432,7 @@ export function createViewAccess(deps: ViewsDeps) {
         timetableChanges: changes,
       };
     });
+    return { pinned, days };
   }
 
   function row(
@@ -482,7 +544,7 @@ export function createViewAccess(deps: ViewsDeps) {
         choices: choices.map(summariseFamilyMember),
         showing,
         horizonDays: view.horizonDays,
-        days: await timelineOf(dates, showing, instant),
+        ...(await timelineOf(dates, showing, instant)),
         activity: await activity.current(),
         mayBeOutOfDate: await sourceHealth.anyFailing(),
       };
@@ -500,8 +562,8 @@ export function createViewAccess(deps: ViewsDeps) {
 
     /**
      * The View as a calendar feed, or null if there is no such View or `access` refuses it: the
-     * Events of the last 30 days and all of the future, cancelled ones included, whatever the
-     * View's horizon, that concern someone the View preselects, or all if it preselects no one.
+     * Events, school days and undone Tasks of the last 30 days and all of the future, cancelled
+     * ones included, whatever the View's horizon, that concern someone the View preselects, or all if it preselects no one.
      */
     async feed(id: ViewId, input: { access: ViewAccessPolicy }): Promise<ViewFeed | null> {
       const view = await views.findById(id);
@@ -532,8 +594,15 @@ export function createViewAccess(deps: ViewsDeps) {
           }))
           .sort((a, b) => firstIn(family, a.concerns) - firstIn(family, b.concerns)),
       );
+      const today = addDays(firstDay, feedDaysBack);
+      const tasks = around.tasks.flatMap(({ id: itemId, task }) => {
+        const { title, deadline, bring, cancelled } = task;
+        if (deadline === null || deadline < firstDay || task.doneAt) return [];
+        return [{ itemId, title, deadline, bring, overdue: taskStatus(task, today) === "overdue", cancelled }];
+      });
+      tasks.sort((a, b) => a.deadline.localeCompare(b.deadline) || a.title.localeCompare(b.title));
       const { language } = await families.languages();
-      return { id: view.id, language, generatedAt, events: events.sort(byStart), schoolDays };
+      return { id: view.id, language, generatedAt, events: events.sort(byStart), schoolDays, tasks };
     },
   };
 }
@@ -546,6 +615,7 @@ type Around = {
   lessons: { id: ItemId; lesson: Lesson; concerns: Attribution }[];
   /** Those the school withdrew are left out. */
   changes: { id: ItemId; change: TimetableChange; concerns: Attribution }[];
+  tasks: { id: ItemId; task: Task; links: TimelineEvent["links"]; messages: TimelineEvent["messages"]; concerns: Attribution }[];
 };
 
 /** The same for the same Family Members, whatever their order. */
@@ -556,6 +626,11 @@ function concernsKey(concerns: Attribution): string {
 /** Where the first Family Member concerned stands in the Family's order; the whole Family comes first. */
 function firstIn(family: { id: FamilyMemberId }[], concerns: Attribution): number {
   return concerns === "whole-family" ? -1 : family.findIndex((member) => concerns.includes(member.id));
+}
+
+/** By their Deadline, the oldest first, and those without one last. */
+function byDeadline(a: TimelineTask, b: TimelineTask): number {
+  return (a.deadline ?? "9999").localeCompare(b.deadline ?? "9999") || a.title.localeCompare(b.title);
 }
 
 function byFrom(a: { from: LocalTime }, b: { from: LocalTime }): number {
