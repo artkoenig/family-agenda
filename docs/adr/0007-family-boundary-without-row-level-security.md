@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: superseded by ADR-0013
 ---
 
 # The Family stays a boundary in the data model, without row-level security

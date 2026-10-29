@@ -86,7 +86,7 @@ export function createSourcePolling(deps: PollingDeps) {
     let withdrawnFiles;
     try {
       ({ knownMessages: known, withdrawnFiles } = await items.recordRun(
-        { familyId: source.familyId, sourceId: source.id, at: now, state: result.state, withdrawn: result.withdrawn, origins },
+        { sourceId: source.id, at: now, state: result.state, withdrawn: result.withdrawn, origins },
         project,
       ));
     } catch (error) {

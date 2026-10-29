@@ -33,12 +33,12 @@ export function createRecoveryKitAccess(deps: RecoveryKitDeps) {
 
     /** Whether an Admin has confirmed saving the kit; until then, the Admin area shows only the kit. */
     async isConfirmed(): Promise<boolean> {
-      confirmed ||= await families.recoveryKitConfirmed(await families.theFamily());
+      confirmed ||= await families.recoveryKitConfirmed();
       return confirmed;
     },
 
     async confirm(): Promise<void> {
-      await families.confirmRecoveryKit(await families.theFamily(), clock.now());
+      await families.confirmRecoveryKit(clock.now());
       confirmed = true;
     },
   };

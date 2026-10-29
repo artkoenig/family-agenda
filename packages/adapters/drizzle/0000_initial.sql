@@ -6,16 +6,133 @@ CREATE TABLE "admin_sessions" (
 --> statement-breakpoint
 CREATE TABLE "admins" (
 	"id" uuid PRIMARY KEY NOT NULL,
-	"family_id" uuid NOT NULL,
 	"email" text NOT NULL,
 	"password_hash" text NOT NULL,
 	"created_at" timestamp with time zone NOT NULL,
 	CONSTRAINT "admins_email_unique" UNIQUE("email")
 );
 --> statement-breakpoint
-CREATE TABLE "families" (
-	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+CREATE TABLE "background_activities" (
+	"id" boolean PRIMARY KEY DEFAULT true NOT NULL,
+	"kind" text NOT NULL,
+	"done" integer NOT NULL,
+	"total" integer NOT NULL,
+	"updated_at" timestamp with time zone NOT NULL,
+	CONSTRAINT "background_activities_single_row" CHECK ("background_activities"."id")
+);
+--> statement-breakpoint
+CREATE TABLE "catalogue_entries" (
+	"source_type_id" text NOT NULL,
+	"entry_id" text NOT NULL,
+	"enabled" boolean DEFAULT false NOT NULL,
+	"first_seen_in" text NOT NULL,
+	"first_seen_at" timestamp with time zone NOT NULL,
+	"poll_interval_seconds" integer,
+	CONSTRAINT "catalogue_entries_source_type_id_entry_id_pk" PRIMARY KEY("source_type_id","entry_id")
+);
+--> statement-breakpoint
+CREATE TABLE "family_members" (
+	"id" uuid PRIMARY KEY NOT NULL,
+	"position" bigserial NOT NULL,
+	"name" text NOT NULL,
+	"photo_blob" text,
+	"photo_content_type" text,
+	"created_at" timestamp with time zone NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "item_keys" (
+	"source_id" uuid NOT NULL,
+	"item_key" text NOT NULL,
+	"item_id" uuid NOT NULL,
+	CONSTRAINT "item_keys_source_id_item_key_pk" PRIMARY KEY("source_id","item_key")
+);
+--> statement-breakpoint
+CREATE TABLE "items" (
+	"id" uuid PRIMARY KEY NOT NULL,
+	"kind" text NOT NULL,
+	"folded" jsonb,
+	"window_from" timestamp with time zone,
+	"window_to" timestamp with time zone,
+	"created_at" timestamp with time zone NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "llm_endpoints" (
+	"id" boolean PRIMARY KEY DEFAULT true NOT NULL,
+	"base_url" text NOT NULL,
+	"model" text NOT NULL,
+	"api_key_ref" text,
+	"vision" boolean DEFAULT false NOT NULL,
+	"acknowledged_at" timestamp with time zone,
+	"saved_at" timestamp with time zone NOT NULL,
+	CONSTRAINT "llm_endpoints_single_row" CHECK ("llm_endpoints"."id")
+);
+--> statement-breakpoint
+CREATE TABLE "message_attachments" (
+	"id" uuid PRIMARY KEY NOT NULL,
+	"raw_message_id" uuid NOT NULL,
+	"position" integer NOT NULL,
+	"filename" text NOT NULL,
+	"content_type" text NOT NULL,
+	"blob" text NOT NULL,
+	"sha256" text NOT NULL,
+	"size" integer NOT NULL,
+	"conversion_problem" text
+);
+--> statement-breakpoint
+CREATE TABLE "origins" (
+	"id" uuid PRIMARY KEY NOT NULL,
+	"source_id" uuid NOT NULL,
+	"external_id" text NOT NULL,
+	"attributes" jsonb NOT NULL,
+	"link" text,
+	"first_seen_at" timestamp with time zone NOT NULL,
+	"withdrawn_at" timestamp with time zone,
+	CONSTRAINT "origins_source_external_id_unique" UNIQUE("source_id","external_id")
+);
+--> statement-breakpoint
+CREATE TABLE "raw_messages" (
+	"id" uuid PRIMARY KEY NOT NULL,
+	"origin_id" uuid NOT NULL,
+	"source_id" uuid NOT NULL,
+	"thread" text,
+	"sent_at" timestamp with time zone NOT NULL,
+	"text_blob" text NOT NULL,
+	"text_sha256" text NOT NULL,
+	"text_size" integer NOT NULL,
+	"received_at" timestamp with time zone NOT NULL,
+	"extracted_at" timestamp with time zone,
+	CONSTRAINT "raw_messages_origin_id_unique" UNIQUE("origin_id")
+);
+--> statement-breakpoint
+CREATE TABLE "revisions" (
+	"id" uuid PRIMARY KEY NOT NULL,
+	"sequence" bigserial NOT NULL,
+	"item_id" uuid NOT NULL,
+	"origin_id" uuid NOT NULL,
+	"act" text NOT NULL,
+	"fields" jsonb NOT NULL,
+	"source_time" timestamp with time zone NOT NULL,
+	"received_at" timestamp with time zone NOT NULL,
+	"accepted" boolean NOT NULL,
+	"rejection" text,
+	"evidence" text,
+	"fingerprint" text NOT NULL,
+	CONSTRAINT "revisions_origin_fingerprint_unique" UNIQUE("origin_id","fingerprint")
+);
+--> statement-breakpoint
+CREATE TABLE "secrets" (
+	"id" uuid PRIMARY KEY NOT NULL,
+	"wrapped_data_key" "bytea" NOT NULL,
+	"ciphertext" "bytea" NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "settings" (
+	"id" boolean PRIMARY KEY DEFAULT true NOT NULL,
+	"recovery_kit_confirmed_at" timestamp with time zone,
+	"language" text DEFAULT 'en' NOT NULL,
+	"ocr_languages" text[] DEFAULT '{eng}'::text[] NOT NULL,
+	CONSTRAINT "settings_single_row" CHECK ("settings"."id")
 );
 --> statement-breakpoint
 CREATE TABLE "sign_in_failures" (
@@ -24,6 +141,69 @@ CREATE TABLE "sign_in_failures" (
 	"at" timestamp with time zone NOT NULL
 );
 --> statement-breakpoint
+CREATE TABLE "source_members" (
+	"source_id" uuid NOT NULL,
+	"family_member_id" uuid NOT NULL,
+	CONSTRAINT "source_members_source_id_family_member_id_pk" PRIMARY KEY("source_id","family_member_id")
+);
+--> statement-breakpoint
+CREATE TABLE "source_types" (
+	"id" text PRIMARY KEY NOT NULL,
+	"enabled" boolean DEFAULT false NOT NULL,
+	"first_seen_in" text NOT NULL,
+	"first_seen_at" timestamp with time zone NOT NULL,
+	"is_new" boolean DEFAULT true NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "sources" (
+	"id" uuid PRIMARY KEY NOT NULL,
+	"position" bigserial NOT NULL,
+	"source_type_id" text NOT NULL,
+	"config" jsonb NOT NULL,
+	"config_version" integer NOT NULL,
+	"secret_refs" jsonb NOT NULL,
+	"state" text,
+	"poll_interval_seconds" integer,
+	"shown" boolean DEFAULT true NOT NULL,
+	"name" text,
+	"last_run_at" timestamp with time zone,
+	"last_success_at" timestamp with time zone,
+	"failing_since" timestamp with time zone,
+	"last_error_kind" text,
+	"last_error" text,
+	"last_new_origin_at" timestamp with time zone,
+	"created_at" timestamp with time zone NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "view_preselections" (
+	"view_id" uuid NOT NULL,
+	"family_member_id" uuid NOT NULL,
+	CONSTRAINT "view_preselections_view_id_family_member_id_pk" PRIMARY KEY("view_id","family_member_id")
+);
+--> statement-breakpoint
+CREATE TABLE "views" (
+	"id" uuid PRIMARY KEY NOT NULL,
+	"position" bigserial NOT NULL,
+	"horizon_days" integer NOT NULL,
+	"created_at" timestamp with time zone NOT NULL
+);
+--> statement-breakpoint
 ALTER TABLE "admin_sessions" ADD CONSTRAINT "admin_sessions_admin_id_admins_id_fk" FOREIGN KEY ("admin_id") REFERENCES "public"."admins"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "admins" ADD CONSTRAINT "admins_family_id_families_id_fk" FOREIGN KEY ("family_id") REFERENCES "public"."families"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-CREATE INDEX "sign_in_failures_key_at_idx" ON "sign_in_failures" USING btree ("key","at");
+ALTER TABLE "item_keys" ADD CONSTRAINT "item_keys_item_id_items_id_fk" FOREIGN KEY ("item_id") REFERENCES "public"."items"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "message_attachments" ADD CONSTRAINT "message_attachments_raw_message_id_raw_messages_id_fk" FOREIGN KEY ("raw_message_id") REFERENCES "public"."raw_messages"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "raw_messages" ADD CONSTRAINT "raw_messages_origin_id_origins_id_fk" FOREIGN KEY ("origin_id") REFERENCES "public"."origins"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "revisions" ADD CONSTRAINT "revisions_item_id_items_id_fk" FOREIGN KEY ("item_id") REFERENCES "public"."items"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "revisions" ADD CONSTRAINT "revisions_origin_id_origins_id_fk" FOREIGN KEY ("origin_id") REFERENCES "public"."origins"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "source_members" ADD CONSTRAINT "source_members_source_id_sources_id_fk" FOREIGN KEY ("source_id") REFERENCES "public"."sources"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "source_members" ADD CONSTRAINT "source_members_family_member_id_family_members_id_fk" FOREIGN KEY ("family_member_id") REFERENCES "public"."family_members"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "view_preselections" ADD CONSTRAINT "view_preselections_view_id_views_id_fk" FOREIGN KEY ("view_id") REFERENCES "public"."views"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "view_preselections" ADD CONSTRAINT "view_preselections_family_member_id_family_members_id_fk" FOREIGN KEY ("family_member_id") REFERENCES "public"."family_members"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+CREATE INDEX "items_window_idx" ON "items" USING btree ("window_from","window_to");--> statement-breakpoint
+CREATE INDEX "message_attachments_raw_message_id_idx" ON "message_attachments" USING btree ("raw_message_id");--> statement-breakpoint
+CREATE INDEX "raw_messages_pending_idx" ON "raw_messages" USING btree ("received_at") WHERE "raw_messages"."extracted_at" IS NULL;--> statement-breakpoint
+CREATE INDEX "raw_messages_source_thread_idx" ON "raw_messages" USING btree ("source_id","thread");--> statement-breakpoint
+CREATE INDEX "revisions_item_id_idx" ON "revisions" USING btree ("item_id");--> statement-breakpoint
+CREATE INDEX "sign_in_failures_key_at_idx" ON "sign_in_failures" USING btree ("key","at");--> statement-breakpoint
+CREATE INDEX "sources_source_type_id_idx" ON "sources" USING btree ("source_type_id");--> statement-breakpoint
+-- The one row of the Instance's Family settings (ADR-0013).
+INSERT INTO "settings" DEFAULT VALUES;

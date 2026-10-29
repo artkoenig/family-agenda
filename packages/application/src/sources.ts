@@ -6,7 +6,6 @@ import type {
   Clock,
   ConfigFieldSpec,
   FamilyMemberRepository,
-  FamilyRepository,
   KnownValue,
   LoadedSourceType,
   PlainConfig,
@@ -27,7 +26,6 @@ import { healthOf, type SourceHealth } from "./source-health";
 
 export type SourcesDeps = {
   clock: Clock;
-  families: FamilyRepository;
   members: FamilyMemberRepository;
   registry: SourceTypeRegistry;
   sourceTypes: SourceTypeRepository;
@@ -104,7 +102,7 @@ export type EditSourceResult =
   | SourceProblem;
 
 export function createSourceAccess(deps: SourcesDeps) {
-  const { clock, families, members, registry, sourceTypes, catalogues, sources, secrets, blobs, timeZone } = deps;
+  const { clock, members, registry, sourceTypes, catalogues, sources, secrets, blobs, timeZone } = deps;
 
   const enabled = (sourceTypeId: SourceTypeId) => enabledSourceType(sourceTypeId, { registry, sourceTypes });
 
@@ -171,7 +169,7 @@ export function createSourceAccess(deps: SourcesDeps) {
   return {
     async list(): Promise<SourceSummary[]> {
       const installed = registry.installed();
-      const all = await sources.list(await families.theFamily());
+      const all = await sources.list();
       const summaries: SourceSummary[] = [];
       for (const source of all) {
         summaries.push({
@@ -249,7 +247,6 @@ export function createSourceAccess(deps: SourcesDeps) {
       const id = randomUUID() as SourceId;
       await sources.add({
         id,
-        familyId: await families.theFamily(),
         sourceTypeId,
         plain: { ...given.plain, ...Object.fromEntries(ofPlugin(prepared.plain)) },
         configVersion: sourceType.configuration.version,
@@ -341,7 +338,7 @@ export function createSourceAccess(deps: SourcesDeps) {
       concerns: FamilyMemberId[],
     ): Promise<{ ok: true } | { ok: false; problem: "unknown-source" | "unknown-member" }> {
       if (!(await sources.findById(id))) return { ok: false, problem: "unknown-source" };
-      const family = await members.list(await families.theFamily());
+      const family = await members.list();
       if (concerns.some((member) => !family.some((known) => known.id === member))) return { ok: false, problem: "unknown-member" };
       await sources.assign(
         id,

@@ -5,7 +5,6 @@ import type {
   BlobRef,
   AdminId,
   Email,
-  FamilyId,
   FamilyLanguages,
   FamilyMember,
   FamilyMemberId,
@@ -35,14 +34,13 @@ export interface PasswordHasher {
   verify(hash: string, password: string): Promise<boolean>;
 }
 
+/** The settings of the Instance's one Family (ADR-0013). */
 export interface FamilyRepository {
-  /** The Instance's one Family, created on first use. */
-  theFamily(): Promise<FamilyId>;
-  recoveryKitConfirmed(id: FamilyId): Promise<boolean>;
+  recoveryKitConfirmed(): Promise<boolean>;
   /** Keeps the first confirmation if there is one. */
-  confirmRecoveryKit(id: FamilyId, at: Date): Promise<void>;
-  languages(id: FamilyId): Promise<FamilyLanguages>;
-  saveLanguages(id: FamilyId, languages: FamilyLanguages): Promise<void>;
+  confirmRecoveryKit(at: Date): Promise<void>;
+  languages(): Promise<FamilyLanguages>;
+  saveLanguages(languages: FamilyLanguages): Promise<void>;
 }
 
 export interface AdminRepository {
@@ -53,14 +51,14 @@ export interface AdminRepository {
   add(admin: Admin): Promise<boolean>;
   findById(id: AdminId): Promise<Admin | null>;
   findByEmail(email: Email): Promise<Admin | null>;
-  list(familyId: FamilyId): Promise<Admin[]>;
+  list(): Promise<Admin[]>;
   setPasswordHash(id: AdminId, passwordHash: string): Promise<void>;
 }
 
 export interface FamilyMemberRepository {
   add(member: FamilyMember): Promise<void>;
   /** In the order they were added. */
-  list(familyId: FamilyId): Promise<FamilyMember[]>;
+  list(): Promise<FamilyMember[]>;
   findById(id: FamilyMemberId): Promise<FamilyMember | null>;
   /** Stores a changed Family Member that was found before. */
   update(member: FamilyMember): Promise<void>;
@@ -73,7 +71,7 @@ export interface ViewRepository {
    * In the order they were created, each with its preselected Family Members in the order
    * those were added; Family Members removed since are no longer preselected.
    */
-  list(familyId: FamilyId): Promise<View[]>;
+  list(): Promise<View[]>;
   findById(id: ViewId): Promise<View | null>;
   /** Stores a changed View that was found before. */
   update(view: View): Promise<void>;
@@ -336,7 +334,6 @@ export interface SourceTypeRepository {
 
 export type Source = {
   id: SourceId;
-  familyId: FamilyId;
   sourceTypeId: SourceTypeId;
   plain: PlainConfig;
   /** The configuration version of the plugin the plain configuration was stored with. */
@@ -370,7 +367,7 @@ export type Source = {
 export interface SourceRepository {
   add(source: Source): Promise<void>;
   /** In the order they were added. */
-  list(familyId: FamilyId): Promise<Source[]>;
+  list(): Promise<Source[]>;
   listOfType(sourceTypeId: SourceTypeId): Promise<Source[]>;
   findById(id: SourceId): Promise<Source | null>;
   /** Stores a migrated plain configuration, unless the Source is no longer at `fromVersion`. */
@@ -428,7 +425,6 @@ export type StoredMessage = {
 
 /** One successful run of a Source, to record at once. */
 export type SourceRun = {
-  familyId: FamilyId;
   sourceId: SourceId;
   at: Date;
   /** The plugin's state after the run. */
@@ -449,7 +445,6 @@ export type SourceRun = {
 /** A raw message waiting for its one successful extraction (ADR-0009). */
 export type PendingMessage = {
   id: RawMessageId;
-  familyId: FamilyId;
   sourceId: SourceId;
   /** The Origin's id within its Source, which keys the Items extracted from it. */
   externalId: string;
@@ -486,7 +481,6 @@ export type ThreadItem = { itemKey: string; kind: ItemKind; folded: FoldedItem |
 /** What one successful extraction of a message adds, to record at once. */
 export type Extraction = {
   messageId: RawMessageId;
-  familyId: FamilyId;
   sourceId: SourceId;
   at: Date;
   revisions: NewRevision[];
@@ -547,7 +541,7 @@ export interface ItemRepository {
    * The Family's Items whose window overlaps the given time, with the links of their Origins; a
    * `to` of null means all of the future. Items of a hidden Source are left out.
    */
-  overlapping(familyId: FamilyId, from: Date, to: Date | null): Promise<ProjectedItem[]>;
+  overlapping(from: Date, to: Date | null): Promise<ProjectedItem[]>;
 }
 
 /** The one LLM endpoint of the Family, an OpenAI-compatible server. */
@@ -561,7 +555,6 @@ export type LlmEndpoint = {
 
 /** The LLM endpoint as stored, its API key in the SecretStore. */
 export type StoredLlmEndpoint = {
-  familyId: FamilyId;
   baseUrl: string;
   model: string;
   apiKey: SecretRef | null;
@@ -572,7 +565,7 @@ export type StoredLlmEndpoint = {
 };
 
 export interface LlmEndpointRepository {
-  find(familyId: FamilyId): Promise<StoredLlmEndpoint | null>;
+  find(): Promise<StoredLlmEndpoint | null>;
   save(endpoint: StoredLlmEndpoint): Promise<void>;
 }
 
@@ -671,7 +664,7 @@ export type BackgroundActivity = { kind: ActivityKind; done: number; total: numb
 
 /** The Family's one current background activity, shared between the worker and the api. */
 export interface ActivityRepository {
-  find(familyId: FamilyId): Promise<BackgroundActivity | null>;
-  save(familyId: FamilyId, activity: BackgroundActivity): Promise<void>;
-  clear(familyId: FamilyId): Promise<void>;
+  find(): Promise<BackgroundActivity | null>;
+  save(activity: BackgroundActivity): Promise<void>;
+  clear(): Promise<void>;
 }

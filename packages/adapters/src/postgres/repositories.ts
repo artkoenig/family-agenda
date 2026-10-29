@@ -35,7 +35,6 @@ import type {
   AdminId,
   BlobRef,
   Email,
-  FamilyId,
   FamilyLanguages,
   FamilyMember,
   FamilyMemberId,
@@ -61,7 +60,6 @@ import {
   adminSessions,
   backgroundActivities,
   catalogueEntries,
-  families,
   familyMembers,
   itemKeys,
   items,
@@ -70,6 +68,7 @@ import {
   origins,
   rawMessages,
   revisions,
+  settings,
   signInFailures,
   sourceMembers,
   sources,
@@ -78,55 +77,37 @@ import {
   views,
 } from "./schema";
 
-/** Arbitrary key that serialises creating the Family and the first Admin. */
+/** Arbitrary key that serialises creating the first Admin. */
 const setupLockKey = 7_342_002;
 
+/** Reads and writes the one row of `settings`, which the schema creates (ADR-0013). */
 export class PostgresFamilyRepository implements FamilyRepository {
   constructor(private readonly db: Database) {}
 
-  async theFamily(): Promise<FamilyId> {
-    return this.db.transaction(async (tx) => {
-      await tx.execute(sql`SELECT pg_advisory_xact_lock(${setupLockKey})`);
-      const [existing] = await tx.select({ id: families.id }).from(families).limit(1);
-      if (existing) return existing.id as FamilyId;
-      const [created] = await tx.insert(families).values({}).returning({ id: families.id });
-      if (!created) throw new Error("creating the Family returned no row");
-      return created.id as FamilyId;
-    });
-  }
-
-  async recoveryKitConfirmed(id: FamilyId): Promise<boolean> {
-    const [row] = await this.db
-      .select({ at: families.recoveryKitConfirmedAt })
-      .from(families)
-      .where(eq(families.id, id));
+  async recoveryKitConfirmed(): Promise<boolean> {
+    const [row] = await this.db.select({ at: settings.recoveryKitConfirmedAt }).from(settings);
     return row?.at != null;
   }
 
-  async confirmRecoveryKit(id: FamilyId, at: Date): Promise<void> {
+  async confirmRecoveryKit(at: Date): Promise<void> {
     await this.db
-      .update(families)
-      .set({ recoveryKitConfirmedAt: sql`coalesce(${families.recoveryKitConfirmedAt}, ${at})` })
-      .where(eq(families.id, id));
+      .update(settings)
+      .set({ recoveryKitConfirmedAt: sql`coalesce(${settings.recoveryKitConfirmedAt}, ${at})` });
   }
 
-  async languages(id: FamilyId): Promise<FamilyLanguages> {
+  async languages(): Promise<FamilyLanguages> {
     const [row] = await this.db
-      .select({ language: families.language, ocrLanguages: families.ocrLanguages })
-      .from(families)
-      .where(eq(families.id, id));
-    if (!row) throw new Error(`no Family ${id}`);
+      .select({ language: settings.language, ocrLanguages: settings.ocrLanguages })
+      .from(settings);
+    if (!row) throw new Error("the settings row is missing");
     return {
       language: isFamilyLanguage(row.language) ? row.language : defaultFamilyLanguage,
       ocrLanguages: row.ocrLanguages as OcrLanguage[],
     };
   }
 
-  async saveLanguages(id: FamilyId, languages: FamilyLanguages): Promise<void> {
-    await this.db
-      .update(families)
-      .set({ language: languages.language, ocrLanguages: languages.ocrLanguages })
-      .where(eq(families.id, id));
+  async saveLanguages(languages: FamilyLanguages): Promise<void> {
+    await this.db.update(settings).set({ language: languages.language, ocrLanguages: languages.ocrLanguages });
   }
 }
 
@@ -168,11 +149,10 @@ export class PostgresAdminRepository implements AdminRepository {
     return row ? toAdmin(row) : null;
   }
 
-  async list(familyId: FamilyId): Promise<Admin[]> {
+  async list(): Promise<Admin[]> {
     const rows = await this.db
       .select()
       .from(admins)
-      .where(eq(admins.familyId, familyId))
       .orderBy(asc(admins.createdAt), asc(admins.email));
     return rows.map(toAdmin);
   }
@@ -185,7 +165,6 @@ export class PostgresAdminRepository implements AdminRepository {
 function toAdmin(row: typeof admins.$inferSelect): Admin {
   return {
     id: row.id as AdminId,
-    familyId: row.familyId as FamilyId,
     email: row.email as Email,
     passwordHash: row.passwordHash,
     createdAt: row.createdAt,
@@ -254,12 +233,8 @@ export class PostgresFamilyMemberRepository implements FamilyMemberRepository {
     await this.db.insert(familyMembers).values({ ...member, ...photoColumns(member) });
   }
 
-  async list(familyId: FamilyId): Promise<FamilyMember[]> {
-    const rows = await this.db
-      .select()
-      .from(familyMembers)
-      .where(eq(familyMembers.familyId, familyId))
-      .orderBy(asc(familyMembers.position));
+  async list(): Promise<FamilyMember[]> {
+    const rows = await this.db.select().from(familyMembers).orderBy(asc(familyMembers.position));
     return rows.map(toFamilyMember);
   }
 
@@ -285,7 +260,6 @@ export class PostgresFamilyMemberRepository implements FamilyMemberRepository {
 function toFamilyMember(row: typeof familyMembers.$inferSelect): FamilyMember {
   return {
     id: row.id as FamilyMemberId,
-    familyId: row.familyId as FamilyId,
     name: row.name,
     photo:
       row.photoBlob && row.photoContentType
@@ -312,8 +286,8 @@ export class PostgresViewRepository implements ViewRepository {
     });
   }
 
-  async list(familyId: FamilyId): Promise<View[]> {
-    return this.select(eq(views.familyId, familyId));
+  async list(): Promise<View[]> {
+    return this.select();
   }
 
   async findById(id: ViewId): Promise<View | null> {
@@ -335,7 +309,7 @@ export class PostgresViewRepository implements ViewRepository {
     await this.db.delete(views).where(eq(views.id, id));
   }
 
-  private async select(where: SQL): Promise<View[]> {
+  private async select(where?: SQL): Promise<View[]> {
     const rows = await this.db
       .select({ view: views, familyMemberId: viewPreselections.familyMemberId })
       .from(views)
@@ -347,7 +321,6 @@ export class PostgresViewRepository implements ViewRepository {
     for (const { view, familyMemberId } of rows) {
       const found = byId.get(view.id) ?? {
         id: view.id as ViewId,
-        familyId: view.familyId as FamilyId,
         preselected: [],
         horizonDays: view.horizonDays,
         createdAt: view.createdAt,
@@ -457,7 +430,6 @@ export class PostgresSourceRepository implements SourceRepository {
   async add(source: Source): Promise<void> {
     await this.db.insert(sources).values({
       id: source.id,
-      familyId: source.familyId,
       sourceTypeId: source.sourceTypeId,
       config: source.plain,
       configVersion: source.configVersion,
@@ -474,8 +446,8 @@ export class PostgresSourceRepository implements SourceRepository {
     });
   }
 
-  async list(familyId: FamilyId): Promise<Source[]> {
-    return this.select(eq(sources.familyId, familyId));
+  async list(): Promise<Source[]> {
+    return this.select();
   }
 
   async listOfType(sourceTypeId: SourceTypeId): Promise<Source[]> {
@@ -561,7 +533,7 @@ export class PostgresSourceRepository implements SourceRepository {
     });
   }
 
-  private async select(where: SQL): Promise<Source[]> {
+  private async select(where?: SQL): Promise<Source[]> {
     const rows = await this.db.select().from(sources).where(where).orderBy(asc(sources.position));
     const assigned = await this.db
       .select({ sourceId: sourceMembers.sourceId, familyMemberId: sourceMembers.familyMemberId })
@@ -580,7 +552,6 @@ export class PostgresSourceRepository implements SourceRepository {
       assigned.filter((row) => row.sourceId === id).map((row) => row.familyMemberId as FamilyMemberId);
     return rows.map((row) => ({
       id: row.id as SourceId,
-      familyId: row.familyId as FamilyId,
       sourceTypeId: row.sourceTypeId as SourceTypeId,
       plain: row.config,
       configVersion: row.configVersion,
@@ -626,7 +597,6 @@ export class PostgresItemRepository implements ItemRepository {
           .insert(origins)
           .values({
             id: randomUUID(),
-            familyId: run.familyId,
             sourceId: run.sourceId,
             externalId: origin.externalId,
             attributes: origin.attributes,
@@ -652,7 +622,6 @@ export class PostgresItemRepository implements ItemRepository {
             .insert(rawMessages)
             .values({
               id,
-              familyId: run.familyId,
               originId: row.id,
               sourceId: run.sourceId,
               thread: message.thread,
@@ -680,7 +649,7 @@ export class PostgresItemRepository implements ItemRepository {
             );
           }
         }
-        await this.append(tx, { familyId: run.familyId, sourceId: run.sourceId, originId: row.id, at: run.at }, origin.revisions, reached);
+        await this.append(tx, { sourceId: run.sourceId, originId: row.id, at: run.at }, origin.revisions, reached);
       }
       const withdrawnFiles = await this.withdraw(tx, run, reached);
       await this.recomputeAll(tx, reached, recompute);
@@ -740,7 +709,6 @@ export class PostgresItemRepository implements ItemRepository {
     const rows = await this.db
       .select({
         id: rawMessages.id,
-        familyId: rawMessages.familyId,
         sourceId: rawMessages.sourceId,
         externalId: origins.externalId,
         sentAt: rawMessages.sentAt,
@@ -763,7 +731,6 @@ export class PostgresItemRepository implements ItemRepository {
     return rows.map((row) => ({
       ...row,
       id: row.id as RawMessageId,
-      familyId: row.familyId as FamilyId,
       sourceId: row.sourceId as SourceId,
       text: row.text as BlobRef,
       attachments: attachments.flatMap((attachment) =>
@@ -802,8 +769,8 @@ export class PostgresItemRepository implements ItemRepository {
           .where(and(eq(messageAttachments.rawMessageId, extraction.messageId), eq(messageAttachments.position, position)));
       }
       const reached = new Map<ItemId, ItemKind>();
-      const { familyId, sourceId, at } = extraction;
-      await this.append(tx, { familyId, sourceId, originId: message.originId, at }, extraction.revisions, reached);
+      const { sourceId, at } = extraction;
+      await this.append(tx, { sourceId, originId: message.originId, at }, extraction.revisions, reached);
       await this.recomputeAll(tx, reached, recompute);
     });
   }
@@ -837,13 +804,12 @@ export class PostgresItemRepository implements ItemRepository {
     };
   }
 
-  async overlapping(familyId: FamilyId, from: Date, to: Date | null): Promise<ProjectedItem[]> {
+  async overlapping(from: Date, to: Date | null): Promise<ProjectedItem[]> {
     const rows = await this.db
       .select({ id: items.id, kind: items.kind, folded: items.folded })
       .from(items)
       .where(
         and(
-          eq(items.familyId, familyId),
           isNotNull(items.folded),
           to ? lte(items.windowFrom, to) : undefined,
           gte(items.windowTo, from),
@@ -911,7 +877,7 @@ export class PostgresItemRepository implements ItemRepository {
   /** Appends Revisions of one Origin, unless the same Revision is recorded; notes the Items they reach. */
   private async append(
     tx: Transaction,
-    origin: { familyId: FamilyId; sourceId: SourceId; originId: string; at: Date },
+    origin: { sourceId: SourceId; originId: string; at: Date },
     newRevisions: NewRevision[],
     reached: Map<ItemId, ItemKind>,
   ): Promise<void> {
@@ -921,7 +887,6 @@ export class PostgresItemRepository implements ItemRepository {
         .insert(revisions)
         .values({
           id: randomUUID(),
-          familyId: origin.familyId,
           itemId: item.id,
           originId: origin.originId,
           act: revision.act,
@@ -967,7 +932,7 @@ export class PostgresItemRepository implements ItemRepository {
   /** The Item the Source's key names, created on the first Revision about it. */
   private async itemFor(
     tx: Transaction,
-    origin: { familyId: FamilyId; sourceId: SourceId; at: Date },
+    origin: { sourceId: SourceId; at: Date },
     revision: NewRevision,
   ): Promise<{ id: ItemId; kind: ItemKind }> {
     const [known] = await tx
@@ -977,7 +942,7 @@ export class PostgresItemRepository implements ItemRepository {
       .where(and(eq(itemKeys.sourceId, origin.sourceId), eq(itemKeys.itemKey, revision.itemKey)));
     if (known) return { id: known.id as ItemId, kind: known.kind as ItemKind };
     const id = randomUUID() as ItemId;
-    await tx.insert(items).values({ id, familyId: origin.familyId, kind: revision.itemKind, createdAt: origin.at });
+    await tx.insert(items).values({ id, kind: revision.itemKind, createdAt: origin.at });
     await tx.insert(itemKeys).values({ sourceId: origin.sourceId, itemKey: revision.itemKey, itemId: id });
     return { id, kind: revision.itemKind };
   }
@@ -986,11 +951,10 @@ export class PostgresItemRepository implements ItemRepository {
 export class PostgresLlmEndpointRepository implements LlmEndpointRepository {
   constructor(private readonly db: Database) {}
 
-  async find(familyId: FamilyId): Promise<StoredLlmEndpoint | null> {
-    const [row] = await this.db.select().from(llmEndpoints).where(eq(llmEndpoints.familyId, familyId));
+  async find(): Promise<StoredLlmEndpoint | null> {
+    const [row] = await this.db.select().from(llmEndpoints);
     if (!row) return null;
     return {
-      familyId,
       baseUrl: row.baseUrl,
       model: row.model,
       apiKey: row.apiKeyRef as SecretRef | null,
@@ -1011,29 +975,29 @@ export class PostgresLlmEndpointRepository implements LlmEndpointRepository {
     };
     await this.db
       .insert(llmEndpoints)
-      .values({ familyId: endpoint.familyId, ...values })
-      .onConflictDoUpdate({ target: llmEndpoints.familyId, set: values });
+      .values(values)
+      .onConflictDoUpdate({ target: llmEndpoints.id, set: values });
   }
 }
 
 export class PostgresActivityRepository implements ActivityRepository {
   constructor(private readonly db: Database) {}
 
-  async find(familyId: FamilyId): Promise<BackgroundActivity | null> {
-    const [row] = await this.db.select().from(backgroundActivities).where(eq(backgroundActivities.familyId, familyId));
+  async find(): Promise<BackgroundActivity | null> {
+    const [row] = await this.db.select().from(backgroundActivities);
     if (!row) return null;
     return { kind: row.kind as ActivityKind, done: row.done, total: row.total, updatedAt: row.updatedAt };
   }
 
-  async save(familyId: FamilyId, activity: BackgroundActivity): Promise<void> {
+  async save(activity: BackgroundActivity): Promise<void> {
     await this.db
       .insert(backgroundActivities)
-      .values({ familyId, ...activity })
-      .onConflictDoUpdate({ target: backgroundActivities.familyId, set: activity });
+      .values(activity)
+      .onConflictDoUpdate({ target: backgroundActivities.id, set: activity });
   }
 
-  async clear(familyId: FamilyId): Promise<void> {
-    await this.db.delete(backgroundActivities).where(eq(backgroundActivities.familyId, familyId));
+  async clear(): Promise<void> {
+    await this.db.delete(backgroundActivities);
   }
 }
 

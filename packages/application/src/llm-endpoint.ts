@@ -1,9 +1,8 @@
 import { isLocalHost } from "@family-agenda/domain";
-import type { Clock, FamilyRepository, LlmEndpoint, LlmEndpointRepository, SecretRef, SecretStore } from "./ports";
+import type { Clock, LlmEndpoint, LlmEndpointRepository, SecretRef, SecretStore } from "./ports";
 
 export type LlmEndpointDeps = {
   clock: Clock;
-  families: FamilyRepository;
   endpoints: LlmEndpointRepository;
   secrets: SecretStore;
 };
@@ -39,11 +38,11 @@ export type SaveLlmEndpointResult =
 const maximumModelLength = 200;
 
 export function createLlmEndpointAccess(deps: LlmEndpointDeps) {
-  const { clock, families, endpoints, secrets } = deps;
+  const { clock, endpoints, secrets } = deps;
 
   return {
     async current(): Promise<LlmEndpointSummary | null> {
-      const stored = await endpoints.find(await families.theFamily());
+      const stored = await endpoints.find();
       if (!stored) return null;
       return {
         baseUrl: stored.baseUrl,
@@ -68,14 +67,12 @@ export function createLlmEndpointAccess(deps: LlmEndpointDeps) {
         return { ok: false, problem: "third-parties-not-acknowledged" };
       }
 
-      const familyId = await families.theFamily();
-      const stored = await endpoints.find(familyId);
+      const stored = await endpoints.find();
       const replacing = input.removeApiKey === true || input.apiKey.trim() !== "";
       let apiKey: SecretRef | null = stored?.apiKey ?? null;
       if (replacing) apiKey = input.apiKey.trim() !== "" ? await secrets.put(input.apiKey.trim()) : null;
       const now = clock.now();
       await endpoints.save({
-        familyId,
         baseUrl: url.href.replace(/\/+$/, ""),
         model,
         apiKey,
@@ -93,7 +90,7 @@ export type LlmEndpointAccess = ReturnType<typeof createLlmEndpointAccess>;
 
 /** The Family's LLM endpoint with its API key, or null if none is configured. */
 export async function llmEndpointOf(deps: Omit<LlmEndpointDeps, "clock">): Promise<LlmEndpoint | null> {
-  const stored = await deps.endpoints.find(await deps.families.theFamily());
+  const stored = await deps.endpoints.find();
   if (!stored) return null;
   const apiKey = stored.apiKey ? await deps.secrets.get(stored.apiKey) : null;
   return { baseUrl: stored.baseUrl, model: stored.model, apiKey, vision: stored.vision };

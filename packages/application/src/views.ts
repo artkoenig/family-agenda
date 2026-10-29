@@ -12,7 +12,6 @@ import {
   spanOnDay,
   type Attribution,
   type Event,
-  type FamilyId,
   type FamilyLanguage,
   type FamilyMemberId,
   type ItemId,
@@ -159,15 +158,15 @@ export function createViewAccess(deps: ViewsDeps) {
    * `last` is null, that concern someone `showing` shows; the caller decides by the Family's time
    * zone. Whom its Sources are assigned to now decides whom an Item concerns, whenever it came.
    */
-  async function eventsAround(familyId: FamilyId, first: LocalDate, last: LocalDate | null, showing: Showing) {
+  async function eventsAround(first: LocalDate, last: LocalDate | null, showing: Showing) {
     // A day lasts at most 26 hours, and no time zone is more than 14 hours from UTC.
     const day = 24 * 60 * 60 * 1000;
     const from = new Date(new Date(`${first}T00:00:00Z`).getTime() - day);
     const to = last ? new Date(new Date(`${addDays(last, 1)}T00:00:00Z`).getTime() + day) : null;
-    const assigned = new Map((await sources.list(familyId)).map((source) => [source.id, source.concerns]));
-    const order = (await members.list(familyId)).map((member) => member.id);
+    const assigned = new Map((await sources.list()).map((source) => [source.id, source.concerns]));
+    const order = (await members.list()).map((member) => member.id);
     const installed = registry.installed();
-    return (await items.overlapping(familyId, from, to)).flatMap((item) => {
+    return (await items.overlapping(from, to)).flatMap((item) => {
       const event = item.kind === "event" ? eventOf(item.folded) : null;
       if (!event) return [];
       const attribution = attributionOf(item.sourceIds.map((id) => assigned.get(id) ?? []));
@@ -181,7 +180,6 @@ export function createViewAccess(deps: ViewsDeps) {
 
   /** The Family's Events on each of the days that concern someone `showing` shows, in order of time. */
   async function timelineOf(
-    familyId: FamilyId,
     dates: LocalDate[],
     showing: Showing,
     now: Date,
@@ -189,7 +187,7 @@ export function createViewAccess(deps: ViewsDeps) {
     const first = dates[0];
     const last = dates.at(-1);
     if (!first || !last) return [];
-    const events = await eventsAround(familyId, first, last, showing);
+    const events = await eventsAround(first, last, showing);
     return dates.map((date) => ({
       date,
       items: events
@@ -232,7 +230,7 @@ export function createViewAccess(deps: ViewsDeps) {
     settings: ViewSettings,
   ): Promise<{ ok: true; settings: ViewSettings } | { ok: false; problem: ViewProblem }> {
     if (!isAcceptableHorizon(settings.horizonDays)) return { ok: false, problem: "invalid-horizon" };
-    const known = (await members.list(await families.theFamily())).map((member) => member.id);
+    const known = (await members.list()).map((member) => member.id);
     if (!settings.preselected.every((id) => known.includes(id))) {
       return { ok: false, problem: "unknown-member" };
     }
@@ -242,7 +240,7 @@ export function createViewAccess(deps: ViewsDeps) {
 
   return {
     async list(): Promise<ViewSummary[]> {
-      const all = await views.list(await families.theFamily());
+      const all = await views.list();
       return all.map(({ id, preselected, horizonDays }) => ({ id, preselected, horizonDays }));
     },
 
@@ -254,7 +252,6 @@ export function createViewAccess(deps: ViewsDeps) {
       const id = randomUUID() as ViewId;
       await views.add({
         id,
-        familyId: await families.theFamily(),
         ...checked.settings,
         createdAt: clock.now(),
       });
@@ -293,7 +290,7 @@ export function createViewAccess(deps: ViewsDeps) {
       }
       const view = await views.findById(id);
       if (!view || !(await input.access.mayOpen(view.id))) return null;
-      const family = await members.list(view.familyId);
+      const family = await members.list();
       const choices = view.preselected.length > 0 ? family.filter((member) => view.preselected.includes(member.id)) : family;
       const show = input.show ?? "all";
       const chosen = show === "all" ? [] : choices.map((member) => member.id).filter((memberId) => show.includes(memberId));
@@ -305,13 +302,13 @@ export function createViewAccess(deps: ViewsDeps) {
       const dates = Array.from({ length: daysBetween(first, last) + 1 }, (_, day) => addDays(first, day));
       return {
         id: view.id,
-        language: (await families.languages(view.familyId)).language,
+        language: (await families.languages()).language,
         now,
         members: family.map(summariseFamilyMember),
         choices: choices.map(summariseFamilyMember),
         showing,
         horizonDays: view.horizonDays,
-        days: await timelineOf(view.familyId, dates, showing, instant),
+        days: await timelineOf(dates, showing, instant),
         activity: await activity.current(),
         mayBeOutOfDate: await sourceHealth.anyFailing(),
       };
@@ -338,12 +335,12 @@ export function createViewAccess(deps: ViewsDeps) {
       const generatedAt = clock.now();
       const firstDay = addDays(localDateTime(generatedAt, timeZone).date, -feedDaysBack);
       const showing: Showing = view.preselected.length > 0 ? view.preselected : "all";
-      const events = (await eventsAround(view.familyId, firstDay, null, showing)).flatMap(({ id: itemId, event }) => {
+      const events = (await eventsAround(firstDay, null, showing)).flatMap(({ id: itemId, event }) => {
         if (lastDayOf(event.span, timeZone) < firstDay) return [];
         const { title, span, place, cancelled } = event;
         return [{ itemId, title, span, when: onClocks(span), place, cancelled }];
       });
-      const { language } = await families.languages(view.familyId);
+      const { language } = await families.languages();
       return { id: view.id, language, generatedAt, events: events.sort(byStart) };
     },
   };

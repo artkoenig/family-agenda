@@ -1,4 +1,3 @@
-import type { FamilyId } from "./family";
 
 export type AdminId = string & { readonly __brand: "AdminId" };
 
@@ -6,7 +5,6 @@ export type Email = string & { readonly __brand: "Email" };
 
 export type Admin = {
   id: AdminId;
-  familyId: FamilyId;
   email: Email;
   passwordHash: string;
   createdAt: Date;

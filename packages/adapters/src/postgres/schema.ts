@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import {
   bigserial,
   boolean,
+  check,
   integer,
   jsonb,
   customType,
@@ -16,21 +17,28 @@ import {
 
 const bytea = customType<{ data: Buffer }>({ dataType: () => "bytea" });
 
-export const families = pgTable("families", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  recoveryKitConfirmedAt: timestamp("recovery_kit_confirmed_at", { withTimezone: true }),
-  /** The Family Language, `en` or `de`, which dates are formatted in. */
-  language: text("language").notNull().default("en"),
-  /** The Tesseract codes OCR reads in, in order; by default the one of the Family Language. */
-  ocrLanguages: text("ocr_languages").array().notNull().default(sql`'{eng}'::text[]`),
-});
+/**
+ * The key of a table that holds at most one row, as an Instance serves exactly one Family
+ * (ADR-0013); together with its check, it can only be `true`.
+ */
+const singleRowId = () => boolean("id").primaryKey().default(true);
+
+/** The settings of the Instance's one Family; its one row is created with the schema. */
+export const settings = pgTable(
+  "settings",
+  {
+    id: singleRowId(),
+    recoveryKitConfirmedAt: timestamp("recovery_kit_confirmed_at", { withTimezone: true }),
+    /** The Family Language, `en` or `de`, which dates are formatted in. */
+    language: text("language").notNull().default("en"),
+    /** The Tesseract codes OCR reads in, in order; by default the one of the Family Language. */
+    ocrLanguages: text("ocr_languages").array().notNull().default(sql`'{eng}'::text[]`),
+  },
+  (table) => [check("settings_single_row", sql`${table.id}`)],
+);
 
 export const admins = pgTable("admins", {
   id: uuid("id").primaryKey(),
-  familyId: uuid("family_id")
-    .notNull()
-    .references(() => families.id),
   email: text("email").notNull().unique(),
   passwordHash: text("password_hash").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
@@ -66,9 +74,6 @@ export const familyMembers = pgTable("family_members", {
   id: uuid("id").primaryKey(),
   /** The order Family Members were added in, which lists and quick filters keep. */
   position: bigserial("position", { mode: "number" }).notNull(),
-  familyId: uuid("family_id")
-    .notNull()
-    .references(() => families.id),
   name: text("name").notNull(),
   /** The photo in the BlobStore, if any, and its image format. */
   photoBlob: text("photo_blob"),
@@ -79,9 +84,6 @@ export const familyMembers = pgTable("family_members", {
 export const views = pgTable("views", {
   id: uuid("id").primaryKey(),
   position: bigserial("position", { mode: "number" }).notNull(),
-  familyId: uuid("family_id")
-    .notNull()
-    .references(() => families.id),
   horizonDays: integer("horizon_days").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
 });
@@ -139,9 +141,6 @@ export const sources = pgTable(
   {
     id: uuid("id").primaryKey(),
     position: bigserial("position", { mode: "number" }).notNull(),
-    familyId: uuid("family_id")
-      .notNull()
-      .references(() => families.id),
     sourceTypeId: text("source_type_id").notNull(),
     config: jsonb("config").$type<Record<string, unknown>>().notNull(),
     configVersion: integer("config_version").notNull(),
@@ -196,9 +195,6 @@ export const origins = pgTable(
   "origins",
   {
     id: uuid("id").primaryKey(),
-    familyId: uuid("family_id")
-      .notNull()
-      .references(() => families.id),
     sourceId: uuid("source_id").notNull(),
     /** The Origin's id within its Source, such as a calendar entry's UID. */
     externalId: text("external_id").notNull(),
@@ -222,9 +218,6 @@ export const items = pgTable(
   "items",
   {
     id: uuid("id").primaryKey(),
-    familyId: uuid("family_id")
-      .notNull()
-      .references(() => families.id),
     kind: text("kind").notNull(),
     folded: jsonb("folded").$type<{ fields: Record<string, unknown>; cancelled: boolean }>(),
     /** Instants certainly before and after the Item's time, to find it by. */
@@ -232,7 +225,7 @@ export const items = pgTable(
     windowTo: timestamp("window_to", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
   },
-  (table) => [index("items_family_window_idx").on(table.familyId, table.windowFrom, table.windowTo)],
+  (table) => [index("items_window_idx").on(table.windowFrom, table.windowTo)],
 );
 
 /** Which Item a Source's own key for it, such as a calendar UID, belongs to. */
@@ -255,9 +248,6 @@ export const revisions = pgTable(
     id: uuid("id").primaryKey(),
     /** The order Revisions were received in, which decides between equal source times. */
     sequence: bigserial("sequence", { mode: "number" }).notNull(),
-    familyId: uuid("family_id")
-      .notNull()
-      .references(() => families.id),
     itemId: uuid("item_id")
       .notNull()
       .references(() => items.id),
@@ -290,9 +280,6 @@ export const rawMessages = pgTable(
   "raw_messages",
   {
     id: uuid("id").primaryKey(),
-    familyId: uuid("family_id")
-      .notNull()
-      .references(() => families.id),
     originId: uuid("origin_id")
       .notNull()
       .unique()
@@ -335,28 +322,32 @@ export const messageAttachments = pgTable(
 );
 
 /** The Family's one LLM endpoint; its API key is in the SecretStore. */
-export const llmEndpoints = pgTable("llm_endpoints", {
-  familyId: uuid("family_id")
-    .primaryKey()
-    .references(() => families.id),
-  baseUrl: text("base_url").notNull(),
-  model: text("model").notNull(),
-  apiKeyRef: text("api_key_ref"),
-  /** Whether its model reads images, so that scanned pages are sent to it rather than to OCR. */
-  vision: boolean("vision").notNull().default(false),
-  /** When an Admin acknowledged that third parties' messages are sent to it; null for a local one. */
-  acknowledgedAt: timestamp("acknowledged_at", { withTimezone: true }),
-  savedAt: timestamp("saved_at", { withTimezone: true }).notNull(),
-});
+export const llmEndpoints = pgTable(
+  "llm_endpoints",
+  {
+    id: singleRowId(),
+    baseUrl: text("base_url").notNull(),
+    model: text("model").notNull(),
+    apiKeyRef: text("api_key_ref"),
+    /** Whether its model reads images, so that scanned pages are sent to it rather than to OCR. */
+    vision: boolean("vision").notNull().default(false),
+    /** When an Admin acknowledged that third parties' messages are sent to it; null for a local one. */
+    acknowledgedAt: timestamp("acknowledged_at", { withTimezone: true }),
+    savedAt: timestamp("saved_at", { withTimezone: true }).notNull(),
+  },
+  (table) => [check("llm_endpoints_single_row", sql`${table.id}`)],
+);
 
-/** What the worker is busy with, one row per Family while it is; read by the api for the Views. */
-export const backgroundActivities = pgTable("background_activities", {
-  familyId: uuid("family_id")
-    .primaryKey()
-    .references(() => families.id),
-  /** `polling` or `extracting`. */
-  kind: text("kind").notNull(),
-  done: integer("done").notNull(),
-  total: integer("total").notNull(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
-});
+/** What the worker is busy with, one row while it is; read by the api for the Views. */
+export const backgroundActivities = pgTable(
+  "background_activities",
+  {
+    id: singleRowId(),
+    /** `polling` or `extracting`. */
+    kind: text("kind").notNull(),
+    done: integer("done").notNull(),
+    total: integer("total").notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
+  },
+  (table) => [check("background_activities_single_row", sql`${table.id}`)],
+);

@@ -33,10 +33,7 @@ export type RemoveModelResult =
 export function createLanguageAccess(deps: LanguagesDeps) {
   const { families, ocrModels } = deps;
 
-  async function stored() {
-    const familyId = await families.theFamily();
-    return { familyId, ...(await families.languages(familyId)) };
-  }
+  const stored = () => families.languages();
 
   return {
     /** The language the Instance speaks to the Family in. */
@@ -59,8 +56,8 @@ export function createLanguageAccess(deps: LanguagesDeps) {
     /** Changes the language dates are formatted in; the OCR languages stay as they are. */
     async setLanguage(language: string): Promise<SetLanguageResult> {
       if (!isFamilyLanguage(language)) return { ok: false, problem: "invalid-language" };
-      const { familyId, ocrLanguages } = await stored();
-      await families.saveLanguages(familyId, { language, ocrLanguages });
+      const { ocrLanguages } = await stored();
+      await families.saveLanguages({ language, ocrLanguages });
       return { ok: true };
     },
 
@@ -71,8 +68,8 @@ export function createLanguageAccess(deps: LanguagesDeps) {
       const installed = new Set<string>((await ocrModels.installed()).map((model) => model.language));
       const ocrLanguages = chosen.filter(isOcrLanguage).filter((ocr) => installed.has(ocr));
       if (ocrLanguages.length < chosen.length) return { ok: false, problem: "ocr-language-not-installed" };
-      const { familyId, language } = await stored();
-      await families.saveLanguages(familyId, { language, ocrLanguages });
+      const { language } = await stored();
+      await families.saveLanguages({ language, ocrLanguages });
       return { ok: true };
     },
 
