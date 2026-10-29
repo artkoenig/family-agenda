@@ -326,6 +326,21 @@ describe("Tasks extracted from mail", () => {
     expect(await tasks()).toMatchObject([{ title: "Formular unterschreiben", deadline: null, status: "due" }]);
   });
 
+  it("takes a month alone for a Deadline on its last day", async () => {
+    extractor.script("Umfrage", [], [
+      extractedTask({
+        title: "Umfrage der Stadt ausfüllen",
+        deadline: { month: 9, year: 2026 },
+        evidence: "Eine Teilnahme ist bis Ende September 2026 möglich.",
+      }),
+    ]);
+
+    await arrive(mail("m1", "2026-09-14T06:12:00Z", "Die Umfrage der Stadt läuft. Eine Teilnahme ist bis Ende September 2026 möglich."));
+    instance.clock.advance(10 * days);
+
+    expect(await tasks()).toMatchObject([{ title: "Umfrage der Stadt ausfüllen", deadline: "2026-09-30", status: "upcoming" }]);
+  });
+
   it("rejects a Task whose evidence quote the mail does not contain, or whose weekday does not match its Deadline", async () => {
     extractor.script("Ausflug", [], [
       { ...tripPacking, evidence: "bitte Regenjacke mitgeben" },
