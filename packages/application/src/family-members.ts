@@ -9,11 +9,10 @@ import {
   type Photo,
   type PhotoType,
 } from "@family-agenda/domain";
-import type { BlobStore, Clock, FamilyMemberRepository, FamilyRepository } from "./ports";
+import type { BlobStore, Clock, FamilyMemberRepository } from "./ports";
 
 export type FamilyMembersDeps = {
   clock: Clock;
-  families: FamilyRepository;
   members: FamilyMemberRepository;
   blobs: BlobStore;
 };
@@ -33,7 +32,7 @@ export type EditResult =
   | { ok: false; problem: FamilyMemberProblem | "unknown-member" };
 
 export function createFamilyMemberAccess(deps: FamilyMembersDeps) {
-  const { clock, families, members, blobs } = deps;
+  const { clock, members, blobs } = deps;
 
   /** Checks a new photo and stores it. */
   async function storePhoto(
@@ -47,7 +46,7 @@ export function createFamilyMemberAccess(deps: FamilyMembersDeps) {
 
   return {
     async list(): Promise<FamilyMemberSummary[]> {
-      const all = await members.list(await families.theFamily());
+      const all = await members.list();
       return all.map(summariseFamilyMember);
     },
 
@@ -65,7 +64,7 @@ export function createFamilyMemberAccess(deps: FamilyMembersDeps) {
         photo = stored.photo;
       }
       const id = randomUUID() as FamilyMemberId;
-      await members.add({ id, familyId: await families.theFamily(), name, photo, createdAt: clock.now() });
+      await members.add({ id, name, photo, createdAt: clock.now() });
       return { ok: true, id };
     },
 

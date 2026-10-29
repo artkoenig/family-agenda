@@ -19,8 +19,8 @@ describe("The worker's activity on a View over HTTP", () => {
   /** The worker records that it has read `done` of `total` messages. */
   const extracting = (done: number, total: number) =>
     instance.query(
-      `INSERT INTO background_activities (family_id, kind, done, total, updated_at)
-       SELECT id, 'extracting', ${done}, ${total}, '2026-09-14T06:59:00Z' FROM families`,
+      `INSERT INTO background_activities (kind, done, total, updated_at)
+       VALUES ('extracting', ${done}, ${total}, '2026-09-14T06:59:00Z')`,
     );
 
   const indicatorOf = (page: string) => /<div id="activity"[^>]*>.*?<\/div>/s.exec(page)?.[0] ?? "";

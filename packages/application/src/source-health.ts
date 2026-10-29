@@ -1,5 +1,5 @@
 import { sourceStatus, type SourceStatus } from "@family-agenda/domain";
-import type { Clock, FamilyRepository, Source, SourceRepository, SourceTypeRegistry, SourceTypeRepository } from "./ports";
+import type { Clock, Source, SourceRepository, SourceTypeRegistry, SourceTypeRepository } from "./ports";
 import { enabledSourceType } from "./enabled-source-type";
 
 /** Why a Source is not OK, or why its last run failed. */
@@ -46,11 +46,11 @@ export async function healthOf(source: Source, deps: SourceHealthDeps): Promise<
 }
 
 /** Whether the Family's Sources work, as every View hints at without detail. */
-export function createSourceHealth(deps: SourceHealthDeps & { families: FamilyRepository }) {
+export function createSourceHealth(deps: SourceHealthDeps) {
   return {
     /** Whether any of the Family's Sources is Failing. */
     async anyFailing(): Promise<boolean> {
-      for (const source of await deps.sources.list(await deps.families.theFamily())) {
+      for (const source of await deps.sources.list()) {
         if ((await healthOf(source, deps)).status === "failing") return true;
       }
       return false;

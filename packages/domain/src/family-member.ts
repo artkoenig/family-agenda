@@ -1,11 +1,9 @@
-import type { FamilyId } from "./family";
 import type { Photo } from "./photo";
 
 export type FamilyMemberId = string & { readonly __brand: "FamilyMemberId" };
 
 export type FamilyMember = {
   id: FamilyMemberId;
-  familyId: FamilyId;
   name: string;
   photo: Photo | null;
   createdAt: Date;

@@ -58,7 +58,10 @@ export function createAdminAccess(deps: AdminAccessDeps) {
 
   async function startSession(adminId: AdminId): Promise<string> {
     const token = randomBytes(32).toString("base64url");
-    const expiresAt = new Date(clock.now().getTime() + sessionLifetimeMs);
+    const now = clock.now();
+    // Sessions no one used again until they expired go here, rather than never.
+    await sessions.removeExpired(now);
+    const expiresAt = new Date(now.getTime() + sessionLifetimeMs);
     await sessions.add({ id: hashToken(token), adminId, expiresAt });
     return token;
   }
@@ -72,7 +75,6 @@ export function createAdminAccess(deps: AdminAccessDeps) {
     if (!isAcceptablePassword(password)) return { ok: false, problem: "password-too-short" };
     const admin: Admin = {
       id: randomUUID() as AdminId,
-      familyId: await families.theFamily(),
       email,
       passwordHash: await passwordHasher.hash(password),
       createdAt: clock.now(),
@@ -105,7 +107,7 @@ export function createAdminAccess(deps: AdminAccessDeps) {
       if (!result.ok) return result;
       if (!(await admins.addFirst(result.admin))) return { ok: false, problem: "admin-exists" };
       if (language !== undefined) {
-        await families.saveLanguages(result.admin.familyId, { language, ocrLanguages: [ocrLanguageOf(language)] });
+        await families.saveLanguages({ language, ocrLanguages: [ocrLanguageOf(language)] });
       }
       return { ok: true, sessionToken: await startSession(result.admin.id) };
     },
@@ -146,7 +148,7 @@ export function createAdminAccess(deps: AdminAccessDeps) {
     },
 
     async listAdmins(): Promise<AdminSummary[]> {
-      const all = await admins.list(await families.theFamily());
+      const all = await admins.list();
       return all.map((admin) => ({ id: admin.id, email: admin.email }));
     },
 

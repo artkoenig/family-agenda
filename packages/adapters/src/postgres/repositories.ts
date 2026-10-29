@@ -35,7 +35,6 @@ import type {
   AdminId,
   BlobRef,
   Email,
-  FamilyId,
   FamilyLanguages,
   FamilyMember,
   FamilyMemberId,
@@ -61,7 +60,6 @@ import {
   adminSessions,
   backgroundActivities,
   catalogueEntries,
-  families,
   familyMembers,
   itemKeys,
   items,
@@ -70,7 +68,9 @@ import {
   origins,
   rawMessages,
   revisions,
+  settings,
   signInFailures,
+  sourceHealth,
   sourceMembers,
   sources,
   sourceTypes,
@@ -78,55 +78,37 @@ import {
   views,
 } from "./schema";
 
-/** Arbitrary key that serialises creating the Family and the first Admin. */
+/** Arbitrary key that serialises creating the first Admin. */
 const setupLockKey = 7_342_002;
 
+/** Reads and writes the one row of `settings`, which the schema creates (ADR-0013). */
 export class PostgresFamilyRepository implements FamilyRepository {
   constructor(private readonly db: Database) {}
 
-  async theFamily(): Promise<FamilyId> {
-    return this.db.transaction(async (tx) => {
-      await tx.execute(sql`SELECT pg_advisory_xact_lock(${setupLockKey})`);
-      const [existing] = await tx.select({ id: families.id }).from(families).limit(1);
-      if (existing) return existing.id as FamilyId;
-      const [created] = await tx.insert(families).values({}).returning({ id: families.id });
-      if (!created) throw new Error("creating the Family returned no row");
-      return created.id as FamilyId;
-    });
-  }
-
-  async recoveryKitConfirmed(id: FamilyId): Promise<boolean> {
-    const [row] = await this.db
-      .select({ at: families.recoveryKitConfirmedAt })
-      .from(families)
-      .where(eq(families.id, id));
+  async recoveryKitConfirmed(): Promise<boolean> {
+    const [row] = await this.db.select({ at: settings.recoveryKitConfirmedAt }).from(settings);
     return row?.at != null;
   }
 
-  async confirmRecoveryKit(id: FamilyId, at: Date): Promise<void> {
+  async confirmRecoveryKit(at: Date): Promise<void> {
     await this.db
-      .update(families)
-      .set({ recoveryKitConfirmedAt: sql`coalesce(${families.recoveryKitConfirmedAt}, ${at})` })
-      .where(eq(families.id, id));
+      .update(settings)
+      .set({ recoveryKitConfirmedAt: sql`coalesce(${settings.recoveryKitConfirmedAt}, ${at})` });
   }
 
-  async languages(id: FamilyId): Promise<FamilyLanguages> {
+  async languages(): Promise<FamilyLanguages> {
     const [row] = await this.db
-      .select({ language: families.language, ocrLanguages: families.ocrLanguages })
-      .from(families)
-      .where(eq(families.id, id));
-    if (!row) throw new Error(`no Family ${id}`);
+      .select({ language: settings.language, ocrLanguages: settings.ocrLanguages })
+      .from(settings);
+    if (!row) throw new Error("the settings row is missing");
     return {
       language: isFamilyLanguage(row.language) ? row.language : defaultFamilyLanguage,
       ocrLanguages: row.ocrLanguages as OcrLanguage[],
     };
   }
 
-  async saveLanguages(id: FamilyId, languages: FamilyLanguages): Promise<void> {
-    await this.db
-      .update(families)
-      .set({ language: languages.language, ocrLanguages: languages.ocrLanguages })
-      .where(eq(families.id, id));
+  async saveLanguages(languages: FamilyLanguages): Promise<void> {
+    await this.db.update(settings).set({ language: languages.language, ocrLanguages: languages.ocrLanguages });
   }
 }
 
@@ -168,11 +150,10 @@ export class PostgresAdminRepository implements AdminRepository {
     return row ? toAdmin(row) : null;
   }
 
-  async list(familyId: FamilyId): Promise<Admin[]> {
+  async list(): Promise<Admin[]> {
     const rows = await this.db
       .select()
       .from(admins)
-      .where(eq(admins.familyId, familyId))
       .orderBy(asc(admins.createdAt), asc(admins.email));
     return rows.map(toAdmin);
   }
@@ -185,7 +166,6 @@ export class PostgresAdminRepository implements AdminRepository {
 function toAdmin(row: typeof admins.$inferSelect): Admin {
   return {
     id: row.id as AdminId,
-    familyId: row.familyId as FamilyId,
     email: row.email as Email,
     passwordHash: row.passwordHash,
     createdAt: row.createdAt,
@@ -210,6 +190,10 @@ export class PostgresAdminSessionRepository implements AdminSessionRepository {
 
   async removeAllOf(adminId: AdminId): Promise<void> {
     await this.db.delete(adminSessions).where(eq(adminSessions.adminId, adminId));
+  }
+
+  async removeExpired(now: Date): Promise<void> {
+    await this.db.delete(adminSessions).where(lte(adminSessions.expiresAt, now));
   }
 }
 
@@ -254,12 +238,8 @@ export class PostgresFamilyMemberRepository implements FamilyMemberRepository {
     await this.db.insert(familyMembers).values({ ...member, ...photoColumns(member) });
   }
 
-  async list(familyId: FamilyId): Promise<FamilyMember[]> {
-    const rows = await this.db
-      .select()
-      .from(familyMembers)
-      .where(eq(familyMembers.familyId, familyId))
-      .orderBy(asc(familyMembers.position));
+  async list(): Promise<FamilyMember[]> {
+    const rows = await this.db.select().from(familyMembers).orderBy(asc(familyMembers.position));
     return rows.map(toFamilyMember);
   }
 
@@ -285,7 +265,6 @@ export class PostgresFamilyMemberRepository implements FamilyMemberRepository {
 function toFamilyMember(row: typeof familyMembers.$inferSelect): FamilyMember {
   return {
     id: row.id as FamilyMemberId,
-    familyId: row.familyId as FamilyId,
     name: row.name,
     photo:
       row.photoBlob && row.photoContentType
@@ -312,8 +291,8 @@ export class PostgresViewRepository implements ViewRepository {
     });
   }
 
-  async list(familyId: FamilyId): Promise<View[]> {
-    return this.select(eq(views.familyId, familyId));
+  async list(): Promise<View[]> {
+    return this.select();
   }
 
   async findById(id: ViewId): Promise<View | null> {
@@ -335,7 +314,7 @@ export class PostgresViewRepository implements ViewRepository {
     await this.db.delete(views).where(eq(views.id, id));
   }
 
-  private async select(where: SQL): Promise<View[]> {
+  private async select(where?: SQL): Promise<View[]> {
     const rows = await this.db
       .select({ view: views, familyMemberId: viewPreselections.familyMemberId })
       .from(views)
@@ -347,7 +326,6 @@ export class PostgresViewRepository implements ViewRepository {
     for (const { view, familyMemberId } of rows) {
       const found = byId.get(view.id) ?? {
         id: view.id as ViewId,
-        familyId: view.familyId as FamilyId,
         preselected: [],
         horizonDays: view.horizonDays,
         createdAt: view.createdAt,
@@ -455,27 +433,31 @@ export class PostgresSourceRepository implements SourceRepository {
   constructor(private readonly db: Database) {}
 
   async add(source: Source): Promise<void> {
-    await this.db.insert(sources).values({
-      id: source.id,
-      familyId: source.familyId,
-      sourceTypeId: source.sourceTypeId,
-      config: source.plain,
-      configVersion: source.configVersion,
-      secretRefs: source.secrets,
-      state: source.state,
-      pollIntervalSeconds: source.pollIntervalSeconds,
-      shown: source.shown,
-      name: source.name,
-      lastRunAt: source.lastRunAt,
-      lastSuccessAt: source.lastSuccessAt,
-      ...failureColumns(source.failure),
-      lastNewOriginAt: source.lastNewOriginAt,
-      createdAt: source.createdAt,
+    await this.db.transaction(async (tx) => {
+      await tx.insert(sources).values({
+        id: source.id,
+        sourceTypeId: source.sourceTypeId,
+        config: source.plain,
+        configVersion: source.configVersion,
+        secretRefs: source.secrets,
+        state: source.state,
+        pollIntervalSeconds: source.pollIntervalSeconds,
+        shown: source.shown,
+        name: source.name,
+        createdAt: source.createdAt,
+      });
+      await tx.insert(sourceHealth).values({
+        sourceId: source.id,
+        lastRunAt: source.lastRunAt,
+        lastSuccessAt: source.lastSuccessAt,
+        ...failureColumns(source.failure),
+        lastNewOriginAt: source.lastNewOriginAt,
+      });
     });
   }
 
-  async list(familyId: FamilyId): Promise<Source[]> {
-    return this.select(eq(sources.familyId, familyId));
+  async list(): Promise<Source[]> {
+    return this.select();
   }
 
   async listOfType(sourceTypeId: SourceTypeId): Promise<Source[]> {
@@ -496,28 +478,30 @@ export class PostgresSourceRepository implements SourceRepository {
   }
 
   async update(source: Source): Promise<void> {
-    await this.db
-      .update(sources)
-      .set({
-        config: source.plain,
-        configVersion: source.configVersion,
-        secretRefs: source.secrets,
-        pollIntervalSeconds: source.pollIntervalSeconds,
-        lastRunAt: source.lastRunAt,
-      })
-      .where(eq(sources.id, source.id));
+    await this.db.transaction(async (tx) => {
+      await tx
+        .update(sources)
+        .set({
+          config: source.plain,
+          configVersion: source.configVersion,
+          secretRefs: source.secrets,
+          pollIntervalSeconds: source.pollIntervalSeconds,
+        })
+        .where(eq(sources.id, source.id));
+      await tx.update(sourceHealth).set({ lastRunAt: source.lastRunAt }).where(eq(sourceHealth.sourceId, source.id));
+    });
   }
 
   async recordFailedRun(id: SourceId, at: Date, error: RunError): Promise<void> {
     await this.db
-      .update(sources)
+      .update(sourceHealth)
       .set({
         lastRunAt: at,
-        failingSince: sql`coalesce(${sources.failingSince}, ${at})`,
-        lastErrorKind: sql`CASE WHEN ${sources.lastErrorKind} = 'definite' THEN 'definite' ELSE ${error.kind} END`,
+        failingSince: sql`coalesce(${sourceHealth.failingSince}, ${at})`,
+        lastErrorKind: sql`CASE WHEN ${sourceHealth.lastErrorKind} = 'definite' THEN 'definite' ELSE ${error.kind} END`,
         lastError: error.message,
       })
-      .where(eq(sources.id, id));
+      .where(eq(sourceHealth.sourceId, id));
   }
 
   async setShown(id: SourceId, shown: boolean): Promise<void> {
@@ -538,31 +522,55 @@ export class PostgresSourceRepository implements SourceRepository {
     });
   }
 
-  async remove(id: SourceId): Promise<BlobRef[]> {
+  async remove(id: SourceId, recompute: Recompute): Promise<BlobRef[]> {
     if (!uuidPattern.test(id)) return [];
     return this.db.transaction(async (tx) => {
-      const keyed = await tx.select({ id: itemKeys.itemId }).from(itemKeys).where(eq(itemKeys.sourceId, id));
-      const itemIds = keyed.map((row) => row.id);
       const originsOfSource = tx.select({ id: origins.id }).from(origins).where(eq(origins.sourceId, id));
-      const messagesOfSource = tx.select({ id: rawMessages.id }).from(rawMessages).where(eq(rawMessages.sourceId, id));
+      const texts = await tx
+        .select({ blob: rawMessages.textBlob })
+        .from(rawMessages)
+        .where(inArray(rawMessages.originId, originsOfSource));
       const attachments = await tx
-        .delete(messageAttachments)
-        .where(inArray(messageAttachments.rawMessageId, messagesOfSource))
-        .returning({ blob: messageAttachments.blob });
-      const texts = await tx.delete(rawMessages).where(eq(rawMessages.sourceId, id)).returning({ blob: rawMessages.textBlob });
-      await tx
-        .delete(revisions)
-        .where(or(inArray(revisions.originId, originsOfSource), itemIds.length > 0 ? inArray(revisions.itemId, itemIds) : undefined));
-      await tx.delete(itemKeys).where(eq(itemKeys.sourceId, id));
-      if (itemIds.length > 0) await tx.delete(items).where(inArray(items.id, itemIds));
-      await tx.delete(origins).where(eq(origins.sourceId, id));
+        .select({ blob: messageAttachments.blob })
+        .from(messageAttachments)
+        .where(inArray(messageAttachments.rawMessageId, originsOfSource));
+      // The Items the Source names or stated something about; other Sources may name them too.
+      const named = tx.select({ id: itemKeys.itemId }).from(itemKeys).where(eq(itemKeys.sourceId, id));
+      const stated = tx.select({ id: revisions.itemId }).from(revisions).where(inArray(revisions.originId, originsOfSource));
+      const reached = await tx
+        .select({ id: items.id, kind: items.kind })
+        .from(items)
+        .where(or(inArray(items.id, named), inArray(items.id, stated)));
+      // Removes its Origins with their messages and Revisions, and its Item keys, by cascade.
       await tx.delete(sources).where(eq(sources.id, id));
+      if (reached.length > 0) {
+        const unnamed = await tx
+          .delete(items)
+          .where(
+            and(
+              inArray(
+                items.id,
+                reached.map((item) => item.id),
+              ),
+              sql`NOT EXISTS (SELECT 1 FROM ${itemKeys} WHERE ${itemKeys.itemId} = ${items.id})`,
+            ),
+          )
+          .returning({ id: items.id });
+        const gone = new Set(unnamed.map((item) => item.id));
+        const kept = reached.filter((item) => !gone.has(item.id));
+        await recomputeAll(tx, new Map(kept.map((item) => [item.id as ItemId, item.kind as ItemKind])), recompute);
+      }
       return [...texts, ...attachments].map((row) => row.blob as BlobRef);
     });
   }
 
-  private async select(where: SQL): Promise<Source[]> {
-    const rows = await this.db.select().from(sources).where(where).orderBy(asc(sources.position));
+  private async select(where?: SQL): Promise<Source[]> {
+    const rows = await this.db
+      .select({ source: sources, health: sourceHealth })
+      .from(sources)
+      .innerJoin(sourceHealth, eq(sourceHealth.sourceId, sources.id))
+      .where(where)
+      .orderBy(asc(sources.position));
     const assigned = await this.db
       .select({ sourceId: sourceMembers.sourceId, familyMemberId: sourceMembers.familyMemberId })
       .from(sourceMembers)
@@ -571,33 +579,32 @@ export class PostgresSourceRepository implements SourceRepository {
         rows.length > 0
           ? inArray(
               sourceMembers.sourceId,
-              rows.map((row) => row.id),
+              rows.map((row) => row.source.id),
             )
           : sql`false`,
       )
       .orderBy(asc(familyMembers.position));
     const concernsOf = (id: string) =>
       assigned.filter((row) => row.sourceId === id).map((row) => row.familyMemberId as FamilyMemberId);
-    return rows.map((row) => ({
-      id: row.id as SourceId,
-      familyId: row.familyId as FamilyId,
-      sourceTypeId: row.sourceTypeId as SourceTypeId,
-      plain: row.config,
-      configVersion: row.configVersion,
-      secrets: row.secretRefs as Record<string, SecretRef>,
-      state: row.state,
-      pollIntervalSeconds: row.pollIntervalSeconds,
-      shown: row.shown,
-      name: row.name,
-      concerns: concernsOf(row.id),
-      lastRunAt: row.lastRunAt,
-      lastSuccessAt: row.lastSuccessAt,
+    return rows.map(({ source, health }) => ({
+      id: source.id as SourceId,
+      sourceTypeId: source.sourceTypeId as SourceTypeId,
+      plain: source.config,
+      configVersion: source.configVersion,
+      secrets: source.secretRefs as Record<string, SecretRef>,
+      state: source.state,
+      pollIntervalSeconds: source.pollIntervalSeconds,
+      shown: source.shown,
+      name: source.name,
+      concerns: concernsOf(source.id),
+      lastRunAt: health.lastRunAt,
+      lastSuccessAt: health.lastSuccessAt,
       failure:
-        row.failingSince && row.lastError !== null
-          ? { kind: row.lastErrorKind === "definite" ? "definite" : "temporary", message: row.lastError, since: row.failingSince }
+        health.failingSince && health.lastError !== null
+          ? { kind: health.lastErrorKind === "definite" ? "definite" : "temporary", message: health.lastError, since: health.failingSince }
           : null,
-      lastNewOriginAt: row.lastNewOriginAt,
-      createdAt: row.createdAt,
+      lastNewOriginAt: health.lastNewOriginAt,
+      createdAt: source.createdAt,
     }));
   }
 }
@@ -626,7 +633,6 @@ export class PostgresItemRepository implements ItemRepository {
           .insert(origins)
           .values({
             id: randomUUID(),
-            familyId: run.familyId,
             sourceId: run.sourceId,
             externalId: origin.externalId,
             attributes: origin.attributes,
@@ -647,14 +653,10 @@ export class PostgresItemRepository implements ItemRepository {
         }
         const { message } = origin;
         if (message) {
-          const id = randomUUID();
           const inserted = await tx
             .insert(rawMessages)
             .values({
-              id,
-              familyId: run.familyId,
               originId: row.id,
-              sourceId: run.sourceId,
               thread: message.thread,
               sentAt: origin.occurredAt,
               textBlob: message.text.blob,
@@ -663,13 +665,12 @@ export class PostgresItemRepository implements ItemRepository {
               receivedAt: run.at,
             })
             .onConflictDoNothing({ target: rawMessages.originId })
-            .returning({ id: rawMessages.id });
+            .returning({ originId: rawMessages.originId });
           if (inserted.length === 0) knownMessages.push(origin.externalId);
           else if (message.attachments.length > 0) {
             await tx.insert(messageAttachments).values(
               message.attachments.map((attachment, position) => ({
-                id: randomUUID(),
-                rawMessageId: id,
+                rawMessageId: row.id,
                 position,
                 filename: attachment.filename,
                 contentType: attachment.contentType,
@@ -680,24 +681,24 @@ export class PostgresItemRepository implements ItemRepository {
             );
           }
         }
-        await this.append(tx, { familyId: run.familyId, sourceId: run.sourceId, originId: row.id, at: run.at }, origin.revisions, reached);
+        await this.append(tx, { sourceId: run.sourceId, originId: row.id, at: run.at }, origin.revisions, reached);
       }
       const withdrawnFiles = await this.withdraw(tx, run, reached);
-      await this.recomputeAll(tx, reached, recompute);
+      await recomputeAll(tx, reached, recompute);
+      await tx.update(sources).set({ state: run.state }).where(eq(sources.id, run.sourceId));
       const lastNewOrigin = tx
         .select({ at: sql`max(${origins.firstSeenAt})` })
         .from(origins)
         .where(eq(origins.sourceId, run.sourceId));
       await tx
-        .update(sources)
+        .update(sourceHealth)
         .set({
-          state: run.state,
           lastRunAt: run.at,
           lastSuccessAt: run.at,
           ...failureColumns(null),
           lastNewOriginAt: sql`(${lastNewOrigin})`,
         })
-        .where(eq(sources.id, run.sourceId));
+        .where(eq(sourceHealth.sourceId, run.sourceId));
       return { knownMessages, withdrawnFiles };
     });
   }
@@ -727,11 +728,11 @@ export class PostgresItemRepository implements ItemRepository {
         .where(inArray(items.id, [...new Set(rejected.map((row) => row.itemId))]));
       for (const item of kinds) reached.set(item.id as ItemId, item.kind as ItemKind);
     }
-    const messages = tx.select({ id: rawMessages.id }).from(rawMessages).where(inArray(rawMessages.originId, ids));
     const attachments = await tx
-      .delete(messageAttachments)
-      .where(inArray(messageAttachments.rawMessageId, messages))
-      .returning({ blob: messageAttachments.blob });
+      .select({ blob: messageAttachments.blob })
+      .from(messageAttachments)
+      .where(inArray(messageAttachments.rawMessageId, ids));
+    // Removes their attachments by cascade.
     const texts = await tx.delete(rawMessages).where(inArray(rawMessages.originId, ids)).returning({ blob: rawMessages.textBlob });
     return [...texts, ...attachments].map((row) => row.blob as BlobRef);
   }
@@ -739,9 +740,8 @@ export class PostgresItemRepository implements ItemRepository {
   async pendingMessages(limit: number): Promise<PendingMessage[]> {
     const rows = await this.db
       .select({
-        id: rawMessages.id,
-        familyId: rawMessages.familyId,
-        sourceId: rawMessages.sourceId,
+        id: rawMessages.originId,
+        sourceId: origins.sourceId,
         externalId: origins.externalId,
         sentAt: rawMessages.sentAt,
         thread: rawMessages.thread,
@@ -763,7 +763,6 @@ export class PostgresItemRepository implements ItemRepository {
     return rows.map((row) => ({
       ...row,
       id: row.id as RawMessageId,
-      familyId: row.familyId as FamilyId,
       sourceId: row.sourceId as SourceId,
       text: row.text as BlobRef,
       attachments: attachments.flatMap((attachment) =>
@@ -780,8 +779,9 @@ export class PostgresItemRepository implements ItemRepository {
       .from(rawMessages)
       .innerJoin(revisions, eq(revisions.originId, rawMessages.originId))
       .innerJoin(items, eq(items.id, revisions.itemId))
-      .innerJoin(itemKeys, and(eq(itemKeys.itemId, items.id), eq(itemKeys.sourceId, rawMessages.sourceId)))
-      .where(and(eq(rawMessages.sourceId, sourceId), eq(rawMessages.thread, thread)))
+      .innerJoin(origins, eq(origins.id, rawMessages.originId))
+      .innerJoin(itemKeys, and(eq(itemKeys.itemId, items.id), eq(itemKeys.sourceId, origins.sourceId)))
+      .where(and(eq(origins.sourceId, sourceId), eq(rawMessages.thread, thread)))
       .orderBy(asc(items.createdAt), asc(itemKeys.itemKey));
     return rows.map((row) => ({ itemKey: row.itemKey, kind: row.kind as ItemKind, folded: row.folded }));
   }
@@ -792,7 +792,7 @@ export class PostgresItemRepository implements ItemRepository {
       const [message] = await tx
         .update(rawMessages)
         .set({ extractedAt: extraction.at })
-        .where(and(eq(rawMessages.id, extraction.messageId), isNull(rawMessages.extractedAt)))
+        .where(and(eq(rawMessages.originId, extraction.messageId), isNull(rawMessages.extractedAt)))
         .returning({ originId: rawMessages.originId });
       if (!message) return;
       for (const { position, problem } of extraction.attachmentProblems) {
@@ -802,19 +802,19 @@ export class PostgresItemRepository implements ItemRepository {
           .where(and(eq(messageAttachments.rawMessageId, extraction.messageId), eq(messageAttachments.position, position)));
       }
       const reached = new Map<ItemId, ItemKind>();
-      const { familyId, sourceId, at } = extraction;
-      await this.append(tx, { familyId, sourceId, originId: message.originId, at }, extraction.revisions, reached);
-      await this.recomputeAll(tx, reached, recompute);
+      const { sourceId, at } = extraction;
+      await this.append(tx, { sourceId, originId: message.originId, at }, extraction.revisions, reached);
+      await recomputeAll(tx, reached, recompute);
     });
   }
 
   async findMessage(id: RawMessageId): Promise<RawMessage | null> {
     if (!uuidPattern.test(id)) return null;
     const [row] = await this.db
-      .select({ message: rawMessages, attributes: origins.attributes })
+      .select({ message: rawMessages, sourceId: origins.sourceId, attributes: origins.attributes })
       .from(rawMessages)
       .innerJoin(origins, eq(origins.id, rawMessages.originId))
-      .where(eq(rawMessages.id, id));
+      .where(eq(rawMessages.originId, id));
     if (!row) return null;
     const attachments = await this.db
       .select()
@@ -823,7 +823,7 @@ export class PostgresItemRepository implements ItemRepository {
       .orderBy(asc(messageAttachments.position));
     return {
       id,
-      sourceId: row.message.sourceId as SourceId,
+      sourceId: row.sourceId as SourceId,
       sentAt: row.message.sentAt,
       attributes: row.attributes,
       text: row.message.textBlob as BlobRef,
@@ -837,13 +837,12 @@ export class PostgresItemRepository implements ItemRepository {
     };
   }
 
-  async overlapping(familyId: FamilyId, from: Date, to: Date | null): Promise<ProjectedItem[]> {
+  async overlapping(from: Date, to: Date | null): Promise<ProjectedItem[]> {
     const rows = await this.db
       .select({ id: items.id, kind: items.kind, folded: items.folded })
       .from(items)
       .where(
         and(
-          eq(items.familyId, familyId),
           isNotNull(items.folded),
           to ? lte(items.windowFrom, to) : undefined,
           gte(items.windowTo, from),
@@ -870,7 +869,7 @@ export class PostgresItemRepository implements ItemRepository {
     const messages = await this.db
       .selectDistinct({
         itemId: revisions.itemId,
-        id: rawMessages.id,
+        id: rawMessages.originId,
         sourceTypeId: sources.sourceTypeId,
         sourceName: sources.name,
         sentAt: rawMessages.sentAt,
@@ -911,7 +910,7 @@ export class PostgresItemRepository implements ItemRepository {
   /** Appends Revisions of one Origin, unless the same Revision is recorded; notes the Items they reach. */
   private async append(
     tx: Transaction,
-    origin: { familyId: FamilyId; sourceId: SourceId; originId: string; at: Date },
+    origin: { sourceId: SourceId; originId: string; at: Date },
     newRevisions: NewRevision[],
     reached: Map<ItemId, ItemKind>,
   ): Promise<void> {
@@ -921,7 +920,6 @@ export class PostgresItemRepository implements ItemRepository {
         .insert(revisions)
         .values({
           id: randomUUID(),
-          familyId: origin.familyId,
           itemId: item.id,
           originId: origin.originId,
           act: revision.act,
@@ -939,35 +937,10 @@ export class PostgresItemRepository implements ItemRepository {
     }
   }
 
-  /** Recomputes every reached Item from all its Revisions. */
-  private async recomputeAll(tx: Transaction, reached: Map<ItemId, ItemKind>, recompute: Recompute): Promise<void> {
-    for (const [id, kind] of reached) {
-      const all = await tx
-        .select({
-          act: revisions.act,
-          fields: revisions.fields,
-          sourceTime: revisions.sourceTime,
-          sequence: revisions.sequence,
-          accepted: revisions.accepted,
-        })
-        .from(revisions)
-        .where(eq(revisions.itemId, id));
-      const projection = recompute(kind, all as FoldableRevision[]);
-      await tx
-        .update(items)
-        .set({
-          folded: projection.folded,
-          windowFrom: projection.window?.from ?? null,
-          windowTo: projection.window?.to ?? null,
-        })
-        .where(eq(items.id, id));
-    }
-  }
-
   /** The Item the Source's key names, created on the first Revision about it. */
   private async itemFor(
     tx: Transaction,
-    origin: { familyId: FamilyId; sourceId: SourceId; at: Date },
+    origin: { sourceId: SourceId; at: Date },
     revision: NewRevision,
   ): Promise<{ id: ItemId; kind: ItemKind }> {
     const [known] = await tx
@@ -977,20 +950,44 @@ export class PostgresItemRepository implements ItemRepository {
       .where(and(eq(itemKeys.sourceId, origin.sourceId), eq(itemKeys.itemKey, revision.itemKey)));
     if (known) return { id: known.id as ItemId, kind: known.kind as ItemKind };
     const id = randomUUID() as ItemId;
-    await tx.insert(items).values({ id, familyId: origin.familyId, kind: revision.itemKind, createdAt: origin.at });
+    await tx.insert(items).values({ id, kind: revision.itemKind, createdAt: origin.at });
     await tx.insert(itemKeys).values({ sourceId: origin.sourceId, itemKey: revision.itemKey, itemId: id });
     return { id, kind: revision.itemKind };
+  }
+}
+
+/** Recomputes every reached Item from all its Revisions. */
+async function recomputeAll(tx: Transaction, reached: Map<ItemId, ItemKind>, recompute: Recompute): Promise<void> {
+  for (const [id, kind] of reached) {
+    const all = await tx
+      .select({
+        act: revisions.act,
+        fields: revisions.fields,
+        sourceTime: revisions.sourceTime,
+        sequence: revisions.sequence,
+        accepted: revisions.accepted,
+      })
+      .from(revisions)
+      .where(eq(revisions.itemId, id));
+    const projection = recompute(kind, all as FoldableRevision[]);
+    await tx
+      .update(items)
+      .set({
+        folded: projection.folded,
+        windowFrom: projection.window?.from ?? null,
+        windowTo: projection.window?.to ?? null,
+      })
+      .where(eq(items.id, id));
   }
 }
 
 export class PostgresLlmEndpointRepository implements LlmEndpointRepository {
   constructor(private readonly db: Database) {}
 
-  async find(familyId: FamilyId): Promise<StoredLlmEndpoint | null> {
-    const [row] = await this.db.select().from(llmEndpoints).where(eq(llmEndpoints.familyId, familyId));
+  async find(): Promise<StoredLlmEndpoint | null> {
+    const [row] = await this.db.select().from(llmEndpoints);
     if (!row) return null;
     return {
-      familyId,
       baseUrl: row.baseUrl,
       model: row.model,
       apiKey: row.apiKeyRef as SecretRef | null,
@@ -1011,29 +1008,29 @@ export class PostgresLlmEndpointRepository implements LlmEndpointRepository {
     };
     await this.db
       .insert(llmEndpoints)
-      .values({ familyId: endpoint.familyId, ...values })
-      .onConflictDoUpdate({ target: llmEndpoints.familyId, set: values });
+      .values(values)
+      .onConflictDoUpdate({ target: llmEndpoints.id, set: values });
   }
 }
 
 export class PostgresActivityRepository implements ActivityRepository {
   constructor(private readonly db: Database) {}
 
-  async find(familyId: FamilyId): Promise<BackgroundActivity | null> {
-    const [row] = await this.db.select().from(backgroundActivities).where(eq(backgroundActivities.familyId, familyId));
+  async find(): Promise<BackgroundActivity | null> {
+    const [row] = await this.db.select().from(backgroundActivities);
     if (!row) return null;
     return { kind: row.kind as ActivityKind, done: row.done, total: row.total, updatedAt: row.updatedAt };
   }
 
-  async save(familyId: FamilyId, activity: BackgroundActivity): Promise<void> {
+  async save(activity: BackgroundActivity): Promise<void> {
     await this.db
       .insert(backgroundActivities)
-      .values({ familyId, ...activity })
-      .onConflictDoUpdate({ target: backgroundActivities.familyId, set: activity });
+      .values(activity)
+      .onConflictDoUpdate({ target: backgroundActivities.id, set: activity });
   }
 
-  async clear(familyId: FamilyId): Promise<void> {
-    await this.db.delete(backgroundActivities).where(eq(backgroundActivities.familyId, familyId));
+  async clear(): Promise<void> {
+    await this.db.delete(backgroundActivities);
   }
 }
 

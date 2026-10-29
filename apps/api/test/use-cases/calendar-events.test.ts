@@ -203,6 +203,27 @@ describe("calendar Events on the timeline", () => {
 
     expect(await timeline()).toEqual({});
     expect((await instance.app.views.feed(view, { access: openViewAccess }))?.events).toEqual([]);
+    expect(await instance.query("SELECT id FROM items")).toEqual([]);
+  });
+
+  it("keeps an Item of a removed Source that another Source names, recomputed without its statements", async () => {
+    await arrive(piano());
+    const [source] = await instance.app.sources.list();
+    const other = await instance.app.sources.add({
+      sourceTypeId: "calendar",
+      plain: { url: "https://other.example.org" },
+      secrets: { password: "hunter2" },
+    });
+    if (!other.ok) throw new Error(`adding failed: ${other.problem}`);
+    const [, otherSource] = await instance.app.sources.list();
+    await instance.query(
+      `INSERT INTO item_keys (source_id, item_key, item_id) SELECT '${otherSource!.id}', item_key, item_id FROM item_keys`,
+    );
+
+    await instance.app.sources.remove(source!.id);
+
+    expect(await timeline()).toEqual({});
+    expect(await instance.query("SELECT folded FROM items")).toEqual([{ folded: null }]);
   });
 
   it("hides the Events of a hidden Source, and keeps reading it", async () => {

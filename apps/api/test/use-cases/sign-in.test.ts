@@ -56,6 +56,17 @@ describe("Admin sign-in", () => {
     expect(await instance.app.admins.authenticate(result.sessionToken)).toBeNull();
   });
 
+  it("forgets expired sessions no one used again when the next one starts", async () => {
+    await signIn("anna@example.org", password);
+    instance.clock.advance(14 * 24 * 60 * minutes);
+
+    await signIn("anna@example.org", password);
+
+    expect(await instance.query("SELECT expires_at FROM admin_sessions")).toEqual([
+      { expires_at: new Date(instance.clock.now().getTime() + 14 * 24 * 60 * minutes) },
+    ]);
+  });
+
   it("locks an account after 5 failures from any clients, until 15 minutes have passed", async () => {
     for (let i = 0; i < 5; i++) await signIn("anna@example.org", "wrong password!!", `192.0.2.${i}`);
 

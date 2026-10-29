@@ -7,7 +7,7 @@ Gathers family-relevant information from many channels into one overview of who 
 ### People
 
 **Family**:
-The household the system serves; the unit that owns all Sources and Items.
+The household the system serves; the unit that owns all Sources and Items. Each Instance serves exactly one, so the data never names it.
 _Avoid_: Account, tenant, user group
 
 **Family Language**:
@@ -97,7 +97,7 @@ _Avoid_: Message, info, announcement
 ### Operation
 
 **Instance**:
-One self-hosted installation of Family Agenda, serving exactly one Family.
+One installation of Family Agenda with its own database, serving exactly one Family.
 _Avoid_: Server, deployment, tenant
 
 **Agenda Cloud**:
