@@ -67,7 +67,7 @@ Any single piece of family-relevant information extracted from a Source; one of 
 _Avoid_: Entry, record, info
 
 **Event**:
-A one-off or recurring appointment with a time and usually a place, such as a piano lesson or a sports match.
+A one-off or recurring appointment with a time and usually a place, such as a piano lesson or a sports match; also a whole day without school, such as a study day, or what takes place at school, such as a bike check.
 _Avoid_: Appointment, date, meeting
 
 **Timetable**:
@@ -91,7 +91,7 @@ Something a Family Member or parent must do or bring, optionally with a Deadline
 _Avoid_: Todo, action item, packing list (as a separate type)
 
 **Deadline**:
-The date by which a Task must be done; an attribute of a Task, not an Item of its own.
+The date by which a Task must be done, the month's last day when a message names only a month; an attribute of a Task, not an Item of its own.
 _Avoid_: Due date, Frist
 
 **Due**:
