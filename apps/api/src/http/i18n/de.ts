@@ -372,5 +372,17 @@ export const de: Catalogue = {
     allDay: "Ganztägig",
     onAllDay: (date) => `${date}, ganztägig`,
     outOfDate: "Manches hier ist vielleicht nicht aktuell.",
+    school: "Schule",
+    schoolUntil: (time) => `Schule bis ${time}`,
+    lessons: "Stunden",
+    timetableChange: "Stundenplanänderung",
+    teacher: "Lehrkraft",
+    note: "Hinweis",
+    changed: {
+      cancellation: "entfällt",
+      substitution: (teacher) => (teacher ? `Vertretung durch ${teacher}` : "Vertretung"),
+      "room-change": (room) => (room ? `in Raum ${room}` : "Raumänderung"),
+    },
+    instead: (previous) => `statt ${previous}`,
   },
 };
