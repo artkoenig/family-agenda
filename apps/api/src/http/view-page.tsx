@@ -461,7 +461,7 @@ function EventRow(props: { row: TimelineEvent; members: FamilyMemberSummary[] })
  */
 function TaskRow(props: { row: TimelineTask; page: ViewPage }) {
   const { row, page } = props;
-  const { t, locale } = useTranslation();
+  const { t, locale, text } = useTranslation();
   const v = t.view;
   const done = row.status === "done";
   const action = `/views/${page.id}/tasks/${row.itemId}/${done ? "undone" : "done"}`;
@@ -501,6 +501,19 @@ function TaskRow(props: { row: TimelineTask; page: ViewPage }) {
             {v.bring}: {row.bring.join(", ")}
           </span>
         ) : null}
+        {row.links.map((link) => (
+          <span class="fam-task__source">
+            <a href={link.url} rel="noreferrer" target="_blank">
+              {text(link.source)}
+            </a>
+          </span>
+        ))}
+        {row.messages.map((message) => (
+          <span class="fam-task__source">
+            {text(message.source)} · <a href={`/admin/messages/${message.id}`}>{v.openMessage}</a>
+            {v.adminsOnly}
+          </span>
+        ))}
       </span>
       <Concerned concerns={row.concerns} members={page.members} />
     </li>

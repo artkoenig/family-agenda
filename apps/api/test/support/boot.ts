@@ -115,7 +115,19 @@ export async function bootForTest(options: TestOptions = {}): Promise<TestInstan
     },
     async close() {
       await instance.app.close();
-      await withServer((client) => client.query(`DROP DATABASE ${databaseName} WITH (FORCE)`));
+      await withServer(async (client) => {
+        // A closed pool's clients may still be connected; forcing them off sends them an error
+        // nothing listens for any more.
+        for (let attempt = 0; attempt < 50; attempt++) {
+          const { rows } = await client.query<{ count: number }>(
+            "SELECT count(*)::int AS count FROM pg_stat_activity WHERE datname = $1",
+            [databaseName],
+          );
+          if (rows[0]!.count === 0) break;
+          await new Promise((resolve) => setTimeout(resolve, 20));
+        }
+        await client.query(`DROP DATABASE ${databaseName} WITH (FORCE)`);
+      });
       await rm(keyDirectory, { recursive: true, force: true });
     },
   };

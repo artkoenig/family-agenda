@@ -212,7 +212,7 @@
 .fam-task__tick:hover { border-color: var(--hearth); }
 .fam-task__text { flex: 1; display: flex; flex-direction: column; gap: 2px; }
 .fam-task__title { font-weight: 600; }
-.fam-task__meta, .fam-task__bring, .fam-task__tick-history { color: var(--ink-muted); font-size: 14px; line-height: 20px; }
+.fam-task__meta, .fam-task__bring, .fam-task__source, .fam-task__tick-history { color: var(--ink-muted); font-size: 14px; line-height: 20px; }
 .fam-task--overdue { background: var(--danger-tint); box-shadow: inset 3px 0 0 var(--danger); }
 .fam-task--overdue .fam-task__meta { color: var(--danger); font-weight: 600; }
 .fam-task--done .fam-task__tick { background: var(--sage-tint); border-color: var(--sage); }

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { bootHttpForTest, sessionCookieOf, type HttpTestInstance } from "../support/http";
 import { InMemoryBlobStore } from "../support/in-memory-blob-store";
-import { extracted, ScriptedExtractor } from "../support/scripted-extractor";
+import { extracted, extractedTask, ScriptedExtractor } from "../support/scripted-extractor";
 import { testPluginControls } from "../support/test-source-plugin";
 
 const password = "correct horse battery";
@@ -107,5 +107,28 @@ describe("the LLM endpoint and mail over HTTP", () => {
 
     await instance.app.languages.setLanguage("de");
     expect(await (await instance.get(link!, { cookie })).text()).toContain("Montag, 14. September 2026 um 08:00");
+  });
+
+  it("links a Task from a mail to the mail", async () => {
+    await instance.app.sourceTypes.enable("school-mail");
+    await instance.app.sources.add({ sourceTypeId: "school-mail", plain: { url: "imap.example.org" }, secrets: {} });
+    await instance.app.llmEndpoint.save({ baseUrl: "http://ollama:11434/v1", model: "qwen3.5:9b", apiKey: "" });
+    const created = await instance.app.views.create({ preselected: [], horizonDays: 3 });
+    if (!created.ok) throw new Error("creating failed");
+    extractor.script("Naturauftrag", [], [extractedTask({ title: "Naturauftrag", evidence: "Bringt drei Blätter mit" })]);
+    testPluginControls.emit("school-mail", [
+      {
+        externalId: "m1",
+        occurredAt: new Date("2026-09-14T06:00:00Z"),
+        attributes: {},
+        content: { kind: "raw-message", text: "Subject: Naturauftrag\n\nBringt drei Blätter mit.", attachments: [] },
+      },
+    ]);
+    await instance.app.polling.pollDue();
+    await instance.app.extraction.extractPending();
+
+    const view = await (await instance.get(`/views/${created.id}`)).text();
+    const row = /<li class="fam-task[^"]*"(?:(?!<\/li>).)*Naturauftrag(?:(?!<\/li>).)*<\/li>/s.exec(view)?.[0] ?? "";
+    expect(row).toMatch(/<a href="\/admin\/messages\/[0-9a-f-]+">Open the message<\/a>/);
   });
 });
