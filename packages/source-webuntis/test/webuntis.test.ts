@@ -60,8 +60,8 @@ const statements = (origins: Origin[]) =>
       : [],
   );
 
-/** A period of a recorded Timetable, to change it between runs. */
-const periodOf = (timetable: Json, id: number) =>
+/** A Lesson of a recorded Timetable, which Untis calls a period, to change it between runs. */
+const lessonIn = (timetable: Json, id: number) =>
   ((timetable.result as Json).timetable as { periods: Json[] }).periods.find((period) => period.id === id)!;
 
 /** Berlin is two hours ahead of UTC in September. */
@@ -99,7 +99,7 @@ describe("the WebUntis plugin", () => {
     ]);
   });
 
-  it("states each child's Lessons, keyed by child and period, at the time of the poll", async () => {
+  it("states each child's Lessons, keyed by child and the id Untis gives the Lesson, at the time of the poll", async () => {
     const { origins } = await poll(createWebUntisPlugin({ fetch: server().fetch }));
 
     const lessons = statements(origins).filter((statement) => statement.kind === "lesson" && statement.action === "create");
@@ -207,7 +207,7 @@ describe("the WebUntis plugin", () => {
     const untis = server();
     const plugin = createWebUntisPlugin({ fetch: untis.fetch });
     const first = await poll(plugin);
-    const physics = periodOf(untis.timetables[1201]!, 90003);
+    const physics = lessonIn(untis.timetables[1201]!, 90003);
     physics.is = ["STANDARD"];
     physics.text = { lesson: "", substitution: "", info: "" };
     const later = new Date("2026-09-14T07:15:00Z");
@@ -226,24 +226,24 @@ describe("the WebUntis plugin", () => {
     ]);
   });
 
-  it("states only what changed since the last run, and cancels a Lesson gone from the Timetable", async () => {
+  it("states only what changed since the last run, and withdraws a Lesson gone from the Timetable", async () => {
     const untis = server();
     const plugin = createWebUntisPlugin({ fetch: untis.fetch });
     const first = await poll(plugin);
     const timetable = (untis.timetables[1201]!.result as Json).timetable as { periods: Json[] };
     timetable.periods = timetable.periods.filter((period) => period.id !== 90001);
-    const maths = periodOf(untis.timetables[1201]!, 90004);
+    const maths = lessonIn(untis.timetables[1201]!, 90004);
     maths.startDateTime = "2026-09-16T08:50Z";
     maths.endDateTime = "2026-09-16T09:35Z";
     const later = new Date("2026-09-14T07:15:00Z");
 
-    const { origins } = await poll(plugin, { state: first.state, now: later });
+    const { origins, withdrawn } = await poll(plugin, { state: first.state, now: later });
 
     expect(statements(origins)).toEqual([
       { kind: "lesson", key: "1201/90004", action: "move", at: later.toISOString(), fields: { span: span("2026-09-16", "08:50", "09:35") } },
       { kind: "timetable-change", key: "1201/90004/change", action: "move", at: later.toISOString(), fields: { span: span("2026-09-16", "08:50", "09:35") } },
-      { kind: "lesson", key: "1201/90001", action: "cancel", at: later.toISOString(), fields: {} },
     ]);
+    expect(withdrawn).toEqual(["1201/90001"]);
   });
 
   it("forgets past Lessons without cancelling them", async () => {
@@ -253,9 +253,10 @@ describe("the WebUntis plugin", () => {
     // On Thursday, Tuesday and Wednesday have passed and the Timetable starts with Thursday.
     for (const id of [1201, 1202]) ((untis.timetables[id]!.result as Json).timetable as { periods: Json[] }).periods = [];
 
-    const { origins } = await poll(plugin, { state: first.state, now: new Date("2026-09-17T07:00:00Z") });
+    const { origins, withdrawn } = await poll(plugin, { state: first.state, now: new Date("2026-09-17T07:00:00Z") });
 
     expect(origins).toEqual([]);
+    expect(withdrawn).toEqual([]);
   });
 
   it("reads only the children ticked on the Source, and offers the children of the account to tick", async () => {
@@ -271,6 +272,16 @@ describe("the WebUntis plugin", () => {
       { value: "1201", label: "Mia König" },
       { value: "1202", label: "Leo König" },
     ]);
+  });
+
+  it("withdraws the coming Lessons of a child no longer ticked", async () => {
+    const plugin = createWebUntisPlugin({ fetch: server().fetch });
+    const first = await poll(plugin);
+
+    const { origins, withdrawn } = await poll(plugin, { config: { ...config, plain: { ...config.plain, children: ["1201"] } }, state: first.state });
+
+    expect(origins).toEqual([]);
+    expect(withdrawn).toEqual(["1202/91001"]);
   });
 
   it("fails definitely when WebUntis refuses the login, and temporarily when it cannot be reached", async () => {

@@ -22,10 +22,10 @@ export type WebUntisPluginOptions = {
 const daysAhead = 14;
 
 /** A Lesson as the last run saw it, with its Timetable Change if it had one. */
-type Seen = { day: string; lesson: Required<LessonFields>; cancelled: boolean; change: Required<TimetableChangeFields> | null };
+type SeenLesson = { day: string; lesson: Required<LessonFields>; cancelled: boolean; change: Required<TimetableChangeFields> | null };
 
-/** The state blob: the children of the account, and every period of the days read, by key. */
-type State = { children: Choice[]; periods: Record<string, Seen> };
+/** The state blob: the children of the account, and every Lesson of the days read, by key. */
+type State = { children: Choice[]; lessons: Record<string, SeenLesson> };
 
 type Json = Record<string, unknown>;
 
@@ -36,7 +36,7 @@ type Child = { id: number; name: string };
  * Untis Mobile app, which authenticate each request with a one-time password from the key the
  * account shares with Untis Mobile (research in #2). One login lists the children; each child's
  * Timetable is then read as a STUDENT's. Its Lessons and Timetable Changes are stated as Revisions
- * keyed by child and period, at the time of the poll. Untis gives the Timetable as it is now, not
+ * keyed by child and the id Untis gives the Lesson, at the time of the poll. Untis gives the Timetable as it is now, not
  * its changes, so each run compares it with what the last run saw and states only what changed.
  */
 export function createWebUntisPlugin(options: WebUntisPluginOptions = {}): SourcePlugin {
@@ -103,7 +103,8 @@ export function createWebUntisPlugin(options: WebUntisPluginOptions = {}): Sourc
     const lastDay = addDays(today, daysAhead - 1);
 
     const origins: Origin[] = [];
-    const periods: Record<string, Seen> = {};
+    const withdrawn: string[] = [];
+    const lessons: Record<string, SeenLesson> = {};
     for (const child of read) {
       const result = await call(context, "getTimetable2017", {
         id: child.id,
@@ -115,28 +116,23 @@ export function createWebUntisPlugin(options: WebUntisPluginOptions = {}): Sourc
         timetableTimestamps: [],
       });
       const attributes = { child: child.name };
-      for (const [periodId, seen] of seenIn(result, context.timeZone)) {
-        const key = `${child.id}/${periodId}`;
-        periods[key] = seen;
-        const revisions = revisionsFor(key, previous.periods[key], seen);
-        if (revisions.length > 0) origins.push({ externalId: key, occurredAt: context.now, attributes, content: { kind: "revisions", revisions } });
-      }
-      // A Lesson of the days read that has gone from the Timetable no longer takes place; one of
-      // a day that has passed is forgotten.
-      for (const [key, seen] of Object.entries(previous.periods)) {
-        if (!key.startsWith(`${child.id}/`) || key in periods || seen.day < today || seen.day > lastDay) continue;
-        const revisions: PluginRevision[] = [];
-        if (!seen.cancelled) revisions.push(revision("lesson", key, "cancel", {}));
-        if (seen.change) revisions.push(revision("timetable-change", `${key}/change`, "cancel", {}));
+      for (const [lessonId, seen] of seenIn(result, context.timeZone)) {
+        const key = `${child.id}/${lessonId}`;
+        lessons[key] = seen;
+        const revisions = revisionsFor(key, previous.lessons[key], seen);
         if (revisions.length > 0) origins.push({ externalId: key, occurredAt: context.now, attributes, content: { kind: "revisions", revisions } });
       }
     }
-    // A child no longer read keeps what was stated about it, as a removed Source would.
-    for (const [key, seen] of Object.entries(previous.periods)) {
-      if (!read.some((child) => key.startsWith(`${child.id}/`)) && seen.day >= today) periods[key] = seen;
+    // A Lesson of the days read that has gone from the Timetable, or whose child is no longer
+    // read, is withdrawn with its Timetable Change: the school no longer plans it, which is not a
+    // cancellation. One of a day that has passed is forgotten and stays as it was.
+    for (const [key, seen] of Object.entries(previous.lessons)) {
+      if (key in lessons || seen.day < today) continue;
+      const childRead = read.some((child) => key.startsWith(`${child.id}/`));
+      if (!childRead || seen.day <= lastDay) withdrawn.push(key);
     }
-    const state: State = { children: children.map((child) => ({ value: String(child.id), label: child.name })), periods };
-    return { origins, state: JSON.stringify(state) };
+    const state: State = { children: children.map((child) => ({ value: String(child.id), label: child.name })), lessons };
+    return { origins, state: JSON.stringify(state), withdrawn };
   }
 
   return {
@@ -218,8 +214,8 @@ function connectionOf(context: RunContext): { server: string; school: string; us
   return { server, school, user };
 }
 
-/** The periods of a Timetable as Lessons with their Timetable Changes, by period id. */
-function seenIn(result: Json, timeZone: string): [string, Seen][] {
+/** The Lessons of a Timetable, which Untis calls periods, with their Timetable Changes, by their ids. */
+function seenIn(result: Json, timeZone: string): [string, SeenLesson][] {
   const master = isObject(result.masterData) ? result.masterData : {};
   const named = (list: unknown, name: (entry: Json) => string | null) =>
     new Map(
@@ -236,23 +232,23 @@ function seenIn(result: Json, timeZone: string): [string, Seen][] {
   });
   const timetable = isObject(result.timetable) ? result.timetable : {};
   const periods = (Array.isArray(timetable.periods) ? timetable.periods : []).filter(isObject);
-  return periods.flatMap((period): [string, Seen][] => {
+  return periods.flatMap((period): [string, SeenLesson][] => {
     const start = instantOf(period.startDateTime, timeZone);
     const end = instantOf(period.endDateTime, timeZone);
     const elements = (Array.isArray(period.elements) ? period.elements : []).filter(isObject);
     const element = (type: string) => elements.find((candidate) => candidate.type === type);
     /** The element's name now, and before if it was substituted; Untis keeps the original's id as `orgId`. */
-    const now = (type: string, names: Map<number, string>) => {
+    const nameOf = (type: string, names: Map<number, string>) => {
       const found = element(type);
       const id = typeof found?.id === "number" ? found.id : null;
       const original = typeof found?.orgId === "number" && found.orgId !== 0 ? found.orgId : id;
       const name = id === null ? null : (names.get(id) ?? null);
       return { name, previous: original !== id && original !== null ? (names.get(original) ?? null) : null };
     };
-    const subject = now("SUBJECT", subjects);
+    const subject = nameOf("SUBJECT", subjects);
     if (typeof period.id !== "number" || !start || !end || end <= start || !subject.name) return [];
-    const room = now("ROOM", rooms);
-    const teacher = now("TEACHER", teachers);
+    const room = nameOf("ROOM", rooms);
+    const teacher = nameOf("TEACHER", teachers);
     const flags = flagsOf(period.is);
     const cancelled = flags.includes("CANCELLED");
     const lesson: Required<LessonFields> = {
@@ -267,9 +263,7 @@ function seenIn(result: Json, timeZone: string): [string, Seen][] {
         ? "substitution"
         : room.previous || flags.includes("ROOM_SUBSTITUTION")
           ? "room-change"
-          : flags.includes("IRREGULAR")
-            ? "substitution"
-            : null;
+          : null;
     const periodText = isObject(period.text) ? period.text : {};
     const change: Required<TimetableChangeFields> | null = kind
       ? {
@@ -284,15 +278,15 @@ function seenIn(result: Json, timeZone: string): [string, Seen][] {
   });
 }
 
-/** What Untis says a period is, such as `CANCELLED` or `IRREGULAR`, as a list or as flags. */
+/** What Untis says a Lesson is, such as `CANCELLED` or `IRREGULAR`, as a list or as flags. */
 function flagsOf(value: unknown): string[] {
   if (Array.isArray(value)) return value.filter((flag): flag is string => typeof flag === "string").map((flag) => flag.toUpperCase());
   if (isObject(value)) return Object.keys(value).filter((flag) => value[flag] === true).map((flag) => flag.toUpperCase());
   return [];
 }
 
-/** What to state about a period, given how the last run saw it. */
-function revisionsFor(key: string, before: Seen | undefined, now: Seen): PluginRevision[] {
+/** What to state about a Lesson, given how the last run saw it. */
+function revisionsFor(key: string, before: SeenLesson | undefined, now: SeenLesson): PluginRevision[] {
   const revisions: PluginRevision[] = [];
   if (!before || (before.cancelled && !now.cancelled)) {
     revisions.push(revision("lesson", key, "create", now.lesson));
@@ -324,12 +318,12 @@ function revision(itemKind: PluginRevision["itemKind"], itemKey: string, action:
 }
 
 function parseState(state: string | null): State {
-  if (state === null) return { children: [], periods: {} };
+  if (state === null) return { children: [], lessons: {} };
   try {
     const parsed = JSON.parse(state) as Partial<State>;
-    return { children: parsed.children ?? [], periods: parsed.periods ?? {} };
+    return { children: parsed.children ?? [], lessons: parsed.lessons ?? {} };
   } catch {
-    return { children: [], periods: {} };
+    return { children: [], lessons: {} };
   }
 }
 
@@ -362,7 +356,7 @@ function base32(key: string): Buffer {
 }
 
 /**
- * The instant of a period's time. Untis Mobile writes the school's wall-clock time with a `Z`, as
+ * The instant of a Lesson's time. Untis Mobile writes the school's wall-clock time with a `Z`, as
  * `2026-09-15T08:00Z`, whatever its offset from UTC, so the time is read in the Family's time zone.
  */
 function instantOf(value: unknown, timeZone: string): Date | null {

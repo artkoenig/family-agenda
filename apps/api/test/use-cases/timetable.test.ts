@@ -10,10 +10,10 @@ import { testPluginControls, writeTestPluginPackage } from "../support/test-sour
 const minutes = 60 * 1000;
 
 /**
- * One period of a Timetable, as a timetable Source states it at the time it was polled: its
- * Lesson, and its Timetable Change under a key of its own.
+ * One Lesson of a Timetable, as a timetable Source states it at the time it was polled, with its
+ * Timetable Change under a key of its own.
  */
-const period = (
+const timetableLesson = (
   key: string,
   polledAt: string,
   revisions: Omit<PluginRevision, "itemKey">[],
@@ -37,7 +37,7 @@ const at = (day: string, from: string, until: string) => ({
 const lesson = (subject: string, span: ReturnType<typeof at>, room: string | null = "101", teacher: string | null = "Mr Brandt") =>
   ({ itemKind: "lesson", action: "create", fields: { subject, span, room, teacher } }) as const;
 
-/** The Lesson does not take place; the create each period starts with says that it does again. */
+/** The Lesson does not take place; the create each Lesson's Origin starts with says that it does again. */
 const lessonCancelled = { itemKind: "lesson", action: "cancel", fields: {} } as const;
 
 const cancellation = (subject: string, span: ReturnType<typeof at>, note: string | null = null) =>
@@ -49,11 +49,11 @@ const cancellation = (subject: string, span: ReturnType<typeof at>, note: string
 const changeWithdrawn = { itemKind: "timetable-change", action: "cancel", fields: {} } as const;
 
 const maths = (polledAt: string, ...more: Omit<PluginRevision, "itemKey">[]) =>
-  period("maths", polledAt, [lesson("Maths", at("2026-09-15", "08:00", "08:45")), ...more]);
+  timetableLesson("maths", polledAt, [lesson("Maths", at("2026-09-15", "08:00", "08:45")), ...more]);
 const english = (polledAt: string, ...more: Omit<PluginRevision, "itemKey">[]) =>
-  period("english", polledAt, [lesson("English", at("2026-09-15", "08:50", "09:35"), "102", "Ms Weber"), ...more]);
+  timetableLesson("english", polledAt, [lesson("English", at("2026-09-15", "08:50", "09:35"), "102", "Ms Weber"), ...more]);
 const physics = (polledAt: string, ...more: Omit<PluginRevision, "itemKey">[]) =>
-  period("physics", polledAt, [lesson("Physics", at("2026-09-15", "09:55", "10:40"), "Lab", null), ...more]);
+  timetableLesson("physics", polledAt, [lesson("Physics", at("2026-09-15", "09:55", "10:40"), "Lab", null), ...more]);
 
 describe("Timetables on the timeline and in the feed", () => {
   let instance: TestInstance;
@@ -82,7 +82,7 @@ describe("Timetables on the timeline and in the feed", () => {
     await instance.close();
   });
 
-  /** The Source states the periods on its next run, and the worker runs it. */
+  /** The Source states the Lessons on its next run, and the worker runs it. */
   const arrive = async (...origins: Origin[]) => {
     testPluginControls.emit("timetable", origins);
     instance.clock.advance(15 * minutes);
@@ -163,6 +163,16 @@ describe("Timetables on the timeline and in the feed", () => {
     });
   });
 
+  it("drops a Lesson the school no longer plans", async () => {
+    await arrive(maths("2026-09-14T07:00:00Z"), english("2026-09-14T07:00:00Z"), physics("2026-09-14T07:00:00Z"));
+
+    testPluginControls.withdraw("timetable", ["physics"]);
+    instance.clock.advance(15 * minutes);
+    await instance.app.polling.pollDue();
+
+    expect((await tuesday()).school).toMatchObject([{ until: "09:35", lessons: ["08:00-08:45 Maths 101 Mr Brandt", "08:50-09:35 English 102 Ms Weber"] }]);
+  });
+
   it("cancels the school day when every Lesson of it is cancelled", async () => {
     await arrive(
       maths("2026-09-14T07:00:00Z", lessonCancelled, cancellation("Maths", at("2026-09-15", "08:00", "08:45"))),
@@ -187,7 +197,7 @@ describe("Timetables on the timeline and in the feed", () => {
       if (!assigned.ok) throw new Error(`assigning failed: ${assigned.problem}`);
     });
 
-    /** Leo's Source states the periods on its next run, and the worker runs it. */
+    /** Leo's Source states the Lessons on its next run, and the worker runs it. */
     const arriveForLeo = async (...origins: Origin[]) => {
       testPluginControls.emit("timetable-leo", origins);
       instance.clock.advance(15 * minutes);
@@ -216,8 +226,8 @@ describe("Timetables on the timeline and in the feed", () => {
         physics("2026-09-14T07:00:00Z", lessonCancelled, cancellation("Physics", at("2026-09-15", "09:55", "10:40"), "Teacher ill")),
       );
       await arriveForLeo(
-        period("art", "2026-09-14T07:00:00Z", [lesson("Art", at("2026-09-15", "08:00", "09:35"), "Studio", "Ms Kraus")]),
-        period("music", "2026-09-14T07:00:00Z", [
+        timetableLesson("art", "2026-09-14T07:00:00Z", [lesson("Art", at("2026-09-15", "08:00", "09:35"), "Studio", "Ms Kraus")]),
+        timetableLesson("music", "2026-09-14T07:00:00Z", [
           lesson("Music", at("2026-09-16", "08:00", "08:45")),
           lessonCancelled,
           cancellation("Music", at("2026-09-16", "08:00", "08:45")),
@@ -243,20 +253,26 @@ describe("Timetables on the timeline and in the feed", () => {
       ]);
     });
 
-    it("keeps a School entry's UID when a Timetable Change arrives, so that calendar apps update it in place", async () => {
+    it("keeps a School entry's UID as a Timetable Change arrives and is withdrawn, which takes its ⚠ away again", async () => {
       await arrive(maths("2026-09-14T07:00:00Z"), physics("2026-09-14T07:00:00Z"));
       const before = await feed();
 
       await arrive(physics("2026-09-14T07:15:00Z", lessonCancelled, cancellation("Physics", at("2026-09-15", "09:55", "10:40"))));
 
       expect((await feed()).map(({ uid, summary }) => ({ uid, summary }))).toEqual([{ uid: before[0]?.uid, summary: "⚠ Mia: School" }]);
+
+      await arrive(physics("2026-09-14T07:30:00Z", changeWithdrawn));
+
+      expect((await feed()).map(({ uid, summary, status }) => ({ uid, summary, status }))).toEqual([
+        { uid: before[0]?.uid, summary: "Mia: School", status: null },
+      ]);
     });
 
     it("names no one in the titles of a feed for one Family Member, and leaves out the others", async () => {
       const created = await instance.app.views.create({ preselected: [mia], horizonDays: 7 });
       if (!created.ok) throw new Error(`creating failed: ${created.problem}`);
       await arrive(maths("2026-09-14T07:00:00Z"));
-      await arriveForLeo(period("art", "2026-09-14T07:00:00Z", [lesson("Art", at("2026-09-15", "08:00", "09:35"))]));
+      await arriveForLeo(timetableLesson("art", "2026-09-14T07:00:00Z", [lesson("Art", at("2026-09-15", "08:00", "09:35"))]));
 
       expect((await feed(created.id)).map(({ summary }) => summary)).toEqual(["School"]);
     });
