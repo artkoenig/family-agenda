@@ -61,6 +61,26 @@ export function resolveDate(mention: DateMention, sentOn: LocalDate): ResolvedDa
   return { ok: true, date };
 }
 
+/**
+ * The Deadline a mention means, for a message sent on `sentOn`: as `resolveDate`, except that a
+ * month without a day, as in "bis Ende November", is its last day, the latest a Task is in time.
+ */
+export function resolveDeadline(mention: DateMention, sentOn: LocalDate): ResolvedDate {
+  const { day, month, year, weekday, daysAfter } = mention;
+  if (day !== null || month === null || weekday !== null || daysAfter !== null) return resolveDate(mention, sentOn);
+  // Day 0 of the next month is this month's last day.
+  const lastDay = (inYear: number) =>
+    month >= 1 && month <= 12 ? (new Date(Date.UTC(inYear, month, 0)).toISOString().slice(0, 10) as LocalDate) : null;
+  let date: LocalDate | null;
+  if (year !== null) date = lastDay(year < 100 ? 2000 + year : year);
+  else {
+    const thisYear = Number(sentOn.slice(0, 4));
+    const candidate = lastDay(thisYear);
+    date = candidate && candidate < addDays(sentOn, -daysBackWithoutYear) ? lastDay(thisYear + 1) : candidate;
+  }
+  return date === null ? { ok: false, problem: "no-date" } : { ok: true, date };
+}
+
 /** The instant a wall-clock time `HH:MM` shows on a date in the time zone, or null if it is no time. */
 export function instantAt(date: LocalDate, time: string, timeZone: string): Date | null {
   const match = /^(\d{1,2}):(\d{2})$/.exec(time);

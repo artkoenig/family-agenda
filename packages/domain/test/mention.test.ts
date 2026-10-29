@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { instantAt, quoteFoundIn, resolveDate, type DateMention, type LocalDate } from "../src";
+import { instantAt, quoteFoundIn, resolveDate, resolveDeadline, type DateMention, type LocalDate } from "../src";
 
 const nothing: DateMention = { day: null, month: null, year: null, weekday: null, daysAfter: null, weeksAfter: null };
 
@@ -35,6 +35,24 @@ describe("a date as a message mentions it", () => {
     { case: "no date at all", mention: {}, problem: { problem: "no-date" } },
   ] as const)("refuses $case", ({ mention, problem }) => {
     expect(resolveDate({ ...nothing, ...mention }, sentOn)).toEqual({ ok: false, ...problem });
+  });
+});
+
+describe("a Deadline as a message mentions it", () => {
+  it.each([
+    { case: "the end of a month", mention: { month: 11, year: 2026 }, date: "2026-11-30" },
+    { case: "the end of February in a leap year", mention: { month: 2, year: 28 }, date: "2028-02-29" },
+    { case: "a month without a year, later this year", mention: { month: 12 }, date: "2026-12-31" },
+    { case: "a month without a year, early next year", mention: { month: 1 }, date: "2027-01-31" },
+    { case: "a month without a year, just over", mention: { month: 10 }, date: "2026-10-31" },
+    { case: "a full date", mention: { day: 12, month: 11, year: 2026 }, date: "2026-11-12" },
+  ] as const)("resolves $case to the latest day in time", ({ mention, date }) => {
+    expect(resolveDeadline({ ...nothing, ...mention }, sentOn)).toEqual({ ok: true, date });
+  });
+
+  it("refuses a month that does not exist, as an Event's date does", () => {
+    expect(resolveDeadline({ ...nothing, month: 13, year: 2026 }, sentOn)).toEqual({ ok: false, problem: "no-date" });
+    expect(resolveDate({ ...nothing, month: 11, year: 2026 }, sentOn)).toEqual({ ok: false, problem: "no-date" });
   });
 });
 

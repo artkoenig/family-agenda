@@ -82,15 +82,15 @@ export const extractionSchema = {
   },
 };
 
-const instructions = `You read messages a family receives, such as school mails, and list what someone has to attend, do or bring.
+const instructions = `You read messages a family receives, such as school mails, and list what happens on a date and what someone has to do or bring.
 
-"events" are appointments with a date that someone has to attend, such as a parents' evening, a school trip or a match.
-"tasks" are things someone has to do or bring, such as signing a form, paying for a trip or bringing sports kit, optionally by a deadline.
+"events" are what happens on a date and matters to the family: appointments someone attends, such as a parents' evening, a school trip or a match; days without school, such as a study day, a teachers' training day or a bridge day; and what takes place at school, such as a bike check by the police or a project day.
+"tasks" are things someone has to do or bring, such as signing a form, paying for a trip, filling in a survey or bringing sports kit, optionally by a deadline.
 
 Rules:
-- List every such event and task, each once. List nothing for a message that only informs; then "events" and "tasks" are empty.
+- List every such event and task, each once, also when a long newsletter mentions it in passing. List nothing for a message that names no date and nothing to do; then "events" and "tasks" are empty.
 - A list of things to bring for one occasion is one task, with the things in "bring", each as written. "bring" is empty for a task that is not about bringing things.
-- Do not list timetable changes.
+- Do not list changes to single lessons, such as a cancelled or substituted lesson. A whole day without school is an event.
 - The message may be followed by the text of its attachments, each after a line "Attachment <file name>:". Read them as part of the message.
 - "evidence" is the shortest passage of the message that states the event or task and its date, copied character for character. Never rephrase, translate or shorten words inside it.
 - "title" is short, in the language of the message, without the date.
@@ -99,7 +99,8 @@ Rules:
   - "weekday" in English lower case if the message names one, such as "monday";
   - "daysAfter" for a date relative to the day the message was sent: 0 for today, 1 for tomorrow, 2 for the day after tomorrow, 14 for "in two weeks";
   - "weeksAfter" with a weekday alone: 0 for this week, 1 for next week; null if the message only names the weekday.
-- A task's "deadline" is the date by which it must be done; every part is null if the message gives none.
+- When the evidence states a date, its parts are never all null: for "Donnerstag, 19. November 2026" they are day 19, month 11, year 2026 and weekday "thursday".
+- A task's "deadline" is the date by which it must be done; every part is null if the message gives none. For a month alone, as in "bis Ende November 2026", fill in "month" and "year" and leave "day" null.
 - "startTime" and "endTime" as HH:MM in 24-hour time, or null.
 - "place" as written, or null.
 - When the message changes, moves or cancels one of the known events or tasks listed below, set "updates" to its id (such as "E1" or "T1"), "cancelled" to true for a cancellation, and fill in only what changes: "title" null unless it is renamed, a new date or times if it moves, and for a task the whole new list in "bring" if it changes, else an empty list. Otherwise "updates" is null and "cancelled" false.`;

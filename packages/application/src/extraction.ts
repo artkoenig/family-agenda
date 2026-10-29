@@ -7,6 +7,7 @@ import {
   problemsWithTaskRevision,
   quoteFoundIn,
   resolveDate,
+  resolveDeadline,
   taskOf,
   weekdayOf,
   type Act,
@@ -284,7 +285,7 @@ function taskRevisionOf(extracted: ExtractedTask, index: number, reading: Readin
 
   let rejection: Rejection | null = quoteFoundIn(extracted.evidence, text) ? null : "evidence-not-found";
   const mentioned = Object.values(extracted.deadline).some((part) => part !== null);
-  const resolved = mentioned ? resolveDate(extracted.deadline, sentOn) : null;
+  const resolved = mentioned ? resolveDeadline(extracted.deadline, sentOn) : null;
   if (resolved && !resolved.ok) rejection ??= resolved.problem;
   // A rejected Revision keeps the Deadline the message states, for an Admin who restores it.
   const deadline = resolved && "date" in resolved ? resolved.date : null;
