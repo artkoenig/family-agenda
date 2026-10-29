@@ -38,6 +38,7 @@ describe("the configuration the worker writes for Synapse and the bridges", () =
     expect(homeserver).toContain(`password: "${databasePassword}"`);
     // A Source joins all the chats of a newly linked account in one run.
     expect(homeserver).toMatch(/rc_joins:\n {2}local:\n {4}per_second: 10\n {4}burst_count: 1000/);
+    expect(homeserver).toMatch(/rc_message:\n {2}per_second: 10\n {2}burst_count: 1000/);
     expect(await read("data", "synapse", "signing.key")).toMatch(/^ed25519 a_[0-9a-f]{4} [A-Za-z0-9+/]{43}\n$/);
   });
 
