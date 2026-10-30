@@ -526,7 +526,10 @@
 /* Where a View and its feed are, in its dialog. */
 .fam-addresses { display: grid; grid-template-columns: auto 1fr; gap: 2px var(--space-4); margin: 0; font-size: 14px; line-height: 20px; }
 .fam-addresses dt { color: var(--ink-muted); font-weight: 600; }
-.fam-addresses dd { margin: 0; font-family: var(--font-mono); overflow-wrap: anywhere; }
+.fam-addresses dd { margin: 0; font-family: var(--font-mono); overflow-wrap: anywhere; display: flex; align-items: center; gap: var(--space-2); }
+.fam-copy { flex: none; width: 32px; min-height: 32px; padding: 0; }
+.fam-copy__done, .fam-copy[data-done] .fam-copy__copy { display: none; }
+.fam-copy[data-done] .fam-copy__done { display: block; }
 
 /* Dialog: adding and editing happen over the section, never inside its list */
 .fam-dialog {

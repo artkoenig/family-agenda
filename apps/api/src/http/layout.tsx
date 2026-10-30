@@ -19,6 +19,38 @@ for (const dialog of document.querySelectorAll("dialog.fam-dialog[open]")) {
 `;
 
 /**
+ * Copies the `data-copy` text of a button to the clipboard and, for a moment, marks the button
+ * `data-done` and labels it with its `data-copied`. Over plain HTTP, as on the home network, `navigator.clipboard` does not exist, so the
+ * text is selected in a temporary field and copied the old way.
+ */
+const copyButtons = `
+for (const button of document.querySelectorAll("button[data-copy]")) {
+  const label = button.getAttribute("aria-label");
+  button.addEventListener("click", async () => {
+    const text = button.dataset.copy;
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      const field = document.createElement("textarea");
+      field.value = text;
+      document.body.append(field);
+      field.select();
+      document.execCommand("copy");
+      field.remove();
+    }
+    button.dataset.done = "";
+    button.setAttribute("aria-label", button.dataset.copied);
+    button.title = button.dataset.copied;
+    setTimeout(() => {
+      delete button.dataset.done;
+      button.setAttribute("aria-label", label);
+      button.title = label;
+    }, 1500);
+  });
+}
+`;
+
+/**
  * A page in the Family Agenda design system: its tokens and component classes come from
  * `/static/tokens.css` and `/static/design.css` (`design/`). A View is the Family's timeline; every
  * other page belongs to the Admin area, `narrow` for signing in.
@@ -45,7 +77,7 @@ export function Layout(props: { title: string; surface?: "view" | "admin"; narro
           ) : (
             <div class={props.narrow ? "fam-admin fam-admin--narrow" : "fam-admin"}>{props.children}</div>
           )}
-          {view ? null : <script>{raw(modalDialogs)}</script>}
+          {view ? null : <script>{raw(modalDialogs + copyButtons)}</script>}
         </body>
       </html>
     </>
