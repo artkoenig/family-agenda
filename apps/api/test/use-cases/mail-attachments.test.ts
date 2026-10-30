@@ -161,9 +161,9 @@ describe("Events extracted from PDF attachments", () => {
     expect(extractor.requests[0]?.message.text).toContain("Treffpunkt ist um 8:00 Uhr am Bahnhof.");
     const message = await instance.app.messages.open(report.extracted[0]!);
     expect(message?.attachments).toEqual([
-      { filename: "einladung.pdf", contentType: "application/pdf", size: 13, conversionProblem: "Syntax Error: Couldn't find trailer dictionary" },
-      { filename: "brief.pdf", contentType: "application/pdf", size: expect.any(Number) as unknown, conversionProblem: null },
-      { filename: "foto.jpg", contentType: "image/jpeg", size: 2, conversionProblem: null },
+      { position: 0, filename: "einladung.pdf", contentType: "application/pdf", size: 13, conversionProblem: "Syntax Error: Couldn't find trailer dictionary" },
+      { position: 1, filename: "brief.pdf", contentType: "application/pdf", size: expect.any(Number) as unknown, conversionProblem: null },
+      { position: 2, filename: "foto.jpg", contentType: "image/jpeg", size: 2, conversionProblem: null },
     ]);
   });
 

@@ -906,7 +906,8 @@ export class PostgresItemRepository implements ItemRepository {
       sentAt: row.message.sentAt,
       attributes: row.attributes,
       text: row.message.textBlob as BlobRef,
-      attachments: attachments.map(({ filename, contentType, size, blob, conversionProblem }) => ({
+      attachments: attachments.map(({ position, filename, contentType, size, blob, conversionProblem }) => ({
+        position,
         filename,
         contentType,
         size,

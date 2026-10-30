@@ -486,6 +486,7 @@ export type RawMessage = {
   attributes: Record<string, string>;
   text: BlobRef;
   attachments: {
+    position: number;
     filename: string;
     contentType: string;
     size: number;
