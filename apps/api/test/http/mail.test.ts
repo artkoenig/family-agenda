@@ -71,6 +71,9 @@ describe("the LLM endpoint and mail over HTTP", () => {
     expect((await instance.get("/admin/messages/00000000-0000-0000-0000-000000000000")).headers.get("location")).toBe(
       "/admin/sign-in",
     );
+    expect(
+      (await instance.get("/admin/messages/00000000-0000-0000-0000-000000000000/attachments/0")).headers.get("location"),
+    ).toBe("/admin/sign-in");
   });
 
   it("links an Event from a mail to the mail, which Admins can open", async () => {
@@ -107,6 +110,56 @@ describe("the LLM endpoint and mail over HTTP", () => {
 
     await instance.app.languages.setLanguage("de");
     expect(await (await instance.get(link!, { cookie })).text()).toContain("Montag, 14. September 2026 um 08:00");
+  });
+
+  it("lets Admins download the attachments of a mail as the Source delivered them", async () => {
+    await instance.app.sourceTypes.enable("school-mail");
+    await instance.app.sources.add({ sourceTypeId: "school-mail", plain: { url: "imap.example.org" }, secrets: {} });
+    await instance.app.llmEndpoint.save({ baseUrl: "http://ollama:11434/v1", model: "qwen3.5:9b", apiKey: "" });
+    const created = await instance.app.views.create({ preselected: [], horizonDays: 3 });
+    if (!created.ok) throw new Error("creating failed");
+    extractor.script("Elternabend", [extracted({ title: "Elternabend", date: { daysAfter: 1 }, evidence: "Morgen ist Elternabend" })]);
+    testPluginControls.emit("school-mail", [
+      {
+        externalId: "m1",
+        occurredAt: new Date("2026-09-14T06:00:00Z"),
+        attributes: {},
+        content: {
+          kind: "raw-message",
+          text: "Subject: Elternabend\n\nMorgen ist Elternabend.",
+          attachments: [
+            { filename: "Einladung.pdf", contentType: "application/pdf", bytes: new Uint8Array([1, 2, 3]) },
+            { filename: "Übersicht \"(1)\".html", contentType: "text/html", bytes: new TextEncoder().encode("<script>alert(1)</script>") },
+          ],
+        },
+      },
+    ]);
+    await instance.app.polling.pollDue();
+    await instance.app.extraction.extractPending();
+    const view = await (await instance.get(`/views/${created.id}`)).text();
+    const link = /<a href="(\/admin\/messages\/[0-9a-f-]+)"/.exec(view)![1]!;
+
+    const message = await (await instance.get(link, { cookie })).text();
+    expect(message).toContain(`<a href="${link}/attachments/0" download="Einladung.pdf">Einladung.pdf</a>`);
+    expect(message).toContain(`href="${link}/attachments/1"`);
+
+    const pdf = await instance.get(`${link}/attachments/0`, { cookie });
+    expect(pdf.status).toBe(200);
+    expect(pdf.headers.get("content-type")).toBe("application/pdf");
+    expect(pdf.headers.get("content-disposition")).toBe(
+      `attachment; filename="Einladung.pdf"; filename*=UTF-8''Einladung.pdf`,
+    );
+    expect(new Uint8Array(await pdf.arrayBuffer())).toEqual(new Uint8Array([1, 2, 3]));
+
+    const html = await instance.get(`${link}/attachments/1`, { cookie });
+    expect(html.headers.get("content-disposition")).toBe(
+      `attachment; filename="_bersicht _(1)_.html"; filename*=UTF-8''%C3%9Cbersicht%20%22%281%29%22.html`,
+    );
+    expect(html.headers.get("content-security-policy")).toBe("sandbox");
+    expect(html.headers.get("x-content-type-options")).toBe("nosniff");
+
+    expect((await instance.get(`${link}/attachments/2`, { cookie })).status).toBe(404);
+    expect((await instance.get("/admin/messages/00000000-0000-0000-0000-000000000000/attachments/0", { cookie })).status).toBe(404);
   });
 
   it("links a Task from a mail to the mail", async () => {

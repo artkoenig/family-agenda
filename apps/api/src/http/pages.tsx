@@ -2254,7 +2254,10 @@ export function MessagePage(props: { admin: SignedInAdmin; message: MessageDetai
           <ul>
             {message.attachments.map((attachment) => (
               <li>
-                {attachment.filename} {m.attachment(attachment.contentType, Math.ceil(attachment.size / 1024))}
+                <a href={`/admin/messages/${message.id}/attachments/${attachment.position}`} download={attachment.filename}>
+                  {attachment.filename}
+                </a>{" "}
+                {m.attachment(attachment.contentType, Math.ceil(attachment.size / 1024))}
                 {attachment.conversionProblem !== null ? (
                   <p class="fam-problem">{m.unreadable(attachment.conversionProblem)}</p>
                 ) : null}
