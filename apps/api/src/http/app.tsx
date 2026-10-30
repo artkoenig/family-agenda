@@ -72,6 +72,8 @@ import {
 export type HttpOptions = {
   /** Whether a reverse proxy in front sets `X-Forwarded-For` and `X-Forwarded-Proto`. */
   trustProxy: boolean;
+  /** Scheme and host the Family reaches the Instance at; without it, those of the request. */
+  publicUrl?: string;
   /** Whether a View opens, as decided for the listener this app serves (ADR-0005). */
   viewAccess: ViewAccessPolicy;
 };
@@ -142,6 +144,9 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     (options.trustProxy ? c.req.header("x-forwarded-host") : undefined) ??
     c.req.header("host") ??
     new URL(c.req.url).host;
+
+  /** Where the Family reaches the Instance: `PUBLIC_URL`, else the scheme and host of the request. */
+  const originOf = (c: Context) => options.publicUrl ?? `${isHttps(c) ? "https" : "http"}://${hostOf(c)}`;
 
   /** The address the request came from; behind a trusted proxy, the one the proxy saw. */
   const clientOf = (c: Context<Env>) => {
@@ -312,7 +317,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
   app.get("/views/:id/feed.ics", async (c) => {
     const feed = await views.feed(c.req.param("id") as ViewId, { access: options.viewAccess });
     if (!feed) return c.notFound();
-    const viewLink = `${isHttps(c) ? "https" : "http"}://${hostOf(c)}${viewUrl(feed.id)}`;
+    const viewLink = `${originOf(c)}${viewUrl(feed.id)}`;
     return c.body(icsFeed(feed, viewLink), 200, {
       "content-type": "text/calendar; charset=utf-8",
       "cache-control": "no-store",
@@ -544,7 +549,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
         admin={c.get("admin")}
         views={await views.list()}
         members={await familyMembers.list()}
-        origin={`${isHttps(c) ? "https" : "http"}://${hostOf(c)}`}
+        origin={originOf(c)}
         {...(shown.problem ? { problem: shown.problem } : {})}
         {...(shown.creating ? { creating: shown.creating } : {})}
         {...(shown.editing ? { editing: shown.editing } : {})}

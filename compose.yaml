@@ -6,6 +6,9 @@ x-app: &app
   restart: unless-stopped
   environment:
     DATABASE_URL: postgres://family_agenda:${POSTGRES_PASSWORD:-family_agenda}@postgres:5432/family_agenda
+    # The address the Family opens the Instance at, which Views show and copy. By default the name
+    # the `mdns` service announces; set it to your own, such as behind a reverse proxy with HTTPS.
+    PUBLIC_URL: ${PUBLIC_URL:-http://${MDNS_NAME:-family-agenda.local}:${PORT:-8080}}
     # Set to true behind your own HTTPS reverse proxy, so session cookies become Secure.
     TRUST_PROXY: ${TRUST_PROXY:-false}
     MASTER_KEY_FILE: /var/lib/family-agenda/master-key/master.key
@@ -59,6 +62,20 @@ services:
       # Synapse's configuration and media and the bridges' Messenger sessions, in SQLite outside
       # Postgres (ADR-0006). Synapse's own database is on the Postgres server, created by the worker.
       - matrix-data:/var/lib/family-agenda/matrix-data
+
+  # Makes the Instance reachable at http://family-agenda.local:8080 from any device on the home
+  # network, like homeassistant.local. It has to share the host's network to answer multicast DNS,
+  # which works on a Linux host, such as a NAS or a Raspberry Pi, but not in Docker Desktop.
+  mdns:
+    image: family-agenda:local
+    restart: unless-stopped
+    network_mode: host
+    working_dir: /app/apps/api
+    command: ["node", "--import", "tsx", "src/mdns-main.ts"]
+    environment:
+      MDNS_NAME: ${MDNS_NAME:-family-agenda.local}
+    depends_on:
+      - api
 
   postgres:
     image: postgres:17

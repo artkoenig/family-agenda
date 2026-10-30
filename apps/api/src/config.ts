@@ -12,6 +12,8 @@ export type Config = {
   applicationVersion?: string;
   port: number;
   trustProxy: boolean;
+  /** The address the Family reaches the Instance at, such as `http://192.168.1.10:8080`; null to use the one a request came by. */
+  publicUrl: string | null;
 };
 
 export function readConfig(env: NodeJS.ProcessEnv = process.env): Config {
@@ -27,5 +29,14 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): Config {
     ...(env.FAMILY_AGENDA_VERSION ? { applicationVersion: env.FAMILY_AGENDA_VERSION } : {}),
     port: Number(env.PORT ?? 3000),
     trustProxy: env.TRUST_PROXY === "true",
+    publicUrl: publicUrlOf(env.PUBLIC_URL),
   };
+}
+
+function publicUrlOf(value: string | undefined): string | null {
+  if (!value) return null;
+  if (!URL.canParse(value) || !/^https?:$/.test(new URL(value).protocol)) {
+    throw new Error("PUBLIC_URL must be an http or https address, such as http://192.168.1.10:8080");
+  }
+  return new URL(value).origin;
 }
