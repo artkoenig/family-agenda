@@ -42,7 +42,7 @@ describe("Tasks over HTTP", () => {
 
   /** The row of the Task with the given title. */
   const rowOf = (page: string, title: string) =>
-    new RegExp(`<li class="fam-task[^"]*"(?:(?!</li>).)*${title}(?:(?!</li>).)*</li>`, "s").exec(page)?.[0] ?? "";
+    new RegExp(`<li class="fam-item fam-task[^"]*"(?:(?!</li>).)*${title}(?:(?!</li>).)*</li>`, "s").exec(page)?.[0] ?? "";
 
   /** Where the tick of a Task row posts to. */
   const tickOf = (row: string) => /<form[^>]*action="([^"]+)"/.exec(row)?.[1] ?? "";
@@ -57,7 +57,12 @@ describe("Tasks over HTTP", () => {
     expect(rowOf(pinned, "Sign the trip form")).toContain("Due");
     expect(pinned).not.toContain("Pay for the photos");
     const later = page.slice(page.indexOf('data-date="2026-09-16"'));
-    expect(rowOf(later, "Pay for the photos")).toContain("Mark “Pay for the photos” done");
+    const onDay = rowOf(later, "Pay for the photos");
+    expect(onDay).toContain("Mark “Pay for the photos” done");
+    // On its day, the tick takes the place of the time, and the day says the Deadline.
+    expect(onDay).toMatch(/<span class="fam-item__lead"><form/);
+    expect(onDay).not.toContain("By ");
+    expect(rowOf(pinned, "Bring sports kit")).not.toContain("fam-item__lead");
   });
 
   it("ticks a Task done through a View without a session, and takes the tick back", async () => {

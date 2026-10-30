@@ -293,7 +293,7 @@ function DayEntry(props: { page: ViewPage; day: TimelineDay }) {
   const rows = rowsOf(day);
   const show = (row: DayRow) =>
     row.kind === "event" ? (
-      <EventRow row={row.row} members={page.members} />
+      <EventRow row={row.row} day={day.date} members={page.members} />
     ) : row.kind === "school" ? (
       <SchoolDayRow row={row.row} members={page.members} />
     ) : (
@@ -317,7 +317,7 @@ function DayEntry(props: { page: ViewPage; day: TimelineDay }) {
       {day.tasks.length > 0 ? (
         <ul class="fam-tasks__list">
           {day.tasks.map((row) => (
-            <TaskRow row={row} page={page} />
+            <TaskRow row={row} page={page} onDay />
           ))}
         </ul>
       ) : null}
@@ -452,22 +452,24 @@ function TimetableChangeRow(props: { row: TimelineTimetableChange; members: Fami
 }
 
 /**
- * One Event as a compact row of time, title and the avatars of the Family Members it concerns,
- * none if it concerns the whole Family, with its details on tap.
+ * One Event as a row like a Task's: its time, its title, the avatars of the Family Members it
+ * concerns, none if it concerns the whole Family, and below the title its last day if that is
+ * a later one, its place and its Sources. The day it is on says its date.
  */
-function EventRow(props: { row: TimelineEvent; members: FamilyMemberSummary[] }) {
+function EventRow(props: { row: TimelineEvent; day: LocalDate; members: FamilyMemberSummary[] }) {
   const { row } = props;
   const translation = useTranslation();
   const { t } = translation;
   const v = t.view;
-  const classes = ["fam-event", row.cancelled ? "fam-event--cancelled" : "", row.earlier ? "fam-event--earlier" : ""]
+  const classes = ["fam-item", row.cancelled ? "fam-item--cancelled" : "", row.earlier ? "fam-item--earlier" : ""]
     .filter(Boolean)
     .join(" ");
+  const lastDay = lastDayLabel(row.span, props.day, translation);
   return (
-    <details class={classes}>
-      <summary>
-        <span class="fam-event__time">{timeLabel(row, t)}</span>
-        <span class="fam-event__title">
+    <div class={classes}>
+      <span class="fam-item__lead">{timeLabel(row, t)}</span>
+      <span class="fam-item__text">
+        <span class="fam-item__title">
           {row.cancelled ? (
             <>
               <s>{row.title}</s> <span class="fam-event__tag">{v.cancelled}</span>
@@ -476,59 +478,51 @@ function EventRow(props: { row: TimelineEvent; members: FamilyMemberSummary[] })
             row.title
           )}
         </span>
-        <Concerned concerns={row.concerns} members={props.members} />
-      </summary>
-      <dl class="fam-event__details">
-        <dt>{v.when}</dt>
-        <dd>{spanLabel(row.span, translation)}</dd>
-        {row.place ? (
-          <>
-            <dt>{v.where}</dt>
-            <dd>{row.place}</dd>
-          </>
-        ) : null}
-        {row.cancelled ? (
-          <>
-            <dt>{v.status}</dt>
-            <dd>{v.cancelled}</dd>
-          </>
-        ) : null}
-        {row.links.map((link) => (
-          <>
-            <dt>{v.source}</dt>
-            <dd>
-              <a href={link.url} rel="noreferrer" target="_blank">
-                {translation.text(link.source)}
-              </a>
-            </dd>
-          </>
-        ))}
-        {row.messages.map((message) => (
-          <>
-            <dt>{v.source}</dt>
-            <dd>
-              {translation.text(message.source)} · <a href={`/admin/messages/${message.id}`}>{v.openMessage}</a>
-              {v.adminsOnly}
-            </dd>
-          </>
-        ))}
-      </dl>
-    </details>
+        {lastDay ? <span class="fam-item__meta">{lastDay}</span> : null}
+        {row.place ? <span class="fam-item__meta">{row.place}</span> : null}
+        <Sources row={row} />
+      </span>
+      <Concerned concerns={row.concerns} members={props.members} />
+    </div>
+  );
+}
+
+/** Where an Event or a Task comes from: its links, and the messages it was read from, which only Admins open. */
+function Sources(props: { row: Pick<TimelineEvent, "links" | "messages"> }) {
+  const { t, text } = useTranslation();
+  return (
+    <>
+      {props.row.links.map((link) => (
+        <span class="fam-item__meta">
+          <a href={link.url} rel="noreferrer" target="_blank">
+            {text(link.source)}
+          </a>
+        </span>
+      ))}
+      {props.row.messages.map((message) => (
+        <span class="fam-item__meta">
+          {text(message.source)} · <a href={`/admin/messages/${message.id}`}>{t.view.openMessage}</a>
+        </span>
+      ))}
+    </>
   );
 }
 
 /**
  * A Task as one row with its tick, the design system's checkbox, which posts once it changes as
  * htmx swaps the timeline or the Task List, and its Deadline and things to bring. A done one is
- * checked and dimmed, and its tick can be taken back.
+ * checked and dimmed, and its tick can be taken back. On its day, the tick takes the place of an
+ * Event's time, and the row leaves out its Deadline and status, which the day and the tick say.
  */
-function TaskRow(props: { row: TimelineTask; page: ViewPage | TaskListPage }) {
+function TaskRow(props: { row: TimelineTask; page: ViewPage | TaskListPage; onDay?: boolean }) {
   const { row, page } = props;
-  const { t, locale, text } = useTranslation();
+  const { t, locale } = useTranslation();
   const v = t.view;
   const done = row.status === "done";
   const action = `/views/${page.id}/tasks/${row.itemId}/${done ? "undone" : "done"}`;
-  const classes = ["fam-task", `fam-task--${row.status}`, row.cancelled ? "fam-task--cancelled" : ""].filter(Boolean).join(" ");
+  const classes = ["fam-item", "fam-task", `fam-task--${row.status}`, row.cancelled ? "fam-item--cancelled" : ""]
+    .filter(Boolean)
+    .join(" ");
   const deadline = row.deadline ? dateLabel(row.deadline, locale) : null;
   const status =
     row.status === "done"
@@ -540,24 +534,27 @@ function TaskRow(props: { row: TimelineTask; page: ViewPage | TaskListPage }) {
           : deadline
             ? v.by(deadline)
             : v.due;
+  const tick = (
+    <form
+      method="post"
+      action={action}
+      hx-post={action}
+      hx-trigger="change"
+      hx-target="#view"
+      hx-swap="outerHTML"
+      hx-include={page.kind === "timeline" ? "#shown-from, #shown-until" : undefined}
+    >
+      <input type="hidden" name="show" value={page.showing === "all" ? "all" : page.showing.join(",")} />
+      <label class="fam-task__tick">
+        <input type="checkbox" checked={done} aria-label={done ? v.markNotDone(row.title) : v.markDone(row.title)} />
+      </label>
+    </form>
+  );
   return (
     <li class={classes}>
-      <form
-        method="post"
-        action={action}
-        hx-post={action}
-        hx-trigger="change"
-        hx-target="#view"
-        hx-swap="outerHTML"
-        hx-include={page.kind === "timeline" ? "#shown-from, #shown-until" : undefined}
-      >
-        <input type="hidden" name="show" value={page.showing === "all" ? "all" : page.showing.join(",")} />
-        <label class="fam-task__tick">
-          <input type="checkbox" checked={done} aria-label={done ? v.markNotDone(row.title) : v.markDone(row.title)} />
-        </label>
-      </form>
-      <span class="fam-task__text">
-        <span class="fam-task__title">
+      {props.onDay ? <span class="fam-item__lead">{tick}</span> : tick}
+      <span class="fam-item__text">
+        <span class="fam-item__title">
           {row.cancelled ? (
             <>
               <s>{row.title}</s> <span class="fam-event__tag">{v.cancelled}</span>
@@ -566,25 +563,13 @@ function TaskRow(props: { row: TimelineTask; page: ViewPage | TaskListPage }) {
             row.title
           )}
         </span>
-        <span class="fam-task__meta">{status}</span>
+        {props.onDay ? null : <span class="fam-item__meta fam-task__status">{status}</span>}
         {row.bring.length > 0 ? (
-          <span class="fam-task__bring">
+          <span class="fam-item__meta">
             {v.bring}: {row.bring.join(", ")}
           </span>
         ) : null}
-        {row.links.map((link) => (
-          <span class="fam-task__source">
-            <a href={link.url} rel="noreferrer" target="_blank">
-              {text(link.source)}
-            </a>
-          </span>
-        ))}
-        {row.messages.map((message) => (
-          <span class="fam-task__source">
-            {text(message.source)} · <a href={`/admin/messages/${message.id}`}>{v.openMessage}</a>
-            {v.adminsOnly}
-          </span>
-        ))}
+        <Sources row={row} />
       </span>
       <Concerned concerns={row.concerns} members={page.members} />
     </li>
@@ -614,7 +599,16 @@ export function changeLabel(change: TimelineTimetableChange, t: Catalogue): stri
   return change.note ? `${label} (${change.note})` : label;
 }
 
-/** The whole span of an Event, as its details show it, in the Translation's language. */
+/**
+ * The last day of an Event that goes on after the given day, "Until Fri 6 Nov", with the time it
+ * ends unless it is all day; null if it ends on that day.
+ */
+function lastDayLabel(span: TimelineEvent["span"], day: LocalDate, { t, locale }: Translation): string | null {
+  if (span.allDay) return span.lastDay > day ? t.view.untilDay(dateLabel(span.lastDay, locale)) : null;
+  return span.end.date > day ? t.view.untilDay(`${dateLabel(span.end.date, locale)}, ${span.end.time}`) : null;
+}
+
+/** The whole span of an Event, as its calendar feed describes it, in the Translation's language. */
 export function spanLabel(span: TimelineEvent["span"], { t, locale }: Translation): string {
   const date = (day: LocalDate) => dateLabel(day, locale);
   if (span.allDay) {

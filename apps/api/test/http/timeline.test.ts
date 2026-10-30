@@ -36,11 +36,11 @@ describe("Events in a View over HTTP", () => {
     await instance.app.polling.pollDue();
   };
 
-  /** The row of the Event with the given title, from `<details>` to `</details>`. */
+  /** The row of the Event with the given title, from `<div class="fam-item` to `</div>`. */
   const rowOf = (page: string, title: string) =>
-    new RegExp(`<details[^>]*>(?:(?!</details>).)*${title}(?:(?!</details>).)*</details>`, "s").exec(page)?.[0] ?? "";
+    new RegExp(`<div class="fam-item[^"]*">(?:(?!</div>).)*${title}(?:(?!</div>).)*</div>`, "s").exec(page)?.[0] ?? "";
 
-  it("shows Events as compact rows with their details on tap", async () => {
+  it("shows Events as rows like Tasks, without what their day already says", async () => {
     await arrive(
       event(
         "piano",
@@ -48,16 +48,26 @@ describe("Events in a View over HTTP", () => {
         { link: "https://calendar.example.org/event/piano" },
       ),
       event("trip", { title: "Class trip", span: { allDay: true, firstDay: "2026-09-16", lastDay: "2026-09-16" } }),
+      event("camp", { title: "Summer camp", span: { allDay: true, firstDay: "2026-09-15", lastDay: "2026-09-17" } }),
     );
 
     const page = await (await instance.get(path)).text();
 
     const piano = rowOf(page, "Piano lesson");
-    expect(piano).toMatch(/<summary[^>]*>.*16:00.*Piano lesson.*<\/summary>/s);
-    expect(piano).toContain("Tue 15 Sept, 16:00 – 17:00");
-    expect(piano).toContain("Music school");
-    expect(piano).toMatch(/<dt>Source<\/dt><dd><a href="https:\/\/calendar.example.org\/event\/piano" rel="noreferrer" target="_blank">School calendar<\/a>/);
-    expect(rowOf(page, "Class trip")).toContain("All day");
+    expect(piano).toMatch(/<span class="fam-item__lead">16:00 – 17:00<\/span>.*Piano lesson/s);
+    expect(piano).not.toContain("Tue 15 Sept");
+    expect(piano).toContain('<span class="fam-item__meta">Music school</span>');
+    expect(piano).toContain(
+      '<span class="fam-item__meta"><a href="https://calendar.example.org/event/piano" rel="noreferrer" target="_blank">School calendar</a></span>',
+    );
+    expect(piano).not.toContain("<details");
+    const trip = rowOf(page, "Class trip");
+    expect(trip).toContain("All day");
+    expect(trip).not.toContain("Until");
+    // An Event that goes on after its day says until when, but not on its last day.
+    const camp = (date: string) => rowOf(page.slice(page.indexOf(`data-date="${date}"`)), "Summer camp");
+    expect(camp("2026-09-15")).toContain("Until Thu 17 Sept");
+    expect(camp("2026-09-17")).not.toContain("Until");
     expect(page.indexOf("Piano lesson")).toBeLessThan(page.indexOf("Class trip"));
   });
 
@@ -73,7 +83,7 @@ describe("Events in a View over HTTP", () => {
     await instance.app.sources.assign(source.id, [mia.id]);
     const page = await (await instance.get(path)).text();
 
-    expect(rowOf(page, "Piano lesson")).toMatch(/<summary>.*<span class="fam-event__who" aria-label="Mia" role="img">.*>M<\/span>.*<\/summary>/s);
+    expect(rowOf(page, "Piano lesson")).toMatch(/<span class="fam-event__who" aria-label="Mia" role="img">.*>M<\/span>/s);
   });
 
   it("strikes cancelled Events through and dims those of today that are over", async () => {
@@ -93,8 +103,8 @@ describe("Events in a View over HTTP", () => {
 
     const page = await (await instance.get(path)).text();
 
-    expect(rowOf(page, "School breakfast")).toContain('class="fam-event fam-event--earlier"');
-    expect(rowOf(page, "Dentist")).toContain('class="fam-event fam-event--cancelled"');
+    expect(rowOf(page, "School breakfast")).toContain('class="fam-item fam-item--earlier"');
+    expect(rowOf(page, "Dentist")).toContain('class="fam-item fam-item--cancelled"');
     expect(rowOf(page, "Dentist")).toContain("<s>Dentist</s>");
     // The "now" line comes after what is over.
     expect(page.indexOf("School breakfast")).toBeLessThan(page.indexOf("Now 09:10"));
@@ -129,7 +139,7 @@ describe("Events in a View over HTTP", () => {
     expect(earlier).not.toContain("Now ");
     expect(earlier).toContain('<input type="hidden" id="shown-from" name="from" value="2026-09-11" hx-swap-oob="true"/>');
     const further = await (await instance.get(`${path}/days?show=all&from=2026-09-08&until=2026-09-10&then=earlier`)).text();
-    expect(rowOf(further, "Swimming")).toContain('class="fam-event fam-event--earlier"');
+    expect(rowOf(further, "Swimming")).toContain('class="fam-item fam-item--earlier"');
   });
 
   it("refreshes the days scrolled to, and refuses days it cannot show", async () => {
