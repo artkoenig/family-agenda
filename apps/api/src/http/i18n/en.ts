@@ -211,6 +211,8 @@ export const en = {
     remove: "Remove View",
     address: "Address",
     feed: "Calendar feed",
+    copy: "Copy",
+    copied: "Copied",
     kind: "Shows",
     kinds: {
       timeline: { label: "Timeline", hint: "Events, school days and Tasks, day by day" },

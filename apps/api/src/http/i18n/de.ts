@@ -196,6 +196,8 @@ export const de: Catalogue = {
     remove: "Ansicht entfernen",
     address: "Adresse",
     feed: "Kalender-Feed",
+    copy: "Kopieren",
+    copied: "Kopiert",
     kind: "Zeigt",
     kinds: {
       timeline: { label: "Zeitleiste", hint: "Termine, Schultage und Aufgaben Tag für Tag" },

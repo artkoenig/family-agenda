@@ -149,8 +149,9 @@ describe("Views over HTTP", () => {
     expect(views).toContain(`href="/admin/views/${view!.id}"`);
     const dialog = await (await instance.get(`/admin/views/${view!.id}`, { cookie })).text();
     expect(dialog).toMatch(/<dialog open="" class="fam-dialog"/);
-    expect(dialog).toContain(`href="/views/${view!.id}"`);
-    expect(dialog).toContain(`href="/views/${view!.id}/feed.ics"`);
+    expect(dialog).toMatch(new RegExp(`href="https?://[^/"]+/views/${view!.id}"`));
+    expect(dialog).toMatch(new RegExp(`href="https?://[^/"]+/views/${view!.id}/feed\\.ics"`));
+    expect(dialog).toMatch(new RegExp(`<button[^>]*data-copy="https?://[^/"]+/views/${view!.id}"`));
   });
 
   it("lets an Admin choose a Task List for a View, which its row and dialog name", async () => {
