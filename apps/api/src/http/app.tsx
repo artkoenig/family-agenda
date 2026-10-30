@@ -544,6 +544,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
         admin={c.get("admin")}
         views={await views.list()}
         members={await familyMembers.list()}
+        origin={`${isHttps(c) ? "https" : "http"}://${hostOf(c)}`}
         {...(shown.problem ? { problem: shown.problem } : {})}
         {...(shown.creating ? { creating: shown.creating } : {})}
         {...(shown.editing ? { editing: shown.editing } : {})}

@@ -733,10 +733,35 @@ export function FamilyMembersPage(props: {
   );
 }
 
+/** Copies `text` to the clipboard; the script in the layout wires it up. */
+function CopyButton(props: { text: string }) {
+  const { t } = useTranslation();
+  return (
+    <button
+      type="button"
+      class="fam-button fam-button--quiet fam-copy"
+      data-copy={props.text}
+      data-copied={t.views.copied}
+      aria-label={t.views.copy}
+      title={t.views.copy}
+    >
+      <svg class="fam-copy__copy" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <rect x="9" y="9" width="11" height="11" rx="2"></rect>
+        <path d="M5 15V6a2 2 0 0 1 2-2h9"></path>
+      </svg>
+      <svg class="fam-copy__done" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M5 12.5l4.5 4.5L19 7.5"></path>
+      </svg>
+    </button>
+  );
+}
+
 export function ViewsPage(props: {
   admin: SignedInAdmin;
   views: ViewSummary[];
   members: FamilyMemberSummary[];
+  /** Scheme and host the Admin reached the Instance by, so that a View's address can be copied as it is. */
+  origin: string;
   problem?: string;
   /** The create dialog, open with why it was refused. */
   creating?: { problem?: string };
@@ -757,6 +782,7 @@ export function ViewsPage(props: {
     return view.kind === "tasks" ? v.taskListEntry(who) : v.entry(who, view.horizonDays);
   };
   const edited = editing ? props.views.find((view) => view.id === editing.id) : undefined;
+  const address = edited ? `${props.origin}${viewUrl(edited.id)}` : "";
   const dialog = edited ? (
     <Dialog id="edit-view" eyebrow={v.eyebrow} title={entryOf(edited)} closeHref="/admin/views">
       <form method="post" action={`/admin/views/${edited.id}`} class="fam-dialog__form">
@@ -764,11 +790,13 @@ export function ViewsPage(props: {
         <dl class="fam-addresses">
           <dt>{v.address}</dt>
           <dd>
-            <a href={viewUrl(edited.id)}>{viewUrl(edited.id)}</a>
+            <a href={address}>{address}</a>
+            <CopyButton text={address} />
           </dd>
           <dt>{v.feed}</dt>
           <dd>
-            <a href={`${viewUrl(edited.id)}/feed.ics`}>{`${viewUrl(edited.id)}/feed.ics`}</a>
+            <a href={`${address}/feed.ics`}>{`${address}/feed.ics`}</a>
+            <CopyButton text={`${address}/feed.ics`} />
           </dd>
         </dl>
         <ViewSettingsFields members={props.members} view={edited} idSuffix={edited.id} />
