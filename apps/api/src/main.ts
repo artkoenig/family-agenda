@@ -9,6 +9,7 @@ const application = await bootApplication(config);
 const server = serve(
   { fetch: createHttpApp(application, {
       trustProxy: config.trustProxy,
+      ...(config.publicUrl ? { publicUrl: config.publicUrl } : {}),
       // The only listener in v1 is the local one, where Views open without a secret (ADR-0005).
       viewAccess: openViewAccess,
     }).fetch, port: config.port },
