@@ -173,11 +173,10 @@
   border: 1px solid var(--line-strong); color: var(--ink-muted); font-size: 13px; line-height: 20px; font-weight: 600;
   text-decoration: none; vertical-align: 1px;
 }
-.fam-event[open] { border-bottom-color: transparent; }
+/* What a row says on tap sits flat beneath it, in line with the row, not in a card. */
 .fam-event__details {
   display: grid; grid-template-columns: auto 1fr; gap: var(--space-1) var(--space-3);
-  margin: 0 0 var(--space-3); padding: var(--space-3) var(--space-4);
-  background: var(--surface-raised); border-radius: var(--radius-md); box-shadow: var(--shadow-raised);
+  margin: 0; padding: 0 var(--space-1) var(--space-3);
   color: var(--ink-muted);
 }
 .fam-event__details dt { font-weight: 600; }
@@ -196,8 +195,7 @@
 /* The Lessons a school day lists on tap. */
 .fam-lessons {
   display: grid; grid-template-columns: auto auto 1fr; gap: var(--space-1) var(--space-3);
-  list-style: none; margin: 0 0 var(--space-3); padding: var(--space-3) var(--space-4);
-  background: var(--surface-raised); border-radius: var(--radius-md); box-shadow: var(--shadow-raised);
+  list-style: none; margin: 0; padding: 0 var(--space-1) var(--space-3);
 }
 .fam-lesson { display: contents; }
 .fam-lesson__time { color: var(--ink-muted); font-variant-numeric: tabular-nums; }
