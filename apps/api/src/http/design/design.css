@@ -163,7 +163,7 @@
 }
 .fam-event > summary::-webkit-details-marker { display: none; }
 .fam-event > summary:hover { background: var(--hearth-tint); }
-.fam-event__time { flex: none; min-width: var(--time-column); color: var(--ink-muted); font-variant-numeric: tabular-nums; }
+.fam-event__time { flex: none; min-width: var(--time-column); color: var(--ink-muted); }
 .fam-event__title { font-weight: 600; flex: 1; }
 .fam-event__who { flex: none; align-self: center; }
 .fam-event--earlier .fam-event__title { color: var(--ink-muted); font-weight: 400; }
@@ -182,6 +182,14 @@
 }
 .fam-event__details dt { font-weight: 600; }
 .fam-event__details dd { margin: 0; color: var(--ink); }
+/* An Event or a Task as a row: its time or tick, its title with what else to know below, its avatars. */
+.fam-item { display: flex; gap: var(--space-3); align-items: flex-start; padding: var(--space-3) var(--space-1); border-bottom: 1px solid var(--line); }
+.fam-item__lead { flex: none; min-width: var(--time-column); color: var(--ink-muted); }
+.fam-item__text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.fam-item__title { font-weight: 600; }
+.fam-item__meta { color: var(--ink-muted); font-size: 14px; line-height: 20px; }
+.fam-item--earlier .fam-item__title, .fam-item--cancelled .fam-item__title { color: var(--ink-muted); font-weight: 400; }
+.fam-item--cancelled .fam-item__title s { text-decoration: line-through; }
 /* A Timetable Change stands out from the rows around it. */
 .fam-event--change > summary { background: var(--honey-tint); box-shadow: inset 3px 0 0 var(--honey); }
 .fam-event--change > summary:hover { background: var(--honey-tint); }
@@ -208,7 +216,6 @@
 .fam-tasks--quiet .fam-tasks__title { color: var(--ink-muted); }
 .fam-tasks__end { height: var(--space-7); }
 .fam-tasks__list { list-style: none; margin: 0; padding: 0; }
-.fam-task { display: flex; gap: var(--space-3); align-items: flex-start; padding: var(--space-3) var(--space-1); border-bottom: 1px solid var(--line); }
 .fam-task form { display: contents; }
 /* The tick: the Field checkbox in a control-height hit area that does not grow the row and keeps clear of an Overdue row's red edge. */
 .fam-task__tick {
@@ -216,13 +223,11 @@
   margin: -10px -12px -10px 0; cursor: pointer;
 }
 .fam-task__tick input { margin: 0; cursor: pointer; }
-.fam-task__text { flex: 1; display: flex; flex-direction: column; gap: 2px; }
-.fam-task__title { font-weight: 600; }
-.fam-task__meta, .fam-task__bring, .fam-task__source { color: var(--ink-muted); font-size: 14px; line-height: 20px; }
+/* On its day, the tick sits in the time column, its checkbox in line with the times above it. */
+.fam-item__lead .fam-task__tick { margin: -10px 0 -10px -13px; }
 .fam-task--overdue { background: var(--danger-tint); box-shadow: inset 3px 0 0 var(--danger); }
-.fam-task--overdue .fam-task__meta { color: var(--danger); font-weight: 600; }
-.fam-task--done .fam-task__title, .fam-task--cancelled .fam-task__title { color: var(--ink-muted); font-weight: 400; }
-.fam-task--cancelled .fam-task__title s { text-decoration: line-through; }
+.fam-task--overdue .fam-task__status { color: var(--danger); font-weight: 600; }
+.fam-task--done .fam-item__title { color: var(--ink-muted); font-weight: 400; }
 
 /* Timeline: loading more days ------------------------------------------ */
 .fam-more { display: flex; justify-content: center; padding: var(--space-4) 0; color: var(--ink-muted); font-size: 14px; line-height: 20px; }

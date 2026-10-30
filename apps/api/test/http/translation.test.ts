@@ -88,7 +88,8 @@ describe("the pages in the Family Language", () => {
     expect(page).toMatch(/<span class="fam-day__name">Heute<\/span>/);
     expect(page).toMatch(/<span class="fam-day__name">Morgen<\/span>/);
     expect(page).toContain("Ganztägig");
-    expect(page).toContain("Di., 15. Sept., ganztägig");
+    // The day says the date, so the row does not repeat it; the feed does.
+    expect(page).not.toContain("Di., 15. Sept., ganztägig");
     expect(page).toContain("Nichts geplant.");
     expect(page).toContain("Frühere Tage");
     expect(page).not.toContain("Today");

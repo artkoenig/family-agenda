@@ -6,6 +6,7 @@ import { bootForTest, type TestInstance } from "../support/boot";
 import { InMemoryBlobStore } from "../support/in-memory-blob-store";
 import { extracted, extractedTask, ScriptedExtractor } from "../support/scripted-extractor";
 import { testPluginControls, writeTestPluginPackage } from "../support/test-source-plugin";
+import { openTimeline } from "../support/timeline";
 
 const minutes = 60 * 1000;
 
@@ -67,12 +68,12 @@ describe("Re-reading messages", () => {
   };
 
   const events = async () => {
-    const page = await instance.app.views.open(view, { access: openViewAccess });
+    const page = await openTimeline(instance.app, view, { access: openViewAccess });
     return (page?.days ?? []).flatMap((day) => day.items.map((row) => ({ date: day.date, title: row.title, itemId: row.itemId })));
   };
 
   const tasks = async () => {
-    const page = await instance.app.views.open(view, { access: openViewAccess });
+    const page = await openTimeline(instance.app, view, { access: openViewAccess });
     return [...(page?.pinned ?? []), ...(page?.days ?? []).flatMap((day) => day.tasks)];
   };
 
@@ -168,7 +169,7 @@ describe("Re-reading messages", () => {
       ["2026-09-17 19:30–19:30"],
     ]);
     expect(await events()).toMatchObject([{ title: "Elternabend" }]);
-    const page = await instance.app.views.open(view, { access: openViewAccess });
+    const page = await openTimeline(instance.app, view, { access: openViewAccess });
     expect(page?.days.flatMap((day) => day.items)[0]).toMatchObject({ from: "16:00" });
   });
 
