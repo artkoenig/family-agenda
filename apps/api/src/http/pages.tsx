@@ -688,13 +688,14 @@ export function FamilyMembersPage(props: {
         <div class="fam-field">
           <label for="photo">{edited.hasPhoto ? m.replacePhoto : m.photo}</label>
           <input id="photo" name="photo" type="file" accept={photoTypes.join(",")} />
-          {edited.hasPhoto ? null : <small>{m.photoHint}</small>}
+          {edited.hasPhoto ? (
+            <label>
+              <input type="checkbox" name="removePhoto" value="yes" /> {m.removePhoto}
+            </label>
+          ) : (
+            <small>{m.photoHint}</small>
+          )}
         </div>
-        {edited.hasPhoto ? (
-          <label>
-            <input type="checkbox" name="removePhoto" value="yes" /> {m.removePhoto}
-          </label>
-        ) : null}
         <DialogFooter
           closeHref="/admin/family-members"
           submit={t.common.save}
@@ -737,7 +738,7 @@ export function FamilyMembersPage(props: {
             {props.members.map((member) => (
               <ListRow
                 href={`/admin/family-members/${member.id}`}
-                lead={<Avatar member={member} />}
+                lead={<Avatar member={member} size="sm" />}
                 name={member.name}
                 meta={member.hasPhoto ? m.withPhoto : m.withInitial}
               />

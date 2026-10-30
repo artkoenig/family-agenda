@@ -241,7 +241,15 @@
   border: 1px solid var(--line-strong); border-radius: var(--radius-md);
 }
 :where(.fam-admin) input::placeholder { color: var(--ink-muted); }
-:where(.fam-admin) input[type="file"] { font: inherit; font-size: 14px; color: var(--ink-muted); }
+:where(.fam-admin) input[type="file"] { font: inherit; color: var(--ink); }
+/* The file picker's own button, which takes no class, looks like a secondary Button. */
+:where(.fam-admin) input[type="file"]::file-selector-button {
+  min-height: var(--control-height); margin-right: var(--space-3); padding: 0 var(--space-4);
+  font: inherit; font-weight: 600; line-height: 20px; color: var(--ink); cursor: pointer;
+  background: transparent; border: 1px solid var(--line-strong); border-radius: var(--radius-md);
+  transition: background-color .12s, border-color .12s;
+}
+:where(.fam-admin) input[type="file"]::file-selector-button:hover { background: var(--hearth-tint); }
 :where(.fam-admin) input[type="checkbox"] { width: 20px; height: 20px; margin: 2px 0 0; flex: none; accent-color: var(--hearth); }
 :where(.fam-admin) button {
   justify-self: start; display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2);
@@ -370,7 +378,7 @@
 }
 .fam-page a.fam-row__link { color: var(--ink); }
 .fam-row__link:hover { background: var(--hearth-tint); }
-.fam-row__link > .fam-avatar, .fam-row__link > .fam-avatars { flex: none; }
+.fam-row__link > .fam-avatars { flex: none; }
 .fam-row__chevron { flex: none; color: var(--ink-muted); }
 /* Adding to the list above it from a choice, such as an OCR language. */
 :where(.fam-admin) .fam-inline-add { display: grid; gap: var(--space-1); margin: 0; padding: var(--space-3) 0 var(--space-2); border-top: 1px solid var(--line); }
