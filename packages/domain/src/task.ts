@@ -13,6 +13,8 @@ export type Task = {
   bring: string[];
   /** When it was ticked done; null while it is not. */
   doneAt: Date | null;
+  /** When it was first stated, such as when the message that names it was sent; null if unknown. */
+  arrivedAt: Date | null;
   cancelled: boolean;
 };
 
@@ -62,12 +64,13 @@ export function taskOf(folded: FoldedItem | null): Task | null {
   if (!folded) return null;
   const title = parseText(folded.fields.title);
   if (title === null) return null;
-  const doneAt = typeof folded.fields.done === "string" ? new Date(folded.fields.done) : null;
+  const doneAt = validDate(folded.fields.done);
   return {
     title,
     deadline: parseDeadline(folded.fields.deadline),
     bring: parseBring(folded.fields.bring) ?? [],
-    doneAt: doneAt && !Number.isNaN(doneAt.getTime()) ? doneAt : null,
+    doneAt,
+    arrivedAt: validDate(folded.arrivedAt),
     cancelled: folded.cancelled,
   };
 }
@@ -89,11 +92,21 @@ export function isPinned(task: Task, today: LocalDate): boolean {
 }
 
 /**
- * The day of the Family a Task shows on when it is not pinned: its Deadline day, or the day it was
- * ticked if it has no Deadline; null if it has neither.
+ * The instant whose day a done Task without a Deadline shows on: when it was first stated, not
+ * when it was ticked, as what it asks of the Family belongs to that message. Null while it is not
+ * done or has a Deadline. A Task stored before its arrival was kept falls back to its tick.
+ */
+export function instantOfTask(task: Task): Date | null {
+  return task.deadline === null && task.doneAt ? (task.arrivedAt ?? task.doneAt) : null;
+}
+
+/**
+ * The day of the Family a Task shows on when it is not pinned: its Deadline day, or the day it
+ * arrived if it has no Deadline and is done; null if it is neither.
  */
 export function dayOfTask(task: Task, timeZone: string): LocalDate | null {
-  return task.deadline ?? (task.doneAt ? localDateTime(task.doneAt, timeZone).date : null);
+  const instant = instantOfTask(task);
+  return task.deadline ?? (instant ? localDateTime(instant, timeZone).date : null);
 }
 
 /**
@@ -102,6 +115,11 @@ export function dayOfTask(task: Task, timeZone: string): LocalDate | null {
  */
 export function isOutstanding(task: Task): boolean {
   return !task.doneAt;
+}
+
+function validDate(value: unknown): Date | null {
+  const date = typeof value === "string" ? new Date(value) : null;
+  return date && !Number.isNaN(date.getTime()) ? date : null;
 }
 
 function parseText(value: unknown): string | null {

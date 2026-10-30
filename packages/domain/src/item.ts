@@ -41,7 +41,15 @@ export type RevisionAuthor =
 export const revisionAuthorKinds = ["origin", "view", "admin"] as const satisfies readonly RevisionAuthor["kind"][];
 
 /** An Item as its accepted Revisions add up to, before its kind gives the fields a meaning. */
-export type FoldedItem = { fields: Record<string, unknown>; cancelled: boolean };
+export type FoldedItem = {
+  fields: Record<string, unknown>;
+  cancelled: boolean;
+  /**
+   * When the Item was first stated, as an ISO instant: the source time of its earliest accepted
+   * Revision. Set on a Task, which a View shows on that day when it is done without a Deadline.
+   */
+  arrivedAt?: string;
+};
 
 export type FoldableRevision = Pick<Revision, "act" | "fields" | "sourceTime" | "accepted"> & {
   /** The order the Revision was received in, which decides between equal source times. */

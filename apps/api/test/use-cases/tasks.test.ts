@@ -113,15 +113,21 @@ describe("Tasks", () => {
     expect((await shown()).pinned).toEqual(["Bring sports kit (overdue)"]);
   });
 
-  it("keeps a Task without a Deadline on the day it was ticked done", async () => {
+  it("keeps a Task without a Deadline on the day its message was sent once it is ticked done, not on the day it was ticked", async () => {
     await arrive(task("form", "create", "2026-09-10T10:00:00Z", { title: "Sign the trip form" }));
     const form = await taskId("Sign the trip form");
 
     await instance.app.tasks.tickFromView(view, form, { done: true, access: openViewAccess });
 
-    expect(await shown()).toEqual({ pinned: [], days: { "2026-09-14": ["Sign the trip form (done)"] } });
-    instance.clock.advance(1 * days);
-    expect((await shown()).pinned).toEqual([]);
+    expect(await shown()).toEqual({ pinned: [], days: {} });
+    const sent = await instance.app.views.open(view, { access: openViewAccess, days: { first: "2026-09-10" as LocalDate, last: "2026-09-14" as LocalDate } });
+    expect(sent?.days.map((day) => [day.date, day.tasks.map((row) => row.title)])).toEqual([
+      ["2026-09-10", ["Sign the trip form"]],
+      ["2026-09-11", []],
+      ["2026-09-12", []],
+      ["2026-09-13", []],
+      ["2026-09-14", []],
+    ]);
   });
 
   it("records each tick and untick with its time and the View or Admin that made it", async () => {
@@ -180,7 +186,7 @@ describe("Tasks", () => {
 
     expect(await shown()).toEqual({ pinned: ["Bring sports kit (due, cancelled)", "Sign the trip form (due, cancelled)"], days: {} });
     await instance.app.tasks.tickFromView(view, await taskId("Sign the trip form"), { done: true, access: openViewAccess });
-    expect(await shown()).toEqual({ pinned: ["Bring sports kit (due, cancelled)"], days: { "2026-09-16": ["Sign the trip form (done, cancelled)"] } });
+    expect(await shown()).toEqual({ pinned: ["Bring sports kit (due, cancelled)"], days: {} });
   });
 
   /** The feed's VEVENTs as their main properties, parsed as a calendar app would. */
