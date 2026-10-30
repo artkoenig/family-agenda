@@ -126,6 +126,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     catalogues,
     sources,
     llmEndpoint,
+    extraction,
     messages,
     timeZone,
   } = application;
@@ -752,6 +753,9 @@ export function createHttpApp(application: Application, options: HttpOptions) {
         timeZone={timeZone}
         {...(shown.problem ? { problem: shown.problem } : {})}
         {...(shown.fixing ? { fixing: true, liveSteps: await liveStepsOf(source) } : {})}
+        {...((await sourceTypes.list()).find((type) => type.id === source.sourceTypeId)?.needsLlm
+          ? { waiting: await extraction.waiting({ sourceId: source.id }) }
+          : {})}
       />
     );
     return render(c, page, shown.problem ? 400 : 200);
@@ -811,6 +815,14 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     return c.redirect(sourceHref(source.id), 303);
   });
 
+  // Has its messages read again with the current prompt and model (ADR-0015).
+  app.post("/admin/sources/:id/reread", async (c) => {
+    const source = await sourceOf(c.req.param("id"));
+    if (!source) return c.redirect("/admin/sources", 303);
+    await extraction.reread({ sourceId: source.id });
+    return c.redirect(sourceHref(source.id), 303);
+  });
+
   app.post("/admin/sources/:id/remove", async (c) => {
     const source = await sourceOf(c.req.param("id"));
     if (!source) return c.redirect("/admin/sources", 303);
@@ -858,8 +870,14 @@ export function createHttpApp(application: Application, options: HttpOptions) {
   });
 
   app.get("/admin/llm", async (c) =>
-    render(c, <LlmEndpointPage admin={c.get("admin")} endpoint={await llmEndpoint.current()} />),
+    render(c, <LlmEndpointPage admin={c.get("admin")} endpoint={await llmEndpoint.current()} waiting={await extraction.waiting()} />),
   );
+
+  // Has every message read again with the current prompt and model (ADR-0015).
+  app.post("/admin/llm/reread", async (c) => {
+    await extraction.reread();
+    return c.redirect("/admin/llm", 303);
+  });
 
   app.post("/admin/llm", async (c) => {
     const form = await c.req.parseBody();
@@ -875,6 +893,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
         <LlmEndpointPage
           admin={c.get("admin")}
           endpoint={await llmEndpoint.current()}
+          waiting={await extraction.waiting()}
           entered={entered}
           problem={problemIn(c, result.problem)}
         />

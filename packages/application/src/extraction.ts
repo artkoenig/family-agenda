@@ -14,6 +14,7 @@ import {
   type Event,
   type LocalDate,
   type RawMessageId,
+  type SourceId,
   type Task,
   type TimeSpan,
 } from "@family-agenda/domain";
@@ -142,7 +143,8 @@ export function createExtraction(deps: ExtractionDeps) {
   }
 
   async function extractOne(message: PendingMessage, text: string, problems: AttachmentProblem[], endpoint: LlmEndpoint) {
-    const thread = message.thread ? await items.itemsOfThread(message.sourceId, message.thread) : [];
+    const before = { messageId: message.id, sentAt: message.sentAt };
+    const thread = message.thread ? await items.itemsOfThread(message.sourceId, message.thread, before, project) : [];
     const known = knownEventsOf(thread, timeZone);
     const knownTasks = knownTasksOf(thread);
     const sent = localDateTime(message.sentAt, timeZone);
@@ -165,6 +167,7 @@ export function createExtraction(deps: ExtractionDeps) {
         at: clock.now(),
         revisions,
         attachmentProblems: problems,
+        supersedes: true,
       },
       project,
     );
@@ -175,7 +178,7 @@ export function createExtraction(deps: ExtractionDeps) {
   async function extractMessage(message: PendingMessage, endpoint: LlmEndpoint): Promise<ExtractionReport["failed"][number] | null> {
     const bytes = await blobs.get(message.text);
     if (!bytes) {
-      // Its text was deleted before it was read, so it states nothing.
+      // Its text was deleted before it was read, so it states nothing new, and keeps what it said before.
       await items.recordExtraction(
         {
           messageId: message.id,
@@ -183,6 +186,7 @@ export function createExtraction(deps: ExtractionDeps) {
           at: clock.now(),
           revisions: [],
           attachmentProblems: [],
+          supersedes: false,
         },
         project,
       );
@@ -194,6 +198,20 @@ export function createExtraction(deps: ExtractionDeps) {
   }
 
   return {
+    /**
+     * Has the messages of one Source, or of all, read again with the current prompt and model, as
+     * after the prompt improved (ADR-0015). What they stated stays until each is read again.
+     * Returns how many messages will be read again.
+     */
+    reread(scope: { sourceId?: SourceId } = {}): Promise<number> {
+      return items.requestRereading(scope);
+    },
+
+    /** How many messages, of one Source or of all, wait to be read. */
+    waiting(scope: { sourceId?: SourceId } = {}): Promise<number> {
+      return items.pendingMessageCount(scope);
+    },
+
     /**
      * Extracts the messages that wait for it, as the worker does on each tick. Without an LLM
      * endpoint they keep waiting; when the endpoint cannot be reached or refuses the key, the rest

@@ -791,17 +791,67 @@ export class PostgresItemRepository implements ItemRepository {
     }));
   }
 
-  async itemsOfThread(sourceId: SourceId, thread: string): Promise<ThreadItem[]> {
+  async itemsOfThread(
+    sourceId: SourceId,
+    thread: string,
+    before: { messageId: RawMessageId; sentAt: Date },
+    recompute: Recompute,
+  ): Promise<ThreadItem[]> {
     const rows = await this.db
-      .selectDistinct({ itemKey: itemKeys.itemKey, kind: items.kind, folded: items.folded, createdAt: items.createdAt })
+      .selectDistinct({ id: items.id, itemKey: itemKeys.itemKey, kind: items.kind, createdAt: items.createdAt })
       .from(rawMessages)
       .innerJoin(revisions, eq(revisions.originId, rawMessages.originId))
       .innerJoin(items, eq(items.id, revisions.itemId))
       .innerJoin(origins, eq(origins.id, rawMessages.originId))
       .innerJoin(itemKeys, and(eq(itemKeys.itemId, items.id), eq(itemKeys.sourceId, origins.sourceId)))
-      .where(and(eq(origins.sourceId, sourceId), eq(rawMessages.thread, thread)))
+      .where(
+        and(
+          eq(origins.sourceId, sourceId),
+          eq(rawMessages.thread, thread),
+          ne(rawMessages.originId, before.messageId),
+          lt(rawMessages.sentAt, before.sentAt),
+          notSuperseded,
+        ),
+      )
       .orderBy(asc(items.createdAt), asc(itemKeys.itemKey));
-    return rows.map((row) => ({ itemKey: row.itemKey, kind: row.kind as ItemKind, folded: row.folded }));
+    if (rows.length === 0) return [];
+    const stated = await this.db
+      .select({ ...foldable, itemId: revisions.itemId, originId: revisions.originId, sentAt: rawMessages.sentAt })
+      .from(revisions)
+      .leftJoin(rawMessages, eq(rawMessages.originId, revisions.originId))
+      .where(and(inArray(revisions.itemId, rows.map((row) => row.id)), notSuperseded));
+    // What the message itself and later ones stated is left out, as if they had not arrived yet.
+    const earlier = stated.filter(({ originId, sentAt }) => !sentAt || (originId !== before.messageId && sentAt < before.sentAt));
+    return rows.map((row) => ({
+      itemKey: row.itemKey,
+      kind: row.kind as ItemKind,
+      folded: recompute(row.kind as ItemKind, earlier.filter(({ itemId }) => itemId === row.id) as FoldableRevision[]).folded,
+    }));
+  }
+
+  async requestRereading(scope: { sourceId?: SourceId }): Promise<number> {
+    const requested = await this.db
+      .update(rawMessages)
+      .set({ extractedAt: null })
+      .where(
+        and(
+          isNotNull(rawMessages.extractedAt),
+          sql`${rawMessages.originId} IN (SELECT ${origins.id} FROM ${origins} WHERE ${origins.withdrawnAt} IS NULL${
+            scope.sourceId ? sql` AND ${origins.sourceId} = ${scope.sourceId}` : sql``
+          })`,
+        ),
+      )
+      .returning({ originId: rawMessages.originId });
+    return requested.length;
+  }
+
+  async pendingMessageCount(scope: { sourceId?: SourceId }): Promise<number> {
+    const [row] = await this.db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(rawMessages)
+      .innerJoin(origins, eq(origins.id, rawMessages.originId))
+      .where(and(isNull(rawMessages.extractedAt), scope.sourceId ? eq(origins.sourceId, scope.sourceId) : undefined));
+    return row?.count ?? 0;
   }
 
   async recordExtraction(extraction: Extraction, recompute: Recompute): Promise<void> {
@@ -821,6 +871,15 @@ export class PostgresItemRepository implements ItemRepository {
       }
       const reached = new Map<ItemId, ItemKind>();
       const { sourceId, at } = extraction;
+      if (extraction.supersedes) {
+        // A re-read replaces what the message stated before (ADR-0015); the same Revision comes back.
+        const superseded = await tx
+          .update(revisions)
+          .set({ accepted: false, rejection: "superseded" })
+          .where(and(eq(revisions.originId, message.originId), notSuperseded))
+          .returning({ itemId: revisions.itemId });
+        await noteReached(tx, superseded.map((row) => row.itemId as ItemId), reached);
+      }
       await this.append(tx, { sourceId, originId: message.originId, at }, extraction.revisions, reached);
       await recomputeAll(tx, reached, recompute);
     });
@@ -1006,7 +1065,12 @@ export class PostgresItemRepository implements ItemRepository {
           evidence: revision.evidence,
           fingerprint: fingerprintOf(revision),
         })
-        .onConflictDoNothing({ target: [revisions.originId, revisions.fingerprint] })
+        // A Revision a re-read superseded comes back when the message states it again.
+        .onConflictDoUpdate({
+          target: [revisions.originId, revisions.fingerprint],
+          set: { accepted: revision.accepted, rejection: revision.rejection, evidence: revision.evidence },
+          setWhere: eq(revisions.rejection, "superseded"),
+        })
         .returning({ id: revisions.id });
       if (appended.length > 0) reached.set(item.id, item.kind);
     }
@@ -1031,19 +1095,30 @@ export class PostgresItemRepository implements ItemRepository {
   }
 }
 
-/** Recomputes every reached Item from all its Revisions. */
+/** What `fold` needs of a Revision. */
+const foldable = {
+  act: revisions.act,
+  fields: revisions.fields,
+  sourceTime: revisions.sourceTime,
+  sequence: revisions.sequence,
+  accepted: revisions.accepted,
+};
+
+/** Leaves out the Revisions a re-read replaced. */
+const notSuperseded = or(isNull(revisions.rejection), ne(revisions.rejection, "superseded"));
+
+/** Notes the Items, with their kinds, in `reached`. */
+async function noteReached(tx: Transaction, ids: ItemId[], reached: Map<ItemId, ItemKind>): Promise<void> {
+  if (ids.length === 0) return;
+  const kinds = await tx.select({ id: items.id, kind: items.kind }).from(items).where(inArray(items.id, [...new Set(ids)]));
+  for (const item of kinds) reached.set(item.id as ItemId, item.kind as ItemKind);
+}
+
+/** Recomputes every reached Item from all its Revisions but the superseded ones. */
 async function recomputeAll(tx: Transaction, reached: Map<ItemId, ItemKind>, recompute: Recompute): Promise<void> {
   for (const [id, kind] of reached) {
-    const all = await tx
-      .select({
-        act: revisions.act,
-        fields: revisions.fields,
-        sourceTime: revisions.sourceTime,
-        sequence: revisions.sequence,
-        accepted: revisions.accepted,
-      })
-      .from(revisions)
-      .where(eq(revisions.itemId, id));
+    // A superseded Revision counts as never stated, so that it does not remove the Item (ADR-0015).
+    const all = await tx.select(foldable).from(revisions).where(and(eq(revisions.itemId, id), notSuperseded));
     const projection = recompute(kind, all as FoldableRevision[]);
     await tx
       .update(items)
