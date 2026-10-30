@@ -62,7 +62,7 @@ describe("Tasks over HTTP", () => {
 
   it("ticks a Task done through a View without a session, and takes the tick back", async () => {
     const page = await (await instance.get(path)).text();
-    const tick = tickOf(rowOf(pinnedOf(page), "Sign the trip form"));
+    const tick = tickOf(rowOf(pinnedOf(page), "Bring sports kit"));
     expect(tick).toMatch(new RegExp(`^${path}/tasks/[0-9a-f-]+/done$`));
 
     const response = await instance.post(tick, { from: "2026-09-14", until: "2026-09-16", show: "all" }, { headers: { "hx-request": "true" } });
@@ -70,17 +70,17 @@ describe("Tasks over HTTP", () => {
     expect(response.status).toBe(200);
     const after = await response.text();
     expect(after).toMatch(/^<main id="view"/);
-    expect(pinnedOf(after)).not.toContain("Sign the trip form");
-    const done = rowOf(after, "Sign the trip form");
+    expect(pinnedOf(after)).not.toContain("Bring sports kit");
+    const done = rowOf(after, "Bring sports kit");
     expect(done).toContain("fam-task--done");
-    expect(done).toContain("Mark “Sign the trip form” not done");
+    expect(done).toContain("Mark “Bring sports kit” not done");
     const ticks = await instance.app.tasks.ticks(tick.split("/")[4] as never);
     expect(ticks).toMatchObject([{ done: true, by: { kind: "view", viewId: path.split("/")[2] } }]);
 
     const undone = await instance.post(tickOf(done), {});
     expect(undone.status).toBe(303);
     expect(undone.headers.get("location")).toBe(path);
-    expect(rowOf(pinnedOf(await (await instance.get(path)).text()), "Sign the trip form")).toContain("Due");
+    expect(rowOf(pinnedOf(await (await instance.get(path)).text()), "Bring sports kit")).toContain("Due");
   });
 
   it("refuses a tick from another site, and one of an unknown Task", async () => {
