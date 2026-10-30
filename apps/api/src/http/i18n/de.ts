@@ -273,6 +273,9 @@ export const de: Catalogue = {
     remove: "Diese Quelle entfernen",
     removeHint: "Beendet das Lesen und entfernt alles, was sie gebracht hat.",
     removeButton: "Entfernen",
+    reread: "Ihre Nachrichten neu lesen",
+    rereadHint: "Lässt jede Nachricht dieser Quelle mit dem aktuellen LLM-Endpunkt neu lesen. Was sie gebracht haben, bleibt, bis jede neu gelesen ist.",
+    rereadButton: "Neu lesen",
     noneChosen: "noch keine",
     every: (minutes) => plural(minutes, { one: `jede Minute`, other: `alle ${minutes} Minuten` }),
     interval: "Abrufintervall (optional)",
@@ -321,6 +324,11 @@ export const de: Catalogue = {
       "Das Modell liest Bilder. Eingescannte PDF-Briefe gehen als Bilder ihrer Seiten an es; sonst liest Tesseract sie auf dieser Instanz.",
     thirdParties:
       "Falls dieser Server außerhalb meines Heimnetzes steht: Ich verstehe, dass der Text von Nachrichten Dritter, etwa Mails von Lehrkräften, an ihn geschickt wird.",
+    reread: "Nachrichten neu lesen",
+    rereadHint:
+      "Nach einem Update findet das Modell womöglich mehr in Nachrichten als zuvor. Lässt jede Nachricht mit dem aktuellen Endpunkt neu lesen. Was sie gebracht haben, bleibt, bis jede neu gelesen ist.",
+    rereadButton: "Alle neu lesen",
+    waiting: (count) => plural(count, { one: `${count} Nachricht wartet aufs Lesen.`, other: `${count} Nachrichten warten aufs Lesen.` }),
   },
 
   language: {

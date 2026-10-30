@@ -66,6 +66,10 @@ _Avoid_: Source message, provenance
 One statement about an Item from an Origin or an Admin that creates, changes, moves or cancels it; an Item is what its accepted Revisions add up to.
 _Avoid_: Event, change, update, edit
 
+**Re-reading**:
+Having messages, of one Source or of all, extracted again with the current prompt and model, such as after the prompt improved. What a message states then supersedes what it stated before; the superseded Revisions stay recorded but no longer count, as if they had never arrived. Until a message is read again, what it stated before stays.
+_Avoid_: Re-import, refresh, reprocess
+
 **Item**:
 Any single piece of family-relevant information extracted from a Source; one of Event, Lesson, Timetable Change, Task, or Notice.
 _Avoid_: Entry, record, info

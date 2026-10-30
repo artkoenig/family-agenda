@@ -414,7 +414,7 @@ export interface SourceRepository {
 }
 
 /** Why a Revision was rejected automatically (ADR-0009). */
-export type Rejection = "invalid-fields" | "evidence-not-found" | "weekday-mismatch" | "no-date" | "origin-withdrawn";
+export type Rejection = "invalid-fields" | "evidence-not-found" | "weekday-mismatch" | "no-date" | "origin-withdrawn" | "superseded";
 
 /** A Revision ready to append, checked by the core. */
 export type NewRevision = {
@@ -506,6 +506,11 @@ export type Extraction = {
   revisions: NewRevision[];
   /** The attachments that could not be turned into text, by position, and why. */
   attachmentProblems: AttachmentProblem[];
+  /**
+   * Whether the Revisions replace what the message stated before (ADR-0015): false when its text
+   * is gone, so that a re-read without it keeps what it said.
+   */
+  supersedes: boolean;
 };
 
 export type AttachmentProblem = { position: number; problem: string };
@@ -557,11 +562,29 @@ export interface ItemRepository {
   ): Promise<{ knownMessages: string[]; withdrawnFiles: BlobRef[] }>;
   /** Raw messages not yet extracted successfully, oldest first. */
   pendingMessages(limit: number): Promise<PendingMessage[]>;
-  /** The Items earlier messages of a thread in a Source stated, in the order they were created. */
-  itemsOfThread(sourceId: SourceId, thread: string): Promise<ThreadItem[]>;
+  /**
+   * The Items messages of a thread in a Source sent before the given one stated, in the order they
+   * were created, each folded with `recompute` from what only those messages and people stated,
+   * so that a re-read message sees neither its own Items nor those of later messages.
+   */
+  itemsOfThread(
+    sourceId: SourceId,
+    thread: string,
+    before: { messageId: RawMessageId; sentAt: Date },
+    recompute: (kind: ItemKind, revisions: FoldableRevision[]) => ItemProjection,
+  ): Promise<ThreadItem[]>;
+  /**
+   * Marks the raw messages, of one Source or of all, as not yet extracted, so that they are read
+   * again (ADR-0015). Returns how many.
+   */
+  requestRereading(scope: { sourceId?: SourceId }): Promise<number>;
+  /** How many raw messages, of one Source or of all, wait for extraction. */
+  pendingMessageCount(scope: { sourceId?: SourceId }): Promise<number>;
   /**
    * Records a message's extraction in one transaction: its Revisions, appended to its Origin like
-   * those of a run, and the message as extracted, so that it is never extracted again.
+   * those of a run, and the message as extracted, so that it is not extracted again until asked
+   * to. Unless told not to, the Revisions the Origin stated before are superseded first; a new
+   * one the same as one of them brings it back.
    */
   recordExtraction(
     extraction: Extraction,
