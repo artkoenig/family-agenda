@@ -173,11 +173,10 @@
   border: 1px solid var(--line-strong); color: var(--ink-muted); font-size: 13px; line-height: 20px; font-weight: 600;
   text-decoration: none; vertical-align: 1px;
 }
-.fam-event[open] { border-bottom-color: transparent; }
+/* What a row says on tap sits flat beneath it, in line with the row, not in a card. */
 .fam-event__details {
   display: grid; grid-template-columns: auto 1fr; gap: var(--space-1) var(--space-3);
-  margin: 0 0 var(--space-3); padding: var(--space-3) var(--space-4);
-  background: var(--surface-raised); border-radius: var(--radius-md); box-shadow: var(--shadow-raised);
+  margin: 0; padding: 0 var(--space-1) var(--space-3);
   color: var(--ink-muted);
 }
 .fam-event__details dt { font-weight: 600; }
@@ -190,20 +189,17 @@
 .fam-item__meta { color: var(--ink-muted); font-size: 14px; line-height: 20px; }
 .fam-item--earlier .fam-item__title, .fam-item--cancelled .fam-item__title { color: var(--ink-muted); font-weight: 400; }
 .fam-item--cancelled .fam-item__title s { text-decoration: line-through; }
-/* A Timetable Change stands out from the rows around it. */
-.fam-event--change > summary { background: var(--honey-tint); box-shadow: inset 3px 0 0 var(--honey); }
-.fam-event--change > summary:hover { background: var(--honey-tint); }
-/* The Lessons a school day lists on tap. */
+/* The Lessons a school day lists on tap, their subjects in line with the row's title; cancelled ones struck through. */
 .fam-lessons {
-  display: grid; grid-template-columns: auto auto 1fr; gap: var(--space-1) var(--space-3);
-  list-style: none; margin: 0 0 var(--space-3); padding: var(--space-3) var(--space-4);
-  background: var(--surface-raised); border-radius: var(--radius-md); box-shadow: var(--shadow-raised);
+  display: grid; grid-template-columns: minmax(var(--time-column), auto) auto 1fr; gap: var(--space-1) var(--space-3);
+  list-style: none; margin: 0; padding: 0 var(--space-1) var(--space-3);
 }
 .fam-lesson { display: contents; }
 .fam-lesson__time { color: var(--ink-muted); font-variant-numeric: tabular-nums; }
 .fam-lesson__subject { font-weight: 600; }
 .fam-lesson__where { color: var(--ink-muted); }
-.fam-lesson--cancelled .fam-lesson__subject { color: var(--ink-muted); font-weight: 400; }
+.fam-lesson--cancelled > * { color: var(--ink-muted); text-decoration: line-through; }
+.fam-lesson--cancelled .fam-lesson__subject { font-weight: 400; }
 
 /* Tasks: pinned at the top while Due, else on their day, or a Task List -- */
 .fam-tasks { margin: var(--space-4) auto 0; padding: 0 var(--space-4); max-width: calc(var(--content-width) + 2 * var(--space-4)); }
@@ -564,6 +560,11 @@
   .fam-navitem { flex: none; min-height: 40px; padding: 0 var(--space-4); border: 1px solid var(--line-strong); border-radius: var(--radius-full); white-space: nowrap; }
   .fam-navitem[aria-current] { border-color: var(--hearth); }
   .fam-dialog { padding: var(--space-4); }
+  /* A Lesson's room and teacher go below its subject. */
+  .fam-lessons { grid-template-columns: minmax(var(--time-column), auto) 1fr; row-gap: 0; }
+  .fam-lesson__subject { margin-top: var(--space-1); }
+  .fam-lesson__time { margin-top: var(--space-1); }
+  .fam-lesson__where { grid-column: 2; font-size: 14px; line-height: 20px; }
 }
 
 /* Wall tablet and desktop ---------------------------------------------- */
