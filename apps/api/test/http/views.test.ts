@@ -153,6 +153,25 @@ describe("Views over HTTP", () => {
     expect(dialog).toContain(`href="/views/${view!.id}/feed.ics"`);
   });
 
+  it("lets an Admin choose a Task List for a View, which its row and dialog name", async () => {
+    const cookie = await signIn();
+    const blank = await (await instance.get("/admin/views/new", { cookie })).text();
+    expect(blank).toMatch(/<input type="radio" name="kind" value="timeline" checked=""/);
+    expect(blank).toContain('class="fam-field fam-view-horizon"');
+
+    const created = await instance.post("/admin/views", { kind: "tasks", horizonDays: "7" }, { cookie });
+    expect(created.status).toBe(303);
+    const [view] = await instance.app.views.list();
+    expect(view).toMatchObject({ kind: "tasks", preselected: [] });
+
+    expect(await (await instance.get("/admin/views", { cookie })).text()).toContain("Task List · Everyone");
+    const dialog = await (await instance.get(`/admin/views/${view!.id}`, { cookie })).text();
+    expect(dialog).toMatch(/<input type="radio" name="kind" value="tasks" checked=""/);
+    const refused = await instance.post(`/admin/views/${view!.id}`, { kind: "agenda", horizonDays: "7" }, { cookie });
+    expect(refused.status).toBe(400);
+    expect(await refused.text()).toContain("Choose what the View shows");
+  });
+
   it("shows an Admin why a Family Member or View cannot be saved", async () => {
     const cookie = await signIn();
 

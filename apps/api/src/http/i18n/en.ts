@@ -6,6 +6,7 @@ import {
   minimumPasswordLength,
   photoTypes,
   type FamilyLanguage,
+  type ViewKind,
 } from "@family-agenda/domain";
 import type { Child } from "hono/jsx";
 import { plurals } from "./plurals";
@@ -57,6 +58,7 @@ export const en = {
     "invalid-photo": `The photo must be one of ${photoFormats}.`,
     "photo-too-large": `The photo must be at most ${maximumPhotoBytes / 1024 / 1024} MB.`,
     "unknown-member": "This Family Member does not exist.",
+    "unknown-kind": "Choose what the View shows: a timeline or a Task List.",
     "invalid-horizon": `The horizon must be between ${horizonDaysRange.min} and ${horizonDaysRange.max} days.`,
     "unknown-view": "This View does not exist.",
     "unknown-source-type": "This Source Type is not installed.",
@@ -129,7 +131,6 @@ export const en = {
     noneYet: "None yet",
     views: (count: number) =>
       plural(count, { one: `${count} View on the home network`, other: `${count} Views on the home network` }),
-    tasks: (count: number) => (count === 0 ? "Nothing to do" : `${count} to do`),
     language: (family: string, ocr: string) => `${family}; OCR in ${ocr}`,
     sources: (count: number) => plural(count, { one: `${count} Source`, other: `${count} Sources` }),
     newOnes: "New ones are available",
@@ -196,19 +197,6 @@ export const en = {
     remove: (name: string) => `Remove ${name}`,
   },
 
-  tasks: {
-    title: "Tasks",
-    description: "What the Family has to do or bring. Anyone with a View can tick a Task done too; each tick lists who made it and when.",
-    none: "No Tasks.",
-    noDeadline: "No deadline",
-    inView: (who: string) => `in the View for ${who}`,
-    everyone: "everyone",
-    inRemovedView: "in a removed View",
-    byAdmin: (email: string) => `by ${email}`,
-    byRemovedAdmin: "by a removed Admin",
-    ticked: (who: string, at: string) => `Done ${who} at ${at}`,
-    unticked: (who: string, at: string) => `Marked not done ${who} at ${at}`,
-  },
   views: {
     title: "Views",
     description: "What the Family opens on the home network, without signing in. Anyone on your Wi-Fi can open them.",
@@ -218,10 +206,16 @@ export const en = {
     none: "No Views yet.",
     everyone: "Everyone",
     entry: (who: string, days: number) => plural(days, { one: `${who} · ${days} day`, other: `${who} · ${days} days` }),
+    taskListEntry: (who: string) => `Task List · ${who}`,
     shows: (who: string | null) => `Shows ${who ?? "everyone"}`,
     remove: "Remove View",
     address: "Address",
     feed: "Calendar feed",
+    kind: "Shows",
+    kinds: {
+      timeline: { label: "Timeline", hint: "Events, school days and Tasks, day by day" },
+      tasks: { label: "Task List", hint: "Only Tasks: to do, coming up, done" },
+    } satisfies Record<ViewKind, { label: string; hint: string }>,
     preselected: "Preselected Family Members",
     preselectedHint: "The View shows only them, and its quick filter offers only them; none means everyone.",
     noMembers: "No Family Members yet.",
@@ -428,6 +422,12 @@ export const en = {
     bring: "Bring",
     markDone: (title: string) => `Mark “${title}” done`,
     markNotDone: (title: string) => `Mark “${title}” not done`,
+    taskList: {
+      title: "Task List",
+      upcoming: "Coming up",
+      done: "Done · last 30 days",
+      none: "Nothing to do.",
+    },
   },
 };
 

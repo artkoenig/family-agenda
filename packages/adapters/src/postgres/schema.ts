@@ -1,5 +1,5 @@
 import type { ActivityKind } from "@family-agenda/application";
-import { acts, familyLanguages, revisionAuthorKinds, horizonDaysRange, itemKinds, photoTypes, type RunError } from "@family-agenda/domain";
+import { acts, familyLanguages, revisionAuthorKinds, horizonDaysRange, itemKinds, photoTypes, viewKinds, type RunError } from "@family-agenda/domain";
 import { sql, type SQL } from "drizzle-orm";
 import {
   bigint,
@@ -124,10 +124,12 @@ export const views = pgTable(
   {
     id: uuid("id").primaryKey(),
     position: bigint("position", { mode: "number" }).notNull().generatedAlwaysAsIdentity(),
+    kind: text("kind").notNull().default("timeline"),
     horizonDays: integer("horizon_days").notNull(),
     createdAt: timestamptz("created_at").notNull(),
   },
   (table) => [
+    oneOf("views_kind_known", table.kind, viewKinds),
     check(
       "views_horizon_days_in_range",
       sql`${table.horizonDays} BETWEEN ${sql.raw(String(horizonDaysRange.min))} AND ${sql.raw(String(horizonDaysRange.max))}`,

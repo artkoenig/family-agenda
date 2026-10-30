@@ -10,6 +10,7 @@ import { FakeTessdataCatalog } from "../support/fake-tessdata-catalog";
 import { InMemoryBlobStore } from "../support/in-memory-blob-store";
 import { extracted, ScriptedExtractor } from "../support/scripted-extractor";
 import { testPluginControls, writeTestPluginPackage } from "../support/test-source-plugin";
+import { openTimeline } from "../support/timeline";
 
 const minutes = 60 * 1000;
 
@@ -77,7 +78,7 @@ describe("Events extracted from PDF attachments", () => {
   };
 
   const timeline = async () => {
-    const page = await instance.app.views.open(view, { access: openViewAccess });
+    const page = await openTimeline(instance.app, view, { access: openViewAccess });
     return Object.fromEntries(
       (page?.days ?? [])
         .filter((day) => day.items.length > 0)
@@ -98,7 +99,7 @@ describe("Events extracted from PDF attachments", () => {
   it("removes the mails, their attachments and their Events with their Source", async () => {
     extractor.script("Wandertag der Klasse 5b", [hikingDay]);
     await arrive(mail("m1", covering, [pdf("elternbrief.pdf", fakePdf({ text: letter }))]));
-    const page = await instance.app.views.open(view, { access: openViewAccess });
+    const page = await openTimeline(instance.app, view, { access: openViewAccess });
     const message = page?.days.flatMap((day) => day.items)[0]?.messages[0]?.id;
     expect(message).toBeDefined();
 

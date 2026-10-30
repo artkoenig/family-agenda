@@ -214,7 +214,7 @@ export async function bootApplication(config: ApplicationConfig): Promise<Applic
     activity,
     sourceHealth,
   });
-  const tasks = createTaskAccess({ clock, timeZone, items, sources: sourceRepository, views: viewRepository });
+  const tasks = createTaskAccess({ clock, items, sources: sourceRepository, views: viewRepository });
 
   const sourceTypes = createSourceTypeAccess({
     clock,

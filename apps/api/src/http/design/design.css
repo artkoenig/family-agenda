@@ -115,6 +115,8 @@
 }
 .fam-bar > * { max-width: var(--content-width); margin-left: auto; margin-right: auto; }
 .fam-bar__top { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
+.fam-bar__end { display: flex; align-items: center; gap: var(--space-3); }
+.fam-bar__kind { font-size: 14px; line-height: 20px; font-weight: 600; color: var(--ink-muted); }
 .fam-out-of-date { margin: var(--space-2) 0 0; font-size: 14px; line-height: 20px; color: var(--ink-muted); }
 .fam-clock { font-size: 30px; line-height: 36px; font-weight: 800; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }
 .fam-clock__date { font-size: 16px; font-weight: 500; letter-spacing: 0; color: var(--ink-muted); margin-left: var(--space-1); }
@@ -195,27 +197,30 @@
 .fam-lesson__where { color: var(--ink-muted); }
 .fam-lesson--cancelled .fam-lesson__subject { color: var(--ink-muted); font-weight: 400; }
 
-/* Tasks: pinned at the top while Due, else on their day ----------------- */
+/* Tasks: pinned at the top while Due, else on their day, or a Task List -- */
 .fam-tasks { margin: var(--space-4) auto 0; padding: 0 var(--space-4); max-width: calc(var(--content-width) + 2 * var(--space-4)); }
 .fam-tasks__title {
+  display: flex; align-items: baseline; gap: var(--space-2);
   margin: 0 0 var(--space-1); font-size: 13px; line-height: 16px; font-weight: 800; letter-spacing: .08em;
   text-transform: uppercase; color: var(--ink);
 }
+.fam-tasks__count { font-weight: 500; letter-spacing: 0; color: var(--ink-muted); font-variant-numeric: tabular-nums; }
+.fam-tasks--quiet .fam-tasks__title { color: var(--ink-muted); }
+.fam-tasks__end { height: var(--space-7); }
 .fam-tasks__list { list-style: none; margin: 0; padding: 0; }
 .fam-task { display: flex; gap: var(--space-3); align-items: flex-start; padding: var(--space-3) var(--space-1); border-bottom: 1px solid var(--line); }
 .fam-task form { display: contents; }
+/* The tick: the Field checkbox in a control-height hit area that does not grow the row and keeps clear of an Overdue row's red edge. */
 .fam-task__tick {
-  flex: none; display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; margin: -2px 0;
-  border: 2px solid var(--line-strong); border-radius: var(--radius-md); background: var(--surface); color: var(--ink);
-  font: inherit; font-weight: 800; cursor: pointer;
+  flex: none; display: grid; place-items: center; width: var(--control-height); height: var(--control-height);
+  margin: -10px -12px -10px 0; cursor: pointer;
 }
-.fam-task__tick:hover { border-color: var(--hearth); }
+.fam-task__tick input { margin: 0; cursor: pointer; }
 .fam-task__text { flex: 1; display: flex; flex-direction: column; gap: 2px; }
 .fam-task__title { font-weight: 600; }
-.fam-task__meta, .fam-task__bring, .fam-task__source, .fam-task__tick-history { color: var(--ink-muted); font-size: 14px; line-height: 20px; }
+.fam-task__meta, .fam-task__bring, .fam-task__source { color: var(--ink-muted); font-size: 14px; line-height: 20px; }
 .fam-task--overdue { background: var(--danger-tint); box-shadow: inset 3px 0 0 var(--danger); }
 .fam-task--overdue .fam-task__meta { color: var(--danger); font-weight: 600; }
-.fam-task--done .fam-task__tick { background: var(--sage-tint); border-color: var(--sage); }
 .fam-task--done .fam-task__title, .fam-task--cancelled .fam-task__title { color: var(--ink-muted); font-weight: 400; }
 .fam-task--cancelled .fam-task__title s { text-decoration: line-through; }
 
@@ -229,13 +234,16 @@
 }
 .fam-back-to-today[hidden] { display: none; }
 
+/* The Field checkbox and radio, in the Admin area and as a Task's tick in a View. */
+:where(.fam-admin, .fam-view) input:where([type="checkbox"], [type="radio"]) { width: 20px; height: 20px; margin: 2px 0 0; flex: none; accent-color: var(--hearth); }
+
 /* Admin area: plain server-rendered forms ------------------------------- */
 /* Elements inside .fam-admin get the Field and Button look without classes; :where keeps classes stronger. */
 :where(.fam-admin) form { display: grid; gap: var(--space-2); margin: var(--space-3) 0; }
 :where(.fam-admin) label { font-weight: 600; }
-:where(.fam-admin) label:where(:has(> input[type="checkbox"])) { display: flex; align-items: flex-start; gap: var(--space-2); font-weight: 400; }
+:where(.fam-admin) label:where(:has(> input:where([type="checkbox"], [type="radio"]))) { display: flex; align-items: flex-start; gap: var(--space-2); font-weight: 400; }
 :where(.fam-admin) small { display: block; margin-top: -4px; font-size: 14px; line-height: 20px; color: var(--ink-muted); }
-:where(.fam-admin) input:not([type="checkbox"], [type="hidden"], [type="file"]), :where(.fam-admin) select, :where(.fam-admin) textarea {
+:where(.fam-admin) input:not([type="checkbox"], [type="radio"], [type="hidden"], [type="file"]), :where(.fam-admin) select, :where(.fam-admin) textarea {
   min-height: var(--control-height); width: 100%; padding: 0 var(--space-4);
   font: inherit; color: var(--ink); background: var(--surface-raised);
   border: 1px solid var(--line-strong); border-radius: var(--radius-md);
@@ -250,7 +258,6 @@
   transition: background-color .12s, border-color .12s;
 }
 :where(.fam-admin) input[type="file"]::file-selector-button:hover { background: var(--hearth-tint); }
-:where(.fam-admin) input[type="checkbox"] { width: 20px; height: 20px; margin: 2px 0 0; flex: none; accent-color: var(--hearth); }
 :where(.fam-admin) button {
   justify-self: start; display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2);
   min-height: var(--control-height); padding: 0 var(--space-4);
@@ -278,6 +285,13 @@
 }
 .fam-choice:has(input:checked) { background: var(--hearth-tint); }
 .fam-choice input { margin: 0; }
+/* A View's kind: two tiles, each with a line on what the View shows; a Task List has no horizon. */
+.fam-choice--kind { align-items: flex-start; }
+.fam-choice--kind input { margin-top: 2px; }
+.fam-choice__text { display: flex; flex-direction: column; }
+.fam-choice__label { font-weight: 600; }
+.fam-choice__hint { font-size: 14px; line-height: 20px; color: var(--ink-muted); }
+.fam-dialog__form:has(input[name="kind"][value="tasks"]:checked) .fam-view-horizon { display: none; }
 
 /* A Source's Parts, such as mail folders: a name and the Family Members it concerns as avatars to tap */
 .fam-parts { display: grid; gap: var(--space-3); }

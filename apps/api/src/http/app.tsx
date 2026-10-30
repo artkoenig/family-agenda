@@ -48,7 +48,6 @@ import {
   SourcesPage,
   SourcePage,
   SourceTypePage,
-  TasksPage,
   sourceHref,
   sourceTypeHref,
   ViewsPage,
@@ -62,6 +61,8 @@ import {
   ActivityIndicator,
   activityEnded,
   ShownDay,
+  TaskList,
+  TaskListDocument,
   ViewDays,
   ViewPageDocument,
   ViewTimeline,
@@ -242,6 +243,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     c.header("vary", "HX-Request");
     // htmx asks for the whole page when it restores history it has not cached.
     const fragment = c.req.header("hx-request") === "true" && !c.req.header("hx-history-restore-request");
+    if (page.kind === "tasks") return render(c, fragment ? <TaskList page={page} /> : <TaskListDocument page={page} />);
     return render(c, fragment ? <ViewTimeline page={page} /> : <ViewPageDocument page={page} />);
   });
 
@@ -257,7 +259,8 @@ export function createHttpApp(application: Application, options: HttpOptions) {
       ...showingOf(c.req.query("show")),
       ...days,
     });
-    if (!page) return c.notFound();
+    // A Task List has no days to scroll to.
+    if (!page || page.kind === "tasks") return c.notFound();
     c.header("cache-control", "no-store");
     // The page's refresh asks for the loaded days too, so the side they extend moves with them.
     const earlier = then === "earlier";
@@ -290,7 +293,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     });
     if (!result.ok) return c.notFound();
     if (c.req.header("hx-request") !== "true") return c.redirect(viewUrl(id), 303);
-    // htmx swaps the timeline as it was, the days scrolled to and the quick filter included.
+    // htmx swaps the timeline or the Task List as it was, the days scrolled to and the quick filter included.
     const form = await c.req.parseBody();
     const days = timelineDaysOf(field(form, "from") || undefined, field(form, "until") || undefined);
     const show = field(form, "show");
@@ -301,7 +304,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     });
     if (!page) return c.notFound();
     c.header("cache-control", "no-store");
-    return render(c, <ViewTimeline page={page} />);
+    return render(c, page.kind === "tasks" ? <TaskList page={page} /> : <ViewTimeline page={page} />);
   });
 
   // A View's feed follows the View's access, so that calendar apps can subscribe without a session.
@@ -351,7 +354,6 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     return {
       members: (await familyMembers.list()).map((member) => member.name),
       views: (await views.list()).length,
-      tasks: (await tasks.list()).filter((task) => task.pinned).length,
       sources: allSources.length,
       failingSources: allSources.filter((source) => source.health.status === "failing").length,
       llm: endpoint ? { model: endpoint.model, local: endpoint.local } : null,
@@ -552,7 +554,9 @@ export function createHttpApp(application: Application, options: HttpOptions) {
   const viewSettingsOf = async (c: Context<Env>) => {
     const form = await c.req.parseBody({ all: true });
     const preselected = form.preselected;
+    const kind = field(form, "kind");
     return {
+      ...(kind ? { kind } : {}),
       preselected: (Array.isArray(preselected) ? preselected : [preselected])
         .filter((id): id is string => typeof id === "string")
         .map((id) => id as FamilyMemberId),
@@ -882,25 +886,6 @@ export function createHttpApp(application: Application, options: HttpOptions) {
       return render(c, page, 400);
     }
     return c.redirect("/admin/llm", 303);
-  });
-
-  app.get("/admin/tasks", async (c) =>
-    render(
-      c,
-      <TasksPage
-        admin={c.get("admin")}
-        tasks={await tasks.list()}
-        admins={await admins.listAdmins()}
-        views={await views.list()}
-        members={await familyMembers.list()}
-        timeZone={timeZone}
-      />,
-    ),
-  );
-
-  app.post("/admin/tasks/:task/:tick{done|undone}", async (c) => {
-    await tasks.tickAsAdmin(c.get("admin").id, c.req.param("task") as ItemId, { done: c.req.param("tick") === "done" });
-    return c.redirect("/admin/tasks", 303);
   });
 
   // Raw messages are third parties' words: only Admins open them, never a View.
