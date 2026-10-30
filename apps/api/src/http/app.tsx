@@ -915,6 +915,19 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     return render(c, <MessagePage admin={c.get("admin")} message={message} timeZone={timeZone} />);
   });
 
+  // Downloaded, never shown inline: an attachment is a third party's file and may be HTML or a script.
+  app.get("/admin/messages/:id/attachments/:position{[0-9]+}", async (c) => {
+    const attachment = await messages.attachment(c.req.param("id") as RawMessageId, Number(c.req.param("position")));
+    if (!attachment) return c.notFound();
+    return c.body(attachment.bytes, 200, {
+      "content-type": mediaTypePattern.test(attachment.contentType) ? attachment.contentType : "application/octet-stream",
+      "content-disposition": contentDisposition(attachment.filename),
+      "content-security-policy": "sandbox",
+      "x-content-type-options": "nosniff",
+      "cache-control": "no-store",
+    });
+  });
+
   return app;
 }
 
@@ -1002,4 +1015,14 @@ async function upload(form: Record<string, unknown>, name: string): Promise<Uint
 function field(form: Record<string, unknown>, name: string): string {
   const value = form[name];
   return typeof value === "string" ? value : "";
+}
+
+/** A bare media type such as `application/pdf`, which is safe to put into a header as it is. */
+const mediaTypePattern = /^[a-z0-9][a-z0-9!#$&^_.+-]*\/[a-z0-9][a-z0-9!#$&^_.+-]*$/i;
+
+/** Asks the browser to save a file under its name, which may hold any character (RFC 6266). */
+function contentDisposition(filename: string): string {
+  const fallback = filename.replace(/[^\x20-\x7e]|["\\]/g, "_");
+  const encoded = encodeURIComponent(filename).replace(/['()*]/g, (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`);
+  return `attachment; filename="${fallback}"; filename*=UTF-8''${encoded}`;
 }
