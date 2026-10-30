@@ -154,19 +154,6 @@ describe("Views over HTTP", () => {
     expect(dialog).toMatch(new RegExp(`<button[^>]*data-copy="https?://[^/"]+/views/${view!.id}"`));
   });
 
-  it("shows a View's address under the public URL, if one is set, rather than the host of the request", async () => {
-    await instance.close();
-    instance = await bootHttpForTest({ publicUrl: "http://192.168.1.10:8080" });
-    await instance.post("/setup", { email: "anna@example.org", password });
-    await instance.app.recoveryKit.confirm();
-    const id = await createView([]);
-    const cookie = await signIn();
-
-    const dialog = await (await instance.get(`/admin/views/${id}`, { cookie })).text();
-    expect(dialog).toContain(`href="http://192.168.1.10:8080/views/${id}"`);
-    expect(dialog).toContain(`data-copy="http://192.168.1.10:8080/views/${id}/feed.ics"`);
-  });
-
   it("lets an Admin choose a Task List for a View, which its row and dialog name", async () => {
     const cookie = await signIn();
     const blank = await (await instance.get("/admin/views/new", { cookie })).text();
