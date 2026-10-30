@@ -62,3 +62,56 @@ describe("Assigning a Source to Family Members in the Admin area", () => {
     expect(await concerns()).toEqual([]);
   });
 });
+
+describe("Assigning the folders of a Source in the Admin area", () => {
+  let instance: HttpTestInstance;
+  let cookie: string;
+  let mia: FamilyMemberId;
+  beforeEach(async () => {
+    instance = await bootHttpForTest(
+      {},
+      {
+        sourcePlugins: [
+          {
+            sourceTypeId: "folder-mail",
+            displayName: "Mailbox",
+            configuration: `{ version: 1, fields: [{ key: "folders", label: "Folders", secret: false, required: false, parts: true }] }`,
+          },
+        ],
+      },
+    );
+    await instance.post("/setup", { email: "anna@example.org", password });
+    await instance.app.recoveryKit.confirm();
+    cookie = sessionCookieOf(await instance.post("/admin/sign-in", { email: "anna@example.org", password }));
+    await instance.app.sourceTypes.enable("folder-mail");
+    const member = await instance.app.familyMembers.add({ name: "Mia" });
+    if (!member.ok) throw new Error("adding failed");
+    mia = member.id;
+  });
+  afterEach(async () => {
+    await instance.close();
+  });
+
+  it("adds a Source with its folders, each assigned to the Family Members chosen, and shows them on its page", async () => {
+    const added = await instance.post(
+      "/admin/sources",
+      {
+        sourceTypeId: "folder-mail",
+        "part.folders.0.name": "School",
+        "part.folders.0.member": mia,
+        "part.folders.1.name": "Club",
+        "part.folders.2.name": "",
+      },
+      { cookie },
+    );
+    expect(added.status).toBe(303);
+
+    const [source] = await instance.app.sources.list();
+    expect(source?.partConcerns).toEqual({ School: [mia] });
+    expect(await instance.app.sources.forms()).toMatchObject([{ fields: [{ key: "folders", parts: true }] }]);
+    const shown = await (await instance.get(`/admin/sources/${source?.id}`, { cookie })).text();
+    expect(shown).toContain('value="School"');
+    expect(shown).toContain('value="Club"');
+    expect(shown).not.toContain(`/admin/sources/${source?.id}/concerns`);
+  });
+});

@@ -48,8 +48,12 @@ _Avoid_: Bridge (for the domain concept), network, chat app
 What a Source Type offers for an Admin to enable entry by entry, such as the Messengers of the Matrix Source Type; each Source of that type uses one enabled entry.
 _Avoid_: Option list, sub-type
 
+**Part**:
+A named piece of a Source that an Admin lists in its settings and assigns on its own, such as one folder of an IMAP mailbox; each Origin of such a Source names the Part it came from. A mail found in several folders, such as under several Gmail labels, belongs to the first one read. Removing a Part from the settings drops its assignment, and its past Items then concern whom the Source does.
+_Avoid_: Folder (for the domain concept), channel, sub-source
+
 **Source Assignment**:
-The Family Members an Admin assigns a Source to; the Source's Items concern them, or the whole Family when it is assigned to no one. Nothing within a Source, such as a sender or a calendar's name, counts, and never what the content mentions. An Item from several Sources concerns everyone they are assigned to, or the whole Family if one of them is assigned to no one.
+The Family Members an Admin assigns a Source to; the Source's Items concern them, or the whole Family when it is assigned to no one. A Source with Parts, such as the folders of a mailbox, is assigned Part by Part instead: an Item concerns the Family Members its Origin's Part is assigned to, falling back to those the Source is assigned to. Nothing else within a Source, such as a sender or a calendar's name, counts, and never what the content mentions. An Item from several Sources or Parts concerns everyone they are assigned to, or the whole Family if one of them is assigned to no one.
 _Avoid_: Attribution Rule (replaced), mapping, routing rule, filter
 
 ### Items

@@ -922,8 +922,19 @@ export function createHttpApp(application: Application, options: HttpOptions) {
 function sourceInputOf(form: Record<string, unknown>): SourceInput {
   const plain: Record<string, string | string[]> = {};
   const secrets: Record<string, string> = {};
+  const parts: Record<string, Map<number, { name: string; members: FamilyMemberId[] }>> = {};
   for (const [name, given] of Object.entries(form)) {
     const values = (Array.isArray(given) ? given : [given]).filter((value): value is string => typeof value === "string");
+    const part = /^part\.(.+)\.(\d+)\.(name|member)$/.exec(name);
+    if (part) {
+      const [, key = "", index = "0", what] = part;
+      const rows = (parts[key] ??= new Map());
+      const row = rows.get(Number(index)) ?? { name: "", members: [] };
+      if (what === "name") row.name = values.at(-1)?.trim() ?? "";
+      else row.members = values as FamilyMemberId[];
+      rows.set(Number(index), row);
+      continue;
+    }
     if (name.startsWith("choice.")) {
       plain[name.slice("choice.".length)] = values.map((value) => value.trim()).filter((value) => value !== "");
       continue;
@@ -934,7 +945,16 @@ function sourceInputOf(form: Record<string, unknown>): SourceInput {
     if (name.startsWith("secret.")) secrets[name.slice("secret.".length)] = value.trim();
   }
   const minutes = field(form, "pollIntervalMinutes").trim();
-  return { plain, secrets, pollIntervalSeconds: minutes === "" ? null : Number(minutes) * 60 };
+  const input: SourceInput = { plain, secrets, pollIntervalSeconds: minutes === "" ? null : Number(minutes) * 60 };
+  if (Object.keys(parts).length === 0) return input;
+  // A Part's row with no name is no Part, and the rows keep their order.
+  const partConcerns: Record<string, FamilyMemberId[]> = {};
+  for (const [key, rows] of Object.entries(parts)) {
+    const named = [...rows.entries()].sort(([a], [b]) => a - b).map(([, row]) => row).filter((row) => row.name !== "");
+    plain[key] = named.map((row) => row.name);
+    for (const row of named) partConcerns[row.name] = row.members;
+  }
+  return { ...input, partConcerns };
 }
 
 /**

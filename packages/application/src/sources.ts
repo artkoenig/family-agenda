@@ -54,6 +54,8 @@ export type SourceSummary = {
   name: string | null;
   /** The Family Members it is assigned to, in the Family's order, whom its Items concern; none for the whole Family. */
   concerns: FamilyMemberId[];
+  /** The Family Members each Part of it is assigned to, in the Family's order, by the Part's name; a Part not listed concerns those the Source does. */
+  partConcerns: Record<string, FamilyMemberId[]>;
   health: SourceHealth;
   /** The values each choice field offers, such as the chats of a linked account, by field key. */
   choices: Record<string, KnownValue[]>;
@@ -82,6 +84,12 @@ export type SourceInput = {
   secrets: Record<string, string>;
   /** Null or left out for the plugin's suggestion. */
   pollIntervalSeconds?: number | null;
+  /**
+   * The Family Members each Part of the Source, named by a list field, is assigned to; given, it
+   * replaces every assignment of the Source's Parts and clears the Source's own, as a Part with
+   * no one chosen concerns the whole Family. Left out, they stay.
+   */
+  partConcerns?: Record<string, FamilyMemberId[]>;
 };
 
 export type SourceProblem =
@@ -101,6 +109,11 @@ export type EditSourceResult =
   | { ok: true }
   | { ok: false; problem: "unknown-source" | "source-type-not-enabled" }
   | SourceProblem;
+
+/** Whether a value is a list of distinct, non-empty names, as a Source's Parts are. */
+function isPartNames(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((name) => typeof name === "string" && name.trim() !== "") && new Set(value).size === value.length;
+}
 
 export function createSourceAccess(deps: SourcesDeps) {
   const { clock, members, registry, sourceTypes, catalogues, sources, secrets, blobs, timeZone } = deps;
@@ -137,7 +150,8 @@ export function createSourceAccess(deps: SourcesDeps) {
       if (field.choice && value !== undefined && !(Array.isArray(value) && value.every((v) => typeof v === "string"))) {
         invalid.add(field.key);
       }
-      if (!field.choice && Array.isArray(value)) invalid.add(field.key);
+      if (field.parts && value !== undefined && !isPartNames(value)) invalid.add(field.key);
+      if (!field.choice && !field.parts && Array.isArray(value)) invalid.add(field.key);
     }
     const entryKey = sourceType.catalogue?.configKey;
     const entry = entryKey !== undefined ? input.plain[entryKey] : undefined;
@@ -149,6 +163,20 @@ export function createSourceAccess(deps: SourcesDeps) {
       if (!declared.has(key)) invalid.add(key);
     }
     return invalid.size > 0 ? { ok: false, problem: "invalid-config", fields: [...invalid].sort() } : null;
+  }
+
+  /** Stores the Part assignments an input gives, for the Parts the saved configuration names. */
+  async function assignParts(id: SourceId, sourceType: LoadedSourceType, plain: PlainConfig, input: SourceInput): Promise<void> {
+    if (!input.partConcerns) return;
+    const names = new Set(sourceType.configuration.fields.filter((field) => field.parts).flatMap((field) => (plain[field.key] as string[] | undefined) ?? []));
+    const family = (await members.list()).map((member) => member.id);
+    const parts: Record<string, FamilyMemberId[]> = {};
+    for (const [part, chosen] of Object.entries(input.partConcerns)) {
+      const assigned = family.filter((member) => chosen.includes(member));
+      if (names.has(part) && assigned.length > 0) parts[part] = assigned;
+    }
+    await sources.assignParts(id, parts);
+    await sources.assign(id, []);
   }
 
   /** Plain values left empty are not stored; a choice with none chosen is. */
@@ -183,6 +211,7 @@ export function createSourceAccess(deps: SourcesDeps) {
           shown: source.shown,
           name: source.name,
           concerns: source.concerns,
+          partConcerns: source.partConcerns,
           health: await healthOf(source, { clock, registry, sourceTypes, sources }),
           choices: await choicesOf(source),
         });
@@ -257,12 +286,14 @@ export function createSourceAccess(deps: SourcesDeps) {
         shown: true,
         name: null,
         concerns: [],
+        partConcerns: {},
         lastRunAt: null,
         lastSuccessAt: null,
         failure: null,
         lastNewOriginAt: null,
         createdAt: clock.now(),
       });
+      await assignParts(id, sourceType, given.plain, input);
       return { ok: true, id, setUp: sourceType.setupSteps.some((step) => step.live) };
     },
 
@@ -302,6 +333,7 @@ export function createSourceAccess(deps: SourcesDeps) {
         pollIntervalSeconds: input.pollIntervalSeconds ?? null,
         lastRunAt: null,
       });
+      await assignParts(id, sourceType, plainOf(input), input);
       for (const ref of replaced) await secrets.remove(ref);
       return { ok: true };
     },

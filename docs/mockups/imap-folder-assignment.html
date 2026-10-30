@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>IMAP Source – Ordner je Familienmitglied (Mockup)</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --member-3:#7b4d85; --member-4:#2c6b74; --member-5:#8a5e16; --member-6:#4c5c91;
+    --surface:#faf6f0; --surface-raised:#fffdf9; --surface-sunken:#f1e9de;
+    --line:#e6dccd; --line-strong:#8c7a66; --ink:#2b221b; --ink-muted:#6b5c4e;
+    --hearth:#bb4f29; --hearth-strong:#a6421d; --on-hearth:#fff; --hearth-tint:#f8e3d8;
+    --honey:#a8720f; --honey-tint:#fbefd4; --danger:#a32622;
+    --member-1:#b5502b; --member-2:#557548; --on-member:#fff;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --surface:#1c1814; --surface-raised:#262019; --surface-sunken:#15120f;
+      --line:#3a3129; --line-strong:#857462; --ink:#f5eee5; --ink-muted:#b8a999;
+      --hearth:#e8875f; --hearth-strong:#f0a07f; --on-hearth:#1c1814; --hearth-tint:#3b261c;
+      --honey:#e0ae4e; --honey-tint:#352a17; --danger:#ff9e8f;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--surface); color:var(--ink); font:16px/1.4 system-ui, sans-serif; padding:16px; }
+  .wrap { max-width: 760px; margin: 0 auto; }
+  .note { background:var(--honey-tint); border:1px solid var(--honey); color:var(--ink); border-radius:10px; padding:10px 14px; font-size:14px; margin-bottom:16px; }
+  .tabs { display:flex; gap:8px; margin-bottom:16px; }
+  .tabs button { font:inherit; padding:8px 14px; border-radius:999px; border:1px solid var(--line-strong); background:transparent; color:var(--ink); cursor:pointer; }
+  .tabs button[aria-pressed="true"] { background:var(--hearth); border-color:var(--hearth); color:var(--on-hearth); font-weight:600; }
+  .card { background:var(--surface-raised); border:1px solid var(--line); border-radius:16px; padding:22px 24px; }
+  h2 { font-size:14px; color:var(--hearth); margin:26px 0 6px; font-weight:700; }
+  h2:first-child { margin-top:0; }
+  label { display:block; font-weight:600; margin:16px 0 6px; }
+  .hint { color:var(--ink-muted); font-size:14px; margin:6px 0 0; }
+  input[type=text], input[type=number] { width:100%; font:inherit; color:var(--ink); background:var(--surface-raised); border:1px solid var(--line-strong); border-radius:10px; padding:11px 14px; }
+  input::placeholder { color:var(--ink-muted); }
+  .btn { font:inherit; font-weight:700; background:var(--hearth); color:var(--on-hearth); border:0; border-radius:10px; padding:11px 20px; margin-top:18px; cursor:pointer; }
+  .btn-ghost { font:inherit; background:transparent; color:var(--hearth); border:1px dashed var(--line-strong); border-radius:10px; padding:9px 14px; cursor:pointer; margin-top:10px; }
+  .x { background:transparent; border:0; color:var(--ink-muted); font-size:20px; cursor:pointer; padding:4px 8px; }
+  .avatar { width:28px; height:28px; border-radius:50%; display:inline-grid; place-items:center; color:var(--on-member); font-weight:700; font-size:14px; flex:none; }
+  .m1 { background:var(--member-1); } .m2 { background:var(--member-2); } .mf { background:var(--line-strong); }
+
+  /* Variant A: one row per member */
+  .rows { display:grid; gap:10px; margin-top:12px; }
+  .row-a { display:grid; grid-template-columns: 150px 1fr; gap:12px; align-items:center; border:1px solid var(--line); border-radius:12px; padding:10px 12px; background:var(--surface); }
+  .who { display:flex; gap:10px; align-items:center; font-weight:600; }
+  .row-a .fld { display:flex; gap:8px; align-items:center; }
+  .tag { font-size:12px; color:var(--ink-muted); }
+  .row-a.fallback { border-style:dashed; }
+
+  /* Variant B: one row per folder */
+  .row-b { border:1px solid var(--line); border-radius:12px; padding:12px; background:var(--surface); display:grid; gap:10px; }
+  .row-b .top { display:flex; gap:8px; align-items:center; }
+  .chips { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  .chip { display:inline-flex; align-items:center; gap:8px; border:1px solid var(--line-strong); border-radius:10px; padding:6px 12px 6px 8px; cursor:pointer; background:transparent; color:var(--ink); font:inherit; }
+  .chip .box { width:18px; height:18px; border-radius:4px; border:2px solid var(--line-strong); display:grid; place-items:center; font-size:12px; line-height:1; }
+  .chip.on { background:var(--hearth-tint); border-color:var(--hearth); }
+  .chip.on .box { background:var(--hearth); border-color:var(--hearth); color:var(--on-hearth); }
+  .scope { font-size:13px; color:var(--ink-muted); }
+  .avs { display:flex; gap:6px; flex-wrap:wrap; }
+  .av { width:34px; height:34px; border-radius:50%; border:2px solid transparent; color:var(--on-member); font-weight:700; font-size:13px; cursor:pointer; opacity:.38; padding:0; position:relative; }
+  .av.on { opacity:1; box-shadow:0 0 0 2px var(--surface), 0 0 0 4px var(--hearth); }
+  .av.on::after { content:"✓"; position:absolute; right:-6px; bottom:-6px; width:16px; height:16px; border-radius:50%; background:var(--hearth); color:var(--on-hearth); font-size:10px; display:grid; place-items:center; }
+  .sum { font-size:13px; color:var(--ink-muted); margin:0; }
+  .sum b { color:var(--ink); font-weight:600; }
+  .variant { display:none; } .variant.show { display:block; }
+  hr { border:0; border-top:1px solid var(--line); margin:26px 0 0; }
+  .manage { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-top:8px; }
+  .manage a { color:var(--hearth); font-weight:700; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="note"><strong>Mockup.</strong> Ersetzt „Ordner (optional)“ und den Block „Betrifft“. <em>GLOSSARY.md → Source Assignment</em> sagt aktuell: „Nothing within a Source … counts“. Ordner-Zuweisung kehrt das um (Glossar + ADR anpassen).</div>
+
+  <div class="tabs" role="group" aria-label="Variante">
+    <button data-v="a" aria-pressed="true">A · je Familienmitglied</button>
+    <button data-v="b" aria-pressed="false">B · je Ordner</button>
+  </div>
+
+  <div class="card">
+    <h2>Einstellungen</h2>
+    <label>Name</label><input type="text" value="SGH Mails">
+    <label>Mailserver</label><input type="text" value="imap.gmail.com">
+    <label>Port (optional)</label><input type="text">
+    <label>Benutzername</label><input type="text" value="artkoenig@gmail.com">
+    <label>Passwort</label><input type="text" placeholder="Gespeichert; leer lassen, um es zu behalten">
+    <label>Abrufintervall (optional)</label>
+    <div style="display:flex;gap:10px;align-items:center"><input type="number" placeholder="5" style="width:90px"><span class="hint" style="margin:0">Minuten</span></div>
+
+    <!-- ============ Variant A ============ -->
+    <div id="va" class="variant show">
+      <h2>Ordner und Betrifft</h2>
+      <p class="hint" style="margin-top:0">Jedes Familienmitglied bekommt einen eigenen Ordner. Mails darin betreffen nur diese Person. Leer = nichts wird für sie gelesen.</p>
+      <div class="rows">
+        <div class="row-a">
+          <div class="who"><span class="avatar m1">V</span>Valentin</div>
+          <div class="fld"><input type="text" value="SGH"></div>
+        </div>
+        <div class="row-a">
+          <div class="who"><span class="avatar m2">V</span>Veronika</div>
+          <div class="fld"><input type="text" placeholder="Ordner, z. B. Kita"></div>
+        </div>
+        <div class="row-a fallback">
+          <div class="who"><span class="avatar mf">★</span>Ganze Familie</div>
+          <div class="fld"><input type="text" placeholder="Optional, z. B. INBOX"></div>
+        </div>
+      </div>
+      <p class="hint">Ein Ordner passt nur zu einer Zeile. Ordnernamen so wie beim Anbieter, bei Gmail ein Label.</p>
+      <button class="btn">Speichern</button>
+    </div>
+
+    <!-- ============ Variant B ============ -->
+    <div id="vb" class="variant">
+      <h2>Ordner und Betrifft</h2>
+      <p class="hint" style="margin-top:0">Jeder Ordner betrifft die angetippten Familienmitglieder. Niemand gewählt = ganze Familie. Hier mit 6 Mitgliedern.</p>
+      <div class="rows" id="folders"></div>
+      <button class="btn-ghost" type="button" id="add">+ Ordner hinzufügen</button><br>
+      <button class="btn">Speichern</button>
+    </div>
+
+    <h2 style="margin-top:34px">Zeitleiste</h2>
+    <div class="manage"><div><strong>In der Zeitleiste zeigen</strong><p class="hint" style="margin:2px 0 0">Eine verborgene Quelle wird weiter gelesen, aber ihre Einträge bleiben aus der Zeitleiste.</p></div><span aria-hidden="true" style="width:70px;height:42px;border-radius:21px;background:var(--hearth);display:inline-block;position:relative;flex:none"><i style="position:absolute;right:6px;top:6px;width:30px;height:30px;border-radius:50%;background:var(--surface)"></i></span></div>
+    <h2>Verwaltung</h2>
+    <div class="manage"><div><strong>Diese Quelle entfernen</strong><p class="hint" style="margin:2px 0 0">Beendet das Lesen und entfernt alles, was sie gebracht hat.</p></div><a href="#">Entfernen</a></div>
+  </div>
+</div>
+<script>
+  document.querySelectorAll('.tabs button').forEach(b => b.addEventListener('click', () => {
+    document.querySelectorAll('.tabs button').forEach(x => x.setAttribute('aria-pressed', x === b));
+    document.getElementById('va').classList.toggle('show', b.dataset.v === 'a');
+    document.getElementById('vb').classList.toggle('show', b.dataset.v === 'b');
+  }));
+  const members = [['Valentin','Va',1],['Veronika','Ve',2],['Mia','Mi',3],['Jonas','Jo',4],['Oma','Om',5],['Opa','Op',6]];
+  const folders = [['SGH',[0]],['Kita',[1,2]],['INBOX',[]]];
+  const host = document.getElementById('folders');
+  function render() {
+    host.innerHTML = '';
+    folders.forEach(([name, sel], fi) => {
+      const el = document.createElement('div'); el.className = 'row-b';
+      el.innerHTML = `<div class="top"><input type="text" value="${name}"><button class="x" title="Ordner entfernen">×</button></div>
+        <div class="avs">${members.map(([n,i,c],mi)=>`<button type="button" class="av ${sel.includes(mi)?'on':''}" style="background:var(--member-${c})" title="${n}" data-m="${mi}">${i}</button>`).join('')}</div>
+        <p class="sum">Betrifft: <b>${sel.length ? sel.map(m=>members[m][0]).join(', ') : 'ganze Familie'}</b></p>`;
+      el.querySelectorAll('.av').forEach(b => b.addEventListener('click', () => {
+        const m = +b.dataset.m, k = sel.indexOf(m);
+        k < 0 ? sel.push(m) : sel.splice(k,1); render();
+      }));
+      el.querySelector('.x').addEventListener('click', () => { folders.splice(fi,1); render(); });
+      host.appendChild(el);
+    });
+  }
+  document.getElementById('add').addEventListener('click', () => { folders.push(['',[]]); render(); });
+  render();
+</script>
+</body>
+</html>

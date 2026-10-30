@@ -271,6 +271,25 @@
 .fam-choice:has(input:checked) { background: var(--hearth-tint); }
 .fam-choice input { margin: 0; }
 
+/* A Source's Parts, such as mail folders: a name and the Family Members it concerns as avatars to tap */
+.fam-parts { display: grid; gap: var(--space-3); }
+.fam-part {
+  display: grid; gap: var(--space-2); padding: var(--space-3);
+  border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface);
+}
+.fam-part__members { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.fam-pick { position: relative; display: inline-flex; margin: 0; cursor: pointer; }
+.fam-pick input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+.fam-pick .fam-avatar { opacity: .38; transition: opacity .1s; }
+.fam-pick:has(input:checked) .fam-avatar { opacity: 1; box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--hearth); }
+.fam-pick:has(input:checked)::after {
+  content: "✓"; position: absolute; right: -6px; bottom: -6px; width: 16px; height: 16px; border-radius: 50%;
+  background: var(--hearth); color: var(--on-hearth); font-size: 10px; display: grid; place-items: center;
+}
+.fam-pick:has(input:focus-visible) .fam-avatar { outline: 2px solid var(--ink); outline-offset: 4px; }
+.fam-part__all { margin: 0; color: var(--ink-muted); font-size: 13px; }
+.fam-part:has(input[type="checkbox"]:checked) .fam-part__all { display: none; }
+
 /* Signing in and setting up: one narrow column without the settings list - */
 .fam-admin--narrow { max-width: 480px; margin: 0 auto; padding: var(--space-7) var(--space-4); }
 .fam-brand { margin: 0 0 var(--space-5); font-size: 19px; line-height: 26px; font-weight: 800; }

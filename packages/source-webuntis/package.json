@@ -14,7 +14,7 @@
         "en": "WebUntis",
         "de": "WebUntis"
       },
-      "sdkVersion": "0.6.0",
+      "sdkVersion": "0.7.0",
       "description": {
         "en": "Reads the children's Timetables and Timetable Changes from WebUntis, with the key of a parent account's access through Untis Mobile.",
         "de": "Liest die Stundenpläne und Stundenplanänderungen der Kinder aus WebUntis, mit dem Schlüssel für den Zugriff über Untis Mobile eines Elternkontos."

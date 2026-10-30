@@ -106,7 +106,7 @@ describe("Source Types", () => {
         id: "old-portal",
         enabled: false,
         isNew: true,
-        notLoadable: "built for SDK 9.0.0, but this is SDK 0.6.0",
+        notLoadable: "built for SDK 9.0.0, but this is SDK 0.7.0",
       },
     ]);
     expect(await instance.app.sourceTypes.enable("old-portal")).toEqual({ ok: false, problem: "not-loadable" });
@@ -192,6 +192,7 @@ describe("Sources", () => {
         health: { status: "ok", problem: null, lastSuccessAt: null },
         choices: {},
         concerns: [],
+        partConcerns: {},
       },
     ]);
     const [row] = await instance.query("SELECT config, secret_refs::text AS refs, state FROM sources");
@@ -268,8 +269,8 @@ describe("Sources", () => {
         sourceTypeId: "school-portal",
         displayName: "school-portal",
         fields: [
-          { key: "url", label: "URL", secret: false, required: true, description: null, setByPlugin: false, choice: false },
-          { key: "password", label: "Password", secret: true, required: false, description: null, setByPlugin: false, choice: false },
+          { key: "url", label: "URL", secret: false, required: true, description: null, setByPlugin: false, choice: false, parts: false },
+          { key: "password", label: "Password", secret: true, required: false, description: null, setByPlugin: false, choice: false, parts: false },
         ],
         catalogue: null,
         setupSteps: [],

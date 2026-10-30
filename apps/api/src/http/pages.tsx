@@ -1082,7 +1082,13 @@ export function SourceTypePage(props: {
         <Problem message={adding.problem} />
         <input type="hidden" name="sourceTypeId" value={adding.form.sourceTypeId} />
         <SetupSteps form={adding.form} />
-        <SourceFields form={adding.form} prefix={`new-${adding.form.sourceTypeId}`} {...(adding.entered ? { entered: adding.entered } : {})} autofocus />
+        <SourceFields
+          form={adding.form}
+          prefix={`new-${adding.form.sourceTypeId}`}
+          members={props.members}
+          {...(adding.entered ? { entered: adding.entered } : {})}
+          autofocus
+        />
         <DialogFooter closeHref={href} submit={added ? s.addAccount : s.addType(text(adding.form.displayName))} />
       </form>
     </Dialog>
@@ -1188,11 +1194,13 @@ export function SourcePage(props: {
   // A Source using a catalogue entry is polled at the entry's interval, set with the entry.
   const suggestedSeconds = form && !form.catalogue ? form.suggestedIntervalSeconds : null;
   const editable = form !== undefined && (form.fields.length > 0 || suggestedSeconds !== null);
+  // Whom its Items concern is then set Part by Part, with the fields.
+  const hasParts = form?.fields.some((field) => field.parts) ?? false;
   // The catalogue entry it uses, such as its Messenger, cannot change; it is named in the header.
   const entryKey = form?.catalogue?.configKey;
   const entry = entryKey !== undefined ? form?.catalogue?.entries.find((candidate) => candidate.id === source.plain[entryKey]) : undefined;
   const dialog =
-    props.fixing && form ? <FixDialog source={source} form={form} closeHref={href} timeZone={props.timeZone} liveSteps={props.liveSteps ?? []} /> : undefined;
+    props.fixing && form ? <FixDialog source={source} form={form} closeHref={href} timeZone={props.timeZone} liveSteps={props.liveSteps ?? []} members={props.members} /> : undefined;
   return (
     <AdminLayout title={name} admin={props.admin} current="sources" dialog={dialog}>
       <nav class="fam-breadcrumb" aria-label={s.breadcrumb}>
@@ -1229,7 +1237,7 @@ export function SourcePage(props: {
                 <input id={`${source.id}-name`} name="name" maxlength={maximumNameLength} placeholder={derived} value={source.name ?? undefined} />
                 <small>{s.nameHint(derived)}</small>
               </div>
-              {form && editable ? <SourceFields form={form} prefix={source.id} source={source} omitFixed /> : null}
+              {form && editable ? <SourceFields form={form} prefix={source.id} source={source} members={props.members} omitFixed /> : null}
             </div>
             <div class="fam-group__actions">
               <button type="submit" class="fam-button fam-button--primary">
@@ -1238,7 +1246,7 @@ export function SourcePage(props: {
             </div>
           </Group>
         </form>
-        {props.members.length > 0 ? (
+        {props.members.length > 0 && !hasParts ? (
           <form method="post" action={`${href}/concerns`} class="fam-sheet__form">
             <Group title={s.concerns} level={2} intro={s.concernsHint}>
               <div class="fam-group__fields">
@@ -1354,7 +1362,8 @@ function SourceRow(props: { source: SourceSummary; form: SourceForm | undefined;
   const translation = useTranslation();
   const s = translation.t.sources;
   const { name, meta } = sourceLabel(source, form, translation);
-  const concerns = props.members.filter((member) => source.concerns.includes(member.id)).map((member) => member.name);
+  const assigned = new Set([...source.concerns, ...Object.values(source.partConcerns).flat()]);
+  const concerns = props.members.filter((member) => assigned.has(member.id)).map((member) => member.name);
   return (
     <li class="fam-row fam-row--link">
       <a class="fam-row__link" href={sourceHref(source.id)}>
@@ -1541,7 +1550,14 @@ function addedEntry(adding: SourceAdding) {
 }
 
 /** The dialog a Fix button opens: the form adding a Source uses, filled in with the Source's settings. */
-function FixDialog(props: { source: SourceSummary; form: SourceForm; closeHref: string; timeZone: string; liveSteps: LiveStep[] }) {
+function FixDialog(props: {
+  source: SourceSummary;
+  form: SourceForm;
+  closeHref: string;
+  timeZone: string;
+  liveSteps: LiveStep[];
+  members: FamilyMemberSummary[];
+}) {
   const { source, form } = props;
   const { t, text } = useTranslation();
   const s = t.sources;
@@ -1550,7 +1566,7 @@ function FixDialog(props: { source: SourceSummary; form: SourceForm; closeHref: 
       <form method="post" action={`/admin/sources/${source.id}`} class="fam-dialog__form">
         <HealthLine health={source.health} timeZone={props.timeZone} />
         <SetupSteps form={form} liveSteps={props.liveSteps} />
-        <SourceFields form={form} prefix={`fix-${source.id}`} source={source} autofocus />
+        <SourceFields form={form} prefix={`fix-${source.id}`} source={source} members={props.members} autofocus />
         <DialogFooter closeHref={props.closeHref} submit={s.saveAndRead} />
       </form>
     </Dialog>
@@ -1806,6 +1822,8 @@ function SourceFields(props: {
   autofocus?: boolean;
   /** Leaves out the catalogue entry of an existing Source, which cannot change, such as its Messenger. */
   omitFixed?: boolean;
+  /** The Family's Members, whom the Parts of a Source are assigned to. */
+  members?: FamilyMemberSummary[];
 }) {
   const { form, prefix, source, entered } = props;
   const { t, text } = useTranslation();
@@ -1830,6 +1848,7 @@ function SourceFields(props: {
           return <CatalogueField field={field} form={form} id={id(field.key)} chosen={plainValue(field.key)} existing={source !== undefined} autofocus={focus} />;
         }
         if (field.choice) return <ChoiceField field={field} id={id(field.key)} source={source} />;
+        if (field.parts) return <PartsField field={field} id={id(field.key)} source={source} members={props.members ?? []} />;
         return (
           <div class="fam-field">
             <label for={id(field.key)}>{field.required ? text(field.label) : t.common.optional(text(field.label))}</label>
@@ -1904,6 +1923,48 @@ function CatalogueField(props: {
       )}
       {field.description ? <small>{text(field.description)}</small> : null}
     </div>
+  );
+}
+
+/**
+ * The Parts of a Source, such as the folders of a mailbox: one card each with its name and the
+ * Family Members it concerns as avatars to tap, none meaning the whole Family, and one empty card
+ * to add another. A Part not assigned of its own concerns whom its Source is assigned to.
+ */
+function PartsField(props: { field: SourceForm["fields"][number]; id: string; source: SourceSummary | undefined; members: FamilyMemberSummary[] }) {
+  const { field, source, members } = props;
+  const { t, text } = useTranslation();
+  const stored = source?.plain[field.key];
+  const names = Array.isArray(stored) ? stored.filter((value): value is string => typeof value === "string") : [];
+  const rows = [...names.map((name) => ({ name, chosen: source?.partConcerns[name] ?? source?.concerns ?? [] })), { name: "", chosen: [] }];
+  return (
+    <fieldset class="fam-field" id={props.id}>
+      <legend>{field.required ? text(field.label) : t.common.optional(text(field.label))}</legend>
+      {field.description ? <small>{text(field.description)}</small> : null}
+      <small>{t.sources.partsHint}</small>
+      <div class="fam-parts">
+        {rows.map((row, index) => (
+          <div class="fam-part">
+            <input
+              name={`part.${field.key}.${index}.name`}
+              aria-label={t.sources.partName}
+              placeholder={row.name === "" ? t.sources.partNew : undefined}
+              value={row.name === "" ? undefined : row.name}
+            />
+            <div class="fam-part__members" role="group" aria-label={t.sources.partMembers(row.name === "" ? t.sources.partNew : row.name)}>
+              {members.map((member) => (
+                <label class="fam-pick" title={member.name}>
+                  <input type="checkbox" name={`part.${field.key}.${index}.member`} value={member.id} checked={row.chosen.includes(member.id)} />
+                  <Avatar member={member} size="sm" />
+                  <span class="fam-visually-hidden">{member.name}</span>
+                </label>
+              ))}
+            </div>
+            {members.length > 0 ? <p class="fam-part__all">{t.sources.partWholeFamily}</p> : null}
+          </div>
+        ))}
+      </div>
+    </fieldset>
   );
 }
 

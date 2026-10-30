@@ -2,7 +2,7 @@
  * The contract a Source plugin implements (ADR-0010). It is the only Family Agenda package a
  * plugin may import.
  */
-export const sdkVersion = "0.6.0";
+export const sdkVersion = "0.7.0";
 
 /**
  * A text the Admin area shows: plain, or per language as `{ en: "Calendar", de: "Kalender" }`.
@@ -50,6 +50,12 @@ export type ConfigField = {
    * has none to offer yet.
    */
   choices?: (context: RunContext) => Promise<Choice[]>;
+  /**
+   * Makes a plain field a list of names an Admin types, such as the folders of a mailbox, whose
+   * entries are Parts of the Source: an Admin assigns each Part to Family Members on its own, and
+   * an Origin names the Part it came from. Its value is the list of names, in the Admin's order.
+   */
+  parts?: boolean;
 };
 
 /** A value a plugin offers, with how it names it. */
@@ -219,6 +225,12 @@ export type Origin = {
   attributes: Record<string, string>;
   /** An `http` or `https` address where the Family can look at the original, if there is one. */
   link?: string;
+  /**
+   * The Part of the Source it came from, one of the entries of its `parts` field, such as the
+   * folder of a mail. Whom it concerns is then decided by the Family Members its Part is assigned
+   * to; an Origin without one, by those its Source is assigned to.
+   */
+  part?: string;
   content:
     | {
         /** A message to extract Items from, such as a mail; its time is the send time. */
@@ -305,6 +317,9 @@ export function problemsWith(plugin: SourcePlugin): string[] {
     if (keys.has(field.key)) problems.push(`configuration field "${field.key}" is declared twice`);
     keys.add(field.key);
     if (field.choices && field.secret) problems.push(`configuration field "${field.key}" is a choice, so it cannot be secret`);
+    if (field.parts && (field.secret || field.choices || field.setByPlugin)) {
+      problems.push(`configuration field "${field.key}" is a list of Parts, so it is no secret, choice or field the plugin sets`);
+    }
   }
   const { catalogue } = plugin;
   if (catalogue) {
@@ -354,6 +369,7 @@ export function problemsWithOrigin(origin: Origin): string[] {
       if (revision.itemKey === "") problems.push("a Revision has no Item key");
     }
   }
+  if (origin.part === "") problems.push("the Origin's Part is empty");
   if (origin.link !== undefined && !/^https?:\/\//i.test(origin.link)) {
     problems.push("the Origin's link is no http or https address");
   }

@@ -153,3 +153,100 @@ describe("Attribution by Source", () => {
     expect((await instance.app.sources.list()).find((source) => source.id === calendar)?.concerns).toEqual([]);
   });
 });
+
+describe("Attribution by Part of a Source", () => {
+  let instance: TestInstance;
+  let mailbox: SourceId;
+  let mia: FamilyMemberId;
+  let leo: FamilyMemberId;
+  let view: ViewId;
+  beforeEach(async () => {
+    instance = await bootForTest();
+    await writeTestPluginPackage(instance.workspacePackages, {
+      sourceTypeId: "mailbox",
+      configuration: `{
+        version: 1,
+        fields: [{ key: "folders", label: "Folders", secret: false, required: false, parts: true }],
+      }`,
+    });
+    await instance.restart();
+    await instance.app.sourceTypes.enable("mailbox");
+    const member = async (name: string) => {
+      const result = await instance.app.familyMembers.add({ name });
+      if (!result.ok) throw new Error(`adding failed: ${result.problem}`);
+      return result.id;
+    };
+    mia = await member("Mia");
+    leo = await member("Leo");
+    const added = await instance.app.sources.add({
+      sourceTypeId: "mailbox",
+      plain: { folders: ["School", "Club", "Inbox"] },
+      secrets: {},
+      partConcerns: { School: [mia], Club: [leo, mia] },
+    });
+    if (!added.ok) throw new Error(`adding failed: ${added.problem}`);
+    mailbox = added.id;
+    const created = await instance.app.views.create({ preselected: [], horizonDays: 7 });
+    if (!created.ok) throw new Error(`creating failed: ${created.problem}`);
+    view = created.id;
+  });
+  afterEach(async () => {
+    await instance.close();
+  });
+
+  const inFolder = (part: string, key: string): Origin => ({ ...entry(key), part });
+
+  const tuesday = async () => {
+    const page = await instance.app.views.open(view, { access: openViewAccess, show: "all" });
+    const names = new Map(page?.members.map((member) => [member.id, member.name]));
+    const day = page?.days.find((candidate) => candidate.date === "2026-09-15");
+    return (day?.items ?? []).map(
+      (row) => `${row.title}: ${row.concerns === "whole-family" ? "Family" : row.concerns.map((id) => names.get(id)).join(", ")}`,
+    );
+  };
+
+  const arrive = async (origins: Origin[]) => {
+    testPluginControls.emit("mailbox", origins);
+    instance.clock.advance(15 * minutes);
+    await instance.app.polling.pollDue();
+  };
+
+  it("lets an Item concern whom its folder is assigned to, and the whole Family for a folder assigned to no one", async () => {
+    await arrive([inFolder("School", "Elternabend"), inFolder("Club", "Training"), inFolder("Inbox", "Newsletter")]);
+
+    expect(await tuesday()).toEqual(["Elternabend: Mia", "Newsletter: Family", "Training: Mia, Leo"]);
+  });
+
+  it("attributes anew when a folder is assigned to others", async () => {
+    await arrive([inFolder("School", "Elternabend")]);
+
+    const edited = await instance.app.sources.edit(mailbox, {
+      plain: { folders: ["School", "Club", "Inbox"] },
+      secrets: {},
+      partConcerns: { School: [leo] },
+    });
+
+    expect(edited).toEqual({ ok: true });
+    expect(await tuesday()).toEqual(["Elternabend: Leo"]);
+    expect((await instance.app.sources.list()).find((source) => source.id === mailbox)?.partConcerns).toEqual({ School: [leo] });
+  });
+
+  it("forgets the assignment of a folder that was removed", async () => {
+    await instance.app.sources.edit(mailbox, { plain: { folders: ["Club"] }, secrets: {}, partConcerns: { School: [mia], Club: [leo] } });
+
+    expect((await instance.app.sources.list()).find((source) => source.id === mailbox)?.partConcerns).toEqual({ Club: [leo] });
+  });
+
+  it("ignores a folder assigned to an unknown Family Member", async () => {
+    const stranger = "00000000-0000-4000-8000-000000000000" as FamilyMemberId;
+
+    const edited = await instance.app.sources.edit(mailbox, {
+      plain: { folders: ["School"] },
+      secrets: {},
+      partConcerns: { School: [stranger] },
+    });
+
+    expect(edited.ok).toBe(true);
+    expect((await instance.app.sources.list()).find((source) => source.id === mailbox)?.partConcerns).toEqual({});
+  });
+});

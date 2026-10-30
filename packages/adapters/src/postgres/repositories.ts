@@ -54,7 +54,7 @@ import type {
   ViewId,
 } from "@family-agenda/domain";
 import { defaultFamilyLanguage, isFamilyLanguage } from "@family-agenda/domain";
-import { and, asc, eq, gt, gte, inArray, isNotNull, isNull, lt, lte, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, eq, gt, gte, inArray, isNotNull, isNull, lt, lte, ne, or, sql, type SQL } from "drizzle-orm";
 import { uuidPattern } from "../uuid";
 import type { Database } from "./database";
 import {
@@ -519,8 +519,17 @@ export class PostgresSourceRepository implements SourceRepository {
   async assign(id: SourceId, concerns: FamilyMemberId[]): Promise<void> {
     if (!uuidPattern.test(id)) return;
     await this.db.transaction(async (tx) => {
-      await tx.delete(sourceMembers).where(eq(sourceMembers.sourceId, id));
+      await tx.delete(sourceMembers).where(and(eq(sourceMembers.sourceId, id), eq(sourceMembers.part, "")));
       if (concerns.length > 0) await tx.insert(sourceMembers).values(concerns.map((familyMemberId) => ({ sourceId: id, familyMemberId })));
+    });
+  }
+
+  async assignParts(id: SourceId, parts: Record<string, FamilyMemberId[]>): Promise<void> {
+    if (!uuidPattern.test(id)) return;
+    const rows = Object.entries(parts).flatMap(([part, assigned]) => assigned.map((familyMemberId) => ({ sourceId: id, part, familyMemberId })));
+    await this.db.transaction(async (tx) => {
+      await tx.delete(sourceMembers).where(and(eq(sourceMembers.sourceId, id), ne(sourceMembers.part, "")));
+      if (rows.length > 0) await tx.insert(sourceMembers).values(rows);
     });
   }
 
@@ -574,7 +583,7 @@ export class PostgresSourceRepository implements SourceRepository {
       .where(where)
       .orderBy(asc(sources.position));
     const assigned = await this.db
-      .select({ sourceId: sourceMembers.sourceId, familyMemberId: sourceMembers.familyMemberId })
+      .select({ sourceId: sourceMembers.sourceId, part: sourceMembers.part, familyMemberId: sourceMembers.familyMemberId })
       .from(sourceMembers)
       .innerJoin(familyMembers, eq(familyMembers.id, sourceMembers.familyMemberId))
       .where(
@@ -587,7 +596,12 @@ export class PostgresSourceRepository implements SourceRepository {
       )
       .orderBy(asc(familyMembers.position));
     const concernsOf = (id: string) =>
-      assigned.filter((row) => row.sourceId === id).map((row) => row.familyMemberId as FamilyMemberId);
+      assigned.filter((row) => row.sourceId === id && row.part === "").map((row) => row.familyMemberId as FamilyMemberId);
+    const partConcernsOf = (id: string) => {
+      const parts: Record<string, FamilyMemberId[]> = {};
+      for (const row of assigned) if (row.sourceId === id && row.part !== "") (parts[row.part] ??= []).push(row.familyMemberId as FamilyMemberId);
+      return parts;
+    };
     return rows.map(({ source, health }) => ({
       id: source.id as SourceId,
       sourceTypeId: source.sourceTypeId as SourceTypeId,
@@ -599,6 +613,7 @@ export class PostgresSourceRepository implements SourceRepository {
       shown: source.shown,
       name: source.name,
       concerns: concernsOf(source.id),
+      partConcerns: partConcernsOf(source.id),
       lastRunAt: health.lastRunAt,
       lastSuccessAt: health.lastSuccessAt,
       failure:
@@ -639,6 +654,7 @@ export class PostgresItemRepository implements ItemRepository {
             externalId: origin.externalId,
             attributes: origin.attributes,
             link: origin.link,
+            part: origin.part,
             firstSeenAt: run.at,
           })
           .onConflictDoUpdate({
@@ -940,9 +956,9 @@ export class PostgresItemRepository implements ItemRepository {
       // A message whose Revisions were all rejected said nothing that shows.
       .where(and(inArray(revisions.itemId, ids), eq(revisions.accepted, true)))
       .orderBy(asc(rawMessages.sentAt));
-    // Only the Sources of Origins whose statements count say whom the Item concerns.
+    // Only the Sources, and their Parts, of Origins whose statements count say whom the Item concerns.
     const sourcesOfItems = await this.db
-      .selectDistinct({ itemId: revisions.itemId, sourceId: origins.sourceId })
+      .selectDistinct({ itemId: revisions.itemId, sourceId: origins.sourceId, part: origins.part })
       .from(revisions)
       .innerJoin(origins, eq(origins.id, revisions.originId))
       .where(and(inArray(revisions.itemId, ids), eq(revisions.accepted, true)));
@@ -959,7 +975,7 @@ export class PostgresItemRepository implements ItemRepository {
               messages: messages.flatMap(({ itemId, id, sourceTypeId, sourceName }) =>
                 itemId === row.id ? [{ id: id as RawMessageId, sourceTypeId: sourceTypeId as SourceTypeId, sourceName }] : [],
               ),
-              sourceIds: sourcesOfItems.flatMap(({ itemId, sourceId }) => (itemId === row.id ? [sourceId as SourceId] : [])),
+              sources: sourcesOfItems.flatMap(({ itemId, sourceId, part }) => (itemId === row.id ? [{ sourceId: sourceId as SourceId, part }] : [])),
             },
           ]
         : [],
