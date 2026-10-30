@@ -7,6 +7,7 @@ import {
   problemsWithTaskRevision,
   problemsWithTimetableChangeRevision,
   spanBounds,
+  instantOfTask,
   isOutstanding,
   taskOf,
   type Act,
@@ -42,11 +43,16 @@ export function project(kind: ItemKind, revisions: FoldableRevision[]): ItemProj
     return { folded, window: event ? spanBounds(event.span) : null, outstanding: false };
   }
   if (kind === "task") {
-    const task = taskOf(folded);
-    // Without a Deadline, a done Task shows on the day it was ticked, whatever the time zone.
-    const day = task?.deadline ?? task?.doneAt?.toISOString().slice(0, 10);
+    const arrivedAt = revisions.filter((revision) => revision.accepted).reduce<Date | null>(
+      (earliest, { sourceTime }) => (earliest && earliest <= sourceTime ? earliest : sourceTime),
+      null,
+    );
+    const stated = folded && arrivedAt ? { ...folded, arrivedAt: arrivedAt.toISOString() } : folded;
+    const task = taskOf(stated);
+    // Without a Deadline, a done Task shows on the day it arrived, whatever the time zone.
+    const day = task?.deadline ?? (task && instantOfTask(task))?.toISOString().slice(0, 10);
     const window = day ? spanBounds({ allDay: true, firstDay: day as LocalDate, lastDay: day as LocalDate }) : null;
-    return { folded, window, outstanding: task ? isOutstanding(task) : false };
+    return { folded: stated, window, outstanding: task ? isOutstanding(task) : false };
   }
   // A Timetable Change has the fields of the Lesson it changes, its span among them.
   const lesson = kind === "lesson" || kind === "timetable-change" ? lessonOf(folded) : null;
