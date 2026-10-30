@@ -22,7 +22,7 @@ describe("configuring Views", () => {
     return added.id;
   };
 
-  const createView = async (input: { preselected: FamilyMemberId[]; horizonDays: number }) => {
+  const createView = async (input: { kind?: string; preselected: FamilyMemberId[]; horizonDays: number }) => {
     const created = await instance.app.views.create(input);
     if (!created.ok) throw new Error(`creating failed: ${created.problem}`);
     return created.id;
@@ -36,9 +36,20 @@ describe("configuring Views", () => {
     const kitchen = await createView({ preselected: [leo, mia], horizonDays: 3 });
 
     expect(await instance.app.views.list()).toEqual([
-      { id: forMia, preselected: [mia], horizonDays: 7 },
-      { id: kitchen, preselected: [mia, leo], horizonDays: 3 },
+      { id: forMia, kind: "timeline", preselected: [mia], horizonDays: 7 },
+      { id: kitchen, kind: "timeline", preselected: [mia, leo], horizonDays: 3 },
     ]);
+  });
+
+  it("makes a View a Task List, keeps its kind when an edit names none, and refuses a kind it does not know", async () => {
+    const list = await createView({ kind: "tasks", preselected: [mia], horizonDays: 7 });
+
+    expect(await instance.app.views.edit(list, { preselected: [mia, leo], horizonDays: 7 })).toEqual({ ok: true });
+    expect(await instance.app.views.list()).toEqual([{ id: list, kind: "tasks", preselected: [mia, leo], horizonDays: 7 }]);
+    expect((await open(list))?.kind).toBe("tasks");
+    expect(await instance.app.views.create({ kind: "agenda", preselected: [], horizonDays: 7 })).toEqual({ ok: false, problem: "unknown-kind" });
+    expect(await instance.app.views.edit(list, { kind: "timeline", preselected: [], horizonDays: 7 })).toEqual({ ok: true });
+    expect((await open(list))?.kind).toBe("timeline");
   });
 
   it("refuses a horizon outside 1 to 31 days, and Family Members it does not know", async () => {
@@ -68,7 +79,7 @@ describe("configuring Views", () => {
       problem: "invalid-horizon",
     });
     expect(await instance.app.views.list()).toEqual([
-      { id: view, preselected: [leo], horizonDays: 14 },
+      { id: view, kind: "timeline", preselected: [leo], horizonDays: 14 },
     ]);
 
     await instance.app.views.remove(view);
@@ -86,7 +97,7 @@ describe("configuring Views", () => {
     await instance.app.familyMembers.remove(mia);
 
     expect(await instance.app.views.list()).toEqual([
-      { id: view, preselected: [leo], horizonDays: 7 },
+      { id: view, kind: "timeline", preselected: [leo], horizonDays: 7 },
     ]);
   });
 

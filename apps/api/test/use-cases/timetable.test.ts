@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { icsFeed } from "../../src/http/ics-feed";
 import { bootForTest, type TestInstance } from "../support/boot";
 import { testPluginControls, writeTestPluginPackage } from "../support/test-source-plugin";
+import { openTimeline } from "../support/timeline";
 
 const minutes = 60 * 1000;
 
@@ -91,7 +92,7 @@ describe("Timetables on the timeline and in the feed", () => {
 
   /** Tuesday as its school-day rows, with their Lessons, and its Timetable Change rows. */
   const tuesday = async () => {
-    const page = await instance.app.views.open(view, { access: openViewAccess });
+    const page = await openTimeline(instance.app, view, { access: openViewAccess });
     const day = page?.days.find((candidate) => candidate.date === "2026-09-15");
     return {
       school: (day?.schoolDays ?? []).map((row) => ({

@@ -52,6 +52,7 @@ import type {
   SourceTypeId,
   View,
   ViewId,
+  ViewKind,
 } from "@family-agenda/domain";
 import { defaultFamilyLanguage, isFamilyLanguage } from "@family-agenda/domain";
 import { and, asc, eq, gt, gte, inArray, isNotNull, isNull, lt, lte, ne, or, sql, type SQL } from "drizzle-orm";
@@ -305,7 +306,7 @@ export class PostgresViewRepository implements ViewRepository {
 
   async update(view: View): Promise<void> {
     await this.db.transaction(async (tx) => {
-      await tx.update(views).set({ horizonDays: view.horizonDays }).where(eq(views.id, view.id));
+      await tx.update(views).set({ kind: view.kind, horizonDays: view.horizonDays }).where(eq(views.id, view.id));
       await tx.delete(viewPreselections).where(eq(viewPreselections.viewId, view.id));
       await insertPreselections(tx, view);
     });
@@ -328,6 +329,7 @@ export class PostgresViewRepository implements ViewRepository {
     for (const { view, familyMemberId } of rows) {
       const found = byId.get(view.id) ?? {
         id: view.id as ViewId,
+        kind: view.kind as ViewKind,
         preselected: [],
         horizonDays: view.horizonDays,
         createdAt: view.createdAt,

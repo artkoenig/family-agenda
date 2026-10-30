@@ -2,6 +2,7 @@ import type {
   CurrentActivity,
   FamilyMemberSummary,
   Showing,
+  TaskListPage,
   TimelineDays,
   TimelineDay,
   TimelineEvent,
@@ -16,8 +17,8 @@ import type { Catalogue } from "./i18n/en";
 import { useTranslation, type Translation } from "./i18n/translation";
 import { Layout } from "./layout";
 
-// The one View layout (ADR-0003): a vertical timeline that works on a phone, a desktop and a wall
-// tablet, in the Family Agenda design system (`design/design.css`).
+// The View layouts (ADR-0003): a vertical timeline, or a Task List, that works on a phone, a
+// desktop and a wall tablet, in the Family Agenda design system (`design/design.css`).
 
 export function ViewPageDocument(props: { page: ViewPage }) {
   const { t } = useTranslation();
@@ -72,7 +73,7 @@ back.addEventListener("click", () => {
  */
 export function ViewTimeline(props: { page: ViewPage }) {
   const { page } = props;
-  const { t, locale } = useTranslation();
+  const { t } = useTranslation();
   return (
     <main
       id="view"
@@ -84,37 +85,7 @@ export function ViewTimeline(props: { page: ViewPage }) {
     >
       <ShownDay side="from" date={page.days[0]?.date ?? page.now.date} />
       <ShownDay side="until" date={page.days.at(-1)?.date ?? page.now.date} />
-      <header class="fam-bar">
-        <div class="fam-bar__top">
-          <div class="fam-clock">
-            {page.now.time} <span class="fam-clock__date">{dateLabel(page.now.date, locale)}</span>
-          </div>
-          <ActivityIndicator viewId={page.id} activity={page.activity} />
-        </div>
-        {page.mayBeOutOfDate ? (
-          <p class="fam-out-of-date" role="status">
-            {t.view.outOfDate}
-          </p>
-        ) : null}
-        {page.choices.length > 1 ? (
-          <nav class="fam-filter" aria-label={t.view.quickFilter} hx-boost="true" hx-target="#view" hx-swap="outerHTML">
-            <a class="fam-filter__item" href={viewUrl(page.id, "all")} aria-current={showsEveryChoice(page) ? "true" : undefined}>
-              <span class="fam-avatar fam-avatar--all" aria-hidden="true"></span>
-              {t.view.all}
-            </a>
-            {page.choices.map((member) => (
-              <a
-                class="fam-filter__item"
-                href={viewUrl(page.id, toggled(page, member.id))}
-                aria-current={!showsEveryChoice(page) && page.showing.includes(member.id) ? "true" : undefined}
-              >
-                <Avatar member={member} />
-                {member.name}
-              </a>
-            ))}
-          </nav>
-        ) : null}
-      </header>
+      <ViewBar page={page} />
       {page.pinned.length > 0 ? (
         <section class="fam-tasks" aria-labelledby="to-do">
           <h2 class="fam-tasks__title" id="to-do">
@@ -131,6 +102,98 @@ export function ViewTimeline(props: { page: ViewPage }) {
         <ViewDays page={page} earlier later />
       </ol>
     </main>
+  );
+}
+
+export function TaskListDocument(props: { page: TaskListPage }) {
+  const { t } = useTranslation();
+  return (
+    <Layout title={t.view.taskList.title} surface="view">
+      <TaskList page={props.page} />
+    </Layout>
+  );
+}
+
+/**
+ * The part of a Task List that htmx swaps, on a quick filter change, a tick and every minute: its
+ * Tasks Due or Overdue, then those not Due yet, then those done, each with its tick.
+ */
+export function TaskList(props: { page: TaskListPage }) {
+  const { page } = props;
+  const { t } = useTranslation();
+  const l = t.view.taskList;
+  const section = (id: string, title: string, rows: TimelineTask[], quiet?: boolean) =>
+    rows.length > 0 ? (
+      <section class={quiet ? "fam-tasks fam-tasks--quiet" : "fam-tasks"} aria-labelledby={id}>
+        <h2 class="fam-tasks__title" id={id}>
+          {title} <span class="fam-tasks__count">{rows.length}</span>
+        </h2>
+        <ul class="fam-tasks__list">
+          {rows.map((row) => (
+            <TaskRow row={row} page={page} />
+          ))}
+        </ul>
+      </section>
+    ) : null;
+  const none = page.due.length + page.upcoming.length + page.done.length === 0;
+  return (
+    <main id="view" hx-get={viewUrl(page.id, page.showing)} hx-trigger={`every 60s, ${activityEnded} from:body`} hx-swap="outerHTML">
+      <ViewBar page={page} kind={l.title} />
+      {none ? (
+        <section class="fam-tasks">
+          <p class="fam-empty">{l.none}</p>
+        </section>
+      ) : (
+        <>
+          {section("to-do", t.view.toDo, page.due)}
+          {section("coming-up", l.upcoming, page.upcoming)}
+          {section("done", l.done, page.done, true)}
+        </>
+      )}
+      <div class="fam-tasks__end"></div>
+    </main>
+  );
+}
+
+/** A View's sticky top bar, whatever its kind: the clock, what the worker is busy with, and the quick filter. */
+function ViewBar(props: { page: ViewPage | TaskListPage; kind?: string }) {
+  const { page } = props;
+  const { t, locale } = useTranslation();
+  return (
+    <header class="fam-bar">
+      <div class="fam-bar__top">
+        <div class="fam-clock">
+          {page.now.time} <span class="fam-clock__date">{dateLabel(page.now.date, locale)}</span>
+        </div>
+        <div class="fam-bar__end">
+          <ActivityIndicator viewId={page.id} activity={page.activity} />
+          {props.kind ? <span class="fam-bar__kind">{props.kind}</span> : null}
+        </div>
+      </div>
+      {page.mayBeOutOfDate ? (
+        <p class="fam-out-of-date" role="status">
+          {t.view.outOfDate}
+        </p>
+      ) : null}
+      {page.choices.length > 1 ? (
+        <nav class="fam-filter" aria-label={t.view.quickFilter} hx-boost="true" hx-target="#view" hx-swap="outerHTML">
+          <a class="fam-filter__item" href={viewUrl(page.id, "all")} aria-current={showsEveryChoice(page) ? "true" : undefined}>
+            <span class="fam-avatar fam-avatar--all" aria-hidden="true"></span>
+            {t.view.all}
+          </a>
+          {page.choices.map((member) => (
+            <a
+              class="fam-filter__item"
+              href={viewUrl(page.id, toggled(page, member.id))}
+              aria-current={!showsEveryChoice(page) && page.showing.includes(member.id) ? "true" : undefined}
+            >
+              <Avatar member={member} />
+              {member.name}
+            </a>
+          ))}
+        </nav>
+      ) : null}
+    </header>
   );
 }
 
@@ -455,11 +518,11 @@ function EventRow(props: { row: TimelineEvent; members: FamilyMemberSummary[] })
 }
 
 /**
- * A Task as one row with its tick, which posts as htmx swaps the timeline, or as a plain form
- * without it, and its Deadline and things to bring. A done one is checked and dimmed, and its
- * tick can be taken back.
+ * A Task as one row with its tick, the design system's checkbox, which posts once it changes as
+ * htmx swaps the timeline or the Task List, and its Deadline and things to bring. A done one is
+ * checked and dimmed, and its tick can be taken back.
  */
-function TaskRow(props: { row: TimelineTask; page: ViewPage }) {
+function TaskRow(props: { row: TimelineTask; page: ViewPage | TaskListPage }) {
   const { row, page } = props;
   const { t, locale, text } = useTranslation();
   const v = t.view;
@@ -479,11 +542,19 @@ function TaskRow(props: { row: TimelineTask; page: ViewPage }) {
             : v.due;
   return (
     <li class={classes}>
-      <form method="post" action={action} hx-post={action} hx-target="#view" hx-swap="outerHTML" hx-include="#shown-from, #shown-until">
+      <form
+        method="post"
+        action={action}
+        hx-post={action}
+        hx-trigger="change"
+        hx-target="#view"
+        hx-swap="outerHTML"
+        hx-include={page.kind === "timeline" ? "#shown-from, #shown-until" : undefined}
+      >
         <input type="hidden" name="show" value={page.showing === "all" ? "all" : page.showing.join(",")} />
-        <button type="submit" class="fam-task__tick" aria-pressed={done ? "true" : "false"} aria-label={done ? v.markNotDone(row.title) : v.markDone(row.title)}>
-          <span aria-hidden="true">{done ? "✓" : ""}</span>
-        </button>
+        <label class="fam-task__tick">
+          <input type="checkbox" checked={done} aria-label={done ? v.markNotDone(row.title) : v.markDone(row.title)} />
+        </label>
       </form>
       <span class="fam-task__text">
         <span class="fam-task__title">
@@ -582,13 +653,13 @@ export function daysUrl(page: ViewPage, days: TimelineDays, then: "earlier" | "l
 }
 
 /** Whether the quick filter shows everyone it offers, as "All" does. */
-function showsEveryChoice(page: ViewPage): boolean {
+function showsEveryChoice(page: ViewPage | TaskListPage): boolean {
   const { showing } = page;
   return showing === "all" || page.choices.every((member) => showing.includes(member.id));
 }
 
 /** What the quick filter shows after tapping a Family Member: added, or taken out again. */
-function toggled(page: ViewPage, id: FamilyMemberId): Showing {
+function toggled(page: ViewPage | TaskListPage, id: FamilyMemberId): Showing {
   if (showsEveryChoice(page) || page.showing === "all") return [id];
   const showing = page.showing;
   const next = page.choices
