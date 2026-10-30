@@ -287,6 +287,9 @@ export const en = {
     remove: "Remove this Source",
     removeHint: "Stops reading it and removes everything it has brought in.",
     removeButton: "Remove",
+    reread: "Re-read its messages",
+    rereadHint: "Has every message of this Source read again with the current LLM endpoint. What they brought in stays until each is read again.",
+    rereadButton: "Re-read",
     noneChosen: "none yet",
     every: (minutes: number) => plural(minutes, { one: `every ${minutes} minute`, other: `every ${minutes} minutes` }),
     interval: "Polling interval (optional)",
@@ -335,6 +338,11 @@ export const en = {
       "The model reads images. Scanned PDF letters are sent to it as images of their pages; otherwise Tesseract reads them on this Instance.",
     thirdParties:
       "If this server is outside my home network: I understand that the text of messages from third parties, such as teachers' mails, is sent to it.",
+    reread: "Re-read messages",
+    rereadHint:
+      "After an update the model may find more in messages than it did. Has every message read again with the current endpoint. What they brought in stays until each is read again.",
+    rereadButton: "Re-read all",
+    waiting: (count: number) => plural(count, { one: `${count} message waits to be read.`, other: `${count} messages wait to be read.` }),
   },
 
   language: {

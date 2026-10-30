@@ -1185,6 +1185,8 @@ export function SourcePage(props: {
   fixing?: boolean;
   /** What the live setup steps of the Source being fixed show. */
   liveSteps?: LiveStep[];
+  /** For a Source whose messages the LLM endpoint reads: how many wait to be read. */
+  waiting?: number;
 }) {
   const { source, form } = props;
   const translation = useTranslation();
@@ -1290,6 +1292,9 @@ export function SourcePage(props: {
             </li>
           </ul>
         </Group>
+        {props.waiting !== undefined ? (
+          <RereadGroup action={`${href}/reread`} label={s.reread} hint={s.rereadHint} button={s.rereadButton} waiting={props.waiting} />
+        ) : null}
         <Group title={s.management} level={2}>
           <ul class="fam-rows">
             <li class="fam-row">
@@ -2012,6 +2017,8 @@ function ChoiceField(props: { field: SourceForm["fields"][number]; id: string; s
 export function LlmEndpointPage(props: {
   admin: SignedInAdmin;
   endpoint: LlmEndpointSummary | null;
+  /** How many messages wait to be read. */
+  waiting: number;
   /** What the Admin entered, shown again with a problem. */
   entered?: { baseUrl: string; model: string; vision: boolean };
   problem?: string;
@@ -2076,7 +2083,34 @@ export function LlmEndpointPage(props: {
           </div>
         </Group>
       </form>
+      {endpoint ? (
+        <section class="fam-sheet">
+          <RereadGroup action="/admin/llm/reread" label={l.reread} hint={l.rereadHint} button={l.rereadButton} waiting={props.waiting} />
+        </section>
+      ) : null}
     </AdminLayout>
+  );
+}
+
+/** Has messages read again with the current prompt and model (ADR-0015), with how many wait. */
+function RereadGroup(props: { action: string; label: string; hint: string; button: string; waiting: number }) {
+  const { t } = useTranslation();
+  return (
+    <Group title={props.label} level={2}>
+      <ul class="fam-rows">
+        <li class="fam-row">
+          <span class="fam-row__main">
+            <span class="fam-row__hint">{props.hint}</span>
+            {props.waiting > 0 ? <span class="fam-row__hint">{t.llm.waiting(props.waiting)}</span> : null}
+          </span>
+          <form method="post" action={props.action} class="fam-row__form">
+            <button type="submit" class="fam-button fam-button--secondary">
+              {props.button}
+            </button>
+          </form>
+        </li>
+      </ul>
+    </Group>
   );
 }
 
