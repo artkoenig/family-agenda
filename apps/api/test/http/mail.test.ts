@@ -181,7 +181,8 @@ describe("the LLM endpoint and mail over HTTP", () => {
     await instance.app.extraction.extractPending();
 
     const view = await (await instance.get(`/views/${created.id}`)).text();
-    const row = /<li class="fam-task[^"]*"(?:(?!<\/li>).)*Naturauftrag(?:(?!<\/li>).)*<\/li>/s.exec(view)?.[0] ?? "";
+    const row = /<li class="fam-item fam-task[^"]*"(?:(?!<\/li>).)*Naturauftrag(?:(?!<\/li>).)*<\/li>/s.exec(view)?.[0] ?? "";
     expect(row).toMatch(/<a href="\/admin\/messages\/[0-9a-f-]+">Open the message<\/a>/);
+    expect(row).not.toContain("Admins only");
   });
 });
