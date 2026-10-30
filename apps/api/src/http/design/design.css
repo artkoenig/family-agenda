@@ -241,6 +241,14 @@
   border: 1px solid var(--line-strong); border-radius: var(--radius-md);
 }
 :where(.fam-admin) input::placeholder { color: var(--ink-muted); }
+/* A select, or an input offering known values, draws its own chevron, spaced like its text. */
+:where(.fam-admin) select, :where(.fam-admin) input[list] {
+  appearance: none; padding-right: calc(var(--space-4) + 20px);
+  background-image: linear-gradient(45deg, transparent 50%, var(--ink-muted) 50%), linear-gradient(135deg, var(--ink-muted) 50%, transparent 50%);
+  background-position: calc(100% - var(--space-4) - 6px) 52%, calc(100% - var(--space-4)) 52%;
+  background-size: 6px 6px, 6px 6px; background-repeat: no-repeat;
+}
+:where(.fam-admin) input[list]::-webkit-calendar-picker-indicator { opacity: 0; cursor: pointer; }
 :where(.fam-admin) input[type="file"] { font: inherit; color: var(--ink); }
 /* The file picker's own button, which takes no class, looks like a secondary Button. */
 :where(.fam-admin) input[type="file"]::file-selector-button {
