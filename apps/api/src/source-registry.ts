@@ -133,7 +133,7 @@ function loadedSourceType(plugin: SourcePlugin): LoadedSourceType {
   return {
     configuration: {
       version: configuration.version,
-      fields: configuration.fields.map(({ key, label, secret, required, description, setByPlugin, choices }) => ({
+      fields: configuration.fields.map(({ key, label, secret, required, description, setByPlugin, choices, parts }) => ({
         key,
         label,
         secret,
@@ -141,6 +141,7 @@ function loadedSourceType(plugin: SourcePlugin): LoadedSourceType {
         description: description ?? null,
         setByPlugin: setByPlugin === true,
         choice: choices !== undefined,
+        parts: parts === true,
       })),
     },
     setupSteps: setupSteps.map(({ id, title, description, progress }) => ({ id, title, description, live: progress !== undefined })),
@@ -253,6 +254,7 @@ async function run(ingest: () => Promise<IngestResult>): Promise<SourceRunResult
       occurredAt: origin.occurredAt,
       attributes: origin.attributes,
       link: origin.link ?? null,
+      part: origin.part ?? null,
       revisions:
         origin.content.kind === "revisions"
           ? origin.content.revisions.map(({ itemKind, itemKey, action, fields }) => ({

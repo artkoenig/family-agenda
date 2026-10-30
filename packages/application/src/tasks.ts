@@ -1,6 +1,5 @@
 import {
   addDays,
-  attributionOf,
   isPinned,
   isShownTo,
   localDateTime,
@@ -13,7 +12,8 @@ import {
   type TaskStatus,
   type ViewId,
 } from "@family-agenda/domain";
-import type { AuthoredRevision, Clock, ItemRepository, SourceRepository, ViewAccessPolicy, ViewRepository } from "./ports";
+import { concernsOf } from "./assignment";
+import type { AuthoredRevision, Clock, ItemRepository, ProjectedItem, SourceRepository, ViewAccessPolicy, ViewRepository } from "./ports";
 import { project } from "./revisions";
 
 export type TasksDeps = {
@@ -60,10 +60,10 @@ export function createTaskAccess(deps: TasksDeps) {
   }
 
   /** Ticks the Task, unless it already is as ticked. */
-  async function tick(id: ItemId, done: boolean, author: AuthoredRevision["author"], mayTick: (sourceIds: string[]) => Promise<boolean>) {
+  async function tick(id: ItemId, done: boolean, author: AuthoredRevision["author"], mayTick: (item: Pick<ProjectedItem, "sources">) => Promise<boolean>) {
     const item = await items.find(id);
     const task = item?.kind === "task" ? taskOf(item.folded) : null;
-    if (!item || !task || !(await mayTick(item.sourceIds))) return { ok: false as const, problem: "unknown-task" as const };
+    if (!item || !task || !(await mayTick(item))) return { ok: false as const, problem: "unknown-task" as const };
     if ((task.doneAt !== null) === done) return { ok: true as const };
     const at = clock.now();
     await items.appendAuthored(id, { act: "change", fields: tickFields(done, at), sourceTime: at, author }, project);
@@ -82,10 +82,9 @@ export function createTaskAccess(deps: TasksDeps) {
     ): Promise<{ ok: true } | { ok: false; problem: TickProblem }> {
       const view = await views.findById(viewId);
       if (!view || !(await input.access.mayOpen(view.id))) return { ok: false, problem: "unknown-view" };
-      return tick(id, input.done, { kind: "view", viewId }, async (sourceIds) => {
+      return tick(id, input.done, { kind: "view", viewId }, async (item) => {
         if (view.preselected.length === 0) return true;
-        const assigned = new Map((await sources.list()).map((source) => [source.id as string, source.concerns]));
-        return isShownTo(attributionOf(sourceIds.map((sourceId) => assigned.get(sourceId) ?? [])), view.preselected);
+        return isShownTo(concernsOf(item, await sources.list()), view.preselected);
       });
     },
 

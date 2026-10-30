@@ -251,7 +251,9 @@ export const sourceHealth = pgTable(
 
 /**
  * The Family Members a Source is assigned to, whom its Items concern; a Source with none here
- * concerns the whole Family. Removing the Source or the Family Member removes them here too.
+ * concerns the whole Family. Removing the Source or the Family Member removes them here too. A
+ * row with a `part` assigns that Part of the Source, such as a mail folder, on its own; the empty
+ * `part` is the Source itself.
  */
 export const sourceMembers = pgTable(
   "source_members",
@@ -259,12 +261,13 @@ export const sourceMembers = pgTable(
     sourceId: uuid("source_id")
       .notNull()
       .references(() => sources.id, { onDelete: "cascade" }),
+    part: text("part").notNull().default(""),
     familyMemberId: uuid("family_member_id")
       .notNull()
       .references(() => familyMembers.id, { onDelete: "cascade" }),
   },
   (table) => [
-    primaryKey({ columns: [table.sourceId, table.familyMemberId] }),
+    primaryKey({ columns: [table.sourceId, table.part, table.familyMemberId] }),
     index("source_members_family_member_id_idx").on(table.familyMemberId),
   ],
 );
@@ -281,6 +284,8 @@ export const origins = pgTable(
     externalId: text("external_id").notNull(),
     attributes: jsonb("attributes").$type<Record<string, string>>().notNull(),
     link: text("link"),
+    /** The Part of the Source it came from, such as a mail's folder; null if it has none. */
+    part: text("part"),
     firstSeenAt: timestamptz("first_seen_at").notNull(),
     /**
      * When the Source said the Origin was deleted, such as a redacted message: its raw message is

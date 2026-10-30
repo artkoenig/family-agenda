@@ -78,6 +78,7 @@ export function createSourcePolling(deps: PollingDeps) {
         occurredAt: origin.occurredAt,
         attributes: origin.attributes,
         link: origin.link,
+        part: origin.part,
         revisions: origin.revisions.map((revision) => checked(revision, origin.occurredAt)),
         message: origin.message ? await stored(origin.message) : null,
       });

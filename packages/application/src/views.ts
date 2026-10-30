@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto";
 import {
   addDays,
-  attributionOf,
   daysBetween,
   dayOfTask,
   eventOf,
@@ -34,6 +33,7 @@ import {
   type ViewId,
 } from "@family-agenda/domain";
 import type { ActivityLog, CurrentActivity } from "./activity";
+import { concernsOf } from "./assignment";
 import { summariseFamilyMember, type FamilyMemberSummary } from "./family-members";
 import type {
   Clock,
@@ -283,7 +283,7 @@ export function createViewAccess(deps: ViewsDeps) {
     const day = 24 * 60 * 60 * 1000;
     const from = new Date(new Date(`${first}T00:00:00Z`).getTime() - day);
     const to = last ? new Date(new Date(`${addDays(last, 1)}T00:00:00Z`).getTime() + day) : null;
-    const assigned = new Map((await sources.list()).map((source) => [source.id, source.concerns]));
+    const known = await sources.list();
     const order = (await members.list()).map((member) => member.id);
     const installed = registry.installed();
     const found: Around = { events: [], lessons: [], changes: [], tasks: [] };
@@ -292,7 +292,7 @@ export function createViewAccess(deps: ViewsDeps) {
     // An undone Task stays pinned, whatever its Deadline.
     const outstanding = (await items.outstanding()).filter((item) => !seen.has(item.id));
     for (const item of [...overlapping, ...outstanding]) {
-      const attribution = attributionOf(item.sourceIds.map((id) => assigned.get(id) ?? []));
+      const attribution = concernsOf(item, known);
       if (showing !== "all" && !isShownTo(attribution, showing)) continue;
       const concerns = attribution === "whole-family" ? attribution : order.filter((id) => attribution.includes(id));
       const links = item.links.map((link) => ({ url: link.url, source: sourceName(link, installed) }));

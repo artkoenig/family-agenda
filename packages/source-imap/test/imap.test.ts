@@ -60,8 +60,8 @@ server.deliver("Schule", old, new Date("2026-08-01T08:00:00Z"));
 server.deliver("Schule", invitation, new Date("2026-09-14T06:12:00Z"));
 server.deliver("INBOX", "Subject: Privat\n\nNicht für die Schule.\n", new Date("2026-09-14T06:00:00Z"));
 
-const config = (plain: Record<string, string> = {}, password = account.password): RunContext["config"] => ({
-  plain: { host: "127.0.0.1", port: String(server.port), username: account.user, folder: "Schule", ...plain },
+const config = (plain: Record<string, unknown> = {}, password = account.password): RunContext["config"] => ({
+  plain: { host: "127.0.0.1", port: String(server.port), username: account.user, folders: ["Schule"], ...plain },
   secrets: { password },
 });
 
@@ -98,6 +98,7 @@ describe("the IMAP plugin", () => {
       externalId: "<elternabend-1@schule.example.org>",
       occurredAt: new Date("2026-09-14T06:12:00Z"),
       attributes: { sender: "berger@schule.example.org" },
+      part: "Schule",
     });
     expect(origin?.link).toBeUndefined();
     const content = message(origin);
@@ -119,6 +120,42 @@ describe("the IMAP plugin", () => {
     expect(content.thread).toBe("<elternabend-1@schule.example.org>");
     expect(content.text).toContain("Der Elternabend wird auf 16 Uhr verlegt.");
     expect((await poll({ state })).origins).toEqual([]);
+  });
+
+  it("reads INBOX as the Source itself when no folder is configured", async () => {
+    const { origins } = await poll({ config: config({ folders: undefined }) });
+
+    expect(origins).toHaveLength(1);
+    expect(origins[0]?.part).toBeUndefined();
+    expect(message(origins[0]).text).toContain("Nicht für die Schule.");
+  });
+
+  it("reads each configured folder as a Part of its own, with state per folder", async () => {
+    const both = config({ folders: ["Schule", "INBOX"] });
+    const first = await poll({ config: both });
+
+    const parts = first.origins.map((origin) => origin.part);
+    expect(parts).toContain("Schule");
+    expect(parts.filter((part) => part === "INBOX")).toHaveLength(1);
+    expect(parts.every((part) => part === "Schule" || part === "INBOX")).toBe(true);
+    expect(Object.keys(JSON.parse(first.state ?? "{}") as object).sort()).toEqual(["INBOX", "Schule"]);
+    expect((await poll({ config: both, state: first.state })).origins).toEqual([]);
+  });
+
+  it("keeps the state of the single folder from before a Source had several", async () => {
+    const legacy = (await poll()).state as string;
+    const [only] = Object.values(JSON.parse(legacy) as Record<string, unknown>);
+
+    const { origins } = await poll({ state: JSON.stringify(only) });
+
+    expect(origins).toEqual([]);
+  });
+
+  it("migrates the single folder of a version 1 configuration into the list of folders", () => {
+    const migrate = plugin().configuration.migrations?.[1];
+
+    expect(migrate?.({ host: "h", folder: "Schule" })).toEqual({ host: "h", folders: ["Schule"] });
+    expect(migrate?.({ host: "h", folder: "" })).toEqual({ host: "h" });
   });
 
   it("only reads, never marking, moving or deleting a mail", async () => {
@@ -147,7 +184,7 @@ describe("the IMAP plugin", () => {
 
   it("fails definitely on a wrong password or a folder that does not exist", async () => {
     await expect(poll({ config: config({}, "wrong") })).rejects.toMatchObject({ kind: "definite" });
-    await expect(poll({ config: config({ folder: "Nirgends" }) })).rejects.toMatchObject({ kind: "definite" });
+    await expect(poll({ config: config({ folders: ["Nirgends"] }) })).rejects.toMatchObject({ kind: "definite" });
   });
 
   it("fails temporarily when the server cannot be reached", async () => {

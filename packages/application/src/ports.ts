@@ -161,6 +161,8 @@ export type ConfigFieldSpec = {
   setByPlugin: boolean;
   /** A choice among values the plugin offers for an existing Source; its value is the list of the chosen ones. */
   choice: boolean;
+  /** A list of names an Admin types, each a Part of the Source that is assigned on its own. */
+  parts: boolean;
 };
 
 /** An interactive step of a Source's form, as a plugin declares it. */
@@ -235,6 +237,8 @@ export type IngestedOrigin = {
   occurredAt: Date;
   attributes: Record<string, string>;
   link: string | null;
+  /** The Part of the Source it came from, such as a mail's folder; null if it has none. */
+  part: string | null;
   revisions: IngestedRevision[];
   message: IngestedMessage | null;
 };
@@ -358,6 +362,12 @@ export type Source = {
    * none for the whole Family. Family Members removed since are no longer listed.
    */
   concerns: FamilyMemberId[];
+  /**
+   * The Family Members an Admin assigned each of its Parts to, in the Family's order, by the
+   * Part's name, such as a mail folder's; a Part not listed here concerns those the Source is
+   * assigned to, or the whole Family.
+   */
+  partConcerns: Record<string, FamilyMemberId[]>;
   /** When the worker last ran it, successfully or not; null before its first run, or after an Admin changed it. */
   lastRunAt: Date | null;
   /** When it last ran successfully; null before then. */
@@ -393,6 +403,8 @@ export interface SourceRepository {
   rename(id: SourceId, name: string | null): Promise<void>;
   /** Assigns the Source to the Family Members, replacing those it was assigned to; none for the whole Family. */
   assign(id: SourceId, concerns: FamilyMemberId[]): Promise<void>;
+  /** Assigns each Part of the Source to Family Members, replacing every Part's assignment; a Part with none is left out. */
+  assignParts(id: SourceId, parts: Record<string, FamilyMemberId[]>): Promise<void>;
   /**
    * Removes the Source in one transaction with its Origins, raw messages and Revisions, and the
    * Items no other Source names; those another Source names are recomputed with `recompute`.
@@ -443,6 +455,8 @@ export type SourceRun = {
     occurredAt: Date;
     attributes: Record<string, string>;
     link: string | null;
+    /** The Part of the Source it came from; null if it has none. */
+    part: string | null;
     revisions: NewRevision[];
     message: StoredMessage | null;
   }[];
@@ -513,8 +527,8 @@ export type ProjectedItem = {
   links: { url: string; sourceTypeId: SourceTypeId; sourceName: string | null }[];
   /** The raw messages it was extracted from, oldest first, each with the Source Type and name of its Source. */
   messages: { id: RawMessageId; sourceTypeId: SourceTypeId; sourceName: string | null }[];
-  /** The Sources of the Origins whose accepted Revisions it adds up to, which decide whom it concerns. */
-  sourceIds: SourceId[];
+  /** The Sources, with their Parts, of the Origins whose accepted Revisions it adds up to, which decide whom it concerns. */
+  sources: { sourceId: SourceId; part: string | null }[];
 };
 
 /** A Revision by someone other than an Origin, such as one ticking a Task done. */
