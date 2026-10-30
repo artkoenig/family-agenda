@@ -8,6 +8,7 @@ import { bootForTest, type TestInstance } from "../support/boot";
 import { InMemoryBlobStore } from "../support/in-memory-blob-store";
 import { extractedTask, ScriptedExtractor } from "../support/scripted-extractor";
 import { testPluginControls, writeTestPluginPackage } from "../support/test-source-plugin";
+import { openTimeline } from "../support/timeline";
 
 const minutes = 60 * 1000;
 const days = 24 * 60 * minutes;
@@ -54,7 +55,7 @@ describe("Tasks", () => {
 
   /** The View's pinned Tasks and those on each day, as `title (status)`. */
   const shown = async () => {
-    const page = await instance.app.views.open(view, { access: openViewAccess });
+    const page = await openTimeline(instance.app, view, { access: openViewAccess });
     const label = (row: { title: string; status: string; cancelled: boolean }) =>
       `${row.title} (${row.status}${row.cancelled ? ", cancelled" : ""})`;
     return {
@@ -91,7 +92,7 @@ describe("Tasks", () => {
 
   /** The id of the Task the View pins or shows with the title. */
   const taskId = async (title: string) => {
-    const page = await instance.app.views.open(view, { access: openViewAccess, days: { first: "2026-09-01" as LocalDate, last: "2026-10-31" as LocalDate } });
+    const page = await openTimeline(instance.app, view, { access: openViewAccess, days: { first: "2026-09-01" as LocalDate, last: "2026-10-31" as LocalDate } });
     const all = [...(page?.pinned ?? []), ...(page?.days ?? []).flatMap((day) => day.tasks)];
     const found = all.find((row) => row.title === title);
     if (!found) throw new Error(`no Task ${title}`);
@@ -106,7 +107,7 @@ describe("Tasks", () => {
     expect(await instance.app.tasks.tickFromView(view, kit, { done: true, access: openViewAccess })).toEqual({ ok: true });
 
     expect(await shown()).toEqual({ pinned: [], days: {} });
-    const past = await instance.app.views.open(view, { access: openViewAccess, days: { first: "2026-09-16" as LocalDate, last: "2026-09-16" as LocalDate } });
+    const past = await openTimeline(instance.app, view, { access: openViewAccess, days: { first: "2026-09-16" as LocalDate, last: "2026-09-16" as LocalDate } });
     expect(past?.days[0]?.tasks).toMatchObject([{ title: "Bring sports kit", status: "done" }]);
 
     expect(await instance.app.tasks.tickFromView(view, kit, { done: false, access: openViewAccess })).toEqual({ ok: true });
@@ -120,7 +121,7 @@ describe("Tasks", () => {
     await instance.app.tasks.tickFromView(view, form, { done: true, access: openViewAccess });
 
     expect(await shown()).toEqual({ pinned: [], days: {} });
-    const sent = await instance.app.views.open(view, { access: openViewAccess, days: { first: "2026-09-10" as LocalDate, last: "2026-09-14" as LocalDate } });
+    const sent = await openTimeline(instance.app, view, { access: openViewAccess, days: { first: "2026-09-10" as LocalDate, last: "2026-09-14" as LocalDate } });
     expect(sent?.days.map((day) => [day.date, day.tasks.map((row) => row.title)])).toEqual([
       ["2026-09-10", ["Sign the trip form"]],
       ["2026-09-11", []],
@@ -130,24 +131,46 @@ describe("Tasks", () => {
     ]);
   });
 
-  it("records each tick and untick with its time and the View or Admin that made it", async () => {
-    await instance.app.admins.createFirstAdmin({ email: "anna@example.org", password: "correct horse battery" });
-    const [anna] = await instance.app.admins.listAdmins();
+  it("records each tick and untick with its time and the View that made it", async () => {
+    const created = await instance.app.views.create({ kind: "tasks", preselected: [], horizonDays: 7 });
+    if (!created.ok) throw new Error(`creating failed: ${created.problem}`);
+    const list = created.id;
     await arrive(sportsKit);
     const kit = await taskId("Bring sports kit");
 
     await instance.app.tasks.tickFromView(view, kit, { done: true, access: openViewAccess });
     instance.clock.advance(5 * minutes);
-    await instance.app.tasks.tickAsAdmin(anna!.id, kit, { done: false });
+    await instance.app.tasks.tickFromView(list, kit, { done: false, access: openViewAccess });
     instance.clock.advance(5 * minutes);
-    await instance.app.tasks.tickAsAdmin(anna!.id, kit, { done: true });
+    await instance.app.tasks.tickFromView(list, kit, { done: true, access: openViewAccess });
 
     expect(await instance.app.tasks.ticks(kit)).toEqual([
       { done: true, at: new Date("2026-09-14T07:15:00Z"), by: { kind: "view", viewId: view } },
-      { done: false, at: new Date("2026-09-14T07:20:00Z"), by: { kind: "admin", adminId: anna!.id } },
-      { done: true, at: new Date("2026-09-14T07:25:00Z"), by: { kind: "admin", adminId: anna!.id } },
+      { done: false, at: new Date("2026-09-14T07:20:00Z"), by: { kind: "view", viewId: list } },
+      { done: true, at: new Date("2026-09-14T07:25:00Z"), by: { kind: "view", viewId: list } },
     ]);
     expect((await shown()).days).toEqual({ "2026-09-16": ["Bring sports kit (done)"] });
+  });
+
+  it("lists in a Task List those Due first, then those not Due yet, then those done in the last 30 days", async () => {
+    const created = await instance.app.views.create({ kind: "tasks", preselected: [], horizonDays: 7 });
+    if (!created.ok) throw new Error(`creating failed: ${created.problem}`);
+    await arrive(
+      sportsKit,
+      task("form", "create", "2026-09-10T10:00:00Z", { title: "Sign the trip form", deadline: "2026-09-12" }),
+      task("old", "create", "2026-07-01T10:00:00Z", { title: "Return the library book", deadline: "2026-07-03" }),
+      task("photo", "create", "2026-09-10T10:00:00Z", { title: "Say if a photo may be taken" }),
+    );
+    await instance.app.tasks.tickFromView(created.id, await taskId("Say if a photo may be taken"), { done: true, access: openViewAccess });
+    await instance.app.tasks.tickFromView(created.id, await taskId("Return the library book"), { done: true, access: openViewAccess });
+
+    const page = await instance.app.views.open(created.id, { access: openViewAccess });
+    if (page?.kind !== "tasks") throw new Error("not a Task List");
+    const titles = (rows: { title: string; status: string }[]) => rows.map((row) => `${row.title} (${row.status})`);
+
+    expect(titles(page.due)).toEqual(["Sign the trip form (overdue)"]);
+    expect(titles(page.upcoming)).toEqual(["Bring sports kit (upcoming)"]);
+    expect(titles(page.done)).toEqual(["Say if a photo may be taken (done)"]);
   });
 
   it("adds nothing for a tick that changes nothing, and refuses what is no Task or no View", async () => {
@@ -299,7 +322,7 @@ describe("Tasks extracted from mail", () => {
 
   /** Every Task the View shows, pinned or on a day, with its Deadline and things to bring. */
   const tasks = async () => {
-    const page = await instance.app.views.open(view, { access: openViewAccess });
+    const page = await openTimeline(instance.app, view, { access: openViewAccess });
     return [...(page?.pinned ?? []), ...(page?.days ?? []).flatMap((day) => day.tasks)].map(
       ({ title, deadline, bring, status, cancelled, messages }) => ({ title, deadline, bring, status, cancelled, messages: messages.length }),
     );
@@ -361,7 +384,7 @@ describe("Tasks extracted from mail", () => {
   it("updates a Task when a later mail of its thread changes it, and leaves it done", async () => {
     extractor.script("Ausflug am Freitag", [], [tripPacking]);
     await arrive(mail("m1", "2026-09-14T06:12:00Z", packingList));
-    const [found] = (await instance.app.views.open(view, { access: openViewAccess }))!.days.flatMap((day) => day.tasks);
+    const [found] = (await openTimeline(instance.app, view, { access: openViewAccess }))!.days.flatMap((day) => day.tasks);
     await instance.app.tasks.tickFromView(view, found!.itemId, { done: true, access: openViewAccess });
     extractor.script("Sonnencreme", [], [
       extractedTask({ updates: "T1", bring: ["Regenjacke", "Brotdose", "Trinkflasche", "Sonnencreme"], evidence: "bitte auch Sonnencreme mitgeben" }),

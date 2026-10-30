@@ -8,6 +8,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { bootForTest, type TestInstance } from "../support/boot";
 import { InMemoryBlobStore } from "../support/in-memory-blob-store";
 import { extracted, ScriptedExtractor } from "../support/scripted-extractor";
+import { openTimeline } from "../support/timeline";
 
 const minutes = 60 * 1000;
 
@@ -89,7 +90,7 @@ describe("WhatsApp chats read through the Matrix bridge", () => {
   }
 
   const titles = async () => {
-    const page = await instance.app.views.open(view, { access: openViewAccess });
+    const page = await openTimeline(instance.app, view, { access: openViewAccess });
     return (page?.days ?? []).flatMap((day) => day.items.map((item) => item.title));
   };
 
@@ -99,7 +100,7 @@ describe("WhatsApp chats read through the Matrix bridge", () => {
     await run();
 
     expect(await titles()).toEqual(["Wandertag 5b"]);
-    const page = await instance.app.views.open(view, { access: openViewAccess });
+    const page = await openTimeline(instance.app, view, { access: openViewAccess });
     const message = await instance.app.messages.open(page!.days.flatMap((day) => day.items)[0]!.messages[0]!.id);
     expect(message?.attributes).toEqual({ messenger: "WhatsApp", chat: "Klasse 5b Eltern", sender: "Frau Berger (WA)" });
   });

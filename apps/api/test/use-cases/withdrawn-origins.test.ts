@@ -6,6 +6,7 @@ import { bootForTest, type TestInstance } from "../support/boot";
 import { InMemoryBlobStore } from "../support/in-memory-blob-store";
 import { extracted, ScriptedExtractor } from "../support/scripted-extractor";
 import { testPluginControls, writeTestPluginPackage } from "../support/test-source-plugin";
+import { openTimeline } from "../support/timeline";
 
 const minutes = 60 * 1000;
 
@@ -50,7 +51,7 @@ describe("Origins a Source withdraws, such as deleted chat messages", () => {
   };
 
   const titles = async () => {
-    const page = await instance.app.views.open(view, { access: openViewAccess });
+    const page = await openTimeline(instance.app, view, { access: openViewAccess });
     return (page?.days ?? []).flatMap((day) => day.items.map((item) => item.title));
   };
 
@@ -58,7 +59,7 @@ describe("Origins a Source withdraws, such as deleted chat messages", () => {
     testPluginControls.emit("chat", [message("$m1", trip)]);
     await run();
     expect(await titles()).toEqual(["Wandertag 5b"]);
-    const page = await instance.app.views.open(view, { access: openViewAccess });
+    const page = await openTimeline(instance.app, view, { access: openViewAccess });
     const [extracted] = page!.days.flatMap((day) => day.items)[0]!.messages;
 
     testPluginControls.withdraw("chat", ["$m1"]);

@@ -23,8 +23,12 @@ A parent who signs in with their own account to manage settings and Sources, and
 _Avoid_: Owner, superuser, parent account
 
 **View**:
-A configurable perspective on the Family's Items, such as one showing only Items that concern a given Family Member; opened without signing in, and read-only except for ticking Tasks done.
+A configurable perspective on the Family's Items, such as one showing only Items that concern a given Family Member, either as a timeline of days or as a Task List; opened without signing in, and read-only except for ticking Tasks done.
 _Avoid_: Dashboard, read-only user, kiosk
+
+**Task List**:
+A View that lists the Tasks it shows instead of a timeline: Due and Overdue ones first, then those not Due yet, then those done in the last 30 days; ticked there as in a timeline.
+_Avoid_: To-do view, task page, Tasks section
 
 ### Inputs
 

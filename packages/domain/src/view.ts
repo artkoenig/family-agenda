@@ -3,12 +3,22 @@ import type { FamilyMemberId } from "./family-member";
 
 export type ViewId = string & { readonly __brand: "ViewId" };
 
-/** A View's only settings are its preselected Family Members and its horizon. */
+/** What a View shows: a timeline of days, or a Task List. */
+export const viewKinds = ["timeline", "tasks"] as const;
+
+export type ViewKind = (typeof viewKinds)[number];
+
+export function isViewKind(value: string): value is ViewKind {
+  return (viewKinds as readonly string[]).includes(value);
+}
+
+/** A View's only settings are its kind, its preselected Family Members and its horizon. */
 export type View = {
   id: ViewId;
+  kind: ViewKind;
   /** Whom the View is for, and its quick filter offers; none means the whole Family. */
   preselected: FamilyMemberId[];
-  /** How many days the timeline shows, today included. */
+  /** How many days the timeline shows, today included; a Task List keeps it unused. */
   horizonDays: number;
   createdAt: Date;
 };

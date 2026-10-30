@@ -4,6 +4,7 @@ import type { FamilyMemberId, SourceId, ViewId } from "@family-agenda/domain";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { bootForTest, type TestInstance } from "../support/boot";
 import { testPluginControls, writeTestPluginPackage } from "../support/test-source-plugin";
+import { openTimeline } from "../support/timeline";
 
 const minutes = 60 * 1000;
 
@@ -71,7 +72,7 @@ describe("Attribution by Source", () => {
 
   /** Tuesday's rows as title and whom they concern, by name, under the quick filter. */
   const tuesday = async (show: Showing = "all") => {
-    const page = await instance.app.views.open(view, { access: openViewAccess, show });
+    const page = await openTimeline(instance.app, view, { access: openViewAccess, show });
     const names = new Map(page?.members.map((member) => [member.id, member.name]));
     const day = page?.days.find((candidate) => candidate.date === "2026-09-15");
     return (day?.items ?? []).map(
@@ -197,7 +198,7 @@ describe("Attribution by Part of a Source", () => {
   const inFolder = (part: string, key: string): Origin => ({ ...entry(key), part });
 
   const tuesday = async () => {
-    const page = await instance.app.views.open(view, { access: openViewAccess, show: "all" });
+    const page = await openTimeline(instance.app, view, { access: openViewAccess, show: "all" });
     const names = new Map(page?.members.map((member) => [member.id, member.name]));
     const day = page?.days.find((candidate) => candidate.date === "2026-09-15");
     return (day?.items ?? []).map(

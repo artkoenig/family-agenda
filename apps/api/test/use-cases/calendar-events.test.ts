@@ -6,6 +6,7 @@ import type { ViewId } from "@family-agenda/domain";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { bootForTest, type TestInstance } from "../support/boot";
 import { testPluginControls, writeTestPluginPackage } from "../support/test-source-plugin";
+import { openTimeline } from "../support/timeline";
 
 const minutes = 60 * 1000;
 
@@ -58,7 +59,7 @@ describe("calendar Events on the timeline", () => {
 
   /** The rows of the View, per day, as time, title and whether they are cancelled or earlier. */
   const timeline = async (id: ViewId = view) => {
-    const page = await instance.app.views.open(id, { access: openViewAccess });
+    const page = await openTimeline(instance.app, id, { access: openViewAccess });
     return Object.fromEntries(
       (page?.days ?? [])
         .filter((day) => day.items.length > 0)
@@ -80,7 +81,7 @@ describe("calendar Events on the timeline", () => {
 
     expect(await timeline()).toEqual({ "2026-09-15": ["16:00-17:00 Piano lesson"] });
     expect(await timeline(other.id)).toEqual({ "2026-09-15": ["16:00-17:00 Piano lesson"] });
-    const page = await instance.app.views.open(view, { access: openViewAccess });
+    const page = await openTimeline(instance.app, view, { access: openViewAccess });
     expect(page?.days[1]?.items[0]).toMatchObject({
       place: "Music school",
       span: { allDay: false, start: { date: "2026-09-15", time: "16:00" }, end: { date: "2026-09-15", time: "17:00" } },
@@ -174,7 +175,7 @@ describe("calendar Events on the timeline", () => {
     await arrive({ ...piano(), link: "https://calendar.example.org/event/piano" });
     await arrive(rename);
 
-    const page = await instance.app.views.open(view, { access: openViewAccess });
+    const page = await openTimeline(instance.app, view, { access: openViewAccess });
     expect(page?.days[1]?.items[0]?.links).toEqual([{ url: "https://calendar.example.org/event/piano", source: "calendar" }]);
   });
 
@@ -183,7 +184,7 @@ describe("calendar Events on the timeline", () => {
     const [source] = await instance.app.sources.list();
     await instance.app.sources.rename(source!.id, "Music school");
 
-    const page = await instance.app.views.open(view, { access: openViewAccess });
+    const page = await openTimeline(instance.app, view, { access: openViewAccess });
     expect(page?.days[1]?.items[0]?.links).toEqual([{ url: "https://calendar.example.org/event/piano", source: "Music school" }]);
   });
 
@@ -326,7 +327,7 @@ describe("polling Sources", () => {
     expect(report.failed).toEqual([
       { sourceId: school, kind: "definite", message: "The plugin emitted invalid Origins: the Origin has no external id" },
     ]);
-    const page = await instance.app.views.open(created.id, { access: openViewAccess });
+    const page = await openTimeline(instance.app, created.id, { access: openViewAccess });
     expect(page?.days.flatMap((day) => day.items)).toEqual([]);
   });
 

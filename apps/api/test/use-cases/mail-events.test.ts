@@ -6,6 +6,7 @@ import { bootForTest, type TestInstance } from "../support/boot";
 import { InMemoryBlobStore } from "../support/in-memory-blob-store";
 import { extracted, ScriptedExtractor } from "../support/scripted-extractor";
 import { testPluginControls, writeTestPluginPackage } from "../support/test-source-plugin";
+import { openTimeline } from "../support/timeline";
 
 const minutes = 60 * 1000;
 
@@ -60,7 +61,7 @@ describe("Events extracted from mail", () => {
   };
 
   const timeline = async () => {
-    const page = await instance.app.views.open(view, { access: openViewAccess });
+    const page = await openTimeline(instance.app, view, { access: openViewAccess });
     return Object.fromEntries(
       (page?.days ?? [])
         .filter((day) => day.items.length > 0)
@@ -74,7 +75,7 @@ describe("Events extracted from mail", () => {
     await arrive(mail("m1", "2026-09-14T06:12:00Z", invitation));
 
     expect(await timeline()).toEqual({ "2026-09-17": ["19:30-19:30 Elternabend Klasse 5b"] });
-    const page = await instance.app.views.open(view, { access: openViewAccess });
+    const page = await openTimeline(instance.app, view, { access: openViewAccess });
     const row = page?.days[3]?.items[0];
     expect(row).toMatchObject({ place: "Raum 104", links: [] });
     expect(row?.messages.map((message) => message.source)).toEqual(["mailbox"]);
@@ -105,7 +106,7 @@ describe("Events extracted from mail", () => {
 
     await arrive(mail("m2", "2026-09-15T10:00:00Z", "Der Elternabend wird auf 16 Uhr verlegt.", "m1"));
 
-    const page = await instance.app.views.open(view, { access: openViewAccess });
+    const page = await openTimeline(instance.app, view, { access: openViewAccess });
     expect(page?.days[3]?.items[0]).toMatchObject({ from: "19:30" });
     expect(page?.days[3]?.items[0]?.messages).toHaveLength(1);
   });
@@ -133,7 +134,7 @@ describe("Events extracted from mail", () => {
     expect(extractor.requests.at(-1)?.knownEvents).toEqual([
       { ref: "E1", title: "Elternabend Klasse 5b", when: "2026-09-17 19:30–19:30", place: "Raum 104" },
     ]);
-    const page = await instance.app.views.open(view, { access: openViewAccess });
+    const page = await openTimeline(instance.app, view, { access: openViewAccess });
     expect(page?.days[3]?.items[0]?.messages).toHaveLength(2);
   });
 
