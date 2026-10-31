@@ -80,7 +80,7 @@ describe("the LLM endpoint and mail over HTTP", () => {
     await instance.app.sourceTypes.enable("school-mail");
     await instance.app.sources.add({ sourceTypeId: "school-mail", plain: { url: "imap.example.org" }, secrets: {} });
     await instance.app.llmEndpoint.save({ baseUrl: "http://ollama:11434/v1", model: "qwen3.5:9b", apiKey: "" });
-    const created = await instance.app.views.create({ preselected: [], horizonDays: 3 });
+    const created = await instance.app.agendas.create({ preselected: [], horizonDays: 3 });
     if (!created.ok) throw new Error("creating failed");
     const text = "Subject: Wandertag\n\nMorgen ist Wandertag, Treffpunkt 8 Uhr <am Bahnhof>.";
     extractor.script("Wandertag", [
@@ -97,8 +97,8 @@ describe("the LLM endpoint and mail over HTTP", () => {
     await instance.app.polling.pollDue();
     await instance.app.extraction.extractPending();
 
-    const view = await (await instance.get(`/views/${created.id}`)).text();
-    const link = /<a href="(\/admin\/messages\/[0-9a-f-]+)"/.exec(view)?.[1];
+    const agenda = await (await instance.get(`/agendas/${created.id}`)).text();
+    const link = /<a href="(\/admin\/messages\/[0-9a-f-]+)"/.exec(agenda)?.[1];
     expect(link).toBeDefined();
 
     const message = await (await instance.get(link!, { cookie })).text();
@@ -116,7 +116,7 @@ describe("the LLM endpoint and mail over HTTP", () => {
     await instance.app.sourceTypes.enable("school-mail");
     await instance.app.sources.add({ sourceTypeId: "school-mail", plain: { url: "imap.example.org" }, secrets: {} });
     await instance.app.llmEndpoint.save({ baseUrl: "http://ollama:11434/v1", model: "qwen3.5:9b", apiKey: "" });
-    const created = await instance.app.views.create({ preselected: [], horizonDays: 3 });
+    const created = await instance.app.agendas.create({ preselected: [], horizonDays: 3 });
     if (!created.ok) throw new Error("creating failed");
     extractor.script("Elternabend", [extracted({ title: "Elternabend", date: { daysAfter: 1 }, evidence: "Morgen ist Elternabend" })]);
     testPluginControls.emit("school-mail", [
@@ -136,8 +136,8 @@ describe("the LLM endpoint and mail over HTTP", () => {
     ]);
     await instance.app.polling.pollDue();
     await instance.app.extraction.extractPending();
-    const view = await (await instance.get(`/views/${created.id}`)).text();
-    const link = /<a href="(\/admin\/messages\/[0-9a-f-]+)"/.exec(view)![1]!;
+    const agenda = await (await instance.get(`/agendas/${created.id}`)).text();
+    const link = /<a href="(\/admin\/messages\/[0-9a-f-]+)"/.exec(agenda)![1]!;
 
     const message = await (await instance.get(link, { cookie })).text();
     expect(message).toContain(`<a href="${link}/attachments/0" download="Einladung.pdf">Einladung.pdf</a>`);
@@ -166,7 +166,7 @@ describe("the LLM endpoint and mail over HTTP", () => {
     await instance.app.sourceTypes.enable("school-mail");
     await instance.app.sources.add({ sourceTypeId: "school-mail", plain: { url: "imap.example.org" }, secrets: {} });
     await instance.app.llmEndpoint.save({ baseUrl: "http://ollama:11434/v1", model: "qwen3.5:9b", apiKey: "" });
-    const created = await instance.app.views.create({ preselected: [], horizonDays: 3 });
+    const created = await instance.app.agendas.create({ preselected: [], horizonDays: 3 });
     if (!created.ok) throw new Error("creating failed");
     extractor.script("Naturauftrag", [], [extractedTask({ title: "Naturauftrag", evidence: "Bringt drei Blätter mit" })]);
     testPluginControls.emit("school-mail", [
@@ -180,8 +180,8 @@ describe("the LLM endpoint and mail over HTTP", () => {
     await instance.app.polling.pollDue();
     await instance.app.extraction.extractPending();
 
-    const view = await (await instance.get(`/views/${created.id}`)).text();
-    const row = /<li class="fam-item fam-task[^"]*"(?:(?!<\/li>).)*Naturauftrag(?:(?!<\/li>).)*<\/li>/s.exec(view)?.[0] ?? "";
+    const agenda = await (await instance.get(`/agendas/${created.id}`)).text();
+    const row = /<li class="fam-item fam-task[^"]*"(?:(?!<\/li>).)*Naturauftrag(?:(?!<\/li>).)*<\/li>/s.exec(agenda)?.[0] ?? "";
     expect(row).toMatch(/<a href="\/admin\/messages\/[0-9a-f-]+">Open the message<\/a>/);
     expect(row).not.toContain("Admins only");
   });

@@ -1,6 +1,6 @@
 import type { Origin } from "@family-agenda/source-sdk";
-import { openViewAccess, type Showing } from "@family-agenda/application";
-import type { FamilyMemberId, SourceId, ViewId } from "@family-agenda/domain";
+import { openAgendaAccess, type Showing } from "@family-agenda/application";
+import type { FamilyMemberId, SourceId, AgendaId } from "@family-agenda/domain";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { bootForTest, type TestInstance } from "../support/boot";
 import { testPluginControls, writeTestPluginPackage } from "../support/test-source-plugin";
@@ -32,7 +32,7 @@ describe("Attribution by Source", () => {
   let club: SourceId;
   let mia: FamilyMemberId;
   let leo: FamilyMemberId;
-  let view: ViewId;
+  let agenda: AgendaId;
   beforeEach(async () => {
     // The clock starts on Monday 2026-09-14 at 09:00 in Berlin.
     instance = await bootForTest();
@@ -54,9 +54,9 @@ describe("Attribution by Source", () => {
     };
     mia = await member("Mia");
     leo = await member("Leo");
-    const created = await instance.app.views.create({ preselected: [], horizonDays: 7 });
+    const created = await instance.app.agendas.create({ preselected: [], horizonDays: 7 });
     if (!created.ok) throw new Error(`creating failed: ${created.problem}`);
-    view = created.id;
+    agenda = created.id;
   });
   afterEach(async () => {
     await instance.close();
@@ -72,7 +72,7 @@ describe("Attribution by Source", () => {
 
   /** Tuesday's rows as title and whom they concern, by name, under the quick filter. */
   const tuesday = async (show: Showing = "all") => {
-    const page = await openTimeline(instance.app, view, { access: openViewAccess, show });
+    const page = await openTimeline(instance.app, agenda, { access: openAgendaAccess, show });
     const names = new Map(page?.members.map((member) => [member.id, member.name]));
     const day = page?.days.find((candidate) => candidate.date === "2026-09-15");
     return (day?.items ?? []).map(
@@ -116,13 +116,13 @@ describe("Attribution by Source", () => {
     expect(await tuesday()).toEqual(["Piano lesson: Family"]);
   });
 
-  it("carries in a View's feed the Items concerning its preselected Family Members, and whole-Family ones", async () => {
+  it("carries in an Agenda's feed the Items concerning its preselected Family Members, and whole-Family ones", async () => {
     await arrive({ calendar: [entry("Piano lesson")], club: [entry("Football")] });
     await assign(calendar, [mia]);
     const titles = async (preselected: FamilyMemberId[]) => {
-      const created = await instance.app.views.create({ preselected, horizonDays: 7 });
+      const created = await instance.app.agendas.create({ preselected, horizonDays: 7 });
       if (!created.ok) throw new Error(`creating failed: ${created.problem}`);
-      const feed = await instance.app.views.feed(created.id, { access: openViewAccess });
+      const feed = await instance.app.agendas.feed(created.id, { access: openAgendaAccess });
       return feed?.events.map((event) => event.title).sort();
     };
 
@@ -160,7 +160,7 @@ describe("Attribution by Part of a Source", () => {
   let mailbox: SourceId;
   let mia: FamilyMemberId;
   let leo: FamilyMemberId;
-  let view: ViewId;
+  let agenda: AgendaId;
   beforeEach(async () => {
     instance = await bootForTest();
     await writeTestPluginPackage(instance.workspacePackages, {
@@ -187,9 +187,9 @@ describe("Attribution by Part of a Source", () => {
     });
     if (!added.ok) throw new Error(`adding failed: ${added.problem}`);
     mailbox = added.id;
-    const created = await instance.app.views.create({ preselected: [], horizonDays: 7 });
+    const created = await instance.app.agendas.create({ preselected: [], horizonDays: 7 });
     if (!created.ok) throw new Error(`creating failed: ${created.problem}`);
-    view = created.id;
+    agenda = created.id;
   });
   afterEach(async () => {
     await instance.close();
@@ -198,7 +198,7 @@ describe("Attribution by Part of a Source", () => {
   const inFolder = (part: string, key: string): Origin => ({ ...entry(key), part });
 
   const tuesday = async () => {
-    const page = await openTimeline(instance.app, view, { access: openViewAccess, show: "all" });
+    const page = await openTimeline(instance.app, agenda, { access: openAgendaAccess, show: "all" });
     const names = new Map(page?.members.map((member) => [member.id, member.name]));
     const day = page?.days.find((candidate) => candidate.date === "2026-09-15");
     return (day?.items ?? []).map(

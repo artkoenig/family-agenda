@@ -1,6 +1,6 @@
 import type { Origin } from "@family-agenda/source-sdk";
-import { openViewAccess, type CurrentActivity, type ExtractionRequest, type ExtractionResult } from "@family-agenda/application";
-import type { ViewId } from "@family-agenda/domain";
+import { openAgendaAccess, type CurrentActivity, type ExtractionRequest, type ExtractionResult } from "@family-agenda/application";
+import type { AgendaId } from "@family-agenda/domain";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { bootForTest, type TestInstance } from "../support/boot";
 import { InMemoryBlobStore } from "../support/in-memory-blob-store";
@@ -16,7 +16,7 @@ const mail = (id: string, text: string): Origin => ({
   content: { kind: "raw-message", text, attachments: [], thread: id },
 });
 
-/** A ScriptedExtractor that runs `during` while it reads each message, as a View opened meanwhile would. */
+/** A ScriptedExtractor that runs `during` while it reads each message, as an Agenda opened meanwhile would. */
 class ObservedExtractor extends ScriptedExtractor {
   during: () => Promise<void> = () => Promise.resolve();
 
@@ -26,10 +26,10 @@ class ObservedExtractor extends ScriptedExtractor {
   }
 }
 
-describe("The worker's activity on a View", () => {
+describe("The worker's activity on an Agenda", () => {
   let instance: TestInstance;
   let extractor: ObservedExtractor;
-  let view: ViewId;
+  let agenda: AgendaId;
   beforeEach(async () => {
     extractor = new ObservedExtractor();
     instance = await bootForTest({ extractor, blobStore: new InMemoryBlobStore() });
@@ -38,15 +38,15 @@ describe("The worker's activity on a View", () => {
     await instance.app.sourceTypes.enable("mailbox");
     await instance.app.sources.add({ sourceTypeId: "mailbox", plain: { url: "imap.example.org" }, secrets: {} });
     await instance.app.llmEndpoint.save({ baseUrl: "http://ollama:11434/v1", model: "qwen3.5:9b", apiKey: "" });
-    const created = await instance.app.views.create({ preselected: [], horizonDays: 7 });
+    const created = await instance.app.agendas.create({ preselected: [], horizonDays: 7 });
     if (!created.ok) throw new Error(`creating failed: ${created.problem}`);
-    view = created.id;
+    agenda = created.id;
   });
   afterEach(async () => {
     await instance.close();
   });
 
-  const activity = async () => (await instance.app.views.open(view, { access: openViewAccess }))?.activity;
+  const activity = async () => (await instance.app.agendas.open(agenda, { access: openAgendaAccess }))?.activity;
 
   const arrive = async (...origins: Origin[]) => {
     testPluginControls.emit("mailbox", origins);
@@ -69,7 +69,7 @@ describe("The worker's activity on a View", () => {
       { kind: "extracting", done: 1, total: 2 },
     ]);
     expect(await activity()).toBeNull();
-    expect(await instance.app.views.activity(view, { access: openViewAccess })).toBeNull();
+    expect(await instance.app.agendas.activity(agenda, { access: openAgendaAccess })).toBeNull();
   });
 
   it("ends the activity when extraction stops because the endpoint fails", async () => {
@@ -94,7 +94,7 @@ describe("The worker's activity on a View", () => {
     expect(seen).toBeNull();
   });
 
-  it("is refused for an unknown View", async () => {
-    expect(await instance.app.views.activity("00000000-0000-4000-8000-000000000000" as ViewId, { access: openViewAccess })).toBeUndefined();
+  it("is refused for an unknown Agenda", async () => {
+    expect(await instance.app.agendas.activity("00000000-0000-4000-8000-000000000000" as AgendaId, { access: openAgendaAccess })).toBeUndefined();
   });
 });

@@ -14,7 +14,7 @@ const event = (key: string, fields: Record<string, unknown>, more: Partial<Origi
   ...more,
 });
 
-describe("Events in a View over HTTP", () => {
+describe("Events in an Agenda over HTTP", () => {
   let instance: HttpTestInstance;
   let path: string;
   beforeEach(async () => {
@@ -23,9 +23,9 @@ describe("Events in a View over HTTP", () => {
     await instance.post("/setup", { email: "anna@example.org", password: "correct horse battery" });
     await instance.app.sourceTypes.enable("timeline-cal");
     await instance.app.sources.add({ sourceTypeId: "timeline-cal", plain: { url: "https://calendar.example.org" }, secrets: {} });
-    const created = await instance.app.views.create({ preselected: [], horizonDays: 3 });
+    const created = await instance.app.agendas.create({ preselected: [], horizonDays: 3 });
     if (!created.ok) throw new Error("creating failed");
-    path = `/views/${created.id}`;
+    path = `/agendas/${created.id}`;
   });
   afterEach(async () => {
     await instance.close();
@@ -153,10 +153,10 @@ describe("Events in a View over HTTP", () => {
       expect((await instance.get(`${path}?${query}`)).status).toBe(400);
     }
     expect((await instance.get(`${path}/days?from=2026-09-11&until=2026-09-13`)).status).toBe(400);
-    expect((await instance.get("/views/00000000-0000-4000-8000-000000000000/days?from=2026-09-11&until=2026-09-13&then=later")).status).toBe(404);
+    expect((await instance.get("/agendas/00000000-0000-4000-8000-000000000000/days?from=2026-09-11&until=2026-09-13&then=later")).status).toBe(404);
   });
 
-  it("serves the View's feed as a calendar, without signing in", async () => {
+  it("serves the Agenda's feed as a calendar, without signing in", async () => {
     const place = "Großer Saal der Musikschule; Eingang über den Hof, zweite Tür links, dann die Treppe hinauf";
     await arrive(
       event("concert", {
@@ -178,10 +178,10 @@ describe("Events in a View over HTTP", () => {
     expect(vevent?.getFirstPropertyValue("url")).toBe(`http://localhost${path}`);
   });
 
-  it("serves no feed for an unknown View or one the listener's policy refuses", async () => {
-    expect((await instance.get("/views/00000000-0000-4000-8000-000000000000/feed.ics")).status).toBe(404);
+  it("serves no feed for an unknown Agenda or one the listener's policy refuses", async () => {
+    expect((await instance.get("/agendas/00000000-0000-4000-8000-000000000000/feed.ics")).status).toBe(404);
 
-    const refusing = createHttpApp(instance.app, { trustProxy: false, viewAccess: { mayOpen: () => Promise.resolve(false) } });
+    const refusing = createHttpApp(instance.app, { trustProxy: false, agendaAccess: { mayOpen: () => Promise.resolve(false) } });
     expect((await refusing.request(`${path}/feed.ics`)).status).toBe(404);
   });
 });

@@ -122,16 +122,16 @@ describe("dates in the Family Language", () => {
     await instance.close();
   });
 
-  it("are formatted in its locale on a View", async () => {
-    const created = await instance.app.views.create({ preselected: [], horizonDays: 3 });
+  it("are formatted in its locale on an Agenda", async () => {
+    const created = await instance.app.agendas.create({ preselected: [], horizonDays: 3 });
     if (!created.ok) throw new Error("creating failed");
 
-    const page = await (await instance.get(`/views/${created.id}`)).text();
+    const page = await (await instance.get(`/agendas/${created.id}`)).text();
 
     expect(page).toContain("Mo., 14. Sept.");
     expect(page).toContain("Mittwoch");
 
     await instance.app.languages.setLanguage("en");
-    expect(await (await instance.get(`/views/${created.id}`)).text()).toContain("Mon 14 Sept");
+    expect(await (await instance.get(`/agendas/${created.id}`)).text()).toContain("Mon 14 Sept");
   });
 });

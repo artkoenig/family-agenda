@@ -6,7 +6,7 @@ x-app: &app
   restart: unless-stopped
   environment:
     DATABASE_URL: postgres://family_agenda:${POSTGRES_PASSWORD:-family_agenda}@postgres:5432/family_agenda
-    # The address the Family opens the Instance at, which Views show and copy. By default the name
+    # The address the Family opens the Instance at, which Agendas show and copy. By default the name
     # the `mdns` service announces; set it to your own, such as behind a reverse proxy with HTTPS.
     PUBLIC_URL: ${PUBLIC_URL:-http://${MDNS_NAME:-family-agenda.local}:${PORT:-8080}}
     # Set to true behind your own HTTPS reverse proxy, so session cookies become Secure.
@@ -17,7 +17,7 @@ x-app: &app
     TESSDATA_DIRECTORY: /var/lib/family-agenda/tessdata
     # How the Matrix plugin reaches Synapse and the bridges, which the worker runs (ADR-0011).
     MATRIX_INSTANCE_FILE: /var/lib/family-agenda/matrix/instance.json
-    # The Family's time zone, which decides where a View's days start.
+    # The Family's time zone, which decides where an Agenda's days start.
     TZ: ${TZ:-Europe/Berlin}
   volumes:
     # The master key that Source credentials are encrypted with; never in Postgres (ADR-0006).

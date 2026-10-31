@@ -9,7 +9,7 @@ import type {
   TimelineSchoolDay,
   TimelineTask,
   TimelineTimetableChange,
-  ViewPage,
+  AgendaPage,
 } from "@family-agenda/application";
 import { addDays, daysBetween, type FamilyMemberId, type LocalDate } from "@family-agenda/domain";
 import { raw } from "hono/html";
@@ -17,19 +17,19 @@ import type { Catalogue } from "./i18n/en";
 import { useTranslation, type Translation } from "./i18n/translation";
 import { Layout } from "./layout";
 
-// The View layouts (ADR-0003): a vertical timeline, or a Task List, that works on a phone, a
+// The Agenda layouts (ADR-0003): a vertical timeline, or a Task List, that works on a phone, a
 // desktop and a wall tablet, in the Family Agenda design system (`design/design.css`).
 
-export function ViewPageDocument(props: { page: ViewPage }) {
+export function AgendaPageDocument(props: { page: AgendaPage }) {
   const { t } = useTranslation();
   return (
-    <Layout title={t.view.title} surface="view">
-      <ViewTimeline page={props.page} />
+    <Layout title={t.agenda.title} surface="agenda">
+      <AgendaTimeline page={props.page} />
       <button type="button" id="back-to-today" class="fam-button fam-button--primary fam-button--pill fam-back-to-today" hidden>
         <span class="fam-back-to-today__arrow" aria-hidden="true">↑</span>
-        {t.view.today}
+        {t.agenda.today}
       </button>
-      <script>{raw(viewBar + backToToday)}</script>
+      <script>{raw(agendaBar + backToToday)}</script>
     </Layout>
   );
 }
@@ -41,7 +41,7 @@ export function ViewPageDocument(props: { page: ViewPage }) {
  * Without JavaScript the bar stays whole. It folds at one scroll position and unfolds at another,
  * so that its own change of height cannot toggle it back and forth.
  */
-const viewBar = `
+const agendaBar = `
 const foldAt = 120;
 const unfoldAt = 8;
 let folded = false;
@@ -108,17 +108,17 @@ back.addEventListener("click", () => {
 `;
 
 /**
- * The part of a View that htmx swaps: on a quick filter change, and every minute, so that a
+ * The part of an Agenda that htmx swaps: on a quick filter change, and every minute, so that a
  * wall tablet keeps its clock and "now" line current. The refresh asks for the days scrolled to,
  * which loading more days keeps up to date, so that it neither drops them nor moves the page.
  */
-export function ViewTimeline(props: { page: ViewPage }) {
+export function AgendaTimeline(props: { page: AgendaPage }) {
   const { page } = props;
   const { t } = useTranslation();
   return (
     <main
-      id="view"
-      hx-get={viewUrl(page.id, page.showing)}
+      id="agenda"
+      hx-get={agendaUrl(page.id, page.showing)}
       hx-trigger={`every 60s, ${activityEnded} from:body`}
       hx-swap="outerHTML"
       hx-include="#shown-from, #shown-until"
@@ -126,11 +126,11 @@ export function ViewTimeline(props: { page: ViewPage }) {
     >
       <ShownDay side="from" date={page.days[0]?.date ?? page.now.date} />
       <ShownDay side="until" date={page.days.at(-1)?.date ?? page.now.date} />
-      <ViewBar page={page} />
+      <AgendaBar page={page} />
       {page.pinned.length > 0 ? (
         <section class="fam-tasks" aria-labelledby="to-do">
           <h2 class="fam-tasks__title" id="to-do">
-            {t.view.toDo}
+            {t.agenda.toDo}
           </h2>
           <ul class="fam-tasks__list">
             {page.pinned.map((row) => (
@@ -140,7 +140,7 @@ export function ViewTimeline(props: { page: ViewPage }) {
         </section>
       ) : null}
       <ol class="fam-days">
-        <ViewDays page={page} earlier later />
+        <AgendaDays page={page} earlier later />
       </ol>
     </main>
   );
@@ -149,9 +149,9 @@ export function ViewTimeline(props: { page: ViewPage }) {
 export function TaskListDocument(props: { page: TaskListPage }) {
   const { t } = useTranslation();
   return (
-    <Layout title={t.view.taskList.title} surface="view">
+    <Layout title={t.agenda.taskList.title} surface="agenda">
       <TaskList page={props.page} />
-      <script>{raw(viewBar)}</script>
+      <script>{raw(agendaBar)}</script>
     </Layout>
   );
 }
@@ -163,7 +163,7 @@ export function TaskListDocument(props: { page: TaskListPage }) {
 export function TaskList(props: { page: TaskListPage }) {
   const { page } = props;
   const { t } = useTranslation();
-  const l = t.view.taskList;
+  const l = t.agenda.taskList;
   const section = (id: string, title: string, rows: TimelineTask[], quiet?: boolean) =>
     rows.length > 0 ? (
       <section class={quiet ? "fam-tasks fam-tasks--quiet" : "fam-tasks"} aria-labelledby={id}>
@@ -179,15 +179,15 @@ export function TaskList(props: { page: TaskListPage }) {
     ) : null;
   const none = page.due.length + page.upcoming.length + page.done.length === 0;
   return (
-    <main id="view" hx-get={viewUrl(page.id, page.showing)} hx-trigger={`every 60s, ${activityEnded} from:body`} hx-swap="outerHTML">
-      <ViewBar page={page} kind={l.title} />
+    <main id="agenda" hx-get={agendaUrl(page.id, page.showing)} hx-trigger={`every 60s, ${activityEnded} from:body`} hx-swap="outerHTML">
+      <AgendaBar page={page} kind={l.title} />
       {none ? (
         <section class="fam-tasks">
           <p class="fam-empty">{l.none}</p>
         </section>
       ) : (
         <>
-          {section("to-do", t.view.toDo, page.due)}
+          {section("to-do", t.agenda.toDo, page.due)}
           {section("coming-up", l.upcoming, page.upcoming)}
           {section("done", l.done, page.done, true)}
         </>
@@ -198,14 +198,14 @@ export function TaskList(props: { page: TaskListPage }) {
 }
 
 /**
- * A View's sticky top bar, whatever its kind: the clock, the quick filter, a hint that some of it
+ * An Agenda's sticky top bar, whatever its kind: the clock, the quick filter, a hint that some of it
  * may be out of date, and, as a line along its bottom edge, what the worker is busy with.
  *
- * On a phone the filter is a row of pills under the clock, and `viewBar` folds the bar into one
+ * On a phone the filter is a row of pills under the clock, and `agendaBar` folds the bar into one
  * line once the page is scrolled, the filter becoming the avatars of those shown, which unfold it
  * again. A wall tablet and a desktop have room for all of it in one row.
  */
-function ViewBar(props: { page: ViewPage | TaskListPage; kind?: string }) {
+function AgendaBar(props: { page: AgendaPage | TaskListPage; kind?: string }) {
   const { page } = props;
   const { t, locale } = useTranslation();
   const everyone = showsEveryChoice(page);
@@ -220,13 +220,13 @@ function ViewBar(props: { page: ViewPage | TaskListPage; kind?: string }) {
           {props.kind ? <span class="fam-bar__kind">{props.kind}</span> : null}
           {page.mayBeOutOfDate ? (
             <p class="fam-out-of-date" role="status" tabindex={0}>
-              <span class="fam-out-of-date__text">{t.view.outOfDate}</span>
+              <span class="fam-out-of-date__text">{t.agenda.outOfDate}</span>
             </p>
           ) : null}
         </div>
         {page.choices.length > 1 ? (
           <>
-            <button type="button" class="fam-bar__summary" aria-controls="quick-filter" aria-expanded="false" aria-label={t.view.quickFilter}>
+            <button type="button" class="fam-bar__summary" aria-controls="quick-filter" aria-expanded="false" aria-label={t.agenda.quickFilter}>
               <span class="fam-avatars">
                 {everyone ? <span class="fam-avatar fam-avatar--all" aria-hidden="true"></span> : shown.map((member) => <Avatar member={member} />)}
               </span>
@@ -237,19 +237,19 @@ function ViewBar(props: { page: ViewPage | TaskListPage; kind?: string }) {
             <nav
               id="quick-filter"
               class="fam-filter"
-              aria-label={t.view.quickFilter}
+              aria-label={t.agenda.quickFilter}
               hx-boost="true"
-              hx-target="#view"
+              hx-target="#agenda"
               hx-swap="outerHTML"
             >
-              <a class="fam-filter__item" href={viewUrl(page.id, "all")} aria-current={everyone ? "true" : undefined}>
+              <a class="fam-filter__item" href={agendaUrl(page.id, "all")} aria-current={everyone ? "true" : undefined}>
                 <span class="fam-avatar fam-avatar--all" aria-hidden="true"></span>
-                {t.view.all}
+                {t.agenda.all}
               </a>
               {page.choices.map((member) => (
                 <a
                   class="fam-filter__item"
-                  href={viewUrl(page.id, toggled(page, member.id))}
+                  href={agendaUrl(page.id, toggled(page, member.id))}
                   aria-current={!everyone && page.showing.includes(member.id) ? "true" : undefined}
                 >
                   <Avatar member={member} />
@@ -260,7 +260,7 @@ function ViewBar(props: { page: ViewPage | TaskListPage; kind?: string }) {
           </>
         ) : null}
       </div>
-      <ActivityIndicator viewId={page.id} activity={page.activity} />
+      <ActivityIndicator agendaId={page.id} activity={page.activity} />
     </header>
   );
 }
@@ -276,16 +276,16 @@ const activityPolling = { busy: "every 3s", idle: "every 20s" };
  * idle. It asks for itself again, and says while busy that it was, so that the answer once the
  * worker is done can raise `activityEnded`.
  */
-export function ActivityIndicator(props: { viewId: string; activity: CurrentActivity | null }) {
-  const { viewId, activity } = props;
+export function ActivityIndicator(props: { agendaId: string; activity: CurrentActivity | null }) {
+  const { agendaId, activity } = props;
   const { t } = useTranslation();
-  const label = activity ? t.view.activity[activity.kind] : "";
+  const label = activity ? t.agenda.activity[activity.kind] : "";
   return (
     <div
       id="activity"
       class="fam-activity"
       role="status"
-      hx-get={`/views/${viewId}/activity`}
+      hx-get={`/agendas/${agendaId}/activity`}
       hx-trigger={activity ? activityPolling.busy : activityPolling.idle}
       hx-swap="outerHTML"
       hx-vals={activity ? '{"was":"busy"}' : undefined}
@@ -319,7 +319,7 @@ export function ShownDay(props: { side: "from" | "until"; date: LocalDate; oob?:
  * The days of a page, with a button to load the days before them and, at the end, a marker that
  * loads the days after them once it scrolls into sight; one horizon at a time each.
  */
-export function ViewDays(props: { page: ViewPage; earlier?: boolean; later?: boolean }) {
+export function AgendaDays(props: { page: AgendaPage; earlier?: boolean; later?: boolean }) {
   const { page } = props;
   const { t } = useTranslation();
   const first = page.days[0]?.date ?? page.now.date;
@@ -337,7 +337,7 @@ export function ViewDays(props: { page: ViewPage; earlier?: boolean; later?: boo
             hx-target="closest li"
             hx-swap="outerHTML"
           >
-            {t.view.earlierDays}
+            {t.agenda.earlierDays}
           </button>
         </li>
       ) : null}
@@ -346,17 +346,17 @@ export function ViewDays(props: { page: ViewPage; earlier?: boolean; later?: boo
       ))}
       {props.later ? (
         <li class="fam-more" hx-get={daysUrl(page, after, "later")} hx-trigger="revealed" hx-swap="outerHTML">
-          {t.view.loadingLaterDays}
+          {t.agenda.loadingLaterDays}
         </li>
       ) : null}
     </>
   );
 }
 
-function DayEntry(props: { page: ViewPage; day: TimelineDay }) {
+function DayEntry(props: { page: AgendaPage; day: TimelineDay }) {
   const { page, day } = props;
   const { t, locale } = useTranslation();
-  const relative = t.view.relativeDays[String(daysBetween(page.now.date, day.date))];
+  const relative = t.agenda.relativeDays[String(daysBetween(page.now.date, day.date))];
   const rows = rowsOf(day);
   const show = (row: DayRow) =>
     row.kind === "event" ? (
@@ -375,7 +375,7 @@ function DayEntry(props: { page: ViewPage; day: TimelineDay }) {
       {day.date === page.now.date ? (
         <>
           {rows.filter((row) => row.row.earlier).map(show)}
-          <div class="fam-now">{t.view.now(page.now.time)}</div>
+          <div class="fam-now">{t.agenda.now(page.now.time)}</div>
           {rows.filter((row) => !row.row.earlier).map(show)}
         </>
       ) : (
@@ -388,7 +388,7 @@ function DayEntry(props: { page: ViewPage; day: TimelineDay }) {
           ))}
         </ul>
       ) : null}
-      {rows.length === 0 && day.tasks.length === 0 ? <p class="fam-empty">{t.view.nothingPlanned}</p> : null}
+      {rows.length === 0 && day.tasks.length === 0 ? <p class="fam-empty">{t.agenda.nothingPlanned}</p> : null}
     </li>
   );
 }
@@ -432,7 +432,7 @@ function Concerned(props: { concerns: TimelineEvent["concerns"]; members: Family
 function SchoolDayRow(props: { row: TimelineSchoolDay; members: FamilyMemberSummary[] }) {
   const { row } = props;
   const { t } = useTranslation();
-  const v = t.view;
+  const v = t.agenda;
   const classes = ["fam-event", row.cancelled ? "fam-event--cancelled" : "", row.earlier ? "fam-event--earlier" : ""]
     .filter(Boolean)
     .join(" ");
@@ -470,7 +470,7 @@ function SchoolDayRow(props: { row: TimelineSchoolDay; members: FamilyMemberSumm
 function TimetableChangeRow(props: { row: TimelineTimetableChange; members: FamilyMemberSummary[] }) {
   const { row } = props;
   const { t } = useTranslation();
-  const v = t.view;
+  const v = t.agenda;
   const classes = ["fam-event", "fam-event--change", row.earlier ? "fam-event--earlier" : ""].filter(Boolean).join(" ");
   const label = changeLabel({ ...row, note: null }, t);
   return (
@@ -527,7 +527,7 @@ function EventRow(props: { row: TimelineEvent; day: LocalDate; members: FamilyMe
   const { row } = props;
   const translation = useTranslation();
   const { t } = translation;
-  const v = t.view;
+  const v = t.agenda;
   const classes = ["fam-item", row.cancelled ? "fam-item--cancelled" : "", row.earlier ? "fam-item--earlier" : ""]
     .filter(Boolean)
     .join(" ");
@@ -568,7 +568,7 @@ function Sources(props: { row: Pick<TimelineEvent, "links" | "messages"> }) {
       ))}
       {props.row.messages.map((message) => (
         <span class="fam-item__meta">
-          {text(message.source)} · <a href={`/admin/messages/${message.id}`}>{t.view.openMessage}</a>
+          {text(message.source)} · <a href={`/admin/messages/${message.id}`}>{t.agenda.openMessage}</a>
         </span>
       ))}
     </>
@@ -581,12 +581,12 @@ function Sources(props: { row: Pick<TimelineEvent, "links" | "messages"> }) {
  * checked and dimmed, and its tick can be taken back. On its day, the tick takes the place of an
  * Event's time, and the row leaves out its Deadline and status, which the day and the tick say.
  */
-function TaskRow(props: { row: TimelineTask; page: ViewPage | TaskListPage; onDay?: boolean }) {
+function TaskRow(props: { row: TimelineTask; page: AgendaPage | TaskListPage; onDay?: boolean }) {
   const { row, page } = props;
   const { t, locale } = useTranslation();
-  const v = t.view;
+  const v = t.agenda;
   const done = row.status === "done";
-  const action = `/views/${page.id}/tasks/${row.itemId}/${done ? "undone" : "done"}`;
+  const action = `/agendas/${page.id}/tasks/${row.itemId}/${done ? "undone" : "done"}`;
   const classes = ["fam-item", "fam-task", `fam-task--${row.status}`, row.cancelled ? "fam-item--cancelled" : ""]
     .filter(Boolean)
     .join(" ");
@@ -607,7 +607,7 @@ function TaskRow(props: { row: TimelineTask; page: ViewPage | TaskListPage; onDa
       action={action}
       hx-post={action}
       hx-trigger="change"
-      hx-target="#view"
+      hx-target="#agenda"
       hx-swap="outerHTML"
       hx-include={page.kind === "timeline" ? "#shown-from, #shown-until" : undefined}
     >
@@ -646,9 +646,9 @@ function TaskRow(props: { row: TimelineTask; page: ViewPage | TaskListPage; onDa
 /** How the Event shows on its day: from and until, or all day. */
 function timeLabel(row: TimelineEvent, t: Catalogue): string {
   if (row.from && row.until) return row.from === row.until ? row.from : `${row.from} – ${row.until}`;
-  if (row.from) return t.view.from(row.from);
-  if (row.until) return t.view.until(row.until);
-  return t.view.allDay;
+  if (row.from) return t.agenda.from(row.from);
+  if (row.until) return t.agenda.until(row.until);
+  return t.agenda.allDay;
 }
 
 /**
@@ -656,7 +656,7 @@ function timeLabel(row: TimelineEvent, t: Catalogue): string {
  * Weber" or "moved to room 204", with the school's note if it wrote one.
  */
 export function changeLabel(change: TimelineTimetableChange, t: Catalogue): string {
-  const { changed } = t.view;
+  const { changed } = t.agenda;
   const label =
     change.change === "cancellation"
       ? changed.cancellation
@@ -671,15 +671,15 @@ export function changeLabel(change: TimelineTimetableChange, t: Catalogue): stri
  * ends unless it is all day; null if it ends on that day.
  */
 function lastDayLabel(span: TimelineEvent["span"], day: LocalDate, { t, locale }: Translation): string | null {
-  if (span.allDay) return span.lastDay > day ? t.view.untilDay(dateLabel(span.lastDay, locale)) : null;
-  return span.end.date > day ? t.view.untilDay(`${dateLabel(span.end.date, locale)}, ${span.end.time}`) : null;
+  if (span.allDay) return span.lastDay > day ? t.agenda.untilDay(dateLabel(span.lastDay, locale)) : null;
+  return span.end.date > day ? t.agenda.untilDay(`${dateLabel(span.end.date, locale)}, ${span.end.time}`) : null;
 }
 
 /** The whole span of an Event, as its calendar feed describes it, in the Translation's language. */
 export function spanLabel(span: TimelineEvent["span"], { t, locale }: Translation): string {
   const date = (day: LocalDate) => dateLabel(day, locale);
   if (span.allDay) {
-    return span.firstDay === span.lastDay ? t.view.onAllDay(date(span.firstDay)) : `${date(span.firstDay)} – ${date(span.lastDay)}`;
+    return span.firstDay === span.lastDay ? t.agenda.onAllDay(date(span.firstDay)) : `${date(span.firstDay)} – ${date(span.lastDay)}`;
   }
   const { start, end } = span;
   return start.date === end.date
@@ -702,25 +702,25 @@ export function Avatar(props: { member: FamilyMemberSummary; size?: "sm" }) {
   );
 }
 
-export function viewUrl(id: string, showing?: Showing): string {
-  if (showing === undefined) return `/views/${id}`;
-  return `/views/${id}?show=${showing === "all" ? "all" : showing.join(",")}`;
+export function agendaUrl(id: string, showing?: Showing): string {
+  if (showing === undefined) return `/agendas/${id}`;
+  return `/agendas/${id}?show=${showing === "all" ? "all" : showing.join(",")}`;
 }
 
-/** Where htmx loads more days of a View, with the marker to go on with on the given side. */
-export function daysUrl(page: ViewPage, days: TimelineDays, then: "earlier" | "later"): string {
+/** Where htmx loads more days of an Agenda, with the marker to go on with on the given side. */
+export function daysUrl(page: AgendaPage, days: TimelineDays, then: "earlier" | "later"): string {
   const show = page.showing === "all" ? "all" : page.showing.join(",");
-  return `/views/${page.id}/days?show=${show}&from=${days.first}&until=${days.last}&then=${then}`;
+  return `/agendas/${page.id}/days?show=${show}&from=${days.first}&until=${days.last}&then=${then}`;
 }
 
 /** Whether the quick filter shows everyone it offers, as "All" does. */
-function showsEveryChoice(page: ViewPage | TaskListPage): boolean {
+function showsEveryChoice(page: AgendaPage | TaskListPage): boolean {
   const { showing } = page;
   return showing === "all" || page.choices.every((member) => showing.includes(member.id));
 }
 
 /** What the quick filter shows after tapping a Family Member: added, or taken out again. */
-function toggled(page: ViewPage | TaskListPage, id: FamilyMemberId): Showing {
+function toggled(page: AgendaPage | TaskListPage, id: FamilyMemberId): Showing {
   if (showsEveryChoice(page) || page.showing === "all") return [id];
   const showing = page.showing;
   const next = page.choices

@@ -30,7 +30,7 @@ const change = (fields: PluginRevision["fields"]): Omit<PluginRevision, "itemKey
   fields: { room: null, teacher: null, previousRoom: null, previousTeacher: null, note: null, ...fields },
 });
 
-describe("Timetables in a View over HTTP", () => {
+describe("Timetables in an Agenda over HTTP", () => {
   let instance: HttpTestInstance;
   let path: string;
   beforeEach(async () => {
@@ -43,9 +43,9 @@ describe("Timetables in a View over HTTP", () => {
     const mia = await instance.app.familyMembers.add({ name: "Mia" });
     if (!mia.ok) throw new Error("adding failed");
     await instance.app.sources.assign(added.id, [mia.id]);
-    const created = await instance.app.views.create({ preselected: [], horizonDays: 3 });
+    const created = await instance.app.agendas.create({ preselected: [], horizonDays: 3 });
     if (!created.ok) throw new Error("creating failed");
-    path = `/views/${created.id}`;
+    path = `/agendas/${created.id}`;
     testPluginControls.emit("untis-test", [
       period("maths", [lesson("Maths", at("08:00", "08:45"), "101", "Mr Brandt")]),
       period("english", [

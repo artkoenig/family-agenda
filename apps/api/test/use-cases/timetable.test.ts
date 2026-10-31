@@ -1,6 +1,6 @@
 import type { Origin, PluginRevision } from "@family-agenda/source-sdk";
-import { openViewAccess } from "@family-agenda/application";
-import type { FamilyMemberId, SourceId, ViewId } from "@family-agenda/domain";
+import { openAgendaAccess } from "@family-agenda/application";
+import type { FamilyMemberId, SourceId, AgendaId } from "@family-agenda/domain";
 import ICAL from "ical.js";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { icsFeed } from "../../src/http/ics-feed";
@@ -60,7 +60,7 @@ describe("Timetables on the timeline and in the feed", () => {
   let instance: TestInstance;
   let untis: SourceId;
   let mia: FamilyMemberId;
-  let view: ViewId;
+  let agenda: AgendaId;
   beforeEach(async () => {
     // The clock starts on Monday 2026-09-14 at 09:00 in Berlin.
     instance = await bootForTest();
@@ -75,9 +75,9 @@ describe("Timetables on the timeline and in the feed", () => {
     mia = member.id;
     const assigned = await instance.app.sources.assign(untis, [mia]);
     if (!assigned.ok) throw new Error(`assigning failed: ${assigned.problem}`);
-    const created = await instance.app.views.create({ preselected: [], horizonDays: 7 });
+    const created = await instance.app.agendas.create({ preselected: [], horizonDays: 7 });
     if (!created.ok) throw new Error(`creating failed: ${created.problem}`);
-    view = created.id;
+    agenda = created.id;
   });
   afterEach(async () => {
     await instance.close();
@@ -92,7 +92,7 @@ describe("Timetables on the timeline and in the feed", () => {
 
   /** Tuesday as its school-day rows, with their Lessons, and its Timetable Change rows. */
   const tuesday = async () => {
-    const page = await openTimeline(instance.app, view, { access: openViewAccess });
+    const page = await openTimeline(instance.app, agenda, { access: openAgendaAccess });
     const day = page?.days.find((candidate) => candidate.date === "2026-09-15");
     return {
       school: (day?.schoolDays ?? []).map((row) => ({
@@ -206,9 +206,9 @@ describe("Timetables on the timeline and in the feed", () => {
     };
 
     /** The feed's VEVENTs as their main properties, parsed as a calendar app would. */
-    const feed = async (id: ViewId = view) => {
-      const found = await instance.app.views.feed(id, { access: openViewAccess });
-      const text = icsFeed(found!, `http://agenda.local/views/${id}`);
+    const feed = async (id: AgendaId = agenda) => {
+      const found = await instance.app.agendas.feed(id, { access: openAgendaAccess });
+      const text = icsFeed(found!, `http://agenda.local/agendas/${id}`);
       const calendar = new ICAL.Component(ICAL.parse(text) as unknown[]);
       return calendar.getAllSubcomponents("vevent").map((vevent) => ({
         uid: vevent.getFirstPropertyValue("uid"),
@@ -241,14 +241,14 @@ describe("Timetables on the timeline and in the feed", () => {
           start: "2026-09-15",
           end: "2026-09-16",
           status: null,
-          description: `08:00 – 08:45 Maths\n08:50 – 09:35 English\n09:55 – 10:40 Physics: cancelled (Teacher ill)\n\nhttp://agenda.local/views/${view}`,
+          description: `08:00 – 08:45 Maths\n08:50 – 09:35 English\n09:55 – 10:40 Physics: cancelled (Teacher ill)\n\nhttp://agenda.local/agendas/${agenda}`,
         },
         {
           summary: "Leo: School",
           start: "2026-09-15",
           end: "2026-09-16",
           status: null,
-          description: `08:00 – 09:35 Art\n\nhttp://agenda.local/views/${view}`,
+          description: `08:00 – 09:35 Art\n\nhttp://agenda.local/agendas/${agenda}`,
         },
         { summary: "⚠ Leo: School", start: "2026-09-16", end: "2026-09-17", status: "CANCELLED" },
       ]);
@@ -270,7 +270,7 @@ describe("Timetables on the timeline and in the feed", () => {
     });
 
     it("names no one in the titles of a feed for one Family Member, and leaves out the others", async () => {
-      const created = await instance.app.views.create({ preselected: [mia], horizonDays: 7 });
+      const created = await instance.app.agendas.create({ preselected: [mia], horizonDays: 7 });
       if (!created.ok) throw new Error(`creating failed: ${created.problem}`);
       await arrive(maths("2026-09-14T07:00:00Z"));
       await arriveForLeo(timetableLesson("art", "2026-09-14T07:00:00Z", [lesson("Art", at("2026-09-15", "08:00", "09:35"))]));
