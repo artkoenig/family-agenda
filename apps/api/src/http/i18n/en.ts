@@ -315,7 +315,7 @@ export const en = {
   llm: {
     connection: "Connection",
     options: "Options",
-    title: "LLM endpoint",
+    title: "AI",
     description:
       "Sources such as mailboxes bring in messages, not Events. A language model reads the Events from each message. Family Agenda talks to any server with an OpenAI-compatible API: a local one such as Ollama, llama.cpp or LM Studio, or a cloud provider with an API key.",
     readBy: (model: Child, baseUrl: string, local: boolean): Child[] => [

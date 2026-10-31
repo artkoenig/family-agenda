@@ -64,14 +64,14 @@ describe("the display and OCR settings over HTTP", () => {
     expect((await post("/admin/llm/ocr", { language: "eng" })).status).toBe(303);
     expect((await post("/admin/llm/ocr", { language: "fra" })).status).toBe(303);
     let page = await get("/admin/llm");
-    expect(entryOf(page, "LLM-Endpunkt")).toContain("Nicht eingerichtet; OCR auf Deutsch, Englisch und Französisch");
+    expect(entryOf(page, "KI")).toContain("Nicht eingerichtet; OCR auf Deutsch, Englisch und Französisch");
     expect(page).not.toContain('<option value="fra">Französisch</option>');
     expect(formsOf(page)).toContain("/admin/llm/ocr/fra/remove:");
     expect(formsOf(page)).toContain("/admin/llm/ocr/deu/remove:");
     expect(formsOf(page)).not.toContain("/admin/llm/ocr/deu/up:");
 
     await post("/admin/llm/ocr/fra/up", {});
-    expect(entryOf(await get("/admin/llm"), "LLM-Endpunkt")).toContain("OCR auf Deutsch, Französisch und Englisch");
+    expect(entryOf(await get("/admin/llm"), "KI")).toContain("OCR auf Deutsch, Französisch und Englisch");
 
     expect((await post("/admin/llm/ocr/fra/remove", {})).status).toBe(303);
     page = await get("/admin/llm");
@@ -84,14 +84,14 @@ describe("the display and OCR settings over HTTP", () => {
     expect(page).toMatch(/role="switch" aria-checked="true" aria-labelledby="ocr-enabled"/);
     expect(formsOf(page)).toContain("/admin/llm/ocr/enabled: ocr=no");
     expect(page).not.toContain("Das Modell liest Bilder");
-    expect(entryOf(page, "LLM-Endpunkt")).toContain("OCR auf Deutsch");
+    expect(entryOf(page, "KI")).toContain("OCR auf Deutsch");
 
     expect((await post("/admin/llm/ocr/enabled", { ocr: "no" })).status).toBe(303);
     page = await get("/admin/llm");
     expect(page).toMatch(/role="switch" aria-checked="false" aria-labelledby="ocr-enabled"/);
     expect(formsOf(page)).toContain("/admin/llm/ocr/enabled: ocr=yes");
     expect(formsOf(page)).not.toContain("/admin/llm/ocr:");
-    expect(entryOf(page, "LLM-Endpunkt")).toContain("OCR aus");
+    expect(entryOf(page, "KI")).toContain("OCR aus");
 
     await post("/admin/llm/ocr/enabled", { ocr: "yes" });
     expect(await get("/admin/llm")).toContain("aria-checked=\"true\"");
@@ -119,7 +119,7 @@ describe("the display and OCR settings over HTTP", () => {
 
     const page = await get("/admin/llm");
 
-    expect(entryOf(page, "LLM-Endpunkt")).toContain("fam-navitem__summary--attention");
+    expect(entryOf(page, "KI")).toContain("fam-navitem__summary--attention");
     expect(page).toContain("Modell fehlt");
     expect(formsOf(page)).toContain("/admin/llm/ocr: language=fra");
   });
