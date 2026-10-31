@@ -1,16 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { bootHttpForTest, type HttpTestInstance } from "../support/http";
 
-describe("The worker's activity on a View over HTTP", () => {
+describe("The worker's activity on an Agenda over HTTP", () => {
   let instance: HttpTestInstance;
   let path: string;
   beforeEach(async () => {
     // The clock starts on Monday 2026-09-14 at 09:00 in Berlin.
     instance = await bootHttpForTest();
     await instance.post("/setup", { email: "anna@example.org", password: "correct horse battery" });
-    const created = await instance.app.views.create({ preselected: [], horizonDays: 3 });
+    const created = await instance.app.agendas.create({ preselected: [], horizonDays: 3 });
     if (!created.ok) throw new Error("creating failed");
-    path = `/views/${created.id}`;
+    path = `/agendas/${created.id}`;
   });
   afterEach(async () => {
     await instance.close();
@@ -58,7 +58,7 @@ describe("The worker's activity on a View over HTTP", () => {
     expect(page).toContain('hx-trigger="every 60s, activity-ended from:body"');
   });
 
-  it("is not found for an unknown View", async () => {
-    expect((await instance.get("/views/00000000-0000-4000-8000-000000000000/activity")).status).toBe(404);
+  it("is not found for an unknown Agenda", async () => {
+    expect((await instance.get("/agendas/00000000-0000-4000-8000-000000000000/activity")).status).toBe(404);
   });
 });

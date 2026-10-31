@@ -1,6 +1,6 @@
 import { rm } from "node:fs/promises";
 import { join } from "node:path";
-import { openViewAccess } from "@family-agenda/application";
+import { openAgendaAccess } from "@family-agenda/application";
 import type { Origin } from "@family-agenda/source-sdk";
 import type { SourceId } from "@family-agenda/domain";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -179,10 +179,10 @@ describe("Source health", () => {
     expect(await health()).toEqual({ status: "ok", problem: null, lastSuccessAt: new Date("2026-09-14T07:30:00Z") });
   });
 
-  it("tells every View it may be out of date while a Source is Failing, and only then", async () => {
-    const created = await instance.app.views.create({ preselected: [], horizonDays: 7 });
+  it("tells every Agenda it may be out of date while a Source is Failing, and only then", async () => {
+    const created = await instance.app.agendas.create({ preselected: [], horizonDays: 7 });
     if (!created.ok) throw new Error("creating failed");
-    const outOfDate = async () => (await instance.app.views.open(created.id, { access: openViewAccess }))?.mayBeOutOfDate;
+    const outOfDate = async () => (await instance.app.agendas.open(created.id, { access: openAgendaAccess }))?.mayBeOutOfDate;
 
     testPluginControls.failNext("school-portal", "temporary");
     await tick();

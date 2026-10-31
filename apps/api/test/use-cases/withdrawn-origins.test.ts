@@ -1,6 +1,6 @@
 import type { Origin } from "@family-agenda/source-sdk";
-import { openViewAccess } from "@family-agenda/application";
-import type { ViewId } from "@family-agenda/domain";
+import { openAgendaAccess } from "@family-agenda/application";
+import type { AgendaId } from "@family-agenda/domain";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { bootForTest, type TestInstance } from "../support/boot";
 import { InMemoryBlobStore } from "../support/in-memory-blob-store";
@@ -22,7 +22,7 @@ const trip = "Am Freitag, 18.09., ist der Wandertag der 5b.";
 describe("Origins a Source withdraws, such as deleted chat messages", () => {
   let instance: TestInstance;
   let blobs: InMemoryBlobStore;
-  let view: ViewId;
+  let agenda: AgendaId;
   beforeEach(async () => {
     const extractor = new ScriptedExtractor();
     extractor.script("Wandertag", [
@@ -36,9 +36,9 @@ describe("Origins a Source withdraws, such as deleted chat messages", () => {
     const added = await instance.app.sources.add({ sourceTypeId: "chat", plain: { url: "chat.example.org" }, secrets: {} });
     if (!added.ok) throw new Error(`adding failed: ${added.problem}`);
     await instance.app.llmEndpoint.save({ baseUrl: "http://ollama:11434/v1", model: "qwen3.5:9b", apiKey: "" });
-    const created = await instance.app.views.create({ preselected: [], horizonDays: 7 });
+    const created = await instance.app.agendas.create({ preselected: [], horizonDays: 7 });
     if (!created.ok) throw new Error(`creating failed: ${created.problem}`);
-    view = created.id;
+    agenda = created.id;
   });
   afterEach(async () => {
     await instance.close();
@@ -51,7 +51,7 @@ describe("Origins a Source withdraws, such as deleted chat messages", () => {
   };
 
   const titles = async () => {
-    const page = await openTimeline(instance.app, view, { access: openViewAccess });
+    const page = await openTimeline(instance.app, agenda, { access: openAgendaAccess });
     return (page?.days ?? []).flatMap((day) => day.items.map((item) => item.title));
   };
 
@@ -59,7 +59,7 @@ describe("Origins a Source withdraws, such as deleted chat messages", () => {
     testPluginControls.emit("chat", [message("$m1", trip)]);
     await run();
     expect(await titles()).toEqual(["Wandertag 5b"]);
-    const page = await openTimeline(instance.app, view, { access: openViewAccess });
+    const page = await openTimeline(instance.app, agenda, { access: openAgendaAccess });
     const [extracted] = page!.days.flatMap((day) => day.items)[0]!.messages;
 
     testPluginControls.withdraw("chat", ["$m1"]);

@@ -1,37 +1,37 @@
-import type { FeedEvent, FeedSchoolDay, FeedTask, TimelineLesson, TimelineTimetableChange, ViewFeed } from "@family-agenda/application";
+import type { FeedEvent, FeedSchoolDay, FeedTask, TimelineLesson, TimelineTimetableChange, AgendaFeed } from "@family-agenda/application";
 import { addDays, type LocalDate } from "@family-agenda/domain";
 import { translationFor, type Translation } from "./i18n/translation";
-import { changeLabel, dateLabel, spanLabel } from "./view-page";
+import { changeLabel, dateLabel, spanLabel } from "./agenda-page";
 
 /**
- * A View's feed as an iCalendar document (RFC 5545), for calendar apps that subscribe to it. Each
+ * An Agenda's feed as an iCalendar document (RFC 5545), for calendar apps that subscribe to it. Each
  * Event keeps its Item's id as its UID, and each school day its key, so that apps update it in
  * place.
  */
-export function icsFeed(feed: ViewFeed, viewLink: string): string {
+export function icsFeed(feed: AgendaFeed, agendaLink: string): string {
   const stamp = instant(feed.generatedAt);
   const translation = translationFor(feed.language);
   const lines = [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",
-    "PRODID:-//Family Agenda//View feed//EN",
+    "PRODID:-//Family Agenda//Agenda feed//EN",
     "CALSCALE:GREGORIAN",
     "METHOD:PUBLISH",
     "X-WR-CALNAME:Family Agenda",
     "REFRESH-INTERVAL;VALUE=DURATION:PT1H",
     "X-PUBLISHED-TTL:PT1H",
-    ...feed.events.flatMap((event) => vevent(event, stamp, viewLink, translation)),
-    ...feed.schoolDays.flatMap((day) => schoolDayVevent(day, stamp, viewLink, translation)),
-    ...feed.tasks.flatMap((task) => taskVevent(task, stamp, viewLink, translation)),
+    ...feed.events.flatMap((event) => vevent(event, stamp, agendaLink, translation)),
+    ...feed.schoolDays.flatMap((day) => schoolDayVevent(day, stamp, agendaLink, translation)),
+    ...feed.tasks.flatMap((task) => taskVevent(task, stamp, agendaLink, translation)),
     "END:VCALENDAR",
   ];
   return lines.map(folded).join("\r\n") + "\r\n";
 }
 
-function vevent(event: FeedEvent, stamp: string, viewLink: string, translation: Translation): string[] {
+function vevent(event: FeedEvent, stamp: string, agendaLink: string, translation: Translation): string[] {
   const { span } = event;
   const { t } = translation;
-  const details = [spanLabel(event.when, translation), event.place, event.cancelled ? t.view.cancelled : null].filter(Boolean);
+  const details = [spanLabel(event.when, translation), event.place, event.cancelled ? t.agenda.cancelled : null].filter(Boolean);
   return [
     "BEGIN:VEVENT",
     `UID:${event.itemId}@family-agenda`,
@@ -41,8 +41,8 @@ function vevent(event: FeedEvent, stamp: string, viewLink: string, translation: 
       : [`DTSTART:${instant(span.start)}`, `DTEND:${instant(span.end)}`]),
     `SUMMARY:${text(event.title)}`,
     ...(event.place ? [`LOCATION:${text(event.place)}`] : []),
-    `DESCRIPTION:${text(`${details.join("\n")}\n\n${viewLink}`)}`,
-    `URL:${viewLink}`,
+    `DESCRIPTION:${text(`${details.join("\n")}\n\n${agendaLink}`)}`,
+    `URL:${agendaLink}`,
     ...(event.cancelled ? ["STATUS:CANCELLED"] : []),
     "END:VEVENT",
   ];
@@ -53,8 +53,8 @@ function vevent(event: FeedEvent, stamp: string, viewLink: string, translation: 
  * where the feed names them, marked with ⚠ when the day has a Timetable Change. Its details list
  * the Lessons, each with its Timetable Change; a day whose every Lesson is cancelled is cancelled.
  */
-function schoolDayVevent(day: FeedSchoolDay, stamp: string, viewLink: string, { t }: Translation): string[] {
-  const title = day.names.length > 0 ? `${day.names.join(", ")}: ${t.view.school}` : t.view.school;
+function schoolDayVevent(day: FeedSchoolDay, stamp: string, agendaLink: string, { t }: Translation): string[] {
+  const title = day.names.length > 0 ? `${day.names.join(", ")}: ${t.agenda.school}` : t.agenda.school;
   const changeOf = (lesson: TimelineLesson) => day.timetableChanges.find((change) => sameSlot(change, lesson));
   const lines = day.lessons.map((lesson) => {
     const change = changeOf(lesson);
@@ -73,8 +73,8 @@ function schoolDayVevent(day: FeedSchoolDay, stamp: string, viewLink: string, { 
     `DTSTART;VALUE=DATE:${date(day.date)}`,
     `DTEND;VALUE=DATE:${date(addDays(day.date, 1))}`,
     `SUMMARY:${text(day.timetableChanges.length > 0 ? `⚠ ${title}` : title)}`,
-    `DESCRIPTION:${text(`${lines.join("\n")}\n\n${viewLink}`)}`,
-    `URL:${viewLink}`,
+    `DESCRIPTION:${text(`${lines.join("\n")}\n\n${agendaLink}`)}`,
+    `URL:${agendaLink}`,
     ...(day.cancelled ? ["STATUS:CANCELLED"] : []),
     "END:VEVENT",
   ];
@@ -84,12 +84,12 @@ function schoolDayVevent(day: FeedSchoolDay, stamp: string, viewLink: string, { 
  * A Task as an all-day entry on its Deadline day, not a VTODO, which subscribed calendars ignore
  * (decisions in #20). Its details say when it is due and what to bring.
  */
-function taskVevent(task: FeedTask, stamp: string, viewLink: string, { t, locale }: Translation): string[] {
+function taskVevent(task: FeedTask, stamp: string, agendaLink: string, { t, locale }: Translation): string[] {
   const deadline = dateLabel(task.deadline, locale);
   const details = [
-    task.overdue ? t.view.overdueBy(deadline) : t.view.by(deadline),
-    task.bring.length > 0 ? `${t.view.bring}: ${task.bring.join(", ")}` : null,
-    task.cancelled ? t.view.cancelled : null,
+    task.overdue ? t.agenda.overdueBy(deadline) : t.agenda.by(deadline),
+    task.bring.length > 0 ? `${t.agenda.bring}: ${task.bring.join(", ")}` : null,
+    task.cancelled ? t.agenda.cancelled : null,
   ].filter(Boolean);
   return [
     "BEGIN:VEVENT",
@@ -98,8 +98,8 @@ function taskVevent(task: FeedTask, stamp: string, viewLink: string, { t, locale
     `DTSTART;VALUE=DATE:${date(task.deadline)}`,
     `DTEND;VALUE=DATE:${date(addDays(task.deadline, 1))}`,
     `SUMMARY:${text(task.title)}`,
-    `DESCRIPTION:${text(`${details.join("\n")}\n\n${viewLink}`)}`,
-    `URL:${viewLink}`,
+    `DESCRIPTION:${text(`${details.join("\n")}\n\n${agendaLink}`)}`,
+    `URL:${agendaLink}`,
     ...(task.cancelled ? ["STATUS:CANCELLED"] : []),
     "END:VEVENT",
   ];

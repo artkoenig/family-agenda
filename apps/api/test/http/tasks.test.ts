@@ -23,9 +23,9 @@ describe("Tasks over HTTP", () => {
     await instance.app.recoveryKit.confirm();
     await instance.app.sourceTypes.enable("school");
     await instance.app.sources.add({ sourceTypeId: "school", plain: { url: "https://school.example.org" }, secrets: {} });
-    const created = await instance.app.views.create({ preselected: [], horizonDays: 3 });
+    const created = await instance.app.agendas.create({ preselected: [], horizonDays: 3 });
     if (!created.ok) throw new Error("creating failed");
-    path = `/views/${created.id}`;
+    path = `/agendas/${created.id}`;
     testPluginControls.emit("school", [
       task("kit", { title: "Bring sports kit", deadline: "2026-09-14", bring: ["Trainers", "Towel"] }),
       task("form", { title: "Sign the trip form" }),
@@ -37,7 +37,7 @@ describe("Tasks over HTTP", () => {
     await instance.close();
   });
 
-  /** The pinned area of a View page, from its `<section>` to `</section>`. */
+  /** The pinned area of an Agenda page, from its `<section>` to `</section>`. */
   const pinnedOf = (page: string) => /<section class="fam-tasks"(?:(?!<\/section>).)*<\/section>/s.exec(page)?.[0] ?? "";
 
   /** The row of the Task with the given title. */
@@ -47,7 +47,7 @@ describe("Tasks over HTTP", () => {
   /** Where the tick of a Task row posts to. */
   const tickOf = (row: string) => /<form[^>]*action="([^"]+)"/.exec(row)?.[1] ?? "";
 
-  it("pins Due Tasks at the top of a View, with their things to bring, and shows later ones on their day", async () => {
+  it("pins Due Tasks at the top of an Agenda, with their things to bring, and shows later ones on their day", async () => {
     const page = await (await instance.get(path)).text();
 
     const pinned = pinnedOf(page);
@@ -65,7 +65,7 @@ describe("Tasks over HTTP", () => {
     expect(rowOf(pinned, "Bring sports kit")).not.toContain("fam-item__lead");
   });
 
-  it("ticks a Task done through a View without a session, and takes the tick back", async () => {
+  it("ticks a Task done through an Agenda without a session, and takes the tick back", async () => {
     const page = await (await instance.get(path)).text();
     const tick = tickOf(rowOf(pinnedOf(page), "Bring sports kit"));
     expect(tick).toMatch(new RegExp(`^${path}/tasks/[0-9a-f-]+/done$`));
@@ -74,13 +74,13 @@ describe("Tasks over HTTP", () => {
 
     expect(response.status).toBe(200);
     const after = await response.text();
-    expect(after).toMatch(/^<main id="view"/);
+    expect(after).toMatch(/^<main id="agenda"/);
     expect(pinnedOf(after)).not.toContain("Bring sports kit");
     const done = rowOf(after, "Bring sports kit");
     expect(done).toContain("fam-task--done");
     expect(done).toContain("Mark “Bring sports kit” not done");
     const ticks = await instance.app.tasks.ticks(tick.split("/")[4] as never);
-    expect(ticks).toMatchObject([{ done: true, by: { kind: "view", viewId: path.split("/")[2] } }]);
+    expect(ticks).toMatchObject([{ done: true, by: { kind: "agenda", agendaId: path.split("/")[2] } }]);
 
     const undone = await instance.post(tickOf(done), {});
     expect(undone.status).toBe(303);
@@ -107,10 +107,10 @@ describe("Tasks over HTTP", () => {
     expect(row).not.toContain("aria-pressed");
   });
 
-  it("lists the Tasks in a Task List View, ticks them there, and says nothing of who ticked them", async () => {
-    const created = await instance.app.views.create({ kind: "tasks", preselected: [], horizonDays: 7 });
+  it("lists the Tasks in a Task List Agenda, ticks them there, and says nothing of who ticked them", async () => {
+    const created = await instance.app.agendas.create({ kind: "tasks", preselected: [], horizonDays: 7 });
     if (!created.ok) throw new Error("creating failed");
-    const list = `/views/${created.id}`;
+    const list = `/agendas/${created.id}`;
     await instance.post(tickOf(rowOf(pinnedOf(await (await instance.get(path)).text()), "Sign the trip form")), {});
 
     const page = await (await instance.get(list)).text();
@@ -121,22 +121,22 @@ describe("Tasks over HTTP", () => {
     expect(section("coming-up")).toContain("Pay for the photos");
     expect(section("done")).toContain("Sign the trip form");
     expect(rowOf(section("done"), "Sign the trip form")).toMatch(/<input type="checkbox" checked=""/);
-    expect(page).not.toContain("in the View for");
+    expect(page).not.toContain("in the Agenda for");
 
     const tick = tickOf(rowOf(section("to-do"), "Bring sports kit"));
     const response = await instance.post(tick, { show: "all" }, { headers: { "hx-request": "true" } });
     expect(response.status).toBe(200);
     const after = await response.text();
-    expect(after).toMatch(/^<main id="view"/);
+    expect(after).toMatch(/^<main id="agenda"/);
     expect(after).toContain('aria-labelledby="done"');
     expect(rowOf(after, "Bring sports kit")).toContain("fam-task--done");
     expect((await instance.get(`${list}/days?from=2026-09-14&until=2026-09-16&then=later`)).status).toBe(404);
   });
 
-  it("leaves the Tasks to the Views, with no section of their own in the Admin area", async () => {
+  it("leaves the Tasks to the Agendas, with no section of their own in the Admin area", async () => {
     const cookie = sessionCookieOf(await instance.post("/admin/sign-in", { email: "anna@example.org", password }));
 
     expect((await instance.get("/admin/tasks", { cookie })).status).toBe(404);
-    expect(await (await instance.get("/admin/views", { cookie })).text()).not.toContain('href="/admin/tasks"');
+    expect(await (await instance.get("/admin/agendas", { cookie })).text()).not.toContain('href="/admin/tasks"');
   });
 });

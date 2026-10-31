@@ -12,7 +12,7 @@ export type ActivityProgress = {
   end(): Promise<void>;
 };
 
-/** What a View shows of the worker's activity. */
+/** What an Agenda shows of the worker's activity. */
 export type CurrentActivity = Pick<BackgroundActivity, "kind" | "done" | "total">;
 
 /**
@@ -21,7 +21,7 @@ export type CurrentActivity = Pick<BackgroundActivity, "kind" | "done" | "total"
  */
 const staleAfterMs = 15 * 60 * 1000;
 
-/** What the worker is busy with, recorded by the worker and shown on the Views. */
+/** What the worker is busy with, recorded by the worker and shown on the Agendas. */
 export function createActivityLog(deps: ActivityDeps) {
   const { clock, activities } = deps;
   return {

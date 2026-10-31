@@ -8,7 +8,7 @@ import { testPluginControls } from "../support/test-source-plugin";
 const password = "correct horse battery";
 const minutes = 60 * 1000;
 
-describe("Source health in the Admin area and on Views", () => {
+describe("Source health in the Admin area and on Agendas", () => {
   let instance: HttpTestInstance;
   let cookie: string;
   let source: SourceId;
@@ -65,7 +65,7 @@ describe("Source health in the Admin area and on Views", () => {
     expect(page).toContain("Last error: calendar failed");
     expect(page).toContain("Last read Mon 14 Sept, 09:10");
     expect(page).toMatch(failingBanner);
-    expect(await (await instance.get("/admin/views", { cookie })).text()).toMatch(failingBanner);
+    expect(await (await instance.get("/admin/agendas", { cookie })).text()).toMatch(failingBanner);
   });
 
   it("shows the last error of an OK Source whose last run failed", async () => {
@@ -116,18 +116,18 @@ describe("Source health in the Admin area and on Views", () => {
     expect(page).toContain("Source Type not installed");
   });
 
-  it("shows one generic out-of-date line on every View while a Source is Failing", async () => {
-    const created = await instance.app.views.create({ preselected: [], horizonDays: 7 });
+  it("shows one generic out-of-date line on every Agenda while a Source is Failing", async () => {
+    const created = await instance.app.agendas.create({ preselected: [], horizonDays: 7 });
     if (!created.ok) throw new Error("creating failed");
-    const view = async () => (await instance.get(`/views/${created.id}`)).text();
+    const agenda = async () => (await instance.get(`/agendas/${created.id}`)).text();
     const line =
       '<p class="fam-out-of-date" role="status" tabindex="0"><span class="fam-out-of-date__text">Some of this may be out of date.</span></p>';
-    expect(await view()).not.toContain(line);
+    expect(await agenda()).not.toContain(line);
 
     testPluginControls.failNext("calendar", "definite");
     await tick();
 
-    const page = await view();
+    const page = await agenda();
     expect(page).toContain(line);
     expect(page).not.toContain("calendar failed");
     expect(page).not.toContain("Calendar");

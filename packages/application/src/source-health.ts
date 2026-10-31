@@ -45,7 +45,7 @@ export async function healthOf(source: Source, deps: SourceHealthDeps): Promise<
   return { status, problem: failure ? { kind: "run-failed", message: failure.message } : null, lastSuccessAt };
 }
 
-/** Whether the Family's Sources work, as every View hints at without detail. */
+/** Whether the Family's Sources work, as every Agenda hints at without detail. */
 export function createSourceHealth(deps: SourceHealthDeps) {
   return {
     /** Whether any of the Family's Sources is Failing. */

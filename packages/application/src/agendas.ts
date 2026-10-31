@@ -30,9 +30,9 @@ import {
   type TimeSpan,
   type TimetableChange,
   type TimetableChangeKind,
-  type ViewId,
-  type ViewKind,
-  isViewKind,
+  type AgendaId,
+  type AgendaKind,
+  isAgendaKind,
 } from "@family-agenda/domain";
 import type { ActivityLog, CurrentActivity } from "./activity";
 import { concernsOf } from "./assignment";
@@ -45,18 +45,18 @@ import type {
   ItemRepository,
   SourceRepository,
   SourceTypeRegistry,
-  ViewAccessPolicy,
-  ViewRepository,
+  AgendaAccessPolicy,
+  AgendaRepository,
 } from "./ports";
 import type { SourceHealthCheck } from "./source-health";
 
-export type ViewsDeps = {
+export type AgendasDeps = {
   clock: Clock;
   /** The IANA time zone the Family lives in, which decides where a day starts. */
   timeZone: string;
   families: FamilyRepository;
   members: FamilyMemberRepository;
-  views: ViewRepository;
+  agendas: AgendaRepository;
   items: ItemRepository;
   sources: SourceRepository;
   registry: SourceTypeRegistry;
@@ -64,14 +64,14 @@ export type ViewsDeps = {
   sourceHealth: SourceHealthCheck;
 };
 
-export type ViewSettings = { kind: ViewKind; preselected: FamilyMemberId[]; horizonDays: number };
+export type AgendaSettings = { kind: AgendaKind; preselected: FamilyMemberId[]; horizonDays: number };
 
-/** The settings as an Admin enters them; without a kind, a new View is a timeline and an edited one keeps its own. */
-export type ViewSettingsInput = Omit<ViewSettings, "kind"> & { kind?: string };
+/** The settings as an Admin enters them; without a kind, a new Agenda is a timeline and an edited one keeps its own. */
+export type AgendaSettingsInput = Omit<AgendaSettings, "kind"> & { kind?: string };
 
-export type ViewSummary = ViewSettings & { id: ViewId };
+export type AgendaSummary = AgendaSettings & { id: AgendaId };
 
-export type ViewProblem = "unknown-kind" | "invalid-horizon" | "unknown-member";
+export type AgendaProblem = "unknown-kind" | "invalid-horizon" | "unknown-member";
 
 /** Whom the quick filter shows: some Family Members, or everyone. */
 export type Showing = FamilyMemberId[] | "all";
@@ -149,8 +149,8 @@ export type TimelineTimetableChange = {
 };
 
 /**
- * A Task as a View shows it: pinned at the top while it is Due, else on its day, checked and dimmed
- * once done; anyone with the View can tick it done or take the tick back.
+ * A Task as an Agenda shows it: pinned at the top while it is Due, else on its day, checked and dimmed
+ * once done; anyone with the Agenda can tick it done or take the tick back.
  */
 export type TimelineTask = {
   itemId: ItemId;
@@ -165,31 +165,31 @@ export type TimelineTask = {
   concerns: Attribution;
 };
 
-/** What a View's top bar shows, whatever its kind. */
-type ViewBarPage = {
-  id: ViewId;
+/** What an Agenda's top bar shows, whatever its kind. */
+type AgendaBarPage = {
+  id: AgendaId;
   /** The Family Language, which dates are formatted in. */
   language: FamilyLanguage;
   now: LocalDateTime;
   /** Everyone in the Family, for the avatars of whom an Event concerns. */
   members: FamilyMemberSummary[];
   /**
-   * Whom the quick filter offers: those the View preselects, or everyone if it preselects no one.
+   * Whom the quick filter offers: those the Agenda preselects, or everyone if it preselects no one.
    * With only one, there is nothing to filter.
    */
   choices: FamilyMemberSummary[];
-  /** Whom the View shows, always some of `choices`, or "all" if the View preselects no one. */
+  /** Whom the Agenda shows, always some of `choices`, or "all" if the Agenda preselects no one. */
   showing: Showing;
   /** What the worker is busy with, such as reading messages; null when it is idle. */
   activity: CurrentActivity | null;
-  /** Whether a Source is Failing, which the View says without naming it. */
+  /** Whether a Source is Failing, which the Agenda says without naming it. */
   mayBeOutOfDate: boolean;
 };
 
-/** A View of the timeline kind, as it shows its days. */
-export type ViewPage = ViewBarPage & {
+/** An Agenda of the timeline kind, as it shows its days. */
+export type AgendaPage = AgendaBarPage & {
   kind: "timeline";
-  /** How many days one step of scrolling loads: the View's horizon. */
+  /** How many days one step of scrolling loads: the Agenda's horizon. */
   horizonDays: number;
   /** The Tasks Due or Overdue that concern someone it shows, oldest Deadline first, those without one last. */
   pinned: TimelineTask[];
@@ -204,7 +204,7 @@ export type ViewPage = ViewBarPage & {
  * A Task List: the Tasks that concern someone it shows, Due and Overdue ones first, then those
  * not Due yet, then those done, of the last 30 days and all of the future.
  */
-export type TaskListPage = ViewBarPage & {
+export type TaskListPage = AgendaBarPage & {
   kind: "tasks";
   /** Those pinned in a timeline, oldest Deadline first, those without one last. */
   due: TimelineTask[];
@@ -226,7 +226,7 @@ export type TimelineDay = {
 /** Days of a timeline, from `first` to `last`, both included. */
 export type TimelineDays = { first: LocalDate; last: LocalDate };
 
-/** An Event in a View's feed, which carries those concerning someone its View preselects. */
+/** An Event in an Agenda's feed, which carries those concerning someone its Agenda preselects. */
 export type FeedEvent = {
   itemId: ItemId;
   title: string;
@@ -238,7 +238,7 @@ export type FeedEvent = {
 };
 
 /**
- * One school day of some Family Members in a View's feed, an all-day entry in place of its
+ * One school day of some Family Members in an Agenda's feed, an all-day entry in place of its
  * Lessons, which its details list with the day's Timetable Changes.
  */
 export type FeedSchoolDay = {
@@ -257,7 +257,7 @@ export type FeedSchoolDay = {
   names: string[];
 };
 
-/** An undone Task with a Deadline in a View's feed, as an all-day entry on its Deadline day. */
+/** An undone Task with a Deadline in an Agenda's feed, as an all-day entry on its Deadline day. */
 export type FeedTask = {
   itemId: ItemId;
   title: string;
@@ -267,8 +267,8 @@ export type FeedTask = {
   cancelled: boolean;
 };
 
-export type ViewFeed = {
-  id: ViewId;
+export type AgendaFeed = {
+  id: AgendaId;
   /** The Family Language, which the details' dates are formatted in. */
   language: FamilyLanguage;
   generatedAt: Date;
@@ -286,11 +286,11 @@ const feedDaysBack = 30;
 /** How many days back a Task List reaches for Tasks that are done, today not counted. */
 const taskListDaysBack = 30;
 
-/** Lets every View open, as on the local listener (ADR-0003). */
-export const openViewAccess: ViewAccessPolicy = { mayOpen: () => Promise.resolve(true) };
+/** Lets every Agenda open, as on the local listener (ADR-0003). */
+export const openAgendaAccess: AgendaAccessPolicy = { mayOpen: () => Promise.resolve(true) };
 
-export function createViewAccess(deps: ViewsDeps) {
-  const { clock, timeZone, families, members, views, items, sources, registry, activity, sourceHealth } = deps;
+export function createAgendaAccess(deps: AgendasDeps) {
+  const { clock, timeZone, families, members, agendas, items, sources, registry, activity, sourceHealth } = deps;
 
   /**
    * The name an Admin gave the Source, else the display name of its Source Type, or that type's id
@@ -431,7 +431,7 @@ export function createViewAccess(deps: ViewsDeps) {
     dates: LocalDate[],
     showing: Showing,
     now: Date,
-  ): Promise<Pick<ViewPage, "pinned" | "days">> {
+  ): Promise<Pick<AgendaPage, "pinned" | "days">> {
     const first = dates[0];
     const last = dates.at(-1);
     if (!first || !last) return { pinned: [], days: [] };
@@ -502,11 +502,11 @@ export function createViewAccess(deps: ViewsDeps) {
 
   /** The settings with the preselected Family Members in the Family's order, or a problem. */
   async function checkSettings(
-    settings: ViewSettingsInput,
-    defaultKind: ViewKind,
-  ): Promise<{ ok: true; settings: ViewSettings } | { ok: false; problem: ViewProblem }> {
+    settings: AgendaSettingsInput,
+    defaultKind: AgendaKind,
+  ): Promise<{ ok: true; settings: AgendaSettings } | { ok: false; problem: AgendaProblem }> {
     const kind = settings.kind ?? defaultKind;
-    if (!isViewKind(kind)) return { ok: false, problem: "unknown-kind" };
+    if (!isAgendaKind(kind)) return { ok: false, problem: "unknown-kind" };
     if (!isAcceptableHorizon(settings.horizonDays)) return { ok: false, problem: "invalid-horizon" };
     const known = (await members.list()).map((member) => member.id);
     if (!settings.preselected.every((id) => known.includes(id))) {
@@ -517,18 +517,18 @@ export function createViewAccess(deps: ViewsDeps) {
   }
 
   return {
-    async list(): Promise<ViewSummary[]> {
-      const all = await views.list();
+    async list(): Promise<AgendaSummary[]> {
+      const all = await agendas.list();
       return all.map(({ id, kind, preselected, horizonDays }) => ({ id, kind, preselected, horizonDays }));
     },
 
     async create(
-      input: ViewSettingsInput,
-    ): Promise<{ ok: true; id: ViewId } | { ok: false; problem: ViewProblem }> {
+      input: AgendaSettingsInput,
+    ): Promise<{ ok: true; id: AgendaId } | { ok: false; problem: AgendaProblem }> {
       const checked = await checkSettings(input, "timeline");
       if (!checked.ok) return checked;
-      const id = randomUUID() as ViewId;
-      await views.add({
+      const id = randomUUID() as AgendaId;
+      await agendas.add({
         id,
         ...checked.settings,
         createdAt: clock.now(),
@@ -537,48 +537,48 @@ export function createViewAccess(deps: ViewsDeps) {
     },
 
     async edit(
-      id: ViewId,
-      input: ViewSettingsInput,
-    ): Promise<{ ok: true } | { ok: false; problem: ViewProblem | "unknown-view" }> {
-      const view = await views.findById(id);
-      if (!view) return { ok: false, problem: "unknown-view" };
-      const checked = await checkSettings(input, view.kind);
+      id: AgendaId,
+      input: AgendaSettingsInput,
+    ): Promise<{ ok: true } | { ok: false; problem: AgendaProblem | "unknown-agenda" }> {
+      const agenda = await agendas.findById(id);
+      if (!agenda) return { ok: false, problem: "unknown-agenda" };
+      const checked = await checkSettings(input, agenda.kind);
       if (!checked.ok) return checked;
-      await views.update({ ...view, ...checked.settings });
+      await agendas.update({ ...agenda, ...checked.settings });
       return { ok: true };
     },
 
-    async remove(id: ViewId): Promise<void> {
-      await views.remove(id);
+    async remove(id: AgendaId): Promise<void> {
+      await agendas.remove(id);
     },
 
     /**
-     * The View as its timeline or its Task List, by its kind, or null if there is no such View or
-     * `access` refuses it. `show` is what the quick filter was set to, of those the View
-     * preselects; without it, or with none of them, it shows all of them, or everyone if the View
+     * The Agenda as its timeline or its Task List, by its kind, or null if there is no such Agenda or
+     * `access` refuses it. `show` is what the quick filter was set to, of those the Agenda
+     * preselects; without it, or with none of them, it shows all of them, or everyone if the Agenda
      * preselects no one. `days` are those a timeline scrolled to, into the past or the future;
      * without them, it shows the horizon from today. They must pass `isAcceptableTimelineRange`,
      * and a Task List leaves them aside.
      */
     async open(
-      id: ViewId,
-      input: { access: ViewAccessPolicy; show?: Showing; days?: TimelineDays },
-    ): Promise<ViewPage | TaskListPage | null> {
+      id: AgendaId,
+      input: { access: AgendaAccessPolicy; show?: Showing; days?: TimelineDays },
+    ): Promise<AgendaPage | TaskListPage | null> {
       if (input.days && !isAcceptableTimelineRange(input.days.first, input.days.last)) {
         throw new Error(`unacceptable timeline days ${input.days.first} to ${input.days.last}`);
       }
-      const view = await views.findById(id);
-      if (!view || !(await input.access.mayOpen(view.id))) return null;
+      const agenda = await agendas.findById(id);
+      if (!agenda || !(await input.access.mayOpen(agenda.id))) return null;
       const family = await members.list();
-      const choices = view.preselected.length > 0 ? family.filter((member) => view.preselected.includes(member.id)) : family;
+      const choices = agenda.preselected.length > 0 ? family.filter((member) => agenda.preselected.includes(member.id)) : family;
       const show = input.show ?? "all";
       const chosen = show === "all" ? [] : choices.map((member) => member.id).filter((memberId) => show.includes(memberId));
       const showing: Showing =
-        chosen.length > 0 ? chosen : view.preselected.length > 0 ? choices.map((member) => member.id) : "all";
+        chosen.length > 0 ? chosen : agenda.preselected.length > 0 ? choices.map((member) => member.id) : "all";
       const instant = clock.now();
       const now = localDateTime(instant, timeZone);
-      const bar: ViewBarPage = {
-        id: view.id,
+      const bar: AgendaBarPage = {
+        id: agenda.id,
         language: (await families.languages()).language,
         now,
         members: family.map(summariseFamilyMember),
@@ -587,33 +587,33 @@ export function createViewAccess(deps: ViewsDeps) {
         activity: await activity.current(),
         mayBeOutOfDate: await sourceHealth.anyFailing(),
       };
-      if (view.kind === "tasks") return { ...bar, kind: "tasks", ...(await taskListOf(now.date, showing)) };
-      const { first, last } = input.days ?? { first: now.date, last: addDays(now.date, view.horizonDays - 1) };
+      if (agenda.kind === "tasks") return { ...bar, kind: "tasks", ...(await taskListOf(now.date, showing)) };
+      const { first, last } = input.days ?? { first: now.date, last: addDays(now.date, agenda.horizonDays - 1) };
       const dates = Array.from({ length: daysBetween(first, last) + 1 }, (_, day) => addDays(first, day));
-      return { ...bar, kind: "timeline", horizonDays: view.horizonDays, ...(await timelineOf(dates, showing, instant)) };
+      return { ...bar, kind: "timeline", horizonDays: agenda.horizonDays, ...(await timelineOf(dates, showing, instant)) };
     },
 
     /**
-     * What the worker is busy with, for a View to show while it is; undefined if there is no
-     * such View or `access` refuses it.
+     * What the worker is busy with, for an Agenda to show while it is; undefined if there is no
+     * such Agenda or `access` refuses it.
      */
-    async activity(id: ViewId, input: { access: ViewAccessPolicy }): Promise<CurrentActivity | null | undefined> {
-      const view = await views.findById(id);
-      if (!view || !(await input.access.mayOpen(view.id))) return undefined;
+    async activity(id: AgendaId, input: { access: AgendaAccessPolicy }): Promise<CurrentActivity | null | undefined> {
+      const agenda = await agendas.findById(id);
+      if (!agenda || !(await input.access.mayOpen(agenda.id))) return undefined;
       return activity.current();
     },
 
     /**
-     * The View as a calendar feed, or null if there is no such View or `access` refuses it: the
+     * The Agenda as a calendar feed, or null if there is no such Agenda or `access` refuses it: the
      * Events, school days and undone Tasks of the last 30 days and all of the future, cancelled
-     * ones included, whatever the View's horizon, that concern someone the View preselects, or all if it preselects no one.
+     * ones included, whatever the Agenda's horizon, that concern someone the Agenda preselects, or all if it preselects no one.
      */
-    async feed(id: ViewId, input: { access: ViewAccessPolicy }): Promise<ViewFeed | null> {
-      const view = await views.findById(id);
-      if (!view || !(await input.access.mayOpen(view.id))) return null;
+    async feed(id: AgendaId, input: { access: AgendaAccessPolicy }): Promise<AgendaFeed | null> {
+      const agenda = await agendas.findById(id);
+      if (!agenda || !(await input.access.mayOpen(agenda.id))) return null;
       const generatedAt = clock.now();
       const firstDay = addDays(localDateTime(generatedAt, timeZone).date, -feedDaysBack);
-      const showing: Showing = view.preselected.length > 0 ? view.preselected : "all";
+      const showing: Showing = agenda.preselected.length > 0 ? agenda.preselected : "all";
       const around = await itemsAround(firstDay, null, showing);
       const events = around.events.flatMap(({ id: itemId, event }) => {
         if (lastDayOf(event.span, timeZone) < firstDay) return [];
@@ -622,7 +622,7 @@ export function createViewAccess(deps: ViewsDeps) {
       });
       const family = await members.list();
       const named = (concerns: Attribution) =>
-        concerns === "whole-family" || view.preselected.length === 1 ? [] : family.filter((member) => concerns.includes(member.id));
+        concerns === "whole-family" || agenda.preselected.length === 1 ? [] : family.filter((member) => concerns.includes(member.id));
       const dates = [...new Set(around.lessons.map(({ lesson }) => dayOf(lesson.span)))].filter((date) => date >= firstDay).sort();
       const schoolDays = dates.flatMap((date) =>
         schoolDaysOn(date, around, generatedAt)
@@ -645,12 +645,12 @@ export function createViewAccess(deps: ViewsDeps) {
       });
       tasks.sort((a, b) => a.deadline.localeCompare(b.deadline) || a.title.localeCompare(b.title));
       const { language } = await families.languages();
-      return { id: view.id, language, generatedAt, events: events.sort(byStart), schoolDays, tasks };
+      return { id: agenda.id, language, generatedAt, events: events.sort(byStart), schoolDays, tasks };
     },
   };
 }
 
-export type ViewAccess = ReturnType<typeof createViewAccess>;
+export type AgendaAccess = ReturnType<typeof createAgendaAccess>;
 
 /** The Items around some days, by kind, each with whom it concerns. */
 type Around = {

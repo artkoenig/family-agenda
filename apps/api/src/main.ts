@@ -1,5 +1,5 @@
 import { serve } from "@hono/node-server";
-import { openViewAccess } from "@family-agenda/application";
+import { openAgendaAccess } from "@family-agenda/application";
 import { bootApplication } from "./composition-root";
 import { readConfig } from "./config";
 import { createHttpApp } from "./http/app";
@@ -10,8 +10,8 @@ const server = serve(
   { fetch: createHttpApp(application, {
       trustProxy: config.trustProxy,
       ...(config.publicUrl ? { publicUrl: config.publicUrl } : {}),
-      // The only listener in v1 is the local one, where Views open without a secret (ADR-0005).
-      viewAccess: openViewAccess,
+      // The only listener in v1 is the local one, where Agendas open without a secret (ADR-0005).
+      agendaAccess: openAgendaAccess,
     }).fetch, port: config.port },
   (info) => {
     console.log(`Family Agenda listening on port ${info.port}`);
