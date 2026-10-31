@@ -55,62 +55,73 @@ describe("the display and OCR settings over HTTP", () => {
     expect((await post("/admin/display", { language: "fr" })).status).toBe(400);
   });
 
-  it("adds, orders and drops OCR languages among the installed models", async () => {
-    expect(formsOf(await get("/admin/llm"))).toContain("/admin/llm/ocr:");
+  it("adds, orders and drops OCR languages, each with its model", async () => {
+    const before = await get("/admin/llm");
+    expect(before).toContain('<option value="eng">Englisch</option>');
+    expect(before).toContain('<option value="fra">Französisch</option>');
+    expect(formsOf(before)).not.toContain("/admin/llm/ocr/deu/remove:");
 
-    await post("/admin/llm/ocr", { ocrLanguages: "deu+eng" });
-    const page = await get("/admin/llm");
-    expect(entryOf(page, "LLM-Endpunkt")).toContain("Nicht eingerichtet; OCR auf Deutsch und Englisch");
-    const forms = formsOf(page);
-    // English moves up before German, and either can be dropped while the other stays.
-    expect(forms).toContain("/admin/llm/ocr: ocrLanguages=eng+deu");
-    expect(forms).toContain("/admin/llm/ocr: ocrLanguages=eng");
-    expect(forms).toContain("/admin/llm/ocr: ocrLanguages=deu");
+    expect((await post("/admin/llm/ocr", { language: "eng" })).status).toBe(303);
+    expect((await post("/admin/llm/ocr", { language: "fra" })).status).toBe(303);
+    let page = await get("/admin/llm");
+    expect(entryOf(page, "KI")).toContain("Nicht eingerichtet; OCR auf Deutsch, Englisch und Französisch");
+    expect(page).not.toContain('<option value="fra">Französisch</option>');
+    expect(formsOf(page)).toContain("/admin/llm/ocr/fra/remove:");
+    expect(formsOf(page)).toContain("/admin/llm/ocr/deu/remove:");
+    expect(formsOf(page)).not.toContain("/admin/llm/ocr/deu/up:");
 
-    const refused = await post("/admin/llm/ocr", { ocrLanguages: "deu+fra" });
-    expect(refused.status).toBe(400);
-    expect(await refused.text()).toContain("Lade zuerst sein Modell herunter.");
+    await post("/admin/llm/ocr/fra/up", {});
+    expect(entryOf(await get("/admin/llm"), "KI")).toContain("OCR auf Deutsch, Französisch und Englisch");
+
+    expect((await post("/admin/llm/ocr/fra/remove", {})).status).toBe(303);
+    page = await get("/admin/llm");
+    expect(page).toContain('<option value="fra">Französisch</option>');
+    expect((await post("/admin/llm/ocr/xyz/remove", {})).status).toBe(400);
   });
 
-  it("downloads a model, offers it for OCR, and removes it once unselected", async () => {
-    const offered = await get("/admin/llm");
-    expect(offered).toContain('<option value="fra">Französisch</option>');
-
-    const installed = await post("/admin/llm/models", { language: "fra" });
-    expect(installed.status).toBe(303);
+  it("switches OCR on and off, whatever the model of the LLM endpoint", async () => {
     let page = await get("/admin/llm");
-    expect(formsOf(page)).toContain("/admin/llm/models/fra/remove:");
-    expect(page).not.toContain('<option value="fra">Französisch</option>');
+    expect(page).toMatch(/role="switch" aria-checked="true" aria-labelledby="ocr-enabled"/);
+    expect(formsOf(page)).toContain("/admin/llm/ocr/enabled: ocr=no");
+    expect(page).not.toContain("Das Modell liest Bilder");
+    expect(entryOf(page, "KI")).toContain("OCR auf Deutsch");
 
-    await post("/admin/llm/ocr", { ocrLanguages: "deu+fra" });
+    expect((await post("/admin/llm/ocr/enabled", { ocr: "no" })).status).toBe(303);
     page = await get("/admin/llm");
-    expect(formsOf(page)).not.toContain("/admin/llm/models/fra/remove:");
-    expect(formsOf(page)).not.toContain("/admin/llm/models/deu/remove:");
+    expect(page).toMatch(/role="switch" aria-checked="false" aria-labelledby="ocr-enabled"/);
+    expect(formsOf(page)).toContain("/admin/llm/ocr/enabled: ocr=yes");
+    expect(formsOf(page)).not.toContain("/admin/llm/ocr:");
+    expect(entryOf(page, "KI")).toContain("OCR aus");
 
-    await post("/admin/llm/ocr", { ocrLanguages: "deu" });
-    expect((await post("/admin/llm/models/fra/remove", {})).status).toBe(303);
-    expect(await get("/admin/llm")).toContain('<option value="fra">Französisch</option>');
+    await post("/admin/llm/ocr/enabled", { ocr: "yes" });
+    expect(await get("/admin/llm")).toContain("aria-checked=\"true\"");
+  });
+
+  it("does not offer to remove the last OCR language", async () => {
+    const refused = await post("/admin/llm/ocr/deu/remove", {});
+
+    expect(refused.status).toBe(400);
+    expect(await refused.text()).toContain("Behalte mindestens eine OCR-Sprache.");
   });
 
   it("shows why a download failed", async () => {
     catalog.fail("ita", "tampered");
 
-    const failed = await post("/admin/llm/models", { language: "ita" });
+    const failed = await post("/admin/llm/ocr", { language: "ita" });
 
     expect(failed.status).toBe(400);
     expect(await failed.text()).toContain("does not match its checksum");
   });
 
   it("marks a chosen OCR language whose model is missing, and offers to download it", async () => {
-    await post("/admin/llm/models", { language: "fra" });
-    await post("/admin/llm/ocr", { ocrLanguages: "deu+fra" });
+    await post("/admin/llm/ocr", { language: "fra" });
     await rm(join(instance.tessdataDirectory, "fra.traineddata"));
 
     const page = await get("/admin/llm");
 
-    expect(entryOf(page, "LLM-Endpunkt")).toContain("fam-navitem__summary--attention");
-    expect(page).toContain("Nicht installiert");
-    expect(formsOf(page)).toContain("/admin/llm/models: language=fra");
+    expect(entryOf(page, "KI")).toContain("fam-navitem__summary--attention");
+    expect(page).toContain("Modell fehlt");
+    expect(formsOf(page)).toContain("/admin/llm/ocr: language=fra");
   });
 });
 

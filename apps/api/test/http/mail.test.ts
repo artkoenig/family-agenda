@@ -39,14 +39,7 @@ describe("the LLM endpoint and mail over HTTP", () => {
     const page = await settings();
     expect(page).toContain('value="http://ollama:11434/v1"');
     expect(page).toContain("on your home network");
-    expect(page).toMatch(/<input type="checkbox" name="vision" value="yes"\/>/);
-  });
-
-  it("saves that the model reads images", async () => {
-    await instance.post("/admin/llm", { baseUrl: "http://ollama:11434/v1", model: "qwen3.5-vl:8b", apiKey: "", vision: "yes" }, { cookie });
-
-    expect(await settings()).toMatch(/<input type="checkbox" name="vision" value="yes" checked=""\/>/);
-    expect(await instance.app.llmEndpoint.current()).toMatchObject({ vision: true });
+    expect(page).not.toContain('name="vision"');
   });
 
   it("saves an endpoint outside the home network only with the acknowledgement, and never shows its key", async () => {

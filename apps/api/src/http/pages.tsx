@@ -138,8 +138,8 @@ export type SettingsSummary = {
   kitSaved: boolean;
   /** The Family Language. */
   family: FamilyLanguage;
-  /** The OCR languages, and whether one of their models is missing. */
-  ocr: { languages: OcrLanguage[]; missing: boolean };
+  /** Whether OCR is on, its languages, and whether one of their models is missing. */
+  ocr: { enabled: boolean; languages: OcrLanguage[]; missing: boolean };
 };
 
 /** The Admin a page is shown to, whether the new-Source-Types banner shows, and the settings list. */
@@ -210,7 +210,7 @@ function settingsGroups(translation: Translation): SettingsGroup[] {
           summary: ({ settings: { llm, ocr } }) => ({
             text: [
               llm ? (llm.local ? s.llmLocal(llm.model) : s.llmRemote(llm.model)) : s.notSetUp,
-              s.ocr(list(ocr.languages.map(ocrLanguageName))),
+              ocr.enabled ? s.ocr(list(ocr.languages.map(ocrLanguageName))) : s.ocrOff,
             ].join("; "),
             ...(ocr.missing ? { tone: "attention" as const } : {}),
           }),
@@ -1968,12 +1968,12 @@ function ChoiceField(props: { field: SourceForm["fields"][number]; id: string; s
 export function LlmEndpointPage(props: {
   admin: SignedInAdmin;
   endpoint: LlmEndpointSummary | null;
-  /** The OCR languages and models, which read what the endpoint's model cannot. */
+  /** The OCR languages, which read what the endpoint's model cannot. */
   languages: LanguageSettings;
   /** How many messages wait to be read. */
   waiting: number;
   /** What the Admin entered, shown again with a problem. */
-  entered?: { baseUrl: string; model: string; vision: boolean };
+  entered?: { baseUrl: string; model: string };
   problem?: string;
 }) {
   const { endpoint } = props;
@@ -2023,9 +2023,6 @@ export function LlmEndpointPage(props: {
         <Group title={l.options} level={2}>
           <div class="fam-group__fields">
             <label>
-              <input type="checkbox" name="vision" value="yes" checked={shown?.vision} /> {l.vision}
-            </label>
-            <label>
               <input type="checkbox" name="thirdPartiesAcknowledged" value="yes" /> {l.thirdParties}
             </label>
           </div>
@@ -2068,14 +2065,11 @@ function RereadGroup(props: { action: string; label: string; hint: string; butto
   );
 }
 
-/** OCR languages in Tesseract's notation, as the forms post them: `deu+eng`. */
-const ocrList = (languages: OcrLanguage[]) => languages.join("+");
-
-/** A form that saves the OCR languages as they would be after its one button. */
-function OcrLanguagesButton(props: { languages: OcrLanguage[]; label: string }) {
+/** A form that posts one OCR language to an action, as its one button. */
+function OcrLanguageButton(props: { action: string; language?: OcrLanguage; label: string }) {
   return (
-    <form method="post" action="/admin/llm/ocr" class="fam-row__form">
-      <input type="hidden" name="ocrLanguages" value={ocrList(props.languages)} />
+    <form method="post" action={props.action} class="fam-row__form">
+      {props.language ? <input type="hidden" name="language" value={props.language} /> : null}
       <button type="submit" class="fam-button fam-button--quiet">
         {props.label}
       </button>
@@ -2083,109 +2077,87 @@ function OcrLanguagesButton(props: { languages: OcrLanguage[]; label: string }) 
   );
 }
 
-/** Downloads one language's model. */
-function DownloadButton(props: { language: OcrLanguage }) {
-  const { t, ocrLanguageName } = useTranslation();
+/** The OCR section: its switch, and while it is on the languages with their models. */
+function OcrSections(props: { languages: LanguageSettings }) {
+  const { languages } = props;
+  const { t } = useTranslation();
+  const l = t.ocr;
   return (
-    <form method="post" action="/admin/llm/models" class="fam-row__form">
-      <input type="hidden" name="language" value={props.language} />
-      <button type="submit" class="fam-button fam-button--quiet">
-        {t.ocr.downloadLanguage(ocrLanguageName(props.language))}
-      </button>
-    </form>
+    <section class="fam-sheet">
+      <Group title={l.title} level={2} intro={l.ocrIntro}>
+        <ul class="fam-rows">
+          <li class="fam-row">
+            <span class="fam-row__main">
+              <span class="fam-row__label" id="ocr-enabled">
+                {l.enable}
+              </span>
+              <span class="fam-row__hint">{l.enableHint}</span>
+            </span>
+            <form method="post" action="/admin/llm/ocr/enabled" class="fam-row__form">
+              <input type="hidden" name="ocr" value={languages.ocrEnabled ? "no" : "yes"} />
+              <button
+                type="submit"
+                role="switch"
+                aria-checked={languages.ocrEnabled ? "true" : "false"}
+                aria-labelledby="ocr-enabled"
+                class="fam-switch"
+              ></button>
+            </form>
+          </li>
+        </ul>
+        {languages.ocrEnabled ? <OcrLanguageList languages={languages} /> : null}
+      </Group>
+    </section>
   );
 }
 
-/** The OCR languages in the order Tesseract tries them, and the language models they read with. */
-function OcrSections(props: { languages: LanguageSettings }) {
+/** The OCR languages in the order Tesseract tries them, with what adds, orders and removes them. */
+function OcrLanguageList(props: { languages: LanguageSettings }) {
   const { languages } = props;
   const { t, locale, ocrLanguageName } = useTranslation();
   const l = t.ocr;
   const byName = (a: OcrLanguage, b: OcrLanguage) => ocrLanguageName(a).localeCompare(ocrLanguageName(b), locale);
-  const selected = languages.ocrLanguages.map((ocr) => ocr.language);
-  const addable = languages.models.filter((model) => !model.selected).map((model) => model.language).sort(byName);
-  const without = (language: OcrLanguage) => selected.filter((other) => other !== language);
-  const movedUp = (index: number) => selected.toSpliced(index - 1, 2, ...selected.slice(index - 1, index + 1).reverse());
+  const addable = [...languages.addable].sort(byName);
   return (
     <>
-      <section class="fam-sheet">
-        <Group title={l.languages} level={2} intro={l.ocrIntro}>
-          <ul class="fam-rows">
-            {languages.ocrLanguages.map((ocr, index) => (
-              <li class="fam-row">
-                <span class="fam-row__main">
-                  <span class="fam-row__label">{ocrLanguageName(ocr.language)}</span>
-                  {ocr.installed ? (
-                    <span class="fam-row__hint">{l.tried(index + 1)}</span>
-                  ) : (
-                    <span class="fam-status fam-status--waiting">{l.notInstalled}</span>
-                  )}
-                </span>
-                {ocr.installed ? null : <DownloadButton language={ocr.language} />}
-                {index > 0 ? <OcrLanguagesButton languages={movedUp(index)} label={l.moveUp} /> : null}
-                {selected.length > 1 ? <OcrLanguagesButton languages={without(ocr.language)} label={l.remove} /> : null}
-              </li>
-            ))}
-          </ul>
-          {languages.ocrLanguages.some((ocr) => !ocr.installed) ? <p class="fam-problem">{l.missingModel}</p> : null}
-          {addable.length > 0 ? (
-            <form method="post" action="/admin/llm/ocr" class="fam-inline-add">
-              <label for="add-ocr">{l.addLanguage}</label>
-              <div class="fam-inline-add__controls">
-                <select id="add-ocr" name="ocrLanguages">
-                  {addable.map((language) => (
-                    <option value={ocrList([...selected, language])}>{ocrLanguageName(language)}</option>
-                  ))}
-                </select>
-                <button type="submit" class="fam-button fam-button--quiet fam-button--add">
-                  {l.add}
-                </button>
-              </div>
-            </form>
-          ) : null}
-        </Group>
-      </section>
-
-      <section class="fam-sheet">
-        <Group title={l.models} level={2} intro={l.modelsIntro((code) => <code>{code}</code>)}>
-          <ul class="fam-rows">
-            {languages.models.map((model) => (
-              <li class="fam-row">
-                <span class="fam-row__main">
-                  <span class="fam-row__label">{ocrLanguageName(model.language)}</span>
-                  <span class="fam-row__hint">
-                    {model.bundled ? l.bundled : l.downloaded}
-                    {model.selected ? l.usedForOcr : null}
-                  </span>
-                </span>
-                {model.bundled || model.selected ? null : (
-                  <form method="post" action={`/admin/llm/models/${model.language}/remove`} class="fam-row__form">
-                    <button type="submit" class="fam-button fam-button--danger">
-                      {l.removeModel(ocrLanguageName(model.language))}
-                    </button>
-                  </form>
+        <ul class="fam-rows">
+          {languages.ocrLanguages.map((ocr, index) => (
+            <li class="fam-row">
+              <span class="fam-row__main">
+                <span class="fam-row__label">{ocrLanguageName(ocr.language)}</span>
+                {ocr.installed ? (
+                  <span class="fam-row__hint">{l.tried(index + 1)}</span>
+                ) : (
+                  <span class="fam-status fam-status--waiting">{l.notInstalled}</span>
                 )}
-              </li>
-            ))}
-          </ul>
-          {languages.downloadable.length > 0 ? (
-            <form method="post" action="/admin/llm/models" class="fam-inline-add">
-              <label for="download">{l.downloadModel}</label>
-              <div class="fam-inline-add__controls">
-                <select id="download" name="language">
-                  {[...languages.downloadable].sort(byName).map((language) => (
-                    <option value={language}>{ocrLanguageName(language)}</option>
-                  ))}
-                </select>
-                <button type="submit" class="fam-button fam-button--quiet">
-                  {l.download}
-                </button>
-              </div>
-              <small>{l.downloadHint}</small>
-            </form>
-          ) : null}
-        </Group>
-      </section>
+              </span>
+              {ocr.installed ? null : (
+                <OcrLanguageButton action="/admin/llm/ocr" language={ocr.language} label={l.downloadLanguage(ocrLanguageName(ocr.language))} />
+              )}
+              {index > 0 ? <OcrLanguageButton action={`/admin/llm/ocr/${ocr.language}/up`} label={l.moveUp} /> : null}
+              {languages.ocrLanguages.length > 1 ? (
+                <OcrLanguageButton action={`/admin/llm/ocr/${ocr.language}/remove`} label={l.remove} />
+              ) : null}
+            </li>
+          ))}
+        </ul>
+        {languages.ocrLanguages.some((ocr) => !ocr.installed) ? <p class="fam-problem">{l.missingModel}</p> : null}
+        {addable.length > 0 ? (
+          <form method="post" action="/admin/llm/ocr" class="fam-inline-add">
+            <label for="add-ocr">{l.addLanguage}</label>
+            <div class="fam-inline-add__controls">
+              <select id="add-ocr" name="language">
+                {addable.map((language) => (
+                  <option value={language}>{ocrLanguageName(language)}</option>
+                ))}
+              </select>
+              <button type="submit" class="fam-button fam-button--quiet fam-button--add">
+                {l.add}
+              </button>
+            </div>
+            <small>{l.addHint((code) => <code>{code}</code>)}</small>
+          </form>
+        ) : null}
     </>
   );
 }

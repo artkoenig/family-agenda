@@ -38,7 +38,7 @@ describe("the settings in the Admin area", () => {
     expect(entryOf(page, "Agendas")).toContain("None yet");
     expect(entryOf(page, "Agendas")).toContain('aria-current="page"');
     expect(entryOf(page, "Family Members")).not.toContain("aria-current");
-    expect(entryOf(page, "LLM endpoint")).toContain("Not set up");
+    expect(entryOf(page, "AI")).toContain("Not set up");
     expect(entryOf(page, "Admins")).toContain("1 Admin");
     expect(entryOf(page, "Recovery Kit")).toContain("Saved");
     expect(entryOf(page, "Sources")).toContain("New ones are available");
