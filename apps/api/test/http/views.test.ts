@@ -110,7 +110,8 @@ describe("Views over HTTP", () => {
     expect(filterLink(kitchenPage, "Ben")).toBe("");
 
     const miaPage = await (await instance.get(`/views/${forMia}`)).text();
-    expect(miaPage).not.toContain("fam-filter");
+    expect(miaPage).not.toContain('class="fam-filter"');
+    expect(miaPage).not.toContain('class="fam-bar__summary"');
   });
 
   it("serves a Family Member's photo without a session, and 404 without one", async () => {
