@@ -121,7 +121,7 @@ describe("Source health in the Admin area and on Agendas", () => {
     if (!created.ok) throw new Error("creating failed");
     const agenda = async () => (await instance.get(`/agendas/${created.id}`)).text();
     const line =
-      '<p class="fam-out-of-date" role="status" tabindex="0"><span class="fam-out-of-date__text">Some of this may be out of date.</span></p>';
+      '<p class="fam-out-of-date" role="status">Some of this may be out of date.</p>';
     expect(await agenda()).not.toContain(line);
 
     testPluginControls.failNext("calendar", "definite");
