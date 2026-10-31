@@ -102,6 +102,19 @@
   .vd .today h3::before { background:var(--hearth); }
   .vd .today h3 { color:var(--hearth-strong); }
   .vd .today h3 em { color:var(--ink); }
+
+  /* ---- Desktop: the same column as on a phone, centred (--content-width 640px + 16px side padding) ---- */
+  .desk-grid { display:grid; grid-template-columns:repeat(2, 760px); gap:28px 24px; align-items:start; }
+  h2.section { font-size:18px; line-height:24px; margin:40px 0 12px; }
+  figure.desk { width:760px; }
+  .desk .phone { width:760px; border-radius:10px; }
+  .desk .bar { padding:12px 0 8px; }
+  .desk .bar, .desk .days { max-width:672px; margin-left:auto; margin-right:auto; }
+  .desk .bar { padding-left:16px; padding-right:16px; }
+  .desk.vc-fig .days, .desk .vc .days, .desk .phone.vc .days { padding:0 16px; }
+  .desk .phone.vc li { grid-template-columns:56px 1fr; column-gap:8px; }
+  .desk .phone.vc { --x:0; }
+  .desk .phone.vc .days { --time-column:7.5em; }
 </style>
 </head>
 <body>
@@ -249,7 +262,20 @@
       <figcaption><h2>D · Marker + line</h2><p>Accent bar before the name, ink colour, a line running out to the right. Same visual language as the “now” line; today gets the hearth accent.</p></figcaption>
     </figure>
   </div>
+  <h2 class="section">Desktop</h2>
+  <div class="desk-grid" id="desktop"></div>
 </div>
+<script>
+  // Desktop previews: the same markup in a wide frame, the content column centred as in the app.
+  document.querySelectorAll(".grid figure").forEach(fig => {
+    const c = fig.cloneNode(true);
+    c.classList.add("desk");
+    c.querySelector(".bar").innerHTML = "13:42<small>Do 5. Nov.</small>";
+    c.querySelector("figcaption").remove();
+    c.insertAdjacentHTML("beforeend", "<figcaption><h2>" + fig.querySelector("figcaption h2").textContent + "</h2></figcaption>");
+    document.getElementById("desktop").appendChild(c);
+  });
+</script>
 <script>
   const root = document.documentElement;
   function setTheme(t) { t === "dark" ? root.setAttribute("data-theme", "dark") : root.removeAttribute("data-theme");
