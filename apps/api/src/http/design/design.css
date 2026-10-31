@@ -188,15 +188,17 @@
 
 /* Timeline: days, now line, Event rows ---------------------------------- */
 .fam-days { list-style: none; margin: 0 auto; padding: 0 var(--space-4) var(--space-7); max-width: calc(var(--content-width) + 2 * var(--space-4)); }
+/* A day's header: an accent bar, its name in ink and a line running out to the right; today in the accent colour. */
 .fam-day__header {
-  display: flex; align-items: baseline; gap: var(--space-2); margin: var(--space-5) 0 var(--space-1);
-  font-size: 13px; line-height: 16px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-muted);
+  display: flex; align-items: center; gap: var(--space-2); margin: var(--space-5) 0 var(--space-1);
+  font-size: 15px; line-height: 20px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--ink);
 }
-.fam-day__date { font-size: 14px; font-weight: 500; letter-spacing: 0; text-transform: none; }
-.fam-day--today .fam-day__header { color: var(--ink); }
-.fam-day--today .fam-day__name {
-  background: var(--hearth-tint); color: var(--ink); border-radius: var(--radius-full); padding: 4px 10px; margin-left: -10px;
-}
+.fam-day__header::before { content: ""; flex: none; width: 4px; height: 18px; border-radius: 2px; background: var(--line-strong); }
+.fam-day__header::after { content: ""; order: 3; flex: 1; height: 1px; background: var(--line-strong); opacity: .6; }
+.fam-day__date { font-size: 15px; font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--ink-muted); }
+.fam-day--today .fam-day__header { color: var(--hearth-strong); }
+.fam-day--today .fam-day__header::before { background: var(--hearth); }
+.fam-day--today .fam-day__date { color: var(--ink); }
 .fam-now {
   display: flex; align-items: center; gap: var(--space-2); margin: var(--space-1) 0;
   color: var(--hearth-strong); font-size: 13px; line-height: 16px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase;
@@ -204,10 +206,10 @@
 }
 .fam-now::before { content: ""; flex: none; width: 10px; height: 10px; border-radius: var(--radius-full); background: var(--now); }
 .fam-now::after { content: ""; flex: 1; height: 2px; border-radius: 1px; background: var(--now); }
-.fam-empty { color: var(--ink-muted); margin: 0; padding: var(--space-3) var(--space-1); border-bottom: 1px solid var(--line); }
+.fam-empty { color: var(--ink-muted); margin: 0; padding: var(--space-3); border-bottom: 1px solid var(--line); }
 .fam-event { border-bottom: 1px solid var(--line); }
 .fam-event > summary {
-  display: flex; gap: var(--space-3); align-items: baseline; padding: var(--space-3) var(--space-1);
+  display: flex; gap: var(--space-3); align-items: baseline; padding: var(--space-3);
   cursor: pointer; list-style: none; border-radius: var(--radius-md);
 }
 .fam-event > summary::-webkit-details-marker { display: none; }
@@ -225,13 +227,13 @@
 /* What a row says on tap sits flat beneath it, in line with the row, not in a card. */
 .fam-event__details {
   display: grid; grid-template-columns: auto 1fr; gap: var(--space-1) var(--space-3);
-  margin: 0; padding: 0 var(--space-1) var(--space-3);
+  margin: 0; padding: 0 var(--space-3) var(--space-3);
   color: var(--ink-muted);
 }
 .fam-event__details dt { font-weight: 600; }
 .fam-event__details dd { margin: 0; color: var(--ink); }
 /* An Event or a Task as a row: its time or tick, its title with what else to know below, its avatars. */
-.fam-item { display: flex; gap: var(--space-3); align-items: flex-start; padding: var(--space-3) var(--space-1); border-bottom: 1px solid var(--line); }
+.fam-item { display: flex; gap: var(--space-3); align-items: flex-start; padding: var(--space-3); border-bottom: 1px solid var(--line); }
 .fam-item__lead { flex: none; min-width: var(--time-column); color: var(--ink-muted); }
 .fam-item__text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .fam-item__title { font-weight: 600; }
@@ -241,7 +243,7 @@
 /* The Lessons a school day lists on tap, their subjects in line with the row's title; cancelled ones struck through. */
 .fam-lessons {
   display: grid; grid-template-columns: minmax(var(--time-column), auto) auto 1fr; gap: var(--space-1) var(--space-3);
-  list-style: none; margin: 0; padding: 0 var(--space-1) var(--space-3);
+  list-style: none; margin: 0; padding: 0 var(--space-3) var(--space-3);
 }
 .fam-lesson { display: contents; }
 .fam-lesson__time { color: var(--ink-muted); font-variant-numeric: tabular-nums; }
