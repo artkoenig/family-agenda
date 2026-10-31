@@ -1885,7 +1885,7 @@ function CatalogueField(props: {
 
 /**
  * The Parts of a Source, such as the folders of a mailbox: one card each with its name and the
- * Family Members it concerns as avatars to tap, none meaning the whole Family, and one empty card
+ * Family Members it concerns as switches to tap, none meaning the whole Family, and one empty card
  * to add another. A Part not assigned of its own concerns whom its Source is assigned to.
  */
 function PartsField(props: { field: SourceForm["fields"][number]; id: string; source: SourceSummary | undefined; members: FamilyMemberSummary[] }) {
@@ -1910,10 +1910,10 @@ function PartsField(props: { field: SourceForm["fields"][number]; id: string; so
             />
             <div class="fam-part__members" role="group" aria-label={t.sources.partMembers(row.name === "" ? t.sources.partNew : row.name)}>
               {members.map((member) => (
-                <label class="fam-pick" title={member.name}>
+                <label class="fam-choice fam-choice--member" title={member.name}>
                   <input type="checkbox" name={`part.${field.key}.${index}.member`} value={member.id} checked={row.chosen.includes(member.id)} />
                   <Avatar member={member} size="sm" />
-                  <span class="fam-visually-hidden">{member.name}</span>
+                  <span class="fam-choice__name">{member.name}</span>
                 </label>
               ))}
             </div>
