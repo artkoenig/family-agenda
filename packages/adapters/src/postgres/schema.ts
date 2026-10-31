@@ -51,6 +51,8 @@ export const settings = pgTable(
     language: text("language").notNull().default("en"),
     /** The Tesseract codes OCR reads in, in order; by default the one of the Family Language. */
     ocrLanguages: text("ocr_languages").array().notNull().default(sql`'{eng}'::text[]`),
+    /** Whether OCR reads the scanned pages of attachments; the LLM only ever receives text. */
+    ocrEnabled: boolean("ocr_enabled").notNull().default(true),
   },
   (table) => [
     singleRow("settings", table.id),
@@ -450,8 +452,6 @@ export const llmEndpoints = pgTable(
     baseUrl: text("base_url").notNull(),
     model: text("model").notNull(),
     apiKeyRef: text("api_key_ref"),
-    /** Whether its model reads images, so that scanned pages are sent to it rather than to OCR. */
-    vision: boolean("vision").notNull().default(false),
     /** When an Admin acknowledged that third parties' messages are sent to it; null for a local one. */
     acknowledgedAt: timestamptz("acknowledged_at"),
     savedAt: timestamptz("saved_at").notNull(),

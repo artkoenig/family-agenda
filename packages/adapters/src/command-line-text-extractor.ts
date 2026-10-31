@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -15,8 +15,6 @@ export type CommandLineTextExtractorOptions = {
   tessdataDirectory?: string;
 };
 
-/** Pages are rendered at this resolution for a vision-capable LLM endpoint: legible, yet small. */
-const imageDpi = 150;
 /** Tesseract reads best at about 300 dpi. */
 const ocrDpi = 300;
 
@@ -41,16 +39,6 @@ export class CommandLineTextExtractor implements TextExtractor {
       const pages = text.split("\f");
       pages.pop();
       return pages;
-    });
-  }
-
-  pageImages(pdf: Uint8Array, pages: number[]): Promise<Conversion<Uint8Array[]>> {
-    return this.withPdf(pdf, async (file, directory) => {
-      const images: Uint8Array[] = [];
-      for (const page of pages) {
-        images.push(new Uint8Array(await readFile(await this.render(file, directory, page, ["-r", String(imageDpi)]))));
-      }
-      return images;
     });
   }
 

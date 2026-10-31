@@ -72,10 +72,7 @@ export const en = {
     "third-parties-not-acknowledged":
       "This server is outside your home network. Confirm that the text of third parties' messages is sent to it.",
     "no-ocr-language": "Keep at least one OCR language.",
-    "ocr-language-not-installed": "The model of that OCR language is not installed. Download its model first.",
-    "unknown-ocr-language": "No model can be downloaded for that language.",
-    "ocr-language-selected": "OCR reads in this language. Remove it from the OCR languages first.",
-    "ocr-language-bundled": "This model comes with Family Agenda and cannot be removed.",
+    "unknown-ocr-language": "That OCR language does not exist, or is not in the list.",
     "unknown-attribute": "The Source's Source Type offers nothing like this to match on.",
     "unknown-entry": "This entry is not in the catalogue.",
     "not-installed": "This is not installed on the Instance. It needs an image of Family Agenda that includes it.",
@@ -133,6 +130,7 @@ export const en = {
       plural(count, { one: `${count} Agenda on the home network`, other: `${count} Agendas on the home network` }),
     display: (family: string) => family,
     ocr: (languages: string) => `OCR in ${languages}`,
+    ocrOff: "OCR off",
     sources: (count: number) => plural(count, { one: `${count} Source`, other: `${count} Sources` }),
     newOnes: "New ones are available",
     llmLocal: (model: string) => `${model}, on the home network`,
@@ -331,8 +329,6 @@ export const en = {
     model: "Model",
     apiKey: "API key (optional)",
     removeApiKey: "Remove the stored API key",
-    vision:
-      "The model reads images. Scanned PDF letters are sent to it as images of their pages; otherwise Tesseract reads them on this Instance.",
     thirdParties:
       "If this server is outside my home network: I understand that the text of messages from third parties, such as teachers' mails, is sent to it.",
     reread: "Re-read messages",
@@ -354,31 +350,26 @@ export const en = {
   },
 
   ocr: {
-    languages: "OCR languages",
+    title: "OCR",
     ocrIntro:
-      "Without an LLM endpoint that reads images, Tesseract reads scanned pages on this Instance, in these languages together, the first one first. Only languages whose model is installed can be chosen.",
+      "The LLM only ever receives text from PDFs, so that large files cannot overrun its context. Tesseract reads scanned pages without text on this Instance, whatever model the LLM endpoint uses.",
+    enable: "Switch OCR on",
+    enableHint:
+      "Switched off, scanned pages stay unread; their mails say so. Tesseract reads in the languages below together, the first one first. A new language is downloaded where needed, and a removed one deleted.",
     tried: (position: number) => `Tried ${ordinals[position - 1] ?? `${position}th`}`,
-    notInstalled: "Not installed",
+    notInstalled: "Model missing",
     moveUp: "Move up",
     remove: "Remove",
     missingModel: "Scanned letters are not read while a model is missing; their mails say so. Download it, or remove the language.",
     addLanguage: "Add an OCR language",
     add: "Add",
-    models: "Language models",
-    modelsIntro: (code: Wrap): Child[] => [
-      "The models Tesseract reads with, in the ",
-      code("tessdata"),
-      " volume. Others are downloaded from tesseract-ocr/tessdata_fast and checked against the checksums shipped with Family Agenda. Without internet access, put a ",
+    addHint: (code: Wrap): Child[] => [
+      "The model is a few megabytes, is downloaded from tesseract-ocr/tessdata_fast and checked against the checksums shipped with Family Agenda. Without internet access, put a ",
       code(".traineddata"),
-      " file into the volume.",
+      " file into the ",
+      code("tessdata"),
+      " volume.",
     ],
-    bundled: "Comes with Family Agenda",
-    downloaded: "Downloaded",
-    usedForOcr: " · used for OCR",
-    removeModel: (name: string) => `Remove ${name}`,
-    downloadModel: "Download a model",
-    downloadHint: "A model is a few megabytes and takes a moment to download.",
-    download: "Download",
     downloadLanguage: (name: string) => `Download ${name}`,
   },
 

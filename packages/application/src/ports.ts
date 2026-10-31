@@ -42,6 +42,9 @@ export interface FamilyRepository {
   confirmRecoveryKit(at: Date): Promise<void>;
   languages(): Promise<FamilyLanguages>;
   saveLanguages(languages: FamilyLanguages): Promise<void>;
+  /** Whether OCR reads the scanned pages of attachments. */
+  ocrEnabled(): Promise<boolean>;
+  saveOcrEnabled(enabled: boolean): Promise<void>;
 }
 
 export interface AdminRepository {
@@ -616,8 +619,6 @@ export type LlmEndpoint = {
   baseUrl: string;
   model: string;
   apiKey: string | null;
-  /** Whether its model reads images, so that scanned pages are sent to it rather than to OCR. */
-  vision: boolean;
 };
 
 /** The LLM endpoint as stored, its API key in the SecretStore. */
@@ -625,7 +626,6 @@ export type StoredLlmEndpoint = {
   baseUrl: string;
   model: string;
   apiKey: SecretRef | null;
-  vision: boolean;
   /** When an Admin acknowledged that third parties' messages are sent to it; null for a local one. */
   acknowledgedAt: Date | null;
   savedAt: Date;
@@ -695,28 +695,18 @@ export type EndpointFailure = { ok: false; problem: "unreachable" | "unauthorize
 
 export type ExtractionResult = { ok: true; events: ExtractedEvent[]; tasks: ExtractedTask[] } | EndpointFailure;
 
-/** Scanned pages of an attachment, as PNG images, for a vision-capable endpoint to read. */
-export type TranscriptionRequest = { endpoint: LlmEndpoint; images: Uint8Array[] };
-
-/** The text of each page, in order. */
-export type TranscriptionResult = { ok: true; pages: string[] } | EndpointFailure;
-
-/** Reads the Items a message states, and the words of scanned pages, through the Family's LLM endpoint. */
+/** Reads the Items a message states through the Family's LLM endpoint. */
 export interface Extractor {
   extract(request: ExtractionRequest): Promise<ExtractionResult>;
-  /** Reads the text of scanned pages, word for word, through a vision-capable endpoint. */
-  transcribe(request: TranscriptionRequest): Promise<TranscriptionResult>;
 }
 
 /** What converting a file gave, or why it could not be converted. */
 export type Conversion<T> = { ok: true; value: T } | { ok: false; message: string };
 
-/** Turns PDF attachments into text: their text layer, images of their pages, or OCR of a scan. */
+/** Turns PDF attachments into text: their text layer, or OCR of a scan. */
 export interface TextExtractor {
   /** The text layer of each page, in order; an empty string for a page without one, such as a scan. */
   textLayer(pdf: Uint8Array): Promise<Conversion<string[]>>;
-  /** The given pages, numbered from 1, as PNG images. */
-  pageImages(pdf: Uint8Array, pages: number[]): Promise<Conversion<Uint8Array[]>>;
   /** The text OCR reads on each of the given pages, numbered from 1, in the given languages, in order. */
   ocr(pdf: Uint8Array, pages: number[], languages: OcrLanguage[]): Promise<Conversion<string[]>>;
 }
@@ -736,7 +726,7 @@ export interface OcrModelStore {
   installed(): Promise<OcrModel[]>;
   /** Downloads and checks a model; a failed download leaves nothing behind. */
   install(language: OcrLanguage): Promise<Conversion<null>>;
-  /** Removes a model that is not bundled. */
+  /** Removes a model that is not bundled; a bundled or missing one is left alone. */
   remove(language: OcrLanguage): Promise<void>;
 }
 

@@ -13,8 +13,6 @@ const flat = (text: string) => text.replace(/\s+/g, " ").trim();
 
 const german = ["deu" as OcrLanguage];
 
-const png = [0x89, 0x50, 0x4e, 0x47];
-
 describe("the poppler and Tesseract command-line tools", () => {
   const extractor = new CommandLineTextExtractor();
 
@@ -77,16 +75,6 @@ describe("the poppler and Tesseract command-line tools", () => {
     }
   });
 
-  it("renders the pages of a scanned PDF as PNG images", async (context) => {
-    requireOcrTools(context, "pdftoppm");
-    const result = await extractor.pageImages(await fixture("scan.pdf"), [1]);
-
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.value).toHaveLength(1);
-    expect([...result.value[0]!.subarray(0, 4)]).toEqual(png);
-  });
-
   it("says why a file that is no PDF cannot be converted", async (context) => {
     // Without the tools it would pass on "not installed" alone.
     requireOcrTools(context, "pdftotext", "pdftoppm");
@@ -95,7 +83,6 @@ describe("the poppler and Tesseract command-line tools", () => {
     for (const result of [
       await extractor.textLayer(broken),
       await extractor.ocr(broken, [1], german),
-      await extractor.pageImages(broken, [1]),
     ]) {
       expect(result).toMatchObject({ ok: false, message: expect.stringMatching(/\S/) as unknown });
     }

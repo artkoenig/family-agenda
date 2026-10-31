@@ -113,6 +113,16 @@ export class PostgresFamilyRepository implements FamilyRepository {
   async saveLanguages(languages: FamilyLanguages): Promise<void> {
     await this.db.update(settings).set({ language: languages.language, ocrLanguages: languages.ocrLanguages });
   }
+
+  async ocrEnabled(): Promise<boolean> {
+    const [row] = await this.db.select({ ocrEnabled: settings.ocrEnabled }).from(settings);
+    if (!row) throw new Error("the settings row is missing");
+    return row.ocrEnabled;
+  }
+
+  async saveOcrEnabled(enabled: boolean): Promise<void> {
+    await this.db.update(settings).set({ ocrEnabled: enabled });
+  }
 }
 
 export class PostgresAdminRepository implements AdminRepository {
@@ -1146,7 +1156,6 @@ export class PostgresLlmEndpointRepository implements LlmEndpointRepository {
       baseUrl: row.baseUrl,
       model: row.model,
       apiKey: row.apiKeyRef as SecretRef | null,
-      vision: row.vision,
       acknowledgedAt: row.acknowledgedAt,
       savedAt: row.savedAt,
     };
@@ -1157,7 +1166,6 @@ export class PostgresLlmEndpointRepository implements LlmEndpointRepository {
       baseUrl: endpoint.baseUrl,
       model: endpoint.model,
       apiKeyRef: endpoint.apiKey,
-      vision: endpoint.vision,
       acknowledgedAt: endpoint.acknowledgedAt,
       savedAt: endpoint.savedAt,
     };

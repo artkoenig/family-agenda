@@ -91,7 +91,8 @@ export class TessdataDirectory implements OcrModelStore {
 
   async remove(language: OcrLanguage): Promise<void> {
     const path = join(this.options.directory, `${language}${extension}`);
-    if ((await lstat(path)).isSymbolicLink()) return;
+    const stats = await lstat(path).catch(() => null);
+    if (!stats || stats.isSymbolicLink()) return;
     await unlink(path);
   }
 }

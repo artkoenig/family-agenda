@@ -36,6 +36,13 @@
       "when": 1793400000001,
       "tag": "0004_view_kinds",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1793461339743,
+      "tag": "0005_ocr_switch",
+      "breakpoints": true
     }
   ]
 }

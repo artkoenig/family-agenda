@@ -58,10 +58,7 @@ export const de: Catalogue = {
     "third-parties-not-acknowledged":
       "Dieser Server steht außerhalb deines Heimnetzes. Bestätige, dass der Text der Nachrichten Dritter an ihn geschickt wird.",
     "no-ocr-language": "Behalte mindestens eine OCR-Sprache.",
-    "ocr-language-not-installed": "Das Modell dieser OCR-Sprache ist nicht installiert. Lade zuerst sein Modell herunter.",
-    "unknown-ocr-language": "Für diese Sprache lässt sich kein Modell herunterladen.",
-    "ocr-language-selected": "Die Texterkennung liest in dieser Sprache. Entferne sie zuerst aus den OCR-Sprachen.",
-    "ocr-language-bundled": "Dieses Modell gehört zu Family Agenda und kann nicht entfernt werden.",
+    "unknown-ocr-language": "Diese OCR-Sprache gibt es nicht, oder sie steht nicht in der Liste.",
     "unknown-attribute": "Der Quellentyp dieser Quelle bietet nichts Derartiges zum Zuordnen an.",
     "unknown-entry": "Diesen Eintrag gibt es im Katalog nicht.",
     "not-installed": "Das ist auf der Instanz nicht installiert. Es braucht ein Image von Family Agenda, das es enthält.",
@@ -115,6 +112,7 @@ export const de: Catalogue = {
     agendas: (count) => plural(count, { one: `${count} Agenda im Heimnetz`, other: `${count} Agenden im Heimnetz` }),
     display: (family) => family,
     ocr: (languages) => `OCR auf ${languages}`,
+    ocrOff: "OCR aus",
     sources: (count) => plural(count, { one: `${count} Quelle`, other: `${count} Quellen` }),
     newOnes: "Neue sind verfügbar",
     llmLocal: (model) => `${model}, im Heimnetz`,
@@ -316,8 +314,6 @@ export const de: Catalogue = {
     model: "Modell",
     apiKey: "API-Schlüssel (optional)",
     removeApiKey: "Den gespeicherten API-Schlüssel entfernen",
-    vision:
-      "Das Modell liest Bilder. Eingescannte PDF-Briefe gehen als Bilder ihrer Seiten an es; sonst liest Tesseract sie auf dieser Instanz.",
     thirdParties:
       "Falls dieser Server außerhalb meines Heimnetzes steht: Ich verstehe, dass der Text von Nachrichten Dritter, etwa Mails von Lehrkräften, an ihn geschickt wird.",
     reread: "Nachrichten neu lesen",
@@ -339,32 +335,27 @@ export const de: Catalogue = {
   },
 
   ocr: {
-    languages: "OCR-Sprachen",
+    title: "OCR",
     ocrIntro:
-      "Ohne einen LLM-Endpunkt, der Bilder liest, liest Tesseract eingescannte Seiten auf dieser Instanz, in diesen Sprachen zusammen, die erste zuerst. Nur Sprachen, deren Modell installiert ist, lassen sich wählen.",
+      "Das LLM bekommt von PDFs immer nur Text, damit große Dateien seinen Kontext nicht sprengen. Eingescannte Seiten ohne Text liest Tesseract auf dieser Instanz, egal welches Modell der LLM-Endpunkt nutzt.",
+    enable: "OCR einschalten",
+    enableHint:
+      "Ausgeschaltet bleiben eingescannte Seiten ungelesen; die Mail sagt es. Tesseract liest in den Sprachen unten zusammen, die erste zuerst. Eine neue Sprache wird bei Bedarf heruntergeladen, eine entfernte gelöscht.",
     tried: (position) => (position === 1 ? "Wird zuerst versucht" : `An ${position}. Stelle versucht`),
-    notInstalled: "Nicht installiert",
+    notInstalled: "Modell fehlt",
     moveUp: "Nach oben",
     remove: "Entfernen",
     missingModel:
       "Eingescannte Briefe werden nicht gelesen, solange ein Modell fehlt; ihre Mails sagen es. Lade es herunter, oder entferne die Sprache.",
     addLanguage: "Eine OCR-Sprache hinzufügen",
     add: "Hinzufügen",
-    models: "Sprachmodelle",
-    modelsIntro: (code) => [
-      "Die Modelle, mit denen Tesseract liest, im Volume ",
-      code("tessdata"),
-      ". Weitere werden von tesseract-ocr/tessdata_fast heruntergeladen und mit den Prüfsummen verglichen, die Family Agenda mitbringt. Ohne Internetzugang lege eine ",
+    addHint: (code) => [
+      "Das Modell ist einige Megabyte groß, wird von tesseract-ocr/tessdata_fast heruntergeladen und mit den Prüfsummen verglichen, die Family Agenda mitbringt. Ohne Internetzugang lege eine ",
       code(".traineddata"),
-      "-Datei in das Volume.",
+      "-Datei in das Volume ",
+      code("tessdata"),
+      ".",
     ],
-    bundled: "Gehört zu Family Agenda",
-    downloaded: "Heruntergeladen",
-    usedForOcr: " · für OCR genutzt",
-    removeModel: (name) => `${name} entfernen`,
-    downloadModel: "Ein Modell herunterladen",
-    downloadHint: "Ein Modell ist einige Megabyte groß und braucht einen Moment zum Herunterladen.",
-    download: "Herunterladen",
     downloadLanguage: (name) => `${name} herunterladen`,
   },
 
