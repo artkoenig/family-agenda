@@ -136,8 +136,10 @@ export type SettingsSummary = {
   llm: { model: string; local: boolean } | null;
   admins: number;
   kitSaved: boolean;
-  /** The Family Language, the OCR languages, and whether one of their models is missing. */
-  language: { family: FamilyLanguage; ocr: OcrLanguage[]; missing: boolean };
+  /** The Family Language. */
+  family: FamilyLanguage;
+  /** The OCR languages, and whether one of their models is missing. */
+  ocr: { languages: OcrLanguage[]; missing: boolean };
 };
 
 /** The Admin a page is shown to, whether the new-Source-Types banner shows, and the settings list. */
@@ -146,7 +148,7 @@ export type SignedInAdmin = AdminSummary & { newSourceTypes: boolean; settings: 
 type SectionId =
   | "members"
   | "views"
-  | "language"
+  | "display"
   | "sources"
   | "llm"
   | "admins"
@@ -180,13 +182,10 @@ function settingsGroups(translation: Translation): SettingsGroup[] {
           summary: ({ settings }) => ({ text: settings.views > 0 ? s.views(settings.views) : s.noneYet }),
         },
         {
-          id: "language",
-          href: "/admin/language",
-          label: t.language.title,
-          summary: ({ settings: { language } }) => ({
-            text: s.language(t.familyLanguageNames[language.family], list(language.ocr.map(ocrLanguageName))),
-            ...(language.missing ? { tone: "attention" as const } : {}),
-          }),
+          id: "display",
+          href: "/admin/display",
+          label: t.display.title,
+          summary: ({ settings }) => ({ text: s.display(t.familyLanguageNames[settings.family]) }),
         },
       ],
     },
@@ -208,8 +207,13 @@ function settingsGroups(translation: Translation): SettingsGroup[] {
           id: "llm",
           href: "/admin/llm",
           label: t.llm.title,
-          summary: ({ settings: { llm } }) =>
-            llm ? { text: llm.local ? s.llmLocal(llm.model) : s.llmRemote(llm.model) } : { text: s.notSetUp },
+          summary: ({ settings: { llm, ocr } }) => ({
+            text: [
+              llm ? (llm.local ? s.llmLocal(llm.model) : s.llmRemote(llm.model)) : s.notSetUp,
+              s.ocr(list(ocr.languages.map(ocrLanguageName))),
+            ].join("; "),
+            ...(ocr.missing ? { tone: "attention" as const } : {}),
+          }),
         },
       ],
     },
@@ -250,10 +254,10 @@ function SectionIcon(props: { id: SectionId }) {
         <path d="M9 21h6M12 17v4"></path>
       </>
     ),
-    language: (
+    display: (
       <>
         <circle cx="12" cy="12" r="9"></circle>
-        <path d="M3 12h18M12 3c2.5 2.6 3.7 5.6 3.7 9s-1.2 6.4-3.7 9c-2.5-2.6-3.7-5.6-3.7-9S9.5 5.6 12 3z"></path>
+        <path d="M12 3v18a9 9 0 0 0 0-18z" fill="currentColor"></path>
       </>
     ),
     sources: (
@@ -1962,6 +1966,8 @@ function ChoiceField(props: { field: SourceForm["fields"][number]; id: string; s
 export function LlmEndpointPage(props: {
   admin: SignedInAdmin;
   endpoint: LlmEndpointSummary | null;
+  /** The OCR languages and models, which read what the endpoint's model cannot. */
+  languages: LanguageSettings;
   /** How many messages wait to be read. */
   waiting: number;
   /** What the Admin entered, shown again with a problem. */
@@ -2033,6 +2039,7 @@ export function LlmEndpointPage(props: {
           <RereadGroup action="/admin/llm/reread" label={l.reread} hint={l.rereadHint} button={l.rereadButton} waiting={props.waiting} />
         </section>
       ) : null}
+      <OcrSections languages={props.languages} />
     </AdminLayout>
   );
 }
@@ -2065,7 +2072,7 @@ const ocrList = (languages: OcrLanguage[]) => languages.join("+");
 /** A form that saves the OCR languages as they would be after its one button. */
 function OcrLanguagesButton(props: { languages: OcrLanguage[]; label: string }) {
   return (
-    <form method="post" action="/admin/language/ocr" class="fam-row__form">
+    <form method="post" action="/admin/llm/ocr" class="fam-row__form">
       <input type="hidden" name="ocrLanguages" value={ocrList(props.languages)} />
       <button type="submit" class="fam-button fam-button--quiet">
         {props.label}
@@ -2078,52 +2085,29 @@ function OcrLanguagesButton(props: { languages: OcrLanguage[]; label: string }) 
 function DownloadButton(props: { language: OcrLanguage }) {
   const { t, ocrLanguageName } = useTranslation();
   return (
-    <form method="post" action="/admin/language/models" class="fam-row__form">
+    <form method="post" action="/admin/llm/models" class="fam-row__form">
       <input type="hidden" name="language" value={props.language} />
       <button type="submit" class="fam-button fam-button--quiet">
-        {t.language.downloadLanguage(ocrLanguageName(props.language))}
+        {t.ocr.downloadLanguage(ocrLanguageName(props.language))}
       </button>
     </form>
   );
 }
 
-export function LanguagePage(props: { admin: SignedInAdmin; languages: LanguageSettings; problem?: string }) {
+/** The OCR languages in the order Tesseract tries them, and the language models they read with. */
+function OcrSections(props: { languages: LanguageSettings }) {
   const { languages } = props;
   const { t, locale, ocrLanguageName } = useTranslation();
-  const l = t.language;
+  const l = t.ocr;
   const byName = (a: OcrLanguage, b: OcrLanguage) => ocrLanguageName(a).localeCompare(ocrLanguageName(b), locale);
   const selected = languages.ocrLanguages.map((ocr) => ocr.language);
   const addable = languages.models.filter((model) => !model.selected).map((model) => model.language).sort(byName);
   const without = (language: OcrLanguage) => selected.filter((other) => other !== language);
   const movedUp = (index: number) => selected.toSpliced(index - 1, 2, ...selected.slice(index - 1, index + 1).reverse());
   return (
-    <AdminLayout title={l.title} admin={props.admin} current="language">
-      <SectionHeader title={l.title} description={l.description} />
-      <Problem message={props.problem} />
-      <form method="post" action="/admin/language" class="fam-sheet fam-sheet__form">
-        <Group title={l.familyLanguage} level={2}>
-          <div class="fam-group__fields">
-            <div class="fam-field">
-              {/* The group's title names it already. */}
-              <label for="language" class="fam-visually-hidden">
-                {l.familyLanguage}
-              </label>
-              <select id="language" name="language">
-                <FamilyLanguageOptions selected={languages.language} />
-              </select>
-              <small>{l.familyLanguageHint}</small>
-            </div>
-          </div>
-          <div class="fam-group__actions">
-            <button type="submit" class="fam-button fam-button--primary">
-              {t.common.save}
-            </button>
-          </div>
-        </Group>
-      </form>
-
+    <>
       <section class="fam-sheet">
-        <Group title={l.ocrLanguages} level={2} intro={l.ocrIntro}>
+        <Group title={l.languages} level={2} intro={l.ocrIntro}>
           <ul class="fam-rows">
             {languages.ocrLanguages.map((ocr, index) => (
               <li class="fam-row">
@@ -2143,8 +2127,8 @@ export function LanguagePage(props: { admin: SignedInAdmin; languages: LanguageS
           </ul>
           {languages.ocrLanguages.some((ocr) => !ocr.installed) ? <p class="fam-problem">{l.missingModel}</p> : null}
           {addable.length > 0 ? (
-            <form method="post" action="/admin/language/ocr" class="fam-inline-add">
-              <label for="add-ocr">{l.addOcrLanguage}</label>
+            <form method="post" action="/admin/llm/ocr" class="fam-inline-add">
+              <label for="add-ocr">{l.addLanguage}</label>
               <div class="fam-inline-add__controls">
                 <select id="add-ocr" name="ocrLanguages">
                   {addable.map((language) => (
@@ -2173,7 +2157,7 @@ export function LanguagePage(props: { admin: SignedInAdmin; languages: LanguageS
                   </span>
                 </span>
                 {model.bundled || model.selected ? null : (
-                  <form method="post" action={`/admin/language/models/${model.language}/remove`} class="fam-row__form">
+                  <form method="post" action={`/admin/llm/models/${model.language}/remove`} class="fam-row__form">
                     <button type="submit" class="fam-button fam-button--danger">
                       {l.removeModel(ocrLanguageName(model.language))}
                     </button>
@@ -2183,7 +2167,7 @@ export function LanguagePage(props: { admin: SignedInAdmin; languages: LanguageS
             ))}
           </ul>
           {languages.downloadable.length > 0 ? (
-            <form method="post" action="/admin/language/models" class="fam-inline-add">
+            <form method="post" action="/admin/llm/models" class="fam-inline-add">
               <label for="download">{l.downloadModel}</label>
               <div class="fam-inline-add__controls">
                 <select id="download" name="language">
@@ -2198,6 +2182,61 @@ export function LanguagePage(props: { admin: SignedInAdmin; languages: LanguageS
               <small>{l.downloadHint}</small>
             </form>
           ) : null}
+        </Group>
+      </section>
+    </>
+  );
+}
+
+/** How the pages look in a browser, which each browser keeps for itself. */
+const themes = ["system", "light", "dark"] as const;
+
+/** The Display section: the Family Language, and the Theme of this browser. */
+export function DisplayPage(props: { admin: SignedInAdmin; family: FamilyLanguage; problem?: string }) {
+  const { t } = useTranslation();
+  const d = t.display;
+  return (
+    <AdminLayout title={d.title} admin={props.admin} current="display">
+      <SectionHeader title={d.title} description={d.description} />
+      <Problem message={props.problem} />
+      <form method="post" action="/admin/display" class="fam-sheet fam-sheet__form">
+        <Group title={d.familyLanguage} level={2}>
+          <div class="fam-group__fields">
+            <div class="fam-field">
+              {/* The group's title names it already. */}
+              <label for="language" class="fam-visually-hidden">
+                {d.familyLanguage}
+              </label>
+              <select id="language" name="language">
+                <FamilyLanguageOptions selected={props.family} />
+              </select>
+              <small>{d.familyLanguageHint}</small>
+            </div>
+          </div>
+          <div class="fam-group__actions">
+            <button type="submit" class="fam-button fam-button--primary">
+              {t.common.save}
+            </button>
+          </div>
+        </Group>
+      </form>
+
+      <section class="fam-sheet">
+        <Group title={d.theme} level={2}>
+          <div class="fam-group__fields">
+            <div class="fam-field">
+              {/* Saved in this browser as soon as it changes, so that there is no form. */}
+              <label for="theme" class="fam-visually-hidden">
+                {d.theme}
+              </label>
+              <select id="theme" data-theme-select>
+                {themes.map((theme) => (
+                  <option value={theme}>{d.themeOptions[theme]}</option>
+                ))}
+              </select>
+              <small>{d.themeHint}</small>
+            </div>
+          </div>
         </Group>
       </section>
     </AdminLayout>

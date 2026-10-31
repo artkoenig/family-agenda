@@ -109,6 +109,10 @@
 .fam .fam-filter__item[aria-current], .fam-page .fam-filter__item[aria-current] { color: var(--ink); }
 
 /* Top bar --------------------------------------------------------------- */
+/* The line icons of the bar, 24 units wide and drawn at 1.9: they are masks, so that they take the text colour. */
+:root {
+  --icon-alert: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.9' stroke-linecap='round'%3E%3Cpath d='M12 6.5v7M12 17.4v.1'/%3E%3C/svg%3E");
+}
 /* A phone: the clock and what needs saying in one row, the filter under it. */
 .fam-bar {
   position: sticky; top: 0; z-index: 1; background: var(--surface-bar);
@@ -118,7 +122,7 @@
 .fam-bar > * { max-width: var(--content-width); margin-left: auto; margin-right: auto; }
 .fam-bar__inner {
   position: relative; display: grid; align-items: center; column-gap: var(--space-2);
-  grid-template-columns: auto 1fr auto; grid-template-areas: "clock notes summary" "filter filter filter";
+  grid-template-columns: auto 1fr auto auto; grid-template-areas: "clock notes summary theme" "filter filter filter filter";
 }
 .fam-bar__inner > .fam-filter { grid-area: filter; margin: var(--space-2) calc(-1 * var(--space-4)) 0; padding: 0 var(--space-4); }
 @media (max-width: 999px) {
@@ -138,11 +142,13 @@
 
 /* "Some of this may be out of date": a "!" that says so when tapped; written out on a wide screen. */
 .fam-out-of-date {
-  display: grid; place-items: center; flex: none; width: 20px; height: 20px; margin: 0; border-radius: var(--radius-full);
+  display: grid; place-items: center; flex: none; width: 32px; height: 32px; margin: 0; border-radius: var(--radius-full);
   border: 1px solid var(--honey); background: var(--honey-tint); color: var(--honey); cursor: pointer;
-  font-size: 12px; line-height: 1; font-weight: 800;
 }
-.fam-out-of-date::before { content: "!"; }
+.fam-out-of-date::before {
+  content: ""; width: 18px; height: 18px; background: currentColor;
+  -webkit-mask: var(--icon-alert) center / contain no-repeat; mask: var(--icon-alert) center / contain no-repeat;
+}
 .fam-out-of-date__text {
   position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap;
 }
@@ -162,6 +168,21 @@
 .fam-bar__summary .fam-avatar { width: 28px; height: 28px; font-size: 13px; }
 .fam-bar__chevron { width: 16px; font-size: 12px; text-align: center; transition: transform .15s; }
 .fam-bar__summary[aria-expanded="true"] .fam-bar__chevron { transform: rotate(180deg); }
+
+/* The Theme switch: one button that steps through the device's, light and dark; it shows what it is now. */
+.fam-theme {
+  grid-area: theme; display: none; place-items: center; width: 32px; height: 32px; padding: 0; position: relative;
+  border: 1px solid var(--line-strong); border-radius: var(--radius-full); background: var(--surface-raised);
+  color: var(--ink); cursor: pointer;
+}
+.fam-theme::after { content: ""; position: absolute; inset: -6px; }
+.fam-theme:hover { background: var(--hearth-tint); }
+/* Without the script the button would do nothing. */
+html[data-scripted] .fam-theme { display: grid; }
+.fam-theme__icon { display: none; }
+html:not([data-theme-mode="light"], [data-theme-mode="dark"]) .fam-theme__icon--system,
+html[data-theme-mode="light"] .fam-theme__icon--light,
+html[data-theme-mode="dark"] .fam-theme__icon--dark { display: block; }
 @media (max-width: 999px) {
   .fam-scrolled .fam-bar { padding-top: var(--space-2); padding-bottom: var(--space-2); }
   .fam-scrolled .fam-clock { font-size: 22px; line-height: 32px; }
@@ -626,8 +647,10 @@
   .fam-view .fam-days { max-width: calc(var(--content-width-wall) + 2 * var(--space-4)); }
   /* One row: the clock, and under it what needs saying, to the left of the filter. */
   .fam-view .fam-bar__inner {
-    column-gap: var(--space-5); grid-template-columns: auto 1fr auto; grid-template-areas: "clock . filter" "notes . filter";
+    column-gap: var(--space-5); grid-template-columns: auto 1fr auto auto; grid-template-areas: "clock . filter theme" "notes . filter theme";
   }
+  .fam-view .fam-theme { align-self: start; width: 44px; height: 44px; }
+  .fam-view .fam-theme__icon { width: 22px; height: 22px; }
   .fam-view .fam-clock { gap: 12px; font-size: 40px; line-height: 44px; }
   .fam-view .fam-clock__date { font-size: 18px; line-height: 24px; }
   .fam-view .fam-bar__notes { justify-content: flex-start; flex-wrap: wrap; }

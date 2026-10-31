@@ -131,7 +131,8 @@ export const en = {
     noneYet: "None yet",
     views: (count: number) =>
       plural(count, { one: `${count} View on the home network`, other: `${count} Views on the home network` }),
-    language: (family: string, ocr: string) => `${family}; OCR in ${ocr}`,
+    display: (family: string) => family,
+    ocr: (languages: string) => `OCR in ${languages}`,
     sources: (count: number) => plural(count, { one: `${count} Source`, other: `${count} Sources` }),
     newOnes: "New ones are available",
     llmLocal: (model: string) => `${model}, on the home network`,
@@ -341,13 +342,19 @@ export const en = {
     waiting: (count: number) => plural(count, { one: `${count} message waits to be read.`, other: `${count} messages wait to be read.` }),
   },
 
-  language: {
-    title: "Language",
+  display: {
+    title: "Display",
     description:
-      "Family Agenda speaks the Family Language, on the Views and here, and writes dates in it. Scanned letters are read in the OCR languages.",
+      "Family Agenda speaks the Family Language, on the Views and here, and writes dates in it. How the pages look is up to each browser.",
     familyLanguage: "Family Language",
-    familyLanguageHint: "Changing it leaves the OCR languages as they are.",
-    ocrLanguages: "OCR languages",
+    familyLanguageHint: "Applies to the whole Instance. Changing it leaves the OCR languages as they are.",
+    theme: "Appearance",
+    themeHint: "Kept in this browser only; every device and browser chooses its own.",
+    themeOptions: { system: "As the device", light: "Light", dark: "Dark" },
+  },
+
+  ocr: {
+    languages: "OCR languages",
     ocrIntro:
       "Without an LLM endpoint that reads images, Tesseract reads scanned pages on this Instance, in these languages together, the first one first. Only languages whose model is installed can be chosen.",
     tried: (position: number) => `Tried ${ordinals[position - 1] ?? `${position}th`}`,
@@ -355,7 +362,7 @@ export const en = {
     moveUp: "Move up",
     remove: "Remove",
     missingModel: "Scanned letters are not read while a model is missing; their mails say so. Download it, or remove the language.",
-    addOcrLanguage: "Add an OCR language",
+    addLanguage: "Add an OCR language",
     add: "Add",
     models: "Language models",
     modelsIntro: (code: Wrap): Child[] => [
@@ -389,6 +396,11 @@ export const en = {
     title: "View",
     today: "Today",
     quickFilter: "Quick filter",
+    theme: {
+      system: "Appearance: as the device. Switch to light.",
+      light: "Appearance: light. Switch to dark.",
+      dark: "Appearance: dark. Switch to as the device.",
+    },
     all: "All",
     activity: { polling: "Checking Sources", extracting: "Reading messages" },
     earlierDays: "Earlier days",
