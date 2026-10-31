@@ -39,7 +39,7 @@ describe("Agendas over HTTP", () => {
 
   /** The quick filter's link for a Family Member, or for "All". */
   const filterLink = (page: string, label: string) =>
-    new RegExp(`<a[^>]*class="fam-filter__item[^"]*"[^>]*>(?:(?!</a>).)*${label}</a>`, "s").exec(page)?.[0] ?? "";
+    new RegExp(`<a[^>]*class="fam-filter__item[^"]*"[^>]*>(?:(?!</a>).)*${label}</span></a>`, "s").exec(page)?.[0] ?? "";
 
   it("opens an Agenda without a session, as an empty timeline from now to its horizon", async () => {
     const agenda = await createAgenda([]);
