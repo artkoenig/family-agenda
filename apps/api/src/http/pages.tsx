@@ -879,16 +879,17 @@ function AgendaSettingsFields(props: { members: FamilyMemberSummary[]; agenda?: 
         <legend>{t.agendas.preselected}</legend>
         <small>{t.agendas.preselectedHint}</small>
         {props.members.length === 0 ? <p>{t.agendas.noMembers}</p> : null}
-        <div class="fam-choices">
+        <div class="fam-choices fam-choices--members">
           {props.members.map((member) => (
-            <label class="fam-choice">
+            <label class="fam-choice fam-choice--member">
               <input
                 type="checkbox"
                 name="preselected"
                 value={member.id}
                 checked={props.agenda?.preselected.includes(member.id) ?? false}
-              />{" "}
-              <Avatar member={member} size="sm" /> {member.name}
+              />
+              <Avatar member={member} size="sm" />
+              {member.name}
             </label>
           ))}
         </div>
@@ -1202,11 +1203,12 @@ export function SourcePage(props: {
           <form method="post" action={`${href}/concerns`} class="fam-sheet__form">
             <Group title={s.concerns} level={2} intro={s.concernsHint}>
               <div class="fam-group__fields">
-                <div class="fam-choices">
+                <div class="fam-choices fam-choices--members">
                   {props.members.map((member) => (
-                    <label class="fam-choice">
-                      <input type="checkbox" name="concerns" value={member.id} checked={source.concerns.includes(member.id)} />{" "}
-                      <Avatar member={member} size="sm" /> {member.name}
+                    <label class="fam-choice fam-choice--member">
+                      <input type="checkbox" name="concerns" value={member.id} checked={source.concerns.includes(member.id)} />
+                      <Avatar member={member} size="sm" />
+                      {member.name}
                     </label>
                   ))}
                 </div>
