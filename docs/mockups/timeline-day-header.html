@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Timeline day header and row padding – proposals (mockup)</title>
+<style>
+  /* Tokens copied from apps/api/src/http/design/tokens.css (light and dark). */
+  :root {
+    color-scheme: light;
+    --surface:#faf6f0; --surface-raised:#fffdf9; --surface-sunken:#f1e9de;
+    --line:#e6dccd; --line-strong:#8c7a66; --ink:#2b221b; --ink-muted:#6b5c4e;
+    --hearth:#bb4f29; --hearth-strong:#a6421d; --hearth-tint:#f8e3d8; --on-hearth:#fff;
+    --member-1:#b5502b; --member-2:#557548; --member-4:#2c6b74; --member-8:#6b5846;
+  }
+  [data-theme="dark"] {
+    color-scheme: dark;
+    --surface:#1c1814; --surface-raised:#262019; --surface-sunken:#15120f;
+    --line:#3a3129; --line-strong:#857462; --ink:#f5eee5; --ink-muted:#b8a999;
+    --hearth:#e8875f; --hearth-strong:#f0a07f; --hearth-tint:#3b261c; --on-hearth:#1c1814;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--surface-sunken); color:var(--ink); padding:20px 16px 48px;
+         font:16px/24px "Atkinson Hyperlegible Next", system-ui, sans-serif; --pad:12px; }
+  body[data-pad="4"] { --pad:4px; } body[data-pad="16"] { --pad:16px; }
+  .wrap { max-width:1560px; margin:0 auto; }
+  h1 { font-size:22px; line-height:28px; margin:0 0 4px; }
+  .lead { color:var(--ink-muted); margin:0 0 14px; max-width:80ch; }
+  .controls { display:flex; flex-wrap:wrap; gap:8px; margin:0 0 24px; align-items:center; }
+  .controls span { font-size:14px; color:var(--ink-muted); margin-left:8px; }
+  .controls button { font:inherit; font-size:14px; padding:6px 14px; border-radius:999px; cursor:pointer;
+                     border:1px solid var(--line-strong); background:transparent; color:var(--ink); }
+  .controls button[aria-pressed="true"] { background:var(--hearth); border-color:var(--hearth); color:var(--on-hearth); font-weight:700; }
+  .grid { display:flex; flex-wrap:wrap; gap:28px 24px; align-items:flex-start; }
+  figure { margin:0; width:360px; }
+  figcaption h2 { font-size:16px; line-height:22px; margin:10px 0 2px; color:var(--hearth-strong); }
+  figcaption p { margin:0 0 6px; font-size:14px; line-height:20px; color:var(--ink-muted); }
+
+  .phone { width:360px; overflow:hidden; background:var(--surface); border:1px solid var(--line-strong);
+           border-radius:22px; box-shadow:0 4px 16px rgba(0,0,0,.12); padding-bottom:12px; }
+  .bar { padding:12px 16px 8px; border-bottom:1px solid var(--line); font-weight:800; font-variant-numeric:tabular-nums; }
+  .bar small { font-weight:400; color:var(--ink-muted); margin-left:6px; }
+
+  /* ---- Rows: as in design.css, but the horizontal padding is --pad instead of 4px ---- */
+  .days { list-style:none; margin:0; padding:0 16px; --time-column:7.5em; }
+  .event { border-bottom:1px solid var(--line); }
+  .event > div { display:flex; gap:12px; align-items:baseline; padding:12px var(--pad); border-radius:10px; }
+  .event > div.hover { background:var(--hearth-tint); }
+  .time { flex:none; min-width:var(--time-column); color:var(--ink-muted); }
+  .title { font-weight:600; flex:1; }
+  .earlier .title { color:var(--ink-muted); font-weight:400; }
+  .av { flex:none; align-self:center; width:32px; height:32px; border-radius:50%; display:inline-grid; place-items:center;
+        background:var(--c,var(--member-8)); color:#fff; font-weight:700; font-size:14px; line-height:1; }
+  .now { display:flex; align-items:center; gap:8px; margin:4px 0; color:var(--hearth-strong); font-size:13px; line-height:16px;
+         font-weight:800; letter-spacing:.04em; text-transform:uppercase; font-variant-numeric:tabular-nums; }
+  .now::before { content:""; width:10px; height:10px; border-radius:50%; background:var(--hearth); }
+  .now::after { content:""; flex:1; height:2px; border-radius:1px; background:var(--hearth); }
+
+  /* ---- Current: what ships today ---- */
+  .cur { --pad:4px; }
+  .cur h3 { display:flex; align-items:baseline; gap:8px; margin:24px 0 4px; font-size:13px; line-height:16px; font-weight:800;
+            letter-spacing:.08em; text-transform:uppercase; color:var(--ink-muted); }
+  .cur h3 em { font-style:normal; font-size:14px; font-weight:500; letter-spacing:0; text-transform:none; }
+  .cur .today b { background:var(--hearth-tint); color:var(--ink); border-radius:999px; padding:4px 10px; margin-left:-10px; }
+  .cur .today h3 { color:var(--ink); }
+
+  /* ---- A: ink, larger, quiet rule above ---- */
+  .va h3 { display:flex; align-items:baseline; gap:8px; margin:28px 0 2px; padding-top:14px; border-top:1px solid var(--line-strong);
+           font-size:15px; line-height:20px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; color:var(--ink); }
+  .va li:first-child h3 { border-top:0; padding-top:0; margin-top:16px; }
+  .va h3 em { font-style:normal; font-size:15px; font-weight:500; letter-spacing:0; text-transform:none; color:var(--ink-muted); }
+  .va .today h3 { color:var(--hearth-strong); }
+  .va .today h3 em { color:var(--ink); }
+
+  /* ---- B: raised band, text aligned with the row text ---- */
+  .vb h3 { display:flex; align-items:baseline; justify-content:space-between; margin:16px 0 2px; padding:6px var(--pad);
+           background:var(--surface-raised); border:1px solid var(--line); border-radius:10px;
+           font-size:14px; line-height:20px; font-weight:800; color:var(--ink); }
+  .vb h3 em { font-style:normal; font-weight:500; color:var(--ink-muted); font-variant-numeric:tabular-nums; }
+  .vb .today h3 { background:var(--hearth-tint); border-color:transparent; }
+
+  /* ---- C: day number in a left column, like a paper agenda ---- */
+  .vc .days { --time-column:6.4em; padding:0 12px; }
+  .vc li { display:grid; grid-template-columns:40px 1fr; column-gap:4px; margin-top:12px; padding-top:10px; border-top:1px solid var(--line); }
+  .vc li:first-child { border-top:0; }
+  .vc h3 { margin:6px 0 0; text-align:center; line-height:1; }
+  .vc h3 b { display:grid; place-items:center; width:36px; height:36px; margin:0 auto 4px; font-size:20px; border-radius:50%;
+             font-weight:800; color:var(--ink); font-variant-numeric:tabular-nums; }
+  .vc h3 em { display:block; font-style:normal; font-size:12px; line-height:14px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-muted); }
+  .vc .today h3 b { background:var(--hearth); color:var(--on-hearth); }
+  .vc .today h3 em { color:var(--hearth-strong); }
+  .vc .rows { min-width:0; }
+  .vc .event:last-child { border-bottom:0; }
+  .vc .event > div { padding-left:8px; padding-right:8px; gap:8px; }
+
+  /* ---- D: accent marker and a line running out to the right ---- */
+  .vd h3 { display:flex; align-items:center; gap:8px; margin:26px 0 4px; font-size:15px; line-height:20px; font-weight:800;
+           letter-spacing:.06em; text-transform:uppercase; color:var(--ink); }
+  .vd h3::before { content:""; flex:none; width:4px; height:18px; border-radius:2px; background:var(--line-strong); }
+  .vd h3 em { font-style:normal; font-size:15px; font-weight:500; letter-spacing:0; text-transform:none; color:var(--ink-muted); }
+  .vd h3::after { content:""; order:3; flex:1; height:1px; background:var(--line-strong); opacity:.6; }
+  .vd .today h3::before { background:var(--hearth); }
+  .vd .today h3 { color:var(--hearth-strong); }
+  .vd .today h3 em { color:var(--ink); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Timeline: day headers and row padding</h1>
+  <p class="lead">The day label (“Donnerstag 5. Nov.”) is 13 px, uppercase, in the muted ink colour – the same colour as the time column right under it – so it hardly stands out. Rows also put the time only 4 px inside the hover highlight. Four options for the header; the padding applies to all of them. Rows use the real <code>.fam-event</code> metrics; the font falls back to system-ui when Atkinson isn’t installed.</p>
+  <div class="controls">
+    <button type="button" data-theme-btn="light" aria-pressed="false">Light</button>
+    <button type="button" data-theme-btn="dark" aria-pressed="true">Dark</button>
+    <span>Row padding left/right:</span>
+    <button type="button" data-pad-btn="4" aria-pressed="false">4 px (today)</button>
+    <button type="button" data-pad-btn="12" aria-pressed="true">12 px</button>
+    <button type="button" data-pad-btn="16" aria-pressed="false">16 px</button>
+  </div>
+
+  <div class="grid">
+    <!-- Current -->
+    <figure>
+      <div class="phone cur">
+        <div class="bar">13:42<small>Do 5. Nov.</small></div>
+        <ol class="days">
+          <li class="today">
+            <h3><b>Heute</b> <em>Mi 4. Nov.</em></h3>
+            <div class="event earlier"><div><span class="time">07:30</span><span class="title">Frühstück Oma</span></div></div>
+            <div class="now">Jetzt 13:42</div>
+            <div class="event"><div><span class="time">16:00 – 17:00</span><span class="title">Klavierunterricht</span><span class="av" style="--c:var(--member-2)">M</span></div></div>
+          </li>
+          <li>
+            <h3>Donnerstag <em>5. Nov.</em></h3>
+            <div class="event"><div class="hover"><span class="time">08:10</span><span class="title">Schule bis 15:40</span><span class="av">V</span></div></div>
+          </li>
+          <li>
+            <h3>Freitag <em>6. Nov.</em></h3>
+            <div class="event"><div><span class="time">08:10</span><span class="title">Schule bis 13:00</span><span class="av">V</span></div></div>
+            <div class="event"><div><span class="time">ganztägig</span><span class="title">Schulausflug</span><span class="av" style="--c:var(--member-4)">L</span></div></div>
+          </li>
+        </ol>
+      </div>
+      <figcaption><h2>Today</h2><p>Muted 13 px caps; barely different from the time column.</p></figcaption>
+    </figure>
+
+    <!-- A -->
+    <figure>
+      <div class="phone va">
+        <div class="bar">13:42<small>Do 5. Nov.</small></div>
+        <ol class="days">
+          <li class="today">
+            <h3>Heute <em>Mi 4. Nov.</em></h3>
+            <div class="event earlier"><div><span class="time">07:30</span><span class="title">Frühstück Oma</span></div></div>
+            <div class="now">Jetzt 13:42</div>
+            <div class="event"><div><span class="time">16:00 – 17:00</span><span class="title">Klavierunterricht</span><span class="av" style="--c:var(--member-2)">M</span></div></div>
+          </li>
+          <li>
+            <h3>Donnerstag <em>5. Nov.</em></h3>
+            <div class="event"><div class="hover"><span class="time">08:10</span><span class="title">Schule bis 15:40</span><span class="av">V</span></div></div>
+          </li>
+          <li>
+            <h3>Freitag <em>6. Nov.</em></h3>
+            <div class="event"><div><span class="time">08:10</span><span class="title">Schule bis 13:00</span><span class="av">V</span></div></div>
+            <div class="event"><div><span class="time">ganztägig</span><span class="title">Schulausflug</span><span class="av" style="--c:var(--member-4)">L</span></div></div>
+          </li>
+        </ol>
+      </div>
+      <figcaption><h2>A · Ink + rule</h2><p>Full ink colour, 15 px, a rule above each day separates the days. Smallest change: CSS only. Today turns hearth-coloured.</p></figcaption>
+    </figure>
+
+    <!-- B -->
+    <figure>
+      <div class="phone vb">
+        <div class="bar">13:42<small>Do 5. Nov.</small></div>
+        <ol class="days">
+          <li class="today">
+            <h3><span>Heute</span><em>Mi 4. Nov.</em></h3>
+            <div class="event earlier"><div><span class="time">07:30</span><span class="title">Frühstück Oma</span></div></div>
+            <div class="now">Jetzt 13:42</div>
+            <div class="event"><div><span class="time">16:00 – 17:00</span><span class="title">Klavierunterricht</span><span class="av" style="--c:var(--member-2)">M</span></div></div>
+          </li>
+          <li>
+            <h3><span>Donnerstag</span><em>5. Nov.</em></h3>
+            <div class="event"><div class="hover"><span class="time">08:10</span><span class="title">Schule bis 15:40</span><span class="av">V</span></div></div>
+          </li>
+          <li>
+            <h3><span>Freitag</span><em>6. Nov.</em></h3>
+            <div class="event"><div><span class="time">08:10</span><span class="title">Schule bis 13:00</span><span class="av">V</span></div></div>
+            <div class="event"><div><span class="time">ganztägig</span><span class="title">Schulausflug</span><span class="av" style="--c:var(--member-4)">L</span></div></div>
+          </li>
+        </ol>
+      </div>
+      <figcaption><h2>B · Band</h2><p>Each day is a raised band, name left, date right, text aligned with the row text. Clearest separation; works well as a sticky header later.</p></figcaption>
+    </figure>
+
+    <!-- C -->
+    <figure>
+      <div class="phone vc">
+        <div class="bar">13:42<small>Do 5. Nov.</small></div>
+        <ol class="days">
+          <li class="today">
+            <h3><b>4</b><em>Heute</em></h3>
+            <div class="rows">
+              <div class="event earlier"><div><span class="time">07:30</span><span class="title">Frühstück Oma</span></div></div>
+              <div class="now">Jetzt 13:42</div>
+              <div class="event"><div><span class="time">16:00 – 17:00</span><span class="title">Klavierunterricht</span><span class="av" style="--c:var(--member-2)">M</span></div></div>
+            </div>
+          </li>
+          <li>
+            <h3><b>5</b><em>Do</em></h3>
+            <div class="rows">
+              <div class="event"><div class="hover"><span class="time">08:10</span><span class="title">Schule bis 15:40</span><span class="av">V</span></div></div>
+            </div>
+          </li>
+          <li>
+            <h3><b>6</b><em>Fr</em></h3>
+            <div class="rows">
+              <div class="event"><div><span class="time">08:10</span><span class="title">Schule bis 13:00</span><span class="av">V</span></div></div>
+              <div class="event"><div><span class="time">ganztägig</span><span class="title">Schulausflug</span><span class="av" style="--c:var(--member-4)">L</span></div></div>
+            </div>
+          </li>
+        </ol>
+      </div>
+      <figcaption><h2>C · Day number column</h2><p>Paper-agenda look: big day number and weekday at the left, events to the right. Fastest to scan, but costs ~50 px width (the time column shrinks) and needs a layout change.</p></figcaption>
+    </figure>
+
+    <!-- D -->
+    <figure>
+      <div class="phone vd">
+        <div class="bar">13:42<small>Do 5. Nov.</small></div>
+        <ol class="days">
+          <li class="today">
+            <h3>Heute <em>Mi 4. Nov.</em></h3>
+            <div class="event earlier"><div><span class="time">07:30</span><span class="title">Frühstück Oma</span></div></div>
+            <div class="now">Jetzt 13:42</div>
+            <div class="event"><div><span class="time">16:00 – 17:00</span><span class="title">Klavierunterricht</span><span class="av" style="--c:var(--member-2)">M</span></div></div>
+          </li>
+          <li>
+            <h3>Donnerstag <em>5. Nov.</em></h3>
+            <div class="event"><div class="hover"><span class="time">08:10</span><span class="title">Schule bis 15:40</span><span class="av">V</span></div></div>
+          </li>
+          <li>
+            <h3>Freitag <em>6. Nov.</em></h3>
+            <div class="event"><div><span class="time">08:10</span><span class="title">Schule bis 13:00</span><span class="av">V</span></div></div>
+            <div class="event"><div><span class="time">ganztägig</span><span class="title">Schulausflug</span><span class="av" style="--c:var(--member-4)">L</span></div></div>
+          </li>
+        </ol>
+      </div>
+      <figcaption><h2>D · Marker + line</h2><p>Accent bar before the name, ink colour, a line running out to the right. Same visual language as the “now” line; today gets the hearth accent.</p></figcaption>
+    </figure>
+  </div>
+</div>
+<script>
+  const root = document.documentElement;
+  function setTheme(t) { t === "dark" ? root.setAttribute("data-theme", "dark") : root.removeAttribute("data-theme");
+    document.querySelectorAll("[data-theme-btn]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.themeBtn === t))); }
+  function setPad(p) { document.body.dataset.pad = p;
+    document.querySelectorAll("[data-pad-btn]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.padBtn === p))); }
+  document.querySelectorAll("[data-theme-btn]").forEach(b => b.addEventListener("click", () => setTheme(b.dataset.themeBtn)));
+  document.querySelectorAll("[data-pad-btn]").forEach(b => b.addEventListener("click", () => setPad(b.dataset.padBtn)));
+  const p = new URLSearchParams(location.search);
+  setTheme(p.get("theme") === "light" ? "light" : "dark"); setPad(p.get("pad") ?? "12");
+</script>
+</body>
+</html>
