@@ -35,6 +35,7 @@ import {
   createActivityLog,
   createAdminAccess,
   createCatalogueAccess,
+  createDisplayAccess,
   createExtraction,
   createFamilyMemberAccess,
   createLanguageAccess,
@@ -52,6 +53,7 @@ import {
   signInLimits,
   type AdminAccess,
   type CatalogueAccess,
+  type DisplayAccess,
   type BlobStore,
   type ExtractionAccess,
   type Extractor,
@@ -121,6 +123,8 @@ export type Application = {
   familyMembers: FamilyMemberAccess;
   /** The Family Language and the OCR languages. */
   languages: LanguageAccess;
+  /** The Theme of the pages. */
+  display: DisplayAccess;
   views: ViewAccess;
   /** Ticking Tasks done, from a View or the Admin area. */
   tasks: TaskAccess;
@@ -185,6 +189,7 @@ export async function bootApplication(config: ApplicationConfig): Promise<Applic
     throw error;
   }
   const languages = createLanguageAccess({ families, ocrModels });
+  const display = createDisplayAccess({ families });
 
   const timeZone = config.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
   const items = new PostgresItemRepository(postgres.db);
@@ -288,6 +293,7 @@ export async function bootApplication(config: ApplicationConfig): Promise<Applic
     recoveryKit,
     familyMembers,
     languages,
+    display,
     views,
     tasks,
     sourceTypes,

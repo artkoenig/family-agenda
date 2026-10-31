@@ -6,6 +6,7 @@ export * from "./enabled-source-type";
 export * from "./enablement";
 export * from "./extraction";
 export * from "./family-members";
+export * from "./display";
 export * from "./languages";
 export * from "./llm-endpoint";
 export * from "./messages";
