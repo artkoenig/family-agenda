@@ -304,8 +304,8 @@ html[data-theme-mode="dark"] .fam-theme__icon--dark { display: block; }
   margin: -10px -12px -10px 0; cursor: pointer;
 }
 .fam-task__tick input { margin: 0; cursor: pointer; }
-/* On its day, the tick sits in the time column, its checkbox in line with the times above it. */
-.fam-item__lead .fam-task__tick { margin: -10px 0 -10px -13px; }
+/* On its day, the tick sits in the time column, its checkbox right-aligned to the column's edge, next to the title. */
+.fam-item__lead .fam-task__tick { margin: -10px -12px -10px auto; }
 .fam-task--overdue { background: var(--danger-tint); box-shadow: inset 3px 0 0 var(--danger); }
 .fam-task--overdue .fam-task__status { color: var(--danger); font-weight: 600; }
 .fam-task--done .fam-item__title { color: var(--ink-muted); font-weight: 400; }
