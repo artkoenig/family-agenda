@@ -55,7 +55,7 @@ describe("Events extracted from PDF attachments", () => {
     await instance.app.sourceTypes.enable("mailbox");
     const added = await instance.app.sources.add({ sourceTypeId: "mailbox", plain: { url: "imap.example.org" }, secrets: {} });
     if (!added.ok) throw new Error(`adding failed: ${added.problem}`);
-    await saveEndpoint({ vision: false });
+    await saveEndpoint();
     const created = await instance.app.agendas.create({ preselected: [], horizonDays: 14 });
     if (!created.ok) throw new Error(`creating failed: ${created.problem}`);
     agenda = created.id;
@@ -64,8 +64,8 @@ describe("Events extracted from PDF attachments", () => {
     await instance.close();
   });
 
-  const saveEndpoint = async ({ vision }: { vision: boolean }) => {
-    const saved = await instance.app.llmEndpoint.save({ baseUrl: "http://ollama:11434/v1", model: "qwen3.5:9b", apiKey: "", vision });
+  const saveEndpoint = async () => {
+    const saved = await instance.app.llmEndpoint.save({ baseUrl: "http://ollama:11434/v1", model: "qwen3.5:9b", apiKey: "" });
     if (!saved.ok) throw new Error(`saving failed: ${saved.problem}`);
   };
 
@@ -119,23 +119,27 @@ describe("Events extracted from PDF attachments", () => {
 
     expect(textExtractor.ocrPages).toEqual([[2]]);
     expect(textExtractor.ocrLanguages).toEqual([["eng"]]);
-    expect(textExtractor.renderedPages).toEqual([]);
     expect(await timeline()).toEqual({ "2026-09-25": ["08:00-08:00 Wandertag"] });
     expect(extractor.requests[0]?.message.text).toContain("Allgemeine Hinweise zur Klassenfahrt.");
   });
 
-  it("sends the scanned pages of a PDF to a vision-capable endpoint as images, and checks quotes against what it read", async () => {
-    await saveEndpoint({ vision: true });
+  it("sends the LLM only text, and leaves scanned PDFs unread while OCR is switched off", async () => {
+    await instance.app.languages.setOcrEnabled(false);
     extractor.script("Wandertag der Klasse 5b", [hikingDay]);
-    const scanned = fakePdf({ text: "Elternbrief Seite 1: Allgemeine Hinweise zur Klassenfahrt." }, { scan: letter });
+    const scan = pdf("scan.pdf", fakePdf({ scan: letter }));
+    const born = pdf("brief.pdf", fakePdf({ text: "Elternbrief: Allgemeine Hinweise zur Klassenfahrt." }));
 
-    await arrive(mail("m1", covering, [pdf("scan.pdf", scanned)]));
+    const report = await arrive(mail("m1", covering, [scan, born]));
 
-    expect(textExtractor.renderedPages).toEqual([[2]]);
     expect(textExtractor.ocrPages).toEqual([]);
-    expect(extractor.transcriptions).toHaveLength(1);
-    expect(extractor.transcriptions[0]?.images).toHaveLength(1);
-    expect(await timeline()).toEqual({ "2026-09-25": ["08:00-08:00 Wandertag"] });
+    expect(extractor.requests[0]?.message.text).toContain("Allgemeine Hinweise zur Klassenfahrt.");
+    const message = await instance.app.messages.open(report.extracted[0]!);
+    expect(message?.attachments.map((attachment) => attachment.conversionProblem)).toEqual(["OCR is switched off.", null]);
+
+    await instance.app.languages.setOcrEnabled(true);
+    await instance.app.extraction.reread();
+    await instance.app.extraction.extractPending();
+    expect(textExtractor.ocrPages).toEqual([[1]]);
   });
 
   it("rejects an Event from an attachment whose quote the attachment does not contain", async () => {
@@ -167,24 +171,6 @@ describe("Events extracted from PDF attachments", () => {
     ]);
   });
 
-  it("leaves a message with a scan waiting while the vision-capable endpoint cannot be reached", async () => {
-    await saveEndpoint({ vision: true });
-    extractor.script("Wandertag der Klasse 5b", [hikingDay]);
-    extractor.fail("unreachable");
-
-    const failed = await arrive(mail("m1", covering, [pdf("scan.pdf", fakePdf({ scan: letter }))]));
-
-    expect(failed).toMatchObject({ extracted: [], failed: [{ problem: "unreachable" }] });
-    expect(extractor.requests).toEqual([]);
-
-    extractor.recover();
-    const report = await instance.app.extraction.extractPending();
-    expect(report.extracted).toHaveLength(1);
-    expect(await timeline()).toEqual({ "2026-09-25": ["08:00-08:00 Wandertag"] });
-    const message = await instance.app.messages.open(report.extracted[0]!);
-    expect(message?.attachments[0]?.conversionProblem).toBeNull();
-  });
-
   it("does not read a PDF with more scanned pages than it reads at most", async () => {
     const pages = Array.from({ length: 11 }, () => ({ scan: letter }));
 
@@ -196,18 +182,19 @@ describe("Events extracted from PDF attachments", () => {
   });
 
   it("reads scanned pages with OCR in the Family's OCR languages, in their order", async () => {
-    await instance.app.languages.setOcrLanguages(["deu", "eng"]);
+    await instance.app.languages.addOcrLanguage("deu");
     extractor.script("Wandertag der Klasse 5b", [hikingDay]);
 
     await arrive(mail("m1", covering, [pdf("scan.pdf", fakePdf({ scan: letter }))]));
 
-    expect(textExtractor.ocrLanguages).toEqual([["deu", "eng"]]);
+    expect(textExtractor.ocrLanguages).toEqual([["eng", "deu"]]);
     expect(await timeline()).toEqual({ "2026-09-25": ["08:00-08:00 Wandertag"] });
   });
 
   it("does not read a scan when a chosen OCR language is not installed, and shows why on the message", async () => {
-    await instance.app.languages.install("fra");
-    await instance.app.languages.setOcrLanguages(["deu", "fra"]);
+    await instance.app.languages.addOcrLanguage("deu");
+    await instance.app.languages.addOcrLanguage("fra");
+    await instance.app.languages.removeOcrLanguage("eng");
     await rm(join(instance.tessdataDirectory, "fra.traineddata"));
 
     const report = await arrive(

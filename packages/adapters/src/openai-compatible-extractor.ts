@@ -11,8 +11,6 @@ import type {
   ExtractionResult,
   Extractor,
   LlmEndpoint,
-  TranscriptionRequest,
-  TranscriptionResult,
 } from "@family-agenda/application";
 
 export type OpenAiCompatibleExtractorOptions = {
@@ -105,18 +103,10 @@ Rules:
 - "place" as written, or null.
 - When the message changes, moves or cancels one of the known events or tasks listed below, set "updates" to its id (such as "E1" or "T1"), "cancelled" to true for a cancellation, and fill in only what changes: "title" null unless it is renamed, a new date or times if it moves, and for a task the whole new list in "bring" if it changes, else an empty list. Otherwise "updates" is null and "cancelled" false.`;
 
-/** Statuses with which an endpoint refuses a request it cannot handle, such as images for a model without vision. */
-const refusedRequests = [400, 413, 415, 422];
-
-const transcriptionInstructions = `You transcribe scanned pages of letters a family receives, such as school letters.
-
-Answer with the text of the page only, character for character and in its language, line by line as printed. Never translate, summarise, correct or comment. Leave out what cannot be read.`;
-
 /**
  * The `Extractor` for any OpenAI-compatible server, such as Ollama, llama.cpp, vLLM, LM Studio,
  * OpenAI or Mistral: one chat completion per message with JSON-schema structured output, and the
- * answer checked against the schema here, since some runtimes skip parts of it silently. A
- * vision-capable model also reads scanned pages, one chat completion per page.
+ * answer checked against the schema here, since some runtimes skip parts of it silently.
  */
 export class OpenAiCompatibleExtractor implements Extractor {
   private readonly timeoutMs: number;
@@ -149,37 +139,11 @@ export class OpenAiCompatibleExtractor implements Extractor {
     return { ok: true, events, tasks };
   }
 
-  /** Reads each page in a chat completion of its own, so that no page is skipped or merged. */
-  async transcribe(request: TranscriptionRequest): Promise<TranscriptionResult> {
-    const pages: string[] = [];
-    for (const image of request.images) {
-      const answer = await this.complete(request.endpoint, {
-        messages: [
-          { role: "system", content: transcriptionInstructions },
-          {
-            role: "user",
-            content: [
-              { type: "text", text: "Transcribe this page." },
-              { type: "image_url", image_url: { url: `data:image/png;base64,${Buffer.from(image).toString("base64")}` } },
-            ],
-          },
-        ],
-      });
-      if (!answer.ok && answer.status !== undefined && refusedRequests.includes(answer.status)) {
-        const message = `The LLM endpoint refused the page images (HTTP ${answer.status}); its model may not read images.`;
-        return { ok: false, problem: "invalid-output", message };
-      }
-      if (!answer.ok) return answer;
-      pages.push(answer.content);
-    }
-    return { ok: true, pages };
-  }
-
   /** The text of a chat completion, complete and not cut off at the token limit. */
   private async complete(
     endpoint: LlmEndpoint,
     body: object,
-  ): Promise<{ ok: true; content: string } | (EndpointFailure & { status?: number })> {
+  ): Promise<{ ok: true; content: string } | EndpointFailure> {
     let response: Response;
     try {
       response = await fetch(`${endpoint.baseUrl}/chat/completions`, {
@@ -200,7 +164,7 @@ export class OpenAiCompatibleExtractor implements Extractor {
     }
     if (!response.ok) {
       // A request the endpoint cannot handle, such as an unknown model, fails every message alike.
-      return { ok: false, problem: "unreachable", message: `The LLM endpoint answered with HTTP ${response.status}.`, status: response.status };
+      return { ok: false, problem: "unreachable", message: `The LLM endpoint answered with HTTP ${response.status}.` };
     }
     let answer: unknown;
     try {

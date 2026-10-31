@@ -25,7 +25,6 @@ import type {
   BlobStore,
   Clock,
   Conversion,
-  EndpointFailure,
   ExtractedEvent,
   ExtractedTask,
   ExtractionResult,
@@ -83,10 +82,10 @@ export function createExtraction(deps: ExtractionDeps) {
   const { clock, timeZone, families, items, blobs, extractor, textExtractor, ocrModels, activity } = deps;
 
   /**
-   * The text of a PDF attachment: its text layer, and the pages that are scans read by a
-   * vision-capable endpoint, or by OCR. Fails when the endpoint fails, as extraction would.
+   * The text of a PDF attachment: its text layer, and the pages that are scans read by OCR when
+   * it is switched on. Only text goes to the LLM endpoint, so that a large file cannot overrun its context.
    */
-  async function textOf(attachment: PendingAttachment, endpoint: LlmEndpoint): Promise<AttachmentReading> {
+  async function textOf(attachment: PendingAttachment): Promise<Conversion<string>> {
     const bytes = await blobs.get(attachment.blob);
     if (!bytes) return { ok: false, message: "The file has been deleted." };
     const layer = await textExtractor.textLayer(bytes);
@@ -96,7 +95,7 @@ export function createExtraction(deps: ExtractionDeps) {
     if (scans.length > maximumScannedPages) {
       return { ok: false, message: `It has ${scans.length} scanned pages; at most ${maximumScannedPages} are read.` };
     }
-    const scanned = scans.length > 0 ? await readScans(bytes, scans, endpoint) : ({ ok: true, value: [] } as const);
+    const scanned = scans.length > 0 ? await readScans(bytes, scans) : ({ ok: true, value: [] } as const);
     if (!scanned.ok) return scanned;
     const text = pages.map((page, index) => {
       const scan = scans.indexOf(index + 1);
@@ -105,41 +104,29 @@ export function createExtraction(deps: ExtractionDeps) {
     return { ok: true, value: text.filter((page) => page !== "").join("\n\n") };
   }
 
-  async function readScans(pdf: Uint8Array, pages: number[], endpoint: LlmEndpoint): Promise<AttachmentReading<string[]>> {
-    if (!endpoint.vision) {
-      const { ocrLanguages } = await families.languages();
-      // Without a chosen model OCR would read worse in the others, so the scan stays unread.
-      const installed = new Set((await ocrModels.installed()).map((model) => model.language));
-      const missing = ocrLanguages.find((language) => !installed.has(language));
-      if (missing) return { ok: false, message: `OCR language \`${missing}\` is not installed.` };
-      return textExtractor.ocr(pdf, pages, ocrLanguages);
-    }
-    const images = await textExtractor.pageImages(pdf, pages);
-    if (!images.ok) return images;
-    const read = await extractor.transcribe({ endpoint, images: images.value });
-    if (read.ok) return { ok: true, value: read.pages };
-    // An answer that does not fit says something about this file; anything else about the endpoint.
-    return read.problem === "invalid-output" ? { ok: false, message: read.message } : { ok: false, endpointFailure: read };
+  async function readScans(pdf: Uint8Array, pages: number[]): Promise<Conversion<string[]>> {
+    if (!(await families.ocrEnabled())) return { ok: false, message: "OCR is switched off." };
+    const { ocrLanguages } = await families.languages();
+    // Without a chosen model OCR would read worse in the others, so the scan stays unread.
+    const installed = new Set((await ocrModels.installed()).map((model) => model.language));
+    const missing = ocrLanguages.find((language) => !installed.has(language));
+    if (missing) return { ok: false, message: `OCR language \`${missing}\` is not installed.` };
+    return textExtractor.ocr(pdf, pages, ocrLanguages);
   }
 
   /**
    * The message's text followed by the text of its PDF attachments, which extraction reads as one,
    * and the attachments that could not be read.
    */
-  async function fullTextOf(message: PendingMessage, text: string, endpoint: LlmEndpoint) {
+  async function fullTextOf(message: PendingMessage, text: string) {
     const parts = [text];
     const problems: AttachmentProblem[] = [];
     for (const attachment of message.attachments.filter(isPdf)) {
-      const read = await textOf(attachment, endpoint);
-      if (read.ok) {
-        if (read.value !== "") parts.push(`Attachment ${attachment.filename}:\n${read.value}`);
-      } else if ("endpointFailure" in read) {
-        return read.endpointFailure;
-      } else {
-        problems.push({ position: attachment.position, problem: read.message });
-      }
+      const read = await textOf(attachment);
+      if (!read.ok) problems.push({ position: attachment.position, problem: read.message });
+      else if (read.value !== "") parts.push(`Attachment ${attachment.filename}:\n${read.value}`);
     }
-    return { ok: true as const, text: parts.join("\n\n"), problems };
+    return { text: parts.join("\n\n"), problems };
   }
 
   async function extractOne(message: PendingMessage, text: string, problems: AttachmentProblem[], endpoint: LlmEndpoint) {
@@ -192,8 +179,8 @@ export function createExtraction(deps: ExtractionDeps) {
       );
       return null;
     }
-    const full = await fullTextOf(message, new TextDecoder().decode(bytes), endpoint);
-    const result = full.ok ? await extractOne(message, full.text, full.problems, endpoint) : full;
+    const full = await fullTextOf(message, new TextDecoder().decode(bytes));
+    const result = await extractOne(message, full.text, full.problems, endpoint);
     return result.ok ? null : { messageId: message.id, problem: result.problem, message: result.message };
   }
 
@@ -242,8 +229,6 @@ export function createExtraction(deps: ExtractionDeps) {
 
 export type ExtractionAccess = ReturnType<typeof createExtraction>;
 
-/** What reading an attachment gave; a failing endpoint fails the message, which waits for the next run. */
-type AttachmentReading<T = string> = Conversion<T> | { ok: false; endpointFailure: EndpointFailure };
 
 /** How many scanned pages of one attachment are read at most, since each takes long or costs tokens. */
 const maximumScannedPages = 10;

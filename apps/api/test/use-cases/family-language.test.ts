@@ -67,93 +67,109 @@ describe("the OCR languages", () => {
     await instance.close();
   });
 
-  const models = async () =>
-    (await instance.app.languages.current()).models.map((model) =>
-      [model.language, model.bundled ? "bundled" : "downloaded", model.selected ? "selected" : ""].join(" ").trim(),
-    );
+  const listed = async () => (await instance.app.languages.current()).ocrLanguages.map((ocr) => ocr.language);
+  const volume = async () => (await readdir(instance.tessdataDirectory)).sort();
 
-  it("are chosen and ordered among the installed models", async () => {
-    expect(await instance.app.languages.setOcrLanguages(["deu", "eng"])).toEqual({ ok: true });
+  it("are added after the others, with a bundled model at once", async () => {
+    expect(await instance.app.languages.addOcrLanguage("deu")).toEqual({ ok: true });
 
     const settings = await instance.app.languages.current();
     expect(settings.ocrLanguages).toEqual([
-      { language: "deu", installed: true },
       { language: "eng", installed: true },
+      { language: "deu", installed: true },
     ]);
-    expect(await models()).toEqual(["deu bundled selected", "eng bundled selected"]);
-    expect(settings.downloadable).toEqual(["fra", "ita"]);
+    expect(settings.addable).toEqual(["fra", "ita"]);
   });
 
-  it("cannot include a language whose model is not installed, nor be empty", async () => {
-    expect(await instance.app.languages.setOcrLanguages(["deu", "fra"])).toEqual({
-      ok: false,
-      problem: "ocr-language-not-installed",
-    });
-    expect(await instance.app.languages.setOcrLanguages([])).toEqual({ ok: false, problem: "no-ocr-language" });
-    expect((await instance.app.languages.current()).ocrLanguages).toEqual([{ language: "eng", installed: true }]);
+  it("are ordered by moving one up, and the first cannot move further", async () => {
+    await instance.app.languages.addOcrLanguage("deu");
+
+    expect(await instance.app.languages.moveOcrLanguageUp("deu")).toEqual({ ok: true });
+    expect(await listed()).toEqual(["deu", "eng"]);
+    expect(await instance.app.languages.moveOcrLanguageUp("deu")).toEqual({ ok: true });
+    expect(await listed()).toEqual(["deu", "eng"]);
+    expect(await instance.app.languages.moveOcrLanguageUp("fra")).toEqual({ ok: false, problem: "unknown-ocr-language" });
   });
 
-  it("can use a model once it is downloaded, and drop it again once unselected", async () => {
-    expect(await instance.app.languages.install("fra")).toEqual({ ok: true });
-    expect(await instance.app.languages.setOcrLanguages(["fra", "eng"])).toEqual({ ok: true });
-    expect(await models()).toEqual(["deu bundled", "eng bundled selected", "fra downloaded selected"]);
+  it("download a model when a language is added, and delete it when the language is removed", async () => {
+    expect(await instance.app.languages.addOcrLanguage("fra")).toEqual({ ok: true });
+    expect(await listed()).toEqual(["eng", "fra"]);
     expect(await readFile(join(instance.tessdataDirectory, "fra.traineddata"))).toEqual(Buffer.from(fakeModel("fra")));
 
-    expect(await instance.app.languages.remove("fra")).toEqual({ ok: false, problem: "ocr-language-selected" });
-    await instance.app.languages.setOcrLanguages(["eng"]);
-    expect(await instance.app.languages.remove("fra")).toEqual({ ok: true });
-    expect(await models()).toEqual(["deu bundled", "eng bundled selected"]);
+    expect(await instance.app.languages.removeOcrLanguage("fra")).toEqual({ ok: true });
+    expect(await listed()).toEqual(["eng"]);
+    expect(await volume()).toEqual(["deu.traineddata", "eng.traineddata", "osd.traineddata"]);
+    expect((await instance.app.languages.current()).addable).toContain("fra");
   });
 
-  it("never removes a bundled model", async () => {
-    expect(await instance.app.languages.remove("deu")).toEqual({ ok: false, problem: "ocr-language-bundled" });
-    expect(await models()).toEqual(["deu bundled", "eng bundled selected"]);
+  it("can drop a bundled language and add it again without a download", async () => {
+    await instance.app.languages.addOcrLanguage("deu");
+
+    expect(await instance.app.languages.removeOcrLanguage("eng")).toEqual({ ok: true });
+    expect(await listed()).toEqual(["deu"]);
+    expect(await volume()).toContain("eng.traineddata");
+
+    catalog.fail("eng", "unreachable");
+    expect(await instance.app.languages.addOcrLanguage("eng")).toEqual({ ok: true });
+    expect(await listed()).toEqual(["deu", "eng"]);
   });
 
-  it("says why a download failed, and leaves nothing behind", async () => {
+  it("keep at least one language", async () => {
+    expect(await instance.app.languages.removeOcrLanguage("eng")).toEqual({ ok: false, problem: "no-ocr-language" });
+    expect(await instance.app.languages.removeOcrLanguage("fra")).toEqual({ ok: false, problem: "unknown-ocr-language" });
+    expect(await listed()).toEqual(["eng"]);
+  });
+
+  it("say why a download failed, and leave nothing behind", async () => {
     catalog.fail("fra", "unreachable");
     catalog.fail("ita", "tampered");
 
-    expect(await instance.app.languages.install("fra")).toEqual({
+    expect(await instance.app.languages.addOcrLanguage("fra")).toEqual({
       ok: false,
       problem: "download-failed",
       message: "getaddrinfo ENOTFOUND raw.githubusercontent.com",
     });
-    expect(await instance.app.languages.install("ita")).toMatchObject({
+    expect(await instance.app.languages.addOcrLanguage("ita")).toMatchObject({
       ok: false,
       problem: "download-failed",
       message: expect.stringContaining("checksum") as unknown,
     });
-    expect(await instance.app.languages.install("xyz")).toEqual({ ok: false, problem: "unknown-ocr-language" });
-    expect((await readdir(instance.tessdataDirectory)).sort()).toEqual([
-      "deu.traineddata",
-      "eng.traineddata",
-      "osd.traineddata",
-    ]);
+    expect(await instance.app.languages.addOcrLanguage("xyz")).toEqual({ ok: false, problem: "unknown-ocr-language" });
+    expect(await listed()).toEqual(["eng"]);
+    expect(await volume()).toEqual(["deu.traineddata", "eng.traineddata", "osd.traineddata"]);
   });
 
-  it("counts a model an operator put into the volume by hand as installed", async () => {
+  it("count a model an operator put into the volume by hand as installed", async () => {
     await writeFile(join(instance.tessdataDirectory, "ita.traineddata"), fakeModel("ita"));
+    catalog.fail("ita", "unreachable");
 
-    expect(await instance.app.languages.setOcrLanguages(["ita"])).toEqual({ ok: true });
-    expect(await models()).toEqual(["deu bundled", "eng bundled", "ita downloaded selected"]);
+    expect(await instance.app.languages.addOcrLanguage("ita")).toEqual({ ok: true });
+    expect(await listed()).toEqual(["eng", "ita"]);
   });
 
-  it("marks a selected language whose model went missing", async () => {
-    await instance.app.languages.install("fra");
-    await instance.app.languages.setOcrLanguages(["fra"]);
+  it("mark a language whose model went missing, which is downloaded again or removed", async () => {
+    await instance.app.languages.addOcrLanguage("fra");
     await rm(join(instance.tessdataDirectory, "fra.traineddata"));
 
-    const settings = await instance.app.languages.current();
-    expect(settings.ocrLanguages).toEqual([{ language: "fra", installed: false }]);
-    expect(settings.downloadable).toContain("fra");
+    expect((await instance.app.languages.current()).ocrLanguages).toEqual([
+      { language: "eng", installed: true },
+      { language: "fra", installed: false },
+    ]);
+
+    expect(await instance.app.languages.addOcrLanguage("fra")).toEqual({ ok: true });
+    expect(await listed()).toEqual(["eng", "fra"]);
+    expect((await instance.app.languages.current()).ocrLanguages[1]).toEqual({ language: "fra", installed: true });
+
+    await rm(join(instance.tessdataDirectory, "fra.traineddata"));
+    expect(await instance.app.languages.removeOcrLanguage("fra")).toEqual({ ok: true });
+    expect(await listed()).toEqual(["eng"]);
   });
 
-  it("links the bundled models into the volume again where they are missing", async () => {
+  it("link the bundled models into the volume again where they are missing", async () => {
     await rm(join(instance.tessdataDirectory, "deu.traineddata"));
 
     await instance.restart();
 
-    expect(await models()).toEqual(["deu bundled", "eng bundled selected"]);
+    expect(await volume()).toEqual(["deu.traineddata", "eng.traineddata", "osd.traineddata"]);
   });
 });

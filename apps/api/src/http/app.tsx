@@ -367,8 +367,9 @@ export function createHttpApp(application: Application, options: HttpOptions) {
       kitSaved: await recoveryKit.isConfirmed(),
       family: language.language,
       ocr: {
+        enabled: language.ocrEnabled,
         languages: language.ocrLanguages.map((ocr) => ocr.language),
-        missing: language.ocrLanguages.some((ocr) => !ocr.installed),
+        missing: language.ocrEnabled && language.ocrLanguages.some((ocr) => !ocr.installed),
       },
     };
   };
@@ -866,16 +867,14 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     return render(c, page, problem ? 400 : 200);
   };
 
-  // The OCR languages in Tesseract's notation, `deu+eng`, as each button of the page posts them.
-  app.post("/admin/llm/ocr", async (c) => {
-    const chosen = field(await c.req.parseBody(), "ocrLanguages").split("+").filter((language) => language !== "");
-    const result = await languages.setOcrLanguages(chosen);
-    if (!result.ok) return llmEndpointPage(c, problemIn(c, result.problem));
+  app.post("/admin/llm/ocr/enabled", async (c) => {
+    await languages.setOcrEnabled(field(await c.req.parseBody(), "ocr") === "yes");
     return c.redirect("/admin/llm", 303);
   });
 
-  app.post("/admin/llm/models", async (c) => {
-    const result = await languages.install(field(await c.req.parseBody(), "language"));
+  // Adds an OCR language, downloading its model where needed; for a listed one whose model is missing, downloads it again.
+  app.post("/admin/llm/ocr", async (c) => {
+    const result = await languages.addOcrLanguage(field(await c.req.parseBody(), "language"));
     if (!result.ok) {
       const problem =
         result.problem === "download-failed"
@@ -886,8 +885,14 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     return c.redirect("/admin/llm", 303);
   });
 
-  app.post("/admin/llm/models/:language/remove", async (c) => {
-    const result = await languages.remove(c.req.param("language"));
+  app.post("/admin/llm/ocr/:language/remove", async (c) => {
+    const result = await languages.removeOcrLanguage(c.req.param("language"));
+    if (!result.ok) return llmEndpointPage(c, problemIn(c, result.problem));
+    return c.redirect("/admin/llm", 303);
+  });
+
+  app.post("/admin/llm/ocr/:language/up", async (c) => {
+    const result = await languages.moveOcrLanguageUp(c.req.param("language"));
     if (!result.ok) return llmEndpointPage(c, problemIn(c, result.problem));
     return c.redirect("/admin/llm", 303);
   });
@@ -902,7 +907,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
 
   app.post("/admin/llm", async (c) => {
     const form = await c.req.parseBody();
-    const entered = { baseUrl: field(form, "baseUrl"), model: field(form, "model"), vision: field(form, "vision") === "yes" };
+    const entered = { baseUrl: field(form, "baseUrl"), model: field(form, "model") };
     const result = await llmEndpoint.save({
       ...entered,
       apiKey: field(form, "apiKey"),

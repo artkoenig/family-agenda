@@ -4,11 +4,8 @@ import type {
   ExtractionRequest,
   ExtractionResult,
   Extractor,
-  TranscriptionRequest,
-  TranscriptionResult,
 } from "@family-agenda/application";
 import type { DateMention } from "@family-agenda/domain";
-import { scanImageText } from "./fake-text-extractor";
 
 const noDate = { day: null, month: null, year: null, weekday: null, daysAfter: null, weeksAfter: null };
 
@@ -44,7 +41,6 @@ export function extractedTask(
  */
 export class ScriptedExtractor implements Extractor {
   readonly requests: ExtractionRequest[] = [];
-  readonly transcriptions: TranscriptionRequest[] = [];
   private readonly scripts: { contains: string; result: ExtractionResult }[] = [];
 
   /** The Events and Tasks a message containing `contains` yields. */
@@ -60,13 +56,6 @@ export class ScriptedExtractor implements Extractor {
   recover(): void {
     const failing = this.scripts.findIndex((script) => script.contains === "");
     if (failing >= 0) this.scripts.splice(failing, 1);
-  }
-
-  transcribe(request: TranscriptionRequest): Promise<TranscriptionResult> {
-    this.transcriptions.push(request);
-    const failing = this.scripts.find(({ contains, result }) => contains === "" && !result.ok);
-    if (failing && !failing.result.ok) return Promise.resolve(failing.result);
-    return Promise.resolve({ ok: true, pages: request.images.map(scanImageText) });
   }
 
   extract(request: ExtractionRequest): Promise<ExtractionResult> {
