@@ -139,7 +139,12 @@
   font-size: 18px; line-height: 24px; font-weight: 700; letter-spacing: 0;
 }
 
-/* "Some of this may be out of date", written out under the title, or alone where there is none. */
+/* The line icon of the folded bar's hint, 24 units wide and drawn at 1.9: a mask, so that it takes the text colour. */
+:root {
+  --icon-alert: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.9' stroke-linecap='round'%3E%3Cpath d='M12 6.5v7M12 17.4v.1'/%3E%3C/svg%3E");
+}
+
+/* "Some of this may be out of date", written out under the title, or alone where there is none; the folded bar makes it an icon. */
 .fam-out-of-date {
   grid-area: notes; margin: 2px 0 0; text-align: center;
   color: var(--honey); font-size: 13px; line-height: 18px; font-weight: 700;
@@ -174,9 +179,39 @@ html[data-theme-mode="dark"] .fam-theme__icon--dark { display: block; }
   .fam-scrolled .fam-clock { font-size: 22px; line-height: 32px; }
   .fam-scrolled .fam-clock__date { font-size: 12px; line-height: 16px; }
   .fam-scrolled .fam-bar__summary { display: flex; }
-  .fam-scrolled .fam-bar__title, .fam-scrolled .fam-out-of-date { display: none; }
+  .fam-scrolled .fam-bar__title { display: none; }
+  /* Folded, the filter is a button of avatars, and the room that leaves goes to the hint as an icon, as small as they are. */
+  .fam-scrolled .fam-bar__inner {
+    grid-template-columns: 1fr auto auto auto;
+    grid-template-areas: "clock notes summary theme" "filter filter filter filter";
+  }
+  .fam-scrolled .fam-theme { width: 28px; height: 28px; }
+  .fam-scrolled .fam-theme__icon { width: 16px; height: 16px; }
+  .fam-scrolled .fam-out-of-date {
+    display: grid; place-items: center; justify-self: end; width: 28px; height: 28px; margin: 0; border-radius: var(--radius-full);
+    border: 1px solid var(--honey); background: var(--honey-tint); color: var(--honey); cursor: pointer;
+  }
+  .fam-scrolled .fam-out-of-date::before {
+    content: ""; width: 16px; height: 16px; background: currentColor;
+    -webkit-mask: var(--icon-alert) center / contain no-repeat; mask: var(--icon-alert) center / contain no-repeat;
+  }
+  /* What it says is read out, and shown when it is tapped or hovered. */
+  .fam-scrolled .fam-out-of-date__text {
+    position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap;
+  }
+  .fam-scrolled .fam-out-of-date:is(:hover, :focus) .fam-out-of-date__text {
+    top: 36px; right: 0; width: min(240px, 100%); height: auto; clip-path: none; white-space: normal; z-index: 2;
+    padding: var(--space-2) var(--space-3); border: 1px solid var(--line-strong); border-radius: var(--radius-md);
+    background: var(--surface-raised); box-shadow: var(--shadow-raised);
+    color: var(--ink); font-size: 13px; line-height: 18px; font-weight: 500; text-align: left;
+  }
   .fam-scrolled .fam-bar__inner > .fam-filter { display: none; }
   .fam-scrolled.fam-filter-open .fam-bar__inner > .fam-filter { display: flex; }
+}
+
+/* On the narrowest phones the folded bar has no room for the date next to three avatars, the hint and the switch. */
+@media (max-width: 339px) {
+  .fam-scrolled .fam-clock__date { display: none; }
 }
 
 /* Activity: a line along the bottom edge of the bar that fills as the worker gets on. Its words

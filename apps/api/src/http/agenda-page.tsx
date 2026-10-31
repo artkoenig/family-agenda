@@ -205,8 +205,9 @@ export function TaskList(props: { page: TaskListPage }) {
  *
  * On a phone the title, the hint and the filter are rows under the clock, and `agendaBar` folds the
  * bar into one line once the page is scrolled, the filter becoming the avatars of those shown, which
- * unfold it again; the title and the hint wait for the top. A wall tablet and a desktop show the
- * clock, the title and the switch in one row, the hint and a small filter under them.
+ * unfold it again; the title waits for the top, and the hint shrinks to an icon. A wall tablet and
+ * a desktop show the clock, the title and the switch in one row, the hint and a small filter under
+ * them.
  */
 function AgendaBar(props: { page: AgendaPage | TaskListPage; kind?: string }) {
   const { page } = props;
@@ -221,8 +222,8 @@ function AgendaBar(props: { page: AgendaPage | TaskListPage; kind?: string }) {
         </div>
         {props.kind ? <h1 class="fam-bar__title">{props.kind}</h1> : null}
         {page.mayBeOutOfDate ? (
-          <p class="fam-out-of-date" role="status">
-            {t.agenda.outOfDate}
+          <p class="fam-out-of-date" role="status" tabindex={0}>
+            <span class="fam-out-of-date__text">{t.agenda.outOfDate}</span>
           </p>
         ) : null}
         {page.choices.length > 1 ? (
