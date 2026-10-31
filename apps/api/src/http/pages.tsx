@@ -879,16 +879,17 @@ function AgendaSettingsFields(props: { members: FamilyMemberSummary[]; agenda?: 
         <legend>{t.agendas.preselected}</legend>
         <small>{t.agendas.preselectedHint}</small>
         {props.members.length === 0 ? <p>{t.agendas.noMembers}</p> : null}
-        <div class="fam-choices">
+        <div class="fam-choices fam-choices--members">
           {props.members.map((member) => (
-            <label class="fam-choice">
+            <label class="fam-choice fam-choice--member" title={member.name}>
               <input
                 type="checkbox"
                 name="preselected"
                 value={member.id}
                 checked={props.agenda?.preselected.includes(member.id) ?? false}
-              />{" "}
-              <Avatar member={member} size="sm" /> {member.name}
+              />
+              <Avatar member={member} size="sm" />
+              <span class="fam-choice__name">{member.name}</span>
             </label>
           ))}
         </div>
@@ -1202,11 +1203,12 @@ export function SourcePage(props: {
           <form method="post" action={`${href}/concerns`} class="fam-sheet__form">
             <Group title={s.concerns} level={2} intro={s.concernsHint}>
               <div class="fam-group__fields">
-                <div class="fam-choices">
+                <div class="fam-choices fam-choices--members">
                   {props.members.map((member) => (
-                    <label class="fam-choice">
-                      <input type="checkbox" name="concerns" value={member.id} checked={source.concerns.includes(member.id)} />{" "}
-                      <Avatar member={member} size="sm" /> {member.name}
+                    <label class="fam-choice fam-choice--member" title={member.name}>
+                      <input type="checkbox" name="concerns" value={member.id} checked={source.concerns.includes(member.id)} />
+                      <Avatar member={member} size="sm" />
+                      <span class="fam-choice__name">{member.name}</span>
                     </label>
                   ))}
                 </div>
@@ -1883,7 +1885,7 @@ function CatalogueField(props: {
 
 /**
  * The Parts of a Source, such as the folders of a mailbox: one card each with its name and the
- * Family Members it concerns as avatars to tap, none meaning the whole Family, and one empty card
+ * Family Members it concerns as switches to tap, none meaning the whole Family, and one empty card
  * to add another. A Part not assigned of its own concerns whom its Source is assigned to.
  */
 function PartsField(props: { field: SourceForm["fields"][number]; id: string; source: SourceSummary | undefined; members: FamilyMemberSummary[] }) {
@@ -1908,10 +1910,10 @@ function PartsField(props: { field: SourceForm["fields"][number]; id: string; so
             />
             <div class="fam-part__members" role="group" aria-label={t.sources.partMembers(row.name === "" ? t.sources.partNew : row.name)}>
               {members.map((member) => (
-                <label class="fam-pick" title={member.name}>
+                <label class="fam-choice fam-choice--member" title={member.name}>
                   <input type="checkbox" name={`part.${field.key}.${index}.member`} value={member.id} checked={row.chosen.includes(member.id)} />
                   <Avatar member={member} size="sm" />
-                  <span class="fam-visually-hidden">{member.name}</span>
+                  <span class="fam-choice__name">{member.name}</span>
                 </label>
               ))}
             </div>
