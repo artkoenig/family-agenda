@@ -93,49 +93,98 @@
 .fam-avatars { display: inline-flex; }
 .fam-avatars > .fam-avatar + .fam-avatar { margin-left: -8px; box-shadow: 0 0 0 2px var(--surface); }
 
-/* Member filter (a View's quick filter) --------------------------------- */
-.fam-filter { display: flex; gap: var(--space-3); overflow-x: auto; padding: var(--space-1) 2px; }
+/* Member filter (a View's quick filter): a row of pills ------------------ */
+.fam-filter { display: flex; gap: var(--space-2); overflow-x: auto; scrollbar-width: none; }
 .fam-filter__item {
-  display: flex; flex: none; flex-direction: column; align-items: center; gap: var(--space-2);
-  min-width: 64px; color: var(--ink-muted); font-size: 13px; line-height: 16px; font-weight: 600;
-  text-decoration: none; border-radius: var(--radius-md); padding: var(--space-2) var(--space-1) var(--space-1);
+  position: relative; display: flex; flex: none; align-items: center; gap: 7px;
+  height: 36px; padding: 0 12px 0 4px; border: 1px solid var(--line); border-radius: var(--radius-full);
+  color: var(--ink-muted); font-size: 14px; line-height: 20px; font-weight: 600; text-decoration: none;
 }
+/* Pills are 36 px high; their touch target is still 44 px. */
+.fam-filter__item::after { content: ""; position: absolute; inset: -4px -2px; }
 .fam-filter__item:hover { background: var(--hearth-tint); }
-.fam-filter__item .fam-avatar { box-shadow: 0 0 0 3px var(--surface), 0 0 0 3px transparent; }
-.fam-filter__item[aria-current] { color: var(--ink); }
-.fam-filter__item[aria-current] .fam-avatar { box-shadow: 0 0 0 3px var(--surface), 0 0 0 6px var(--ink); }
+.fam-filter__item .fam-avatar { width: 28px; height: 28px; font-size: 13px; }
+.fam-filter__item[aria-current] { color: var(--ink); border-color: var(--ink); background: var(--surface-raised); }
 .fam .fam-filter__item, .fam-page .fam-filter__item { color: var(--ink-muted); }
 .fam .fam-filter__item[aria-current], .fam-page .fam-filter__item[aria-current] { color: var(--ink); }
 
 /* Top bar --------------------------------------------------------------- */
+/* A phone: the clock and what needs saying in one row, the filter under it. */
 .fam-bar {
   position: sticky; top: 0; z-index: 1; background: var(--surface-bar);
   -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
-  padding: var(--space-3) var(--space-4) var(--space-2); border-bottom: 1px solid var(--line);
+  padding: var(--space-3) var(--space-4) var(--space-3); border-bottom: 1px solid var(--line);
 }
 .fam-bar > * { max-width: var(--content-width); margin-left: auto; margin-right: auto; }
-.fam-bar__top { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
-.fam-bar__end { display: flex; align-items: center; gap: var(--space-3); }
-.fam-bar__kind { font-size: 14px; line-height: 20px; font-weight: 600; color: var(--ink-muted); }
-.fam-out-of-date { margin: var(--space-2) 0 0; font-size: 14px; line-height: 20px; color: var(--ink-muted); }
-.fam-clock { font-size: 30px; line-height: 36px; font-weight: 800; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }
-.fam-clock__date { font-size: 16px; font-weight: 500; letter-spacing: 0; color: var(--ink-muted); margin-left: var(--space-1); }
+.fam-bar__inner {
+  position: relative; display: grid; align-items: center; column-gap: var(--space-2);
+  grid-template-columns: auto 1fr auto; grid-template-areas: "clock notes summary" "filter filter filter";
+}
+.fam-bar__inner > .fam-filter { grid-area: filter; margin: var(--space-2) calc(-1 * var(--space-4)) 0; padding: 0 var(--space-4); }
+@media (max-width: 999px) {
+  /* A long row of pills fades out where it scrolls on. */
+  .fam-bar__inner > .fam-filter {
+    -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent);
+    mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent);
+  }
+}
+.fam-clock {
+  grid-area: clock; display: flex; align-items: baseline; gap: var(--space-2); white-space: nowrap;
+  font-size: 26px; line-height: 36px; font-weight: 800; letter-spacing: -0.01em; font-variant-numeric: tabular-nums;
+}
+.fam-clock__date { font-size: 14px; line-height: 20px; font-weight: 500; letter-spacing: 0; color: var(--ink-muted); }
+.fam-bar__notes { grid-area: notes; display: flex; align-items: center; justify-content: flex-end; gap: var(--space-2); min-width: 0; }
+.fam-bar__kind { font-size: 14px; line-height: 20px; font-weight: 600; color: var(--ink-muted); white-space: nowrap; }
 
-/* Activity indicator ---------------------------------------------------- */
-.fam-activity { display: flex; align-items: center; gap: var(--space-2); color: var(--ink-muted); font-size: 14px; line-height: 20px; }
-.fam-activity__spinner {
-  flex: none; width: 14px; height: 14px; border-radius: var(--radius-full);
-  border: 2px solid var(--line); border-top-color: var(--hearth); animation: fam-spin 1s linear infinite;
+/* "Some of this may be out of date": a "!" that says so when tapped; written out on a wide screen. */
+.fam-out-of-date {
+  display: grid; place-items: center; flex: none; width: 20px; height: 20px; margin: 0; border-radius: var(--radius-full);
+  border: 1px solid var(--honey); background: var(--honey-tint); color: var(--honey); cursor: pointer;
+  font-size: 12px; line-height: 1; font-weight: 800;
 }
+.fam-out-of-date::before { content: "!"; }
+.fam-out-of-date__text {
+  position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap;
+}
+.fam-out-of-date:hover .fam-out-of-date__text, .fam-out-of-date:focus .fam-out-of-date__text {
+  top: 40px; right: 0; width: min(240px, 100%); height: auto; clip-path: none; white-space: normal; z-index: 2;
+  padding: var(--space-2) var(--space-3); border: 1px solid var(--line-strong); border-radius: var(--radius-md);
+  background: var(--surface-raised); box-shadow: var(--shadow-raised);
+  color: var(--ink); font-size: 13px; line-height: 18px; font-weight: 500; text-align: left;
+}
+
+/* Folded bar: the avatars of those shown stand in for the filter. */
+.fam-bar__summary {
+  grid-area: summary; display: none; align-items: center; gap: var(--space-1); padding: 0; border: 0; background: none;
+  color: var(--ink-muted); font: inherit; cursor: pointer; position: relative;
+}
+.fam-bar__summary::after { content: ""; position: absolute; inset: -8px -6px; }
+.fam-bar__summary .fam-avatar { width: 28px; height: 28px; font-size: 13px; }
+.fam-bar__chevron { width: 16px; font-size: 12px; text-align: center; transition: transform .15s; }
+.fam-bar__summary[aria-expanded="true"] .fam-bar__chevron { transform: rotate(180deg); }
+@media (max-width: 999px) {
+  .fam-scrolled .fam-bar { padding-top: var(--space-2); padding-bottom: var(--space-2); }
+  .fam-scrolled .fam-clock { font-size: 22px; line-height: 32px; }
+  .fam-scrolled .fam-clock__date { font-size: 12px; line-height: 16px; }
+  .fam-scrolled .fam-bar__summary { display: flex; }
+  .fam-scrolled .fam-bar__inner > .fam-filter { display: none; }
+  .fam-scrolled.fam-filter-open .fam-bar__inner > .fam-filter { display: flex; }
+  .fam-scrolled .fam-out-of-date__text:is(:hover, :focus) { top: 36px; }
+}
+
+/* Activity: a line along the bottom edge of the bar that fills as the worker gets on. Its words
+   are for assistive technology. */
+.fam-activity { display: block; }
 .fam-activity progress {
-  width: 64px; height: 4px; appearance: none; border: none; border-radius: var(--radius-full);
-  background: var(--line); overflow: hidden;
+  position: absolute; left: 0; right: 0; bottom: -1px; width: 100%; height: 2px; max-width: none; margin: 0;
+  appearance: none; border: none; border-radius: 0; background: transparent; overflow: hidden;
+  animation: fam-pulse 1.4s ease-in-out infinite;
 }
-.fam-activity progress::-webkit-progress-bar { background: var(--line); }
-.fam-activity progress::-webkit-progress-value { background: var(--hearth); }
-.fam-activity progress::-moz-progress-bar { background: var(--hearth); }
-@keyframes fam-spin { to { transform: rotate(360deg); } }
-@media (prefers-reduced-motion: reduce) { .fam-activity__spinner { animation-duration: 3s; } }
+.fam-activity progress::-webkit-progress-bar { background: transparent; }
+.fam-activity progress::-webkit-progress-value { background: var(--hearth); min-width: 6px; }
+.fam-activity progress::-moz-progress-bar { background: var(--hearth); min-width: 6px; }
+@keyframes fam-pulse { 50% { opacity: .45; } }
+@media (prefers-reduced-motion: reduce) { .fam-activity progress { animation: none; } .fam-bar__chevron { transition: none; } }
 
 /* Timeline: days, now line, Event rows ---------------------------------- */
 .fam-days { list-style: none; margin: 0 auto; padding: 0 var(--space-4) var(--space-7); max-width: calc(var(--content-width) + 2 * var(--space-4)); }
@@ -570,11 +619,31 @@
 /* Wall tablet and desktop ---------------------------------------------- */
 @media (min-width: 1000px) {
   .fam-page.fam-view { font-size: 19px; line-height: 28px; }
+  .fam-view .fam-bar { padding-top: 10px; padding-bottom: 11px; }
   .fam-view .fam-bar > * { max-width: var(--content-width-wall); }
   .fam-view .fam-days { max-width: calc(var(--content-width-wall) + 2 * var(--space-4)); }
-  .fam-view .fam-clock { font-size: 44px; line-height: 48px; }
-  .fam-view .fam-filter .fam-avatar { width: var(--avatar-lg); height: var(--avatar-lg); font-size: 26px; }
-  .fam-view .fam-filter__item { font-size: 14px; }
+  /* One row: the clock, and under it what needs saying, to the left of the filter. */
+  .fam-view .fam-bar__inner {
+    column-gap: var(--space-5); grid-template-columns: auto 1fr auto; grid-template-areas: "clock . filter" "notes . filter";
+  }
+  .fam-view .fam-clock { gap: 12px; font-size: 40px; line-height: 44px; }
+  .fam-view .fam-clock__date { font-size: 18px; line-height: 24px; }
+  .fam-view .fam-bar__notes { justify-content: flex-start; flex-wrap: wrap; }
+  .fam-view .fam-bar__inner > .fam-filter { margin: 0; padding: 0; overflow: visible; gap: var(--space-2); }
+  .fam-view .fam-filter__item { height: 48px; gap: 9px; padding: 0 16px 0 5px; font-size: 17px; }
+  .fam-view .fam-filter__item[aria-current] { box-shadow: 0 0 0 1px var(--ink); }
+  .fam-view .fam-filter__item .fam-avatar { width: 38px; height: 38px; font-size: 17px; }
+  .fam-view .fam-bar__summary { display: none; }
+  /* A wall tablet has no hover or tap: the hint is written out, not hidden behind a "!". */
+  .fam-view .fam-out-of-date {
+    display: block; width: auto; height: auto; border: 0; background: none; cursor: default;
+    color: var(--honey); font-size: 13px; line-height: 18px; font-weight: 700; white-space: nowrap;
+  }
+  .fam-view .fam-out-of-date::before { content: none; }
+  .fam-view .fam-out-of-date__text, .fam-view .fam-out-of-date:is(:hover, :focus) .fam-out-of-date__text {
+    position: static; width: auto; height: auto; clip-path: none; white-space: nowrap; padding: 0; border: 0;
+    background: none; box-shadow: none; color: inherit; font-size: inherit; line-height: inherit; font-weight: inherit;
+  }
 }
 
 @media print {

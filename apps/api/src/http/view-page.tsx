@@ -29,14 +29,50 @@ export function ViewPageDocument(props: { page: ViewPage }) {
         <span class="fam-back-to-today__arrow" aria-hidden="true">↑</span>
         {t.view.today}
       </button>
-      <script>{raw(backToToday)}</script>
+      <script>{raw(viewBar + backToToday)}</script>
     </Layout>
   );
 }
 
 /**
+ * Folds the top bar into one line once the page is scrolled, on a phone, and unfolds it near the
+ * top again; there the filter hides behind the avatars of those shown, which open it. The state
+ * sits on the body, outside the part htmx swaps, so that a refresh or a filter change keeps it.
+ * Without JavaScript the bar stays whole. It folds at one scroll position and unfolds at another,
+ * so that its own change of height cannot toggle it back and forth.
+ */
+const viewBar = `
+const foldAt = 120;
+const unfoldAt = 8;
+let folded = false;
+const syncSummary = () => {
+  const open = document.body.classList.contains("fam-filter-open");
+  for (const button of document.querySelectorAll(".fam-bar__summary")) button.setAttribute("aria-expanded", String(open));
+};
+const fold = () => {
+  const next = folded ? window.scrollY > unfoldAt : window.scrollY > foldAt;
+  if (next === folded) return;
+  folded = next;
+  document.body.classList.toggle("fam-scrolled", folded);
+  if (!folded) document.body.classList.remove("fam-filter-open");
+  syncSummary();
+  document.dispatchEvent(new Event("fam-bar-resized"));
+};
+window.addEventListener("scroll", fold, { passive: true });
+document.addEventListener("click", (event) => {
+  if (!event.target.closest(".fam-bar__summary")) return;
+  document.body.classList.toggle("fam-filter-open");
+  syncSummary();
+  document.dispatchEvent(new Event("fam-bar-resized"));
+});
+document.body.addEventListener("htmx:afterSettle", syncSummary);
+fold();
+syncSummary();
+`;
+
+/**
  * Shows the button back to today while today is scrolled out of sight, below the top bar, with an
- * arrow towards it. It sits outside the part htmx swaps, and watches today again after each swap,
+ * arrow towards it, below the bar again when it folds or unfolds. It sits outside the part htmx swaps, and watches today again after each swap,
  * because a refresh or a quick filter change brings a new one.
  */
 const backToToday = `
@@ -60,6 +96,11 @@ const watch = () => {
 };
 watch();
 document.body.addEventListener("htmx:afterSettle", watch);
+document.addEventListener("fam-bar-resized", () => {
+  observer?.disconnect();
+  observer = null;
+  watch();
+});
 back.addEventListener("click", () => {
   if (!today) return;
   window.scrollTo({ top: today.getBoundingClientRect().top + window.scrollY - barHeight() - 16, behavior: "smooth" });
@@ -110,6 +151,7 @@ export function TaskListDocument(props: { page: TaskListPage }) {
   return (
     <Layout title={t.view.taskList.title} surface="view">
       <TaskList page={props.page} />
+      <script>{raw(viewBar)}</script>
     </Layout>
   );
 }
@@ -155,44 +197,70 @@ export function TaskList(props: { page: TaskListPage }) {
   );
 }
 
-/** A View's sticky top bar, whatever its kind: the clock, what the worker is busy with, and the quick filter. */
+/**
+ * A View's sticky top bar, whatever its kind: the clock, the quick filter, a hint that some of it
+ * may be out of date, and, as a line along its bottom edge, what the worker is busy with.
+ *
+ * On a phone the filter is a row of pills under the clock, and `viewBar` folds the bar into one
+ * line once the page is scrolled, the filter becoming the avatars of those shown, which unfold it
+ * again. A wall tablet and a desktop have room for all of it in one row.
+ */
 function ViewBar(props: { page: ViewPage | TaskListPage; kind?: string }) {
   const { page } = props;
   const { t, locale } = useTranslation();
+  const everyone = showsEveryChoice(page);
+  const shown = everyone ? [] : page.choices.filter((member) => page.showing.includes(member.id));
   return (
     <header class="fam-bar">
-      <div class="fam-bar__top">
+      <div class="fam-bar__inner">
         <div class="fam-clock">
           {page.now.time} <span class="fam-clock__date">{dateLabel(page.now.date, locale)}</span>
         </div>
-        <div class="fam-bar__end">
-          <ActivityIndicator viewId={page.id} activity={page.activity} />
+        <div class="fam-bar__notes">
           {props.kind ? <span class="fam-bar__kind">{props.kind}</span> : null}
+          {page.mayBeOutOfDate ? (
+            <p class="fam-out-of-date" role="status" tabindex={0}>
+              <span class="fam-out-of-date__text">{t.view.outOfDate}</span>
+            </p>
+          ) : null}
         </div>
-      </div>
-      {page.mayBeOutOfDate ? (
-        <p class="fam-out-of-date" role="status">
-          {t.view.outOfDate}
-        </p>
-      ) : null}
-      {page.choices.length > 1 ? (
-        <nav class="fam-filter" aria-label={t.view.quickFilter} hx-boost="true" hx-target="#view" hx-swap="outerHTML">
-          <a class="fam-filter__item" href={viewUrl(page.id, "all")} aria-current={showsEveryChoice(page) ? "true" : undefined}>
-            <span class="fam-avatar fam-avatar--all" aria-hidden="true"></span>
-            {t.view.all}
-          </a>
-          {page.choices.map((member) => (
-            <a
-              class="fam-filter__item"
-              href={viewUrl(page.id, toggled(page, member.id))}
-              aria-current={!showsEveryChoice(page) && page.showing.includes(member.id) ? "true" : undefined}
+        {page.choices.length > 1 ? (
+          <>
+            <button type="button" class="fam-bar__summary" aria-controls="quick-filter" aria-expanded="false" aria-label={t.view.quickFilter}>
+              <span class="fam-avatars">
+                {everyone ? <span class="fam-avatar fam-avatar--all" aria-hidden="true"></span> : shown.map((member) => <Avatar member={member} />)}
+              </span>
+              <span class="fam-bar__chevron" aria-hidden="true">
+                ▾
+              </span>
+            </button>
+            <nav
+              id="quick-filter"
+              class="fam-filter"
+              aria-label={t.view.quickFilter}
+              hx-boost="true"
+              hx-target="#view"
+              hx-swap="outerHTML"
             >
-              <Avatar member={member} />
-              {member.name}
-            </a>
-          ))}
-        </nav>
-      ) : null}
+              <a class="fam-filter__item" href={viewUrl(page.id, "all")} aria-current={everyone ? "true" : undefined}>
+                <span class="fam-avatar fam-avatar--all" aria-hidden="true"></span>
+                {t.view.all}
+              </a>
+              {page.choices.map((member) => (
+                <a
+                  class="fam-filter__item"
+                  href={viewUrl(page.id, toggled(page, member.id))}
+                  aria-current={!everyone && page.showing.includes(member.id) ? "true" : undefined}
+                >
+                  <Avatar member={member} />
+                  {member.name}
+                </a>
+              ))}
+            </nav>
+          </>
+        ) : null}
+      </div>
+      <ActivityIndicator viewId={page.id} activity={page.activity} />
     </header>
   );
 }
@@ -224,8 +292,7 @@ export function ActivityIndicator(props: { viewId: string; activity: CurrentActi
     >
       {activity ? (
         <>
-          <span class="fam-activity__spinner" aria-hidden="true"></span>
-          <span>
+          <span class="fam-visually-hidden">
             {label} {Math.min(activity.done + 1, activity.total)}/{activity.total}
           </span>
           <progress value={activity.done} max={activity.total} aria-label={label}></progress>
