@@ -93,20 +93,8 @@
 .fam-avatars { display: inline-flex; }
 .fam-avatars > .fam-avatar + .fam-avatar { margin-left: -8px; box-shadow: 0 0 0 2px var(--surface); }
 
-/* Member filter (an Agenda's quick filter): a row of pills ------------------ */
+/* Member filter (an Agenda's quick filter): a row of switches, see .fam-pillswitch -------- */
 .fam-filter { display: flex; gap: var(--space-2); overflow-x: auto; scrollbar-width: none; }
-.fam-filter__item {
-  position: relative; display: flex; flex: none; align-items: center; gap: 7px;
-  height: 36px; padding: 0 12px 0 4px; border: 1px solid var(--line); border-radius: var(--radius-full);
-  color: var(--ink-muted); font-size: 14px; line-height: 20px; font-weight: 600; text-decoration: none;
-}
-/* Pills are 36 px high; their touch target is still 44 px. */
-.fam-filter__item::after { content: ""; position: absolute; inset: -4px -2px; }
-.fam-filter__item:hover { background: var(--hearth-tint); }
-.fam-filter__item .fam-avatar { width: 28px; height: 28px; font-size: 13px; }
-.fam-filter__item[aria-current] { color: var(--ink); border-color: var(--ink); background: var(--surface-raised); }
-.fam .fam-filter__item, .fam-page .fam-filter__item { color: var(--ink-muted); }
-.fam .fam-filter__item[aria-current], .fam-page .fam-filter__item[aria-current] { color: var(--ink); }
 
 /* Top bar --------------------------------------------------------------- */
 /* A phone: the clock and the Theme switch in one row, then the title, the hint and the filter, each in its own row, centred. */
@@ -121,7 +109,11 @@
   grid-template-columns: 1fr auto auto;
   grid-template-areas: "clock summary theme" "title title title" "notes notes notes" "filter filter filter";
 }
-.fam-bar__inner > .fam-filter { grid-area: filter; margin: var(--space-2) calc(-1 * var(--space-4)) 0; padding: 0 var(--space-4); }
+/* The pills never wrap: one that unfolds can push the others out of sight, and the row scrolls. The 4 px around
+   them are for their outlines, which a scrolling row would clip. */
+.fam-bar__inner > .fam-filter {
+  grid-area: filter; flex-wrap: nowrap; margin: calc(var(--space-2) - 4px) calc(-1 * var(--space-4)) -4px; padding: 4px var(--space-4);
+}
 @media (max-width: 999px) {
   /* A long row of pills fades out where it scrolls on. */
   .fam-bar__inner > .fam-filter {
@@ -393,38 +385,48 @@ html[data-theme-mode="dark"] .fam-theme__icon--dark { display: block; }
 .fam-choice__text { display: flex; flex-direction: column; }
 .fam-choice__label { font-weight: 600; }
 .fam-choice__hint { font-size: 14px; line-height: 20px; color: var(--ink-muted); }
-/* Family Members to tick, such as whom an Agenda or a Source concerns: a switch. Off, it is the avatar alone. Hovering
-   unfolds the name next to it, the avatar staying where it is. Ticking slides the avatar, the knob, to the right end
-   and the name to the left, and gives the pill the dark edge the quick filter marks its chosen with. */
-.fam-choices--members { display: flex; flex-wrap: wrap; gap: var(--space-2); }
-.fam-choice--member {
-  position: relative; display: flex; align-items: center; height: 36px; padding: 0 0 0 34px;
+/* A Family Member as a switch, to tick whom an Agenda or a Source concerns, or to filter an Agenda by. Off, it is the
+   avatar alone. Hovering unfolds the name next to it, the avatar staying where it is. On, ticked or the current choice,
+   the avatar, the knob, slides to the right end and the name to the left, and the pill gets the dark edge. */
+.fam-choices--members, .fam-part__members {
+  display: flex; flex-wrap: nowrap; align-items: center; gap: var(--space-2); overflow-x: auto; scrollbar-width: thin;
+  margin: -4px; padding: 4px;
+}
+.fam-pillswitch {
+  --sw-h: 36px; --sw-k: 28px; --sw-pad: 3px;
+  position: relative; display: flex; flex: none; align-items: center; height: var(--sw-h); padding: 0 0 0 calc(var(--sw-h) - 2px);
   border: 1px solid var(--line); border-radius: var(--radius-full); color: var(--ink-muted);
-  font-size: 14px; line-height: 20px; font-weight: 600; cursor: pointer;
+  font-size: 14px; line-height: 20px; font-weight: 600; text-decoration: none; cursor: pointer;
   transition: padding .25s ease, background-color .2s, border-color .2s, transform .1s;
 }
 /* A pill is 36 px high; its touch target is still 44 px. */
-.fam-choice--member::after { content: ""; position: absolute; inset: -4px -2px; }
-.fam-choice--member input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
-.fam-choice--member .fam-avatar {
-  position: absolute; top: 3px; left: 3px; width: 28px; height: 28px; font-size: 13px; opacity: .55;
-  transition: left .25s ease, opacity .2s;
+.fam-pillswitch::after { content: ""; position: absolute; inset: -4px -2px; }
+.fam-pillswitch input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+.fam-pillswitch .fam-avatar {
+  position: absolute; top: calc((var(--sw-h) - 2px - var(--sw-k)) / 2); left: var(--sw-pad);
+  width: var(--sw-k); height: var(--sw-k); font-size: 13px; opacity: .55; transition: left .25s ease, opacity .2s;
 }
-.fam-choice__name {
+.fam-pillswitch__name {
   display: inline-block; max-width: 0; overflow: hidden; white-space: nowrap; opacity: 0;
   transition: max-width .25s ease, opacity .2s ease;
 }
-.fam-choice--member:is(:hover, :has(input:checked, input:focus-visible)) { padding-right: 12px; }
-.fam-choice--member:is(:hover, :has(input:checked, input:focus-visible)) .fam-choice__name { max-width: 14em; opacity: 1; }
-.fam-choice--member:hover { background: var(--hearth-tint); }
-.fam-choice--member:hover .fam-avatar { opacity: 1; }
+.fam-pillswitch:is(:hover, :focus-visible, [aria-current], :has(input:checked, input:focus-visible)) { padding-right: 12px; }
+.fam-pillswitch:is(:hover, :focus-visible, [aria-current], :has(input:checked, input:focus-visible)) .fam-pillswitch__name { max-width: 14em; opacity: 1; }
+.fam-pillswitch:hover { background: var(--hearth-tint); }
+.fam-pillswitch:hover .fam-avatar { opacity: 1; }
 /* On: the name moves left, the knob right. The two paddings swap, so that the pill keeps its width. */
-.fam-choice--member:has(input:checked) { padding-left: 12px; padding-right: 34px; color: var(--ink); border-color: var(--ink); background: var(--surface-raised); }
-.fam-choice--member:has(input:checked) .fam-avatar { left: calc(100% - 31px); opacity: 1; }
-.fam-choice--member:active { transform: scale(.95); }
-.fam-choice--member:has(input:focus-visible) { outline: 2px solid var(--focus); outline-offset: 2px; }
+.fam-pillswitch:is([aria-current], :has(input:checked)) {
+  padding-left: 12px; padding-right: calc(var(--sw-k) + 2 * var(--sw-pad));
+  color: var(--ink); border-color: var(--ink); background: var(--surface-raised);
+}
+.fam-pillswitch:is([aria-current], :has(input:checked)) .fam-avatar { left: calc(100% - var(--sw-pad) - var(--sw-k)); opacity: 1; }
+.fam-pillswitch:active { transform: scale(.95); }
+.fam-pillswitch:is(:focus-visible, :has(input:focus-visible)) { outline: 2px solid var(--focus); outline-offset: 2px; }
+/* Beats the colours the page gives its links. */
+.fam .fam-pillswitch, .fam-page .fam-pillswitch { color: var(--ink-muted); }
+.fam .fam-pillswitch:is([aria-current], :has(input:checked)), .fam-page .fam-pillswitch:is([aria-current], :has(input:checked)) { color: var(--ink); }
 @media (prefers-reduced-motion: reduce) {
-  .fam-choice--member, .fam-choice--member .fam-avatar, .fam-choice__name { transition: none; }
+  .fam-pillswitch, .fam-pillswitch .fam-avatar, .fam-pillswitch__name { transition: none; }
 }
 .fam-dialog__form:has(input[name="kind"][value="tasks"]:checked) .fam-agenda-horizon { display: none; }
 
@@ -434,7 +436,6 @@ html[data-theme-mode="dark"] .fam-theme__icon--dark { display: block; }
   display: grid; gap: var(--space-2); padding: var(--space-3);
   border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface);
 }
-.fam-part__members { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
 .fam-part__all { margin: 0; color: var(--ink-muted); font-size: 13px; }
 .fam-part:has(input[type="checkbox"]:checked) .fam-part__all { display: none; }
 
@@ -701,12 +702,13 @@ html[data-theme-mode="dark"] .fam-theme__icon--dark { display: block; }
   .fam-agenda .fam-clock__date { font-size: 18px; line-height: 24px; }
   .fam-agenda .fam-bar__title { margin: 0; font-size: 26px; line-height: 32px; }
   .fam-agenda .fam-out-of-date { margin: 0; }
-  .fam-agenda .fam-bar__inner > .fam-filter {
-    margin: var(--space-2) 0 0; padding: 0; overflow: visible; gap: var(--space-2); flex-wrap: wrap; justify-content: center;
-  }
-  .fam-agenda .fam-filter__item { height: 32px; gap: 6px; padding: 0 12px 0 3px; font-size: 14px; }
-  .fam-agenda .fam-filter__item[aria-current] { box-shadow: 0 0 0 1px var(--ink); }
-  .fam-agenda .fam-filter__item .fam-avatar { width: 26px; height: 26px; font-size: 12px; }
+  .fam-agenda .fam-bar__inner > .fam-filter { margin: calc(var(--space-2) - 4px) 0 -4px; padding: 4px; -webkit-mask-image: none; mask-image: none; }
+  /* Centred while it fits, scrolling from its start when it does not. */
+  .fam-agenda .fam-filter > :first-child { margin-left: auto; }
+  .fam-agenda .fam-filter > :last-child { margin-right: auto; }
+  .fam-agenda .fam-filter .fam-pillswitch { --sw-h: 32px; --sw-k: 26px; --sw-pad: 2px; }
+  .fam-agenda .fam-filter .fam-pillswitch .fam-avatar { font-size: 12px; }
+  .fam-agenda .fam-filter .fam-pillswitch[aria-current] { box-shadow: 0 0 0 1px var(--ink); }
   .fam-agenda .fam-bar__summary { display: none; }
 }
 
