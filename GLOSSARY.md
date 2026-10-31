@@ -14,6 +14,10 @@ _Avoid_: Account, tenant, user group
 The language the Instance speaks to the Family in and formats dates in, English or German; an Admin chooses it when setting up the Instance and can change it in the settings.
 _Avoid_: Locale, UI language, region
 
+**Theme**:
+How the pages look in one browser: as the device prefers, light or dark. The browser keeps it in its `localStorage`; the Instance does not know it, so each device chooses its own.
+_Avoid_: Skin, mode
+
 **Family Member**:
 A person in the Family whom Items can concern, child or adult.
 _Avoid_: User, profile, kid

@@ -113,7 +113,8 @@ export const de: Catalogue = {
     failing: (count) => `${count} gestört`,
     noneYet: "Noch keine",
     agendas: (count) => plural(count, { one: `${count} Agenda im Heimnetz`, other: `${count} Agenden im Heimnetz` }),
-    language: (family, ocr) => `${family}; OCR auf ${ocr}`,
+    display: (family) => family,
+    ocr: (languages) => `OCR auf ${languages}`,
     sources: (count) => plural(count, { one: `${count} Quelle`, other: `${count} Quellen` }),
     newOnes: "Neue sind verfügbar",
     llmLocal: (model) => `${model}, im Heimnetz`,
@@ -326,13 +327,19 @@ export const de: Catalogue = {
     waiting: (count) => plural(count, { one: `${count} Nachricht wartet aufs Lesen.`, other: `${count} Nachrichten warten aufs Lesen.` }),
   },
 
-  language: {
-    title: "Sprache",
+  display: {
+    title: "Anzeige",
     description:
-      "Family Agenda spricht die Familiensprache, in den Agenden und hier, und schreibt Daten in ihr. Eingescannte Briefe werden in den OCR-Sprachen gelesen.",
+      "Family Agenda spricht die Familiensprache, in den Agenden und hier, und schreibt Daten in ihr. Wie die Seiten aussehen, entscheidet jeder Browser selbst.",
     familyLanguage: "Familiensprache",
-    familyLanguageHint: "Eine Änderung lässt die OCR-Sprachen, wie sie sind.",
-    ocrLanguages: "OCR-Sprachen",
+    familyLanguageHint: "Gilt für die ganze Instanz. Eine Änderung lässt die OCR-Sprachen, wie sie sind.",
+    theme: "Darstellung",
+    themeHint: "Wird nur in diesem Browser gespeichert; jedes Gerät und jeder Browser wählt selbst.",
+    themeOptions: { system: "Wie das Gerät", light: "Hell", dark: "Dunkel" },
+  },
+
+  ocr: {
+    languages: "OCR-Sprachen",
     ocrIntro:
       "Ohne einen LLM-Endpunkt, der Bilder liest, liest Tesseract eingescannte Seiten auf dieser Instanz, in diesen Sprachen zusammen, die erste zuerst. Nur Sprachen, deren Modell installiert ist, lassen sich wählen.",
     tried: (position) => (position === 1 ? "Wird zuerst versucht" : `An ${position}. Stelle versucht`),
@@ -341,7 +348,7 @@ export const de: Catalogue = {
     remove: "Entfernen",
     missingModel:
       "Eingescannte Briefe werden nicht gelesen, solange ein Modell fehlt; ihre Mails sagen es. Lade es herunter, oder entferne die Sprache.",
-    addOcrLanguage: "Eine OCR-Sprache hinzufügen",
+    addLanguage: "Eine OCR-Sprache hinzufügen",
     add: "Hinzufügen",
     models: "Sprachmodelle",
     modelsIntro: (code) => [
@@ -375,6 +382,11 @@ export const de: Catalogue = {
     title: "Agenda",
     today: "Heute",
     quickFilter: "Schnellfilter",
+    theme: {
+      system: "Darstellung: wie das Gerät. Wechseln zu Hell.",
+      light: "Darstellung: hell. Wechseln zu Dunkel.",
+      dark: "Darstellung: dunkel. Wechseln zu wie das Gerät.",
+    },
     all: "Alle",
     activity: { polling: "Quellen werden abgerufen", extracting: "Nachrichten werden gelesen" },
     earlierDays: "Frühere Tage",
