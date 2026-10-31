@@ -6,7 +6,7 @@ status: proposed
 
 Family Agenda runs only as a self-hosted Instance that serves one Family. There will be no hosted multi-tenant version. The paid offering is Agenda Cloud, a set of services an Instance can subscribe to, like Nabu Casa does for Home Assistant: Remote Access from outside the home network, push delivery of notifications, a hosted LLM endpoint, and encrypted off-site backups. We chose this over a multi-tenant SaaS because the Sources that make Family Agenda useful cannot run in a provider's cloud. WhatsApp through whatsmeow (ADR-0001) and WebUntis through undocumented endpoints would mean the provider operating ToS-breaking clients for many accounts from data-centre IPs. Keeping Sources at home also keeps Family data, and third parties' raw messages, out of the provider's hands.
 
-The Instance stays the whole product. Every Source, the extraction pipeline, the change list and the Views run on it, and it works completely without Agenda Cloud. Each Agenda Cloud service sits behind a port in `packages/application` with a self-hosted implementation next to it:
+The Instance stays the whole product. Every Source, the extraction pipeline, the change list and the Agendas run on it, and it works completely without Agenda Cloud. Each Agenda Cloud service sits behind a port in `packages/application` with a self-hosted implementation next to it:
 
 | Port | Without Agenda Cloud | With Agenda Cloud |
 |---|---|---|

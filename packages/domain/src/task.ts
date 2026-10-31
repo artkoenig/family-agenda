@@ -83,7 +83,7 @@ export function taskStatus(task: Task, today: LocalDate): TaskStatus {
 }
 
 /**
- * Whether the Task is pinned at the top of a View on `today`: from when it is Due until someone
+ * Whether the Task is pinned at the top of an Agenda on `today`: from when it is Due until someone
  * ticks it, cancelled or not.
  */
 export function isPinned(task: Task, today: LocalDate): boolean {

@@ -71,7 +71,7 @@ try {
  * Makes the Theme switches work: a `[data-theme-switch]` button steps through system, light and
  * dark, a `select[data-theme-select]` picks one. The button's `data-system`, `data-light` and
  * `data-dark` hold its label for each mode. They listen on the document, because htmx swaps the
- * parts of a View that hold them.
+ * parts of an Agenda that hold them.
  */
 const themeSwitches = `
 const modes = ["system", "light", "dark"];
@@ -109,11 +109,11 @@ syncThemeSwitches();
 
 /**
  * A page in the Family Agenda design system: its tokens and component classes come from
- * `/static/tokens.css` and `/static/design.css` (`design/`). A View is the Family's timeline; every
+ * `/static/tokens.css` and `/static/design.css` (`design/`). An Agenda is the Family's timeline; every
  * other page belongs to the Admin area, `narrow` for signing in.
  */
-export function Layout(props: { title: string; surface?: "view" | "admin"; narrow?: boolean; children: Child }) {
-  const view = props.surface === "view";
+export function Layout(props: { title: string; surface?: "agenda" | "admin"; narrow?: boolean; children: Child }) {
+  const agenda = props.surface === "agenda";
   const { language } = useTranslation();
   return (
     <>
@@ -129,13 +129,13 @@ export function Layout(props: { title: string; surface?: "view" | "admin"; narro
           <link rel="stylesheet" href="/static/design.css" />
           <script src="/static/htmx.min.js" defer></script>
         </head>
-        <body class={view ? "fam-page fam-view" : "fam-page"}>
-          {view ? (
+        <body class={agenda ? "fam-page fam-agenda" : "fam-page"}>
+          {agenda ? (
             props.children
           ) : (
             <div class={props.narrow ? "fam-admin fam-admin--narrow" : "fam-admin"}>{props.children}</div>
           )}
-          <script>{raw(view ? themeSwitches : modalDialogs + copyButtons + themeSwitches)}</script>
+          <script>{raw(agenda ? themeSwitches : modalDialogs + copyButtons + themeSwitches)}</script>
         </body>
       </html>
     </>

@@ -1,22 +1,22 @@
 import { daysBetween, type LocalDate } from "./calendar";
 import type { FamilyMemberId } from "./family-member";
 
-export type ViewId = string & { readonly __brand: "ViewId" };
+export type AgendaId = string & { readonly __brand: "AgendaId" };
 
-/** What a View shows: a timeline of days, or a Task List. */
-export const viewKinds = ["timeline", "tasks"] as const;
+/** What an Agenda shows: a timeline of days, or a Task List. */
+export const agendaKinds = ["timeline", "tasks"] as const;
 
-export type ViewKind = (typeof viewKinds)[number];
+export type AgendaKind = (typeof agendaKinds)[number];
 
-export function isViewKind(value: string): value is ViewKind {
-  return (viewKinds as readonly string[]).includes(value);
+export function isAgendaKind(value: string): value is AgendaKind {
+  return (agendaKinds as readonly string[]).includes(value);
 }
 
-/** A View's only settings are its kind, its preselected Family Members and its horizon. */
-export type View = {
-  id: ViewId;
-  kind: ViewKind;
-  /** Whom the View is for, and its quick filter offers; none means the whole Family. */
+/** An Agenda's only settings are its kind, its preselected Family Members and its horizon. */
+export type Agenda = {
+  id: AgendaId;
+  kind: AgendaKind;
+  /** Whom the Agenda is for, and its quick filter offers; none means the whole Family. */
   preselected: FamilyMemberId[];
   /** How many days the timeline shows, today included; a Task List keeps it unused. */
   horizonDays: number;

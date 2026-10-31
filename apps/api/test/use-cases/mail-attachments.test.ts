@@ -1,8 +1,8 @@
 import { rm } from "node:fs/promises";
 import { join } from "node:path";
 import type { Origin } from "@family-agenda/source-sdk";
-import { openViewAccess } from "@family-agenda/application";
-import type { ViewId } from "@family-agenda/domain";
+import { openAgendaAccess } from "@family-agenda/application";
+import type { AgendaId } from "@family-agenda/domain";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { bootForTest, type TestInstance } from "../support/boot";
 import { fakePdf, FakeTextExtractor } from "../support/fake-text-extractor";
@@ -43,7 +43,7 @@ describe("Events extracted from PDF attachments", () => {
   let extractor: ScriptedExtractor;
   let textExtractor: FakeTextExtractor;
   let blobs: InMemoryBlobStore;
-  let view: ViewId;
+  let agenda: AgendaId;
   beforeEach(async () => {
     // The clock starts on Monday 2026-09-14 at 09:00 in Berlin.
     extractor = new ScriptedExtractor();
@@ -56,9 +56,9 @@ describe("Events extracted from PDF attachments", () => {
     const added = await instance.app.sources.add({ sourceTypeId: "mailbox", plain: { url: "imap.example.org" }, secrets: {} });
     if (!added.ok) throw new Error(`adding failed: ${added.problem}`);
     await saveEndpoint({ vision: false });
-    const created = await instance.app.views.create({ preselected: [], horizonDays: 14 });
+    const created = await instance.app.agendas.create({ preselected: [], horizonDays: 14 });
     if (!created.ok) throw new Error(`creating failed: ${created.problem}`);
-    view = created.id;
+    agenda = created.id;
   });
   afterEach(async () => {
     await instance.close();
@@ -78,7 +78,7 @@ describe("Events extracted from PDF attachments", () => {
   };
 
   const timeline = async () => {
-    const page = await openTimeline(instance.app, view, { access: openViewAccess });
+    const page = await openTimeline(instance.app, agenda, { access: openAgendaAccess });
     return Object.fromEntries(
       (page?.days ?? [])
         .filter((day) => day.items.length > 0)
@@ -99,7 +99,7 @@ describe("Events extracted from PDF attachments", () => {
   it("removes the mails, their attachments and their Events with their Source", async () => {
     extractor.script("Wandertag der Klasse 5b", [hikingDay]);
     await arrive(mail("m1", covering, [pdf("elternbrief.pdf", fakePdf({ text: letter }))]));
-    const page = await openTimeline(instance.app, view, { access: openViewAccess });
+    const page = await openTimeline(instance.app, agenda, { access: openAgendaAccess });
     const message = page?.days.flatMap((day) => day.items)[0]?.messages[0]?.id;
     expect(message).toBeDefined();
 

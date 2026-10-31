@@ -5,7 +5,7 @@ import {
   type SourceSummary,
   type Showing,
   type TimelineDays,
-  type ViewAccessPolicy,
+  type AgendaAccessPolicy,
 } from "@family-agenda/application";
 import {
   defaultFamilyLanguage,
@@ -19,7 +19,7 @@ import {
   type ItemId,
   type RawMessageId,
   type SourceId,
-  type ViewId,
+  type AgendaId,
 } from "@family-agenda/domain";
 import type { HealthResponse } from "@family-agenda/contracts";
 import type { HttpBindings } from "@hono/node-server";
@@ -50,7 +50,7 @@ import {
   SourceTypePage,
   sourceHref,
   sourceTypeHref,
-  ViewsPage,
+  AgendasPage,
   type LiveStep,
   type SettingsSummary,
   type SignedInAdmin,
@@ -63,19 +63,19 @@ import {
   ShownDay,
   TaskList,
   TaskListDocument,
-  ViewDays,
-  ViewPageDocument,
-  ViewTimeline,
-  viewUrl,
-} from "./view-page";
+  AgendaDays,
+  AgendaPageDocument,
+  AgendaTimeline,
+  agendaUrl,
+} from "./agenda-page";
 
 export type HttpOptions = {
   /** Whether a reverse proxy in front sets `X-Forwarded-For` and `X-Forwarded-Proto`. */
   trustProxy: boolean;
   /** Scheme and host the Family reaches the Instance at; without it, those of the request. */
   publicUrl?: string;
-  /** Whether a View opens, as decided for the listener this app serves (ADR-0005). */
-  viewAccess: ViewAccessPolicy;
+  /** Whether an Agenda opens, as decided for the listener this app serves (ADR-0005). */
+  agendaAccess: AgendaAccessPolicy;
 };
 
 type Env = {
@@ -123,7 +123,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     recoveryKit,
     familyMembers,
     languages,
-    views,
+    agendas,
     tasks,
     sourceTypes,
     catalogues,
@@ -235,12 +235,12 @@ export function createHttpApp(application: Application, options: HttpOptions) {
 
   app.get("/", (c) => c.redirect("/admin"));
 
-  // Views open without signing in, as far as the listener's ViewAccessPolicy allows.
-  app.get("/views/:id", async (c) => {
+  // Agendas open without signing in, as far as the listener's AgendaAccessPolicy allows.
+  app.get("/agendas/:id", async (c) => {
     const days = timelineDaysOf(c.req.query("from"), c.req.query("until"));
     if (days === "invalid") return c.text("Unacceptable days", 400);
-    const page = await views.open(c.req.param("id") as ViewId, {
-      access: options.viewAccess,
+    const page = await agendas.open(c.req.param("id") as AgendaId, {
+      access: options.agendaAccess,
       ...showingOf(c.req.query("show")),
       ...days,
     });
@@ -250,18 +250,18 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     // htmx asks for the whole page when it restores history it has not cached.
     const fragment = c.req.header("hx-request") === "true" && !c.req.header("hx-history-restore-request");
     if (page.kind === "tasks") return render(c, fragment ? <TaskList page={page} /> : <TaskListDocument page={page} />);
-    return render(c, fragment ? <ViewTimeline page={page} /> : <ViewPageDocument page={page} />);
+    return render(c, fragment ? <AgendaTimeline page={page} /> : <AgendaPageDocument page={page} />);
   });
 
   // More days of a timeline, as htmx loads them while scrolling into the past or the future.
-  app.get("/views/:id/days", async (c) => {
+  app.get("/agendas/:id/days", async (c) => {
     const days = timelineDaysOf(c.req.query("from"), c.req.query("until"));
     const then = c.req.query("then");
     if (days === "invalid" || !days.days || (then !== "earlier" && then !== "later")) {
       return c.text("Unacceptable days", 400);
     }
-    const page = await views.open(c.req.param("id") as ViewId, {
-      access: options.viewAccess,
+    const page = await agendas.open(c.req.param("id") as AgendaId, {
+      access: options.agendaAccess,
       ...showingOf(c.req.query("show")),
       ...days,
     });
@@ -273,52 +273,52 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     return render(
       c,
       <>
-        <ViewDays page={page} earlier={earlier} later={!earlier} />
+        <AgendaDays page={page} earlier={earlier} later={!earlier} />
         <ShownDay side={earlier ? "from" : "until"} date={earlier ? days.days.first : days.days.last} oob />
       </>,
     );
   });
 
-  // What the worker is busy with, as a View's indicator asks for it while the View is open.
-  app.get("/views/:id/activity", async (c) => {
-    const id = c.req.param("id") as ViewId;
-    const activity = await views.activity(id, { access: options.viewAccess });
+  // What the worker is busy with, as an Agenda's indicator asks for it while the Agenda is open.
+  app.get("/agendas/:id/activity", async (c) => {
+    const id = c.req.param("id") as AgendaId;
+    const activity = await agendas.activity(id, { access: options.agendaAccess });
     if (activity === undefined) return c.notFound();
     c.header("cache-control", "no-store");
     // Once the worker is done, the timeline refreshes to show what it brought.
     if (!activity && c.req.query("was") === "busy") c.header("hx-trigger", activityEnded);
-    return render(c, <ActivityIndicator viewId={id} activity={activity} />);
+    return render(c, <ActivityIndicator agendaId={id} activity={activity} />);
   });
 
-  // Ticking a Task done, or taking the tick back, is the one write a View makes, without a session.
-  app.post("/views/:id/tasks/:task/:tick{done|undone}", async (c) => {
-    const id = c.req.param("id") as ViewId;
-    const result = await tasks.tickFromView(id, c.req.param("task") as ItemId, {
+  // Ticking a Task done, or taking the tick back, is the one write an Agenda makes, without a session.
+  app.post("/agendas/:id/tasks/:task/:tick{done|undone}", async (c) => {
+    const id = c.req.param("id") as AgendaId;
+    const result = await tasks.tickFromAgenda(id, c.req.param("task") as ItemId, {
       done: c.req.param("tick") === "done",
-      access: options.viewAccess,
+      access: options.agendaAccess,
     });
     if (!result.ok) return c.notFound();
-    if (c.req.header("hx-request") !== "true") return c.redirect(viewUrl(id), 303);
+    if (c.req.header("hx-request") !== "true") return c.redirect(agendaUrl(id), 303);
     // htmx swaps the timeline or the Task List as it was, the days scrolled to and the quick filter included.
     const form = await c.req.parseBody();
     const days = timelineDaysOf(field(form, "from") || undefined, field(form, "until") || undefined);
     const show = field(form, "show");
-    const page = await views.open(id, {
-      access: options.viewAccess,
+    const page = await agendas.open(id, {
+      access: options.agendaAccess,
       ...showingOf(show === "" ? undefined : show),
       ...(days === "invalid" ? {} : days),
     });
     if (!page) return c.notFound();
     c.header("cache-control", "no-store");
-    return render(c, page.kind === "tasks" ? <TaskList page={page} /> : <ViewTimeline page={page} />);
+    return render(c, page.kind === "tasks" ? <TaskList page={page} /> : <AgendaTimeline page={page} />);
   });
 
-  // A View's feed follows the View's access, so that calendar apps can subscribe without a session.
-  app.get("/views/:id/feed.ics", async (c) => {
-    const feed = await views.feed(c.req.param("id") as ViewId, { access: options.viewAccess });
+  // An Agenda's feed follows the Agenda's access, so that calendar apps can subscribe without a session.
+  app.get("/agendas/:id/feed.ics", async (c) => {
+    const feed = await agendas.feed(c.req.param("id") as AgendaId, { access: options.agendaAccess });
     if (!feed) return c.notFound();
-    const viewLink = `${originOf(c)}${viewUrl(feed.id)}`;
-    return c.body(icsFeed(feed, viewLink), 200, {
+    const agendaLink = `${originOf(c)}${agendaUrl(feed.id)}`;
+    return c.body(icsFeed(feed, agendaLink), 200, {
       "content-type": "text/calendar; charset=utf-8",
       "cache-control": "no-store",
     });
@@ -359,7 +359,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     const allSources = await sources.list();
     return {
       members: (await familyMembers.list()).map((member) => member.name),
-      views: (await views.list()).length,
+      agendas: (await agendas.list()).length,
       sources: allSources.length,
       failingSources: allSources.filter((source) => source.health.status === "failing").length,
       llm: endpoint ? { model: endpoint.model, local: endpoint.local } : null,
@@ -540,14 +540,14 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     return c.redirect("/admin/family-members", 303);
   });
 
-  const viewsPage = async (
+  const agendasPage = async (
     c: Context<Env>,
-    shown: { problem?: string; creating?: { problem?: string }; editing?: { id: ViewId; problem?: string } } = {},
+    shown: { problem?: string; creating?: { problem?: string }; editing?: { id: AgendaId; problem?: string } } = {},
   ) => {
     const page = (
-      <ViewsPage
+      <AgendasPage
         admin={c.get("admin")}
-        views={await views.list()}
+        agendas={await agendas.list()}
         members={await familyMembers.list()}
         origin={originOf(c)}
         {...(shown.problem ? { problem: shown.problem } : {})}
@@ -558,7 +558,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     return render(c, page, shown.problem || shown.creating?.problem || shown.editing?.problem ? 400 : 200);
   };
 
-  const viewSettingsOf = async (c: Context<Env>) => {
+  const agendaSettingsOf = async (c: Context<Env>) => {
     const form = await c.req.parseBody({ all: true });
     const preselected = form.preselected;
     const kind = field(form, "kind");
@@ -571,27 +571,27 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     };
   };
 
-  app.get("/admin/views", (c) => viewsPage(c));
+  app.get("/admin/agendas", (c) => agendasPage(c));
 
-  app.get("/admin/views/new", (c) => viewsPage(c, { creating: {} }));
+  app.get("/admin/agendas/new", (c) => agendasPage(c, { creating: {} }));
 
-  app.get("/admin/views/:id", (c) => viewsPage(c, { editing: { id: c.req.param("id") as ViewId } }));
+  app.get("/admin/agendas/:id", (c) => agendasPage(c, { editing: { id: c.req.param("id") as AgendaId } }));
 
-  app.post("/admin/views", async (c) => {
-    const result = await views.create(await viewSettingsOf(c));
-    if (!result.ok) return viewsPage(c, { creating: { problem: problemIn(c, result.problem) } });
-    return c.redirect("/admin/views", 303);
+  app.post("/admin/agendas", async (c) => {
+    const result = await agendas.create(await agendaSettingsOf(c));
+    if (!result.ok) return agendasPage(c, { creating: { problem: problemIn(c, result.problem) } });
+    return c.redirect("/admin/agendas", 303);
   });
 
-  app.post("/admin/views/:id", async (c) => {
-    const result = await views.edit(c.req.param("id") as ViewId, await viewSettingsOf(c));
-    if (!result.ok) return viewsPage(c, { editing: { id: c.req.param("id") as ViewId, problem: problemIn(c, result.problem) } });
-    return c.redirect("/admin/views", 303);
+  app.post("/admin/agendas/:id", async (c) => {
+    const result = await agendas.edit(c.req.param("id") as AgendaId, await agendaSettingsOf(c));
+    if (!result.ok) return agendasPage(c, { editing: { id: c.req.param("id") as AgendaId, problem: problemIn(c, result.problem) } });
+    return c.redirect("/admin/agendas", 303);
   });
 
-  app.post("/admin/views/:id/remove", async (c) => {
-    await views.remove(c.req.param("id") as ViewId);
-    return c.redirect("/admin/views", 303);
+  app.post("/admin/agendas/:id/remove", async (c) => {
+    await agendas.remove(c.req.param("id") as AgendaId);
+    return c.redirect("/admin/agendas", 303);
   });
 
   // Each Source Type's card, leading to its page with its Sources.
@@ -925,7 +925,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     return c.redirect("/admin/llm", 303);
   });
 
-  // Raw messages are third parties' words: only Admins open them, never a View.
+  // Raw messages are third parties' words: only Admins open them, never an Agenda.
   app.get("/admin/messages/:id", async (c) => {
     const message = await messages.open(c.req.param("id") as RawMessageId);
     if (!message) return c.notFound();

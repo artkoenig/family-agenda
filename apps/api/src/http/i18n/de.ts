@@ -44,9 +44,9 @@ export const de: Catalogue = {
     "invalid-photo": `Das Foto muss eines dieser Formate haben: ${photoFormats}.`,
     "photo-too-large": `Das Foto darf höchstens ${maximumPhotoBytes / 1024 / 1024} MB groß sein.`,
     "unknown-member": "Dieses Familienmitglied gibt es nicht.",
-    "unknown-kind": "Wähle, was die Ansicht zeigt: eine Zeitleiste oder eine Aufgabenliste.",
+    "unknown-kind": "Wähle, was die Agenda zeigt: eine Zeitleiste oder eine Aufgabenliste.",
     "invalid-horizon": `Der Zeitraum muss zwischen ${horizonDaysRange.min} und ${horizonDaysRange.max} Tagen liegen.`,
-    "unknown-view": "Diese Ansicht gibt es nicht.",
+    "unknown-agenda": "Diese Agenda gibt es nicht.",
     "unknown-source-type": "Dieser Quellentyp ist nicht installiert.",
     "not-loadable": "Dieser Quellentyp kann nicht geladen werden.",
     "risk-not-acknowledged": "Bestätige, dass du das Risiko verstehst.",
@@ -112,7 +112,7 @@ export const de: Catalogue = {
     lookAtSources: "Zu den Quellen",
     failing: (count) => `${count} gestört`,
     noneYet: "Noch keine",
-    views: (count) => plural(count, { one: `${count} Ansicht im Heimnetz`, other: `${count} Ansichten im Heimnetz` }),
+    agendas: (count) => plural(count, { one: `${count} Agenda im Heimnetz`, other: `${count} Agenden im Heimnetz` }),
     display: (family) => family,
     ocr: (languages) => `OCR auf ${languages}`,
     sources: (count) => plural(count, { one: `${count} Quelle`, other: `${count} Quellen` }),
@@ -171,7 +171,7 @@ export const de: Catalogue = {
     eyebrow: "Familie",
     dialogTitle: "Ein Familienmitglied hinzufügen",
     name: "Name",
-    nameHint: `Wie die Ansichten es nennen, bis zu ${maximumNameLength} Zeichen.`,
+    nameHint: `Wie die Agenden es nennen, bis zu ${maximumNameLength} Zeichen.`,
     photo: "Foto (optional)",
     photoHint: "Ohne Foto zeigt der Avatar die Initiale auf einer eigenen Farbe.",
     none: "Noch keine Familienmitglieder.",
@@ -182,19 +182,19 @@ export const de: Catalogue = {
     remove: (name) => `${name} entfernen`,
   },
 
-  views: {
-    title: "Ansichten",
+  agendas: {
+    title: "Agenden",
     description:
       "Was die Familie im Heimnetz öffnet, ohne sich anzumelden. Jeder in deinem WLAN kann sie öffnen.",
-    create: "Ansicht erstellen",
+    create: "Agenda erstellen",
     eyebrow: "Familie",
-    dialogTitle: "Eine Ansicht erstellen",
-    none: "Noch keine Ansichten.",
+    dialogTitle: "Eine Agenda erstellen",
+    none: "Noch keine Agenden.",
     everyone: "Alle",
     entry: (who, days) => plural(days, { one: `${who} · ${days} Tag`, other: `${who} · ${days} Tage` }),
     taskListEntry: (who) => `Aufgabenliste · ${who}`,
     shows: (who) => `Zeigt ${who ?? "alle"}`,
-    remove: "Ansicht entfernen",
+    remove: "Agenda entfernen",
     address: "Adresse",
     feed: "Kalender-Feed",
     copy: "Kopieren",
@@ -205,7 +205,7 @@ export const de: Catalogue = {
       tasks: { label: "Aufgabenliste", hint: "Nur Aufgaben: zu erledigen, demnächst, erledigt" },
     },
     preselected: "Vorausgewählte Familienmitglieder",
-    preselectedHint: "Die Ansicht zeigt nur sie, und ihr Schnellfilter bietet nur sie an; ohne Auswahl alle.",
+    preselectedHint: "Die Agenda zeigt nur sie, und ihr Schnellfilter bietet nur sie an; ohne Auswahl alle.",
     noMembers: "Noch keine Familienmitglieder.",
     horizon: "Zeitraum in Tagen",
     horizonHint: `Wie viele Tage sie auf einmal zeigt, heute eingeschlossen: ${horizonDaysRange.min} bis ${horizonDaysRange.max}.`,
@@ -330,7 +330,7 @@ export const de: Catalogue = {
   display: {
     title: "Anzeige",
     description:
-      "Family Agenda spricht die Familiensprache, in den Ansichten und hier, und schreibt Daten in ihr. Wie die Seiten aussehen, entscheidet jeder Browser selbst.",
+      "Family Agenda spricht die Familiensprache, in den Agenden und hier, und schreibt Daten in ihr. Wie die Seiten aussehen, entscheidet jeder Browser selbst.",
     familyLanguage: "Familiensprache",
     familyLanguageHint: "Gilt für die ganze Instanz. Eine Änderung lässt die OCR-Sprachen, wie sie sind.",
     theme: "Darstellung",
@@ -378,8 +378,8 @@ export const de: Catalogue = {
     unreadable: (problem) => `Konnte für die Auswertung nicht gelesen werden: ${problem}`,
   },
 
-  view: {
-    title: "Ansicht",
+  agenda: {
+    title: "Agenda",
     today: "Heute",
     quickFilter: "Schnellfilter",
     theme: {

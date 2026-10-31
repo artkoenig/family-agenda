@@ -93,7 +93,7 @@
 .fam-avatars { display: inline-flex; }
 .fam-avatars > .fam-avatar + .fam-avatar { margin-left: -8px; box-shadow: 0 0 0 2px var(--surface); }
 
-/* Member filter (a View's quick filter): a row of pills ------------------ */
+/* Member filter (an Agenda's quick filter): a row of pills ------------------ */
 .fam-filter { display: flex; gap: var(--space-2); overflow-x: auto; scrollbar-width: none; }
 .fam-filter__item {
   position: relative; display: flex; flex: none; align-items: center; gap: 7px;
@@ -307,8 +307,8 @@ html[data-theme-mode="dark"] .fam-theme__icon--dark { display: block; }
 }
 .fam-back-to-today[hidden] { display: none; }
 
-/* The Field checkbox and radio, in the Admin area and as a Task's tick in a View. */
-:where(.fam-admin, .fam-view) input:where([type="checkbox"], [type="radio"]) { width: 20px; height: 20px; margin: 2px 0 0; flex: none; accent-color: var(--hearth); }
+/* The Field checkbox and radio, in the Admin area and as a Task's tick in an Agenda. */
+:where(.fam-admin, .fam-agenda) input:where([type="checkbox"], [type="radio"]) { width: 20px; height: 20px; margin: 2px 0 0; flex: none; accent-color: var(--hearth); }
 
 /* Admin area: plain server-rendered forms ------------------------------- */
 /* Elements inside .fam-admin get the Field and Button look without classes; :where keeps classes stronger. */
@@ -358,7 +358,7 @@ html[data-theme-mode="dark"] .fam-theme__icon--dark { display: block; }
 .fam-input--short { max-width: 140px; }
 .fam-unit { display: inline-flex; align-items: center; gap: var(--space-2); color: var(--ink-muted); }
 .fam-unit > input { width: 96px; }
-/* Checkboxes as tiles, each with an avatar, such as whom a View or a rule names. */
+/* Checkboxes as tiles, each with an avatar, such as whom an Agenda or a rule names. */
 .fam-choices { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: var(--space-2); }
 :where(.fam-admin) .fam-choice {
   display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-3);
@@ -366,13 +366,13 @@ html[data-theme-mode="dark"] .fam-theme__icon--dark { display: block; }
 }
 .fam-choice:has(input:checked) { background: var(--hearth-tint); }
 .fam-choice input { margin: 0; }
-/* A View's kind: two tiles, each with a line on what the View shows; a Task List has no horizon. */
+/* An Agenda's kind: two tiles, each with a line on what the Agenda shows; a Task List has no horizon. */
 .fam-choice--kind { align-items: flex-start; }
 .fam-choice--kind input { margin-top: 2px; }
 .fam-choice__text { display: flex; flex-direction: column; }
 .fam-choice__label { font-weight: 600; }
 .fam-choice__hint { font-size: 14px; line-height: 20px; color: var(--ink-muted); }
-.fam-dialog__form:has(input[name="kind"][value="tasks"]:checked) .fam-view-horizon { display: none; }
+.fam-dialog__form:has(input[name="kind"][value="tasks"]:checked) .fam-agenda-horizon { display: none; }
 
 /* A Source's Parts, such as mail folders: a name and the Family Members it concerns as avatars to tap */
 .fam-parts { display: grid; gap: var(--space-3); }
@@ -591,7 +591,7 @@ html[data-theme-mode="dark"] .fam-theme__icon--dark { display: block; }
 .fam-reveal > summary::-webkit-details-marker { display: none; }
 .fam-reveal[open] > summary { margin-bottom: var(--space-3); }
 .fam-reveal[open] > summary .fam-reveal__when-closed, .fam-reveal:not([open]) > summary .fam-reveal__when-open { display: none; }
-/* Where a View and its feed are, in its dialog. */
+/* Where an Agenda and its feed are, in its dialog. */
 .fam-addresses { display: grid; grid-template-columns: auto 1fr; gap: 2px var(--space-4); margin: 0; font-size: 14px; line-height: 20px; }
 .fam-addresses dt { color: var(--ink-muted); font-weight: 600; }
 .fam-addresses dd { margin: 0; font-family: var(--font-mono); overflow-wrap: anywhere; display: flex; align-items: center; gap: var(--space-2); }
@@ -641,31 +641,31 @@ html[data-theme-mode="dark"] .fam-theme__icon--dark { display: block; }
 
 /* Wall tablet and desktop ---------------------------------------------- */
 @media (min-width: 1000px) {
-  .fam-page.fam-view { font-size: 19px; line-height: 28px; }
-  .fam-view .fam-bar { padding-top: 10px; padding-bottom: 11px; }
-  .fam-view .fam-bar > * { max-width: var(--content-width-wall); }
-  .fam-view .fam-days { max-width: calc(var(--content-width-wall) + 2 * var(--space-4)); }
+  .fam-page.fam-agenda { font-size: 19px; line-height: 28px; }
+  .fam-agenda .fam-bar { padding-top: 10px; padding-bottom: 11px; }
+  .fam-agenda .fam-bar > * { max-width: var(--content-width-wall); }
+  .fam-agenda .fam-days { max-width: calc(var(--content-width-wall) + 2 * var(--space-4)); }
   /* One row: the clock, and under it what needs saying, to the left of the filter. */
-  .fam-view .fam-bar__inner {
+  .fam-agenda .fam-bar__inner {
     column-gap: var(--space-5); grid-template-columns: auto 1fr auto auto; grid-template-areas: "clock . filter theme" "notes . filter theme";
   }
-  .fam-view .fam-theme { align-self: start; width: 44px; height: 44px; }
-  .fam-view .fam-theme__icon { width: 22px; height: 22px; }
-  .fam-view .fam-clock { gap: 12px; font-size: 40px; line-height: 44px; }
-  .fam-view .fam-clock__date { font-size: 18px; line-height: 24px; }
-  .fam-view .fam-bar__notes { justify-content: flex-start; flex-wrap: wrap; }
-  .fam-view .fam-bar__inner > .fam-filter { margin: 0; padding: 0; overflow: visible; gap: var(--space-2); }
-  .fam-view .fam-filter__item { height: 48px; gap: 9px; padding: 0 16px 0 5px; font-size: 17px; }
-  .fam-view .fam-filter__item[aria-current] { box-shadow: 0 0 0 1px var(--ink); }
-  .fam-view .fam-filter__item .fam-avatar { width: 38px; height: 38px; font-size: 17px; }
-  .fam-view .fam-bar__summary { display: none; }
+  .fam-agenda .fam-theme { align-self: start; width: 44px; height: 44px; }
+  .fam-agenda .fam-theme__icon { width: 22px; height: 22px; }
+  .fam-agenda .fam-clock { gap: 12px; font-size: 40px; line-height: 44px; }
+  .fam-agenda .fam-clock__date { font-size: 18px; line-height: 24px; }
+  .fam-agenda .fam-bar__notes { justify-content: flex-start; flex-wrap: wrap; }
+  .fam-agenda .fam-bar__inner > .fam-filter { margin: 0; padding: 0; overflow: visible; gap: var(--space-2); }
+  .fam-agenda .fam-filter__item { height: 48px; gap: 9px; padding: 0 16px 0 5px; font-size: 17px; }
+  .fam-agenda .fam-filter__item[aria-current] { box-shadow: 0 0 0 1px var(--ink); }
+  .fam-agenda .fam-filter__item .fam-avatar { width: 38px; height: 38px; font-size: 17px; }
+  .fam-agenda .fam-bar__summary { display: none; }
   /* A wall tablet has no hover or tap: the hint is written out, not hidden behind a "!". */
-  .fam-view .fam-out-of-date {
+  .fam-agenda .fam-out-of-date {
     display: block; width: auto; height: auto; border: 0; background: none; cursor: default;
     color: var(--honey); font-size: 13px; line-height: 18px; font-weight: 700; white-space: nowrap;
   }
-  .fam-view .fam-out-of-date::before { content: none; }
-  .fam-view .fam-out-of-date__text, .fam-view .fam-out-of-date:is(:hover, :focus) .fam-out-of-date__text {
+  .fam-agenda .fam-out-of-date::before { content: none; }
+  .fam-agenda .fam-out-of-date__text, .fam-agenda .fam-out-of-date:is(:hover, :focus) .fam-out-of-date__text {
     position: static; width: auto; height: auto; clip-path: none; white-space: nowrap; padding: 0; border: 0;
     background: none; box-shadow: none; color: inherit; font-size: inherit; line-height: inherit; font-weight: inherit;
   }

@@ -1,5 +1,5 @@
 import type { ActivityKind } from "@family-agenda/application";
-import { acts, familyLanguages, revisionAuthorKinds, horizonDaysRange, itemKinds, photoTypes, viewKinds, type RunError } from "@family-agenda/domain";
+import { acts, familyLanguages, horizonDaysRange, itemKinds, photoTypes, agendaKinds, type RunError } from "@family-agenda/domain";
 import { sql, type SQL } from "drizzle-orm";
 import {
   bigint,
@@ -119,7 +119,7 @@ export const familyMembers = pgTable(
   ],
 );
 
-export const views = pgTable(
+export const agendas = pgTable(
   "views",
   {
     id: uuid("id").primaryKey(),
@@ -129,7 +129,7 @@ export const views = pgTable(
     createdAt: timestamptz("created_at").notNull(),
   },
   (table) => [
-    oneOf("views_kind_known", table.kind, viewKinds),
+    oneOf("views_kind_known", table.kind, agendaKinds),
     check(
       "views_horizon_days_in_range",
       sql`${table.horizonDays} BETWEEN ${sql.raw(String(horizonDaysRange.min))} AND ${sql.raw(String(horizonDaysRange.max))}`,
@@ -137,19 +137,19 @@ export const views = pgTable(
   ],
 );
 
-/** A View's preselected Family Members; removing a Family Member removes them here too. */
-export const viewPreselections = pgTable(
+/** An Agenda's preselected Family Members; removing a Family Member removes them here too. */
+export const agendaPreselections = pgTable(
   "view_preselections",
   {
-    viewId: uuid("view_id")
+    agendaId: uuid("view_id")
       .notNull()
-      .references(() => views.id, { onDelete: "cascade" }),
+      .references(() => agendas.id, { onDelete: "cascade" }),
     familyMemberId: uuid("family_member_id")
       .notNull()
       .references(() => familyMembers.id, { onDelete: "cascade" }),
   },
   (table) => [
-    primaryKey({ columns: [table.viewId, table.familyMemberId] }),
+    primaryKey({ columns: [table.agendaId, table.familyMemberId] }),
     index("view_preselections_family_member_id_idx").on(table.familyMemberId),
   ],
 );
@@ -342,6 +342,13 @@ export const itemKeys = pgTable(
   (table) => [primaryKey({ columns: [table.sourceId, table.itemKey] }), index("item_keys_item_id_idx").on(table.itemId)],
 );
 
+/**
+ * The author kinds as stored in `revisions.author`. An Agenda was called a View when they were
+ * first stored, so its kind stays `view` in the database, to keep the existing rows and the CHECK
+ * constraints valid without a migration.
+ */
+export const storedRevisionAuthors = ["origin", "view", "admin"] as const;
+
 /** Append-only statements about Items (ADR-0009). */
 export const revisions = pgTable(
   "revisions",
@@ -352,12 +359,12 @@ export const revisions = pgTable(
     itemId: uuid("item_id")
       .notNull()
       .references(() => items.id, { onDelete: "cascade" }),
-    /** Who stated it: an Origin, or a View or an Admin ticking a Task (ADR-0009). */
+    /** Who stated it: an Origin, or an Agenda or an Admin ticking a Task (ADR-0009). */
     author: text("author").notNull().default("origin"),
     /** The Origin that stated it, for an Origin's Revision only. */
     originId: uuid("origin_id").references(() => origins.id, { onDelete: "cascade" }),
-    /** The View it was made in; null for another author, or once the View is removed, which keeps the Revision. */
-    viewId: uuid("view_id").references(() => views.id, { onDelete: "set null" }),
+    /** The Agenda it was made in; null for another author, or once the Agenda is removed, which keeps the Revision. */
+    agendaId: uuid("view_id").references(() => agendas.id, { onDelete: "set null" }),
     /** The Admin who made it; null for another author, or once the Admin is removed. */
     adminId: uuid("admin_id").references(() => admins.id, { onDelete: "set null" }),
     act: text("act").notNull(),
@@ -376,9 +383,9 @@ export const revisions = pgTable(
     index("revisions_item_id_idx").on(table.itemId),
     unique("revisions_origin_fingerprint_unique").on(table.originId, table.fingerprint),
     oneOf("revisions_act_known", table.act, acts),
-    oneOf("revisions_author_known", table.author, revisionAuthorKinds),
+    oneOf("revisions_author_known", table.author, storedRevisionAuthors),
     check("revisions_origin_only_of_origin", sql`(${table.author} = 'origin') = (${table.originId} IS NOT NULL)`),
-    check("revisions_view_only_of_view", sql`${table.viewId} IS NULL OR ${table.author} = 'view'`),
+    check("revisions_view_only_of_view", sql`${table.agendaId} IS NULL OR ${table.author} = 'view'`),
     check("revisions_admin_only_of_admin", sql`${table.adminId} IS NULL OR ${table.author} = 'admin'`),
     check("revisions_rejection_only_when_rejected", sql`${table.rejection} IS NULL OR NOT ${table.accepted}`),
   ],
@@ -452,7 +459,7 @@ export const llmEndpoints = pgTable(
   (table) => [singleRow("llm_endpoints", table.id)],
 );
 
-/** What the worker is busy with, one row while it is; read by the api for the Views. */
+/** What the worker is busy with, one row while it is; read by the api for the Agendas. */
 export const backgroundActivities = pgTable(
   "background_activities",
   {

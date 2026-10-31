@@ -1,8 +1,8 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { openViewAccess } from "@family-agenda/application";
-import type { SourceId, ViewId } from "@family-agenda/domain";
+import { openAgendaAccess } from "@family-agenda/application";
+import type { SourceId, AgendaId } from "@family-agenda/domain";
 import { FakeHomeserver } from "@family-agenda/source-matrix/testing";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { bootForTest, type TestInstance } from "../support/boot";
@@ -43,7 +43,7 @@ describe("WhatsApp chats read through the Matrix bridge", () => {
   let source: SourceId;
   let user: string;
   let classGroup: string;
-  let view: ViewId;
+  let agenda: AgendaId;
   beforeAll(() => homeserver.start());
   afterAll(() => homeserver.close());
 
@@ -59,9 +59,9 @@ describe("WhatsApp chats read through the Matrix bridge", () => {
     await instance.app.sourceTypes.enable("matrix");
     expect(await instance.app.catalogues.enable("matrix", "whatsapp", { riskAcknowledged: true })).toEqual({ ok: true });
     await instance.app.llmEndpoint.save({ baseUrl: "http://ollama:11434/v1", model: "qwen3.5:9b", apiKey: "" });
-    const created = await instance.app.views.create({ preselected: [], horizonDays: 7 });
+    const created = await instance.app.agendas.create({ preselected: [], horizonDays: 7 });
     if (!created.ok) throw new Error(`creating failed: ${created.problem}`);
-    view = created.id;
+    agenda = created.id;
 
     // An Admin adds a WhatsApp Source, links the account by scanning the QR code, and the bridge
     // invites the Source's Matrix user to the class group's portal.
@@ -90,7 +90,7 @@ describe("WhatsApp chats read through the Matrix bridge", () => {
   }
 
   const titles = async () => {
-    const page = await openTimeline(instance.app, view, { access: openViewAccess });
+    const page = await openTimeline(instance.app, agenda, { access: openAgendaAccess });
     return (page?.days ?? []).flatMap((day) => day.items.map((item) => item.title));
   };
 
@@ -100,7 +100,7 @@ describe("WhatsApp chats read through the Matrix bridge", () => {
     await run();
 
     expect(await titles()).toEqual(["Wandertag 5b"]);
-    const page = await openTimeline(instance.app, view, { access: openViewAccess });
+    const page = await openTimeline(instance.app, agenda, { access: openAgendaAccess });
     const message = await instance.app.messages.open(page!.days.flatMap((day) => day.items)[0]!.messages[0]!.id);
     expect(message?.attributes).toEqual({ messenger: "WhatsApp", chat: "Klasse 5b Eltern", sender: "Frau Berger (WA)" });
   });

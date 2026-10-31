@@ -1,11 +1,11 @@
-import type { FamilyMemberId, ViewId } from "@family-agenda/domain";
+import type { FamilyMemberId, AgendaId } from "@family-agenda/domain";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { bootHttpForTest, sessionCookieOf, type HttpTestInstance } from "../support/http";
 import { photos } from "../support/photos";
 
 const password = "correct horse battery";
 
-describe("Views over HTTP", () => {
+describe("Agendas over HTTP", () => {
   let instance: HttpTestInstance;
   let mia: FamilyMemberId;
   let leo: FamilyMemberId;
@@ -26,8 +26,8 @@ describe("Views over HTTP", () => {
     return added.id;
   };
 
-  const createView = async (preselected: FamilyMemberId[]) => {
-    const created = await instance.app.views.create({ preselected, horizonDays: 2 });
+  const createAgenda = async (preselected: FamilyMemberId[]) => {
+    const created = await instance.app.agendas.create({ preselected, horizonDays: 2 });
     if (!created.ok) throw new Error("creating failed");
     return created.id;
   };
@@ -41,10 +41,10 @@ describe("Views over HTTP", () => {
   const filterLink = (page: string, label: string) =>
     new RegExp(`<a[^>]*class="fam-filter__item[^"]*"[^>]*>(?:(?!</a>).)*${label}</a>`, "s").exec(page)?.[0] ?? "";
 
-  it("opens a View without a session, as an empty timeline from now to its horizon", async () => {
-    const view = await createView([]);
+  it("opens an Agenda without a session, as an empty timeline from now to its horizon", async () => {
+    const agenda = await createAgenda([]);
 
-    const response = await instance.get(`/views/${view}?show=${mia}`);
+    const response = await instance.get(`/agendas/${agenda}?show=${mia}`);
 
     expect(response.status).toBe(200);
     const page = await response.text();
@@ -60,9 +60,9 @@ describe("Views over HTTP", () => {
   });
 
   it("offers a way back to today, hidden until today scrolls out of sight", async () => {
-    const view = await createView([]);
+    const agenda = await createAgenda([]);
 
-    const page = await (await instance.get(`/views/${view}`)).text();
+    const page = await (await instance.get(`/agendas/${agenda}`)).text();
 
     const back = /<button[^>]*id="back-to-today"[^>]*>(?:(?!<\/button>).)*<\/button>/s.exec(page)?.[0] ?? "";
     expect(back).toContain("hidden");
@@ -70,19 +70,19 @@ describe("Views over HTTP", () => {
     expect(page.indexOf("back-to-today")).toBeGreaterThan(page.indexOf("</main>"));
   });
 
-  it("answers an unknown View URL with 404", async () => {
+  it("answers an unknown Agenda URL with 404", async () => {
     for (const id of ["3f0b2a52-0000-4000-8000-000000000000", "kitchen"]) {
-      expect((await instance.get(`/views/${id}`)).status).toBe(404);
+      expect((await instance.get(`/agendas/${id}`)).status).toBe(404);
     }
-    const view = await createView([]);
-    await instance.app.views.remove(view);
-    expect((await instance.get(`/views/${view}`)).status).toBe(404);
+    const agenda = await createAgenda([]);
+    await instance.app.agendas.remove(agenda);
+    expect((await instance.get(`/agendas/${agenda}`)).status).toBe(404);
   });
 
   it("combines Family Members in the quick filter, and answers htmx with just the timeline", async () => {
-    const view = await createView([]);
+    const agenda = await createAgenda([]);
 
-    const page = await (await instance.get(`/views/${view}?show=${mia}`)).text();
+    const page = await (await instance.get(`/agendas/${agenda}?show=${mia}`)).text();
     const addLeo = /href="([^"]+)"/.exec(filterLink(page, "Leo"))?.[1]?.replaceAll("&amp;", "&");
     expect(addLeo).toBeDefined();
 
@@ -93,23 +93,23 @@ describe("Views over HTTP", () => {
     expect(fragment).not.toContain("<html");
     expect(filterLink(fragment, "All")).toContain('aria-current="true"');
 
-    const all = await (await instance.get(`/views/${view}?show=all`)).text();
+    const all = await (await instance.get(`/agendas/${agenda}?show=all`)).text();
     expect(filterLink(all, "All")).toContain('aria-current="true"');
     expect(filterLink(all, "Mia")).not.toContain("aria-current");
   });
 
-  it("offers in the quick filter only the Family Members the View is for, and none for just one", async () => {
+  it("offers in the quick filter only the Family Members the Agenda is for, and none for just one", async () => {
     await addMember("Ben");
-    const kitchen = await createView([mia, leo]);
-    const forMia = await createView([mia]);
+    const kitchen = await createAgenda([mia, leo]);
+    const forMia = await createAgenda([mia]);
 
-    const kitchenPage = await (await instance.get(`/views/${kitchen}`)).text();
+    const kitchenPage = await (await instance.get(`/agendas/${kitchen}`)).text();
     expect(filterLink(kitchenPage, "All")).toContain('aria-current="true"');
     expect(filterLink(kitchenPage, "Mia")).not.toBe("");
     expect(filterLink(kitchenPage, "Leo")).not.toBe("");
     expect(filterLink(kitchenPage, "Ben")).toBe("");
 
-    const miaPage = await (await instance.get(`/views/${forMia}`)).text();
+    const miaPage = await (await instance.get(`/agendas/${forMia}`)).text();
     expect(miaPage).not.toContain('class="fam-filter"');
     expect(miaPage).not.toContain('class="fam-bar__summary"');
   });
@@ -125,7 +125,7 @@ describe("Views over HTTP", () => {
     expect((await instance.get("/family-members/nobody/photo")).status).toBe(404);
   });
 
-  it("lets an Admin add a Family Member with a photo and create a View for them", async () => {
+  it("lets an Admin add a Family Member with a photo and create an Agenda for them", async () => {
     const cookie = await signIn();
     const form = new FormData();
     form.set("name", "Ella");
@@ -137,57 +137,57 @@ describe("Views over HTTP", () => {
     expect(ella?.hasPhoto).toBe(true);
 
     const created = await instance.post(
-      "/admin/views",
+      "/admin/agendas",
       { preselected: ella!.id, horizonDays: "5" },
       { cookie },
     );
     expect(created.status).toBe(303);
-    const [view] = await instance.app.views.list();
-    expect(view).toMatchObject({ preselected: [ella!.id], horizonDays: 5 });
+    const [agenda] = await instance.app.agendas.list();
+    expect(agenda).toMatchObject({ preselected: [ella!.id], horizonDays: 5 });
 
     // Its row opens its dialog, which tells where it and its feed are.
-    const views = await (await instance.get("/admin/views", { cookie })).text();
-    expect(views).toContain(`href="/admin/views/${view!.id}"`);
-    const dialog = await (await instance.get(`/admin/views/${view!.id}`, { cookie })).text();
+    const agendas = await (await instance.get("/admin/agendas", { cookie })).text();
+    expect(agendas).toContain(`href="/admin/agendas/${agenda!.id}"`);
+    const dialog = await (await instance.get(`/admin/agendas/${agenda!.id}`, { cookie })).text();
     expect(dialog).toMatch(/<dialog open="" class="fam-dialog"/);
-    expect(dialog).toMatch(new RegExp(`href="https?://[^/"]+/views/${view!.id}"`));
-    expect(dialog).toMatch(new RegExp(`href="https?://[^/"]+/views/${view!.id}/feed\\.ics"`));
-    expect(dialog).toMatch(new RegExp(`<button[^>]*data-copy="https?://[^/"]+/views/${view!.id}"`));
+    expect(dialog).toMatch(new RegExp(`href="https?://[^/"]+/agendas/${agenda!.id}"`));
+    expect(dialog).toMatch(new RegExp(`href="https?://[^/"]+/agendas/${agenda!.id}/feed\\.ics"`));
+    expect(dialog).toMatch(new RegExp(`<button[^>]*data-copy="https?://[^/"]+/agendas/${agenda!.id}"`));
   });
 
-  it("shows a View's address under the public URL, if one is set, rather than the host of the request", async () => {
+  it("shows an Agenda's address under the public URL, if one is set, rather than the host of the request", async () => {
     await instance.close();
     instance = await bootHttpForTest({ publicUrl: "http://192.168.1.10:8080" });
     await instance.post("/setup", { email: "anna@example.org", password });
     await instance.app.recoveryKit.confirm();
-    const id = await createView([]);
+    const id = await createAgenda([]);
     const cookie = await signIn();
 
-    const dialog = await (await instance.get(`/admin/views/${id}`, { cookie })).text();
-    expect(dialog).toContain(`href="http://192.168.1.10:8080/views/${id}"`);
-    expect(dialog).toContain(`data-copy="http://192.168.1.10:8080/views/${id}/feed.ics"`);
+    const dialog = await (await instance.get(`/admin/agendas/${id}`, { cookie })).text();
+    expect(dialog).toContain(`href="http://192.168.1.10:8080/agendas/${id}"`);
+    expect(dialog).toContain(`data-copy="http://192.168.1.10:8080/agendas/${id}/feed.ics"`);
   });
 
-  it("lets an Admin choose a Task List for a View, which its row and dialog name", async () => {
+  it("lets an Admin choose a Task List for an Agenda, which its row and dialog name", async () => {
     const cookie = await signIn();
-    const blank = await (await instance.get("/admin/views/new", { cookie })).text();
+    const blank = await (await instance.get("/admin/agendas/new", { cookie })).text();
     expect(blank).toMatch(/<input type="radio" name="kind" value="timeline" checked=""/);
-    expect(blank).toContain('class="fam-field fam-view-horizon"');
+    expect(blank).toContain('class="fam-field fam-agenda-horizon"');
 
-    const created = await instance.post("/admin/views", { kind: "tasks", horizonDays: "7" }, { cookie });
+    const created = await instance.post("/admin/agendas", { kind: "tasks", horizonDays: "7" }, { cookie });
     expect(created.status).toBe(303);
-    const [view] = await instance.app.views.list();
-    expect(view).toMatchObject({ kind: "tasks", preselected: [] });
+    const [agenda] = await instance.app.agendas.list();
+    expect(agenda).toMatchObject({ kind: "tasks", preselected: [] });
 
-    expect(await (await instance.get("/admin/views", { cookie })).text()).toContain("Task List · Everyone");
-    const dialog = await (await instance.get(`/admin/views/${view!.id}`, { cookie })).text();
+    expect(await (await instance.get("/admin/agendas", { cookie })).text()).toContain("Task List · Everyone");
+    const dialog = await (await instance.get(`/admin/agendas/${agenda!.id}`, { cookie })).text();
     expect(dialog).toMatch(/<input type="radio" name="kind" value="tasks" checked=""/);
-    const refused = await instance.post(`/admin/views/${view!.id}`, { kind: "agenda", horizonDays: "7" }, { cookie });
+    const refused = await instance.post(`/admin/agendas/${agenda!.id}`, { kind: "unknown", horizonDays: "7" }, { cookie });
     expect(refused.status).toBe(400);
-    expect(await refused.text()).toContain("Choose what the View shows");
+    expect(await refused.text()).toContain("Choose what the Agenda shows");
   });
 
-  it("shows an Admin why a Family Member or View cannot be saved", async () => {
+  it("shows an Admin why a Family Member or Agenda cannot be saved", async () => {
     const cookie = await signIn();
 
     const unnamed = await instance.post("/admin/family-members", { name: " " }, { cookie });
@@ -201,13 +201,13 @@ describe("Views over HTTP", () => {
     expect(tooLarge.status).toBe(413);
     expect(await tooLarge.text()).toContain("at most 5 MB");
 
-    const farAhead = await instance.post("/admin/views", { horizonDays: "90" }, { cookie });
+    const farAhead = await instance.post("/admin/agendas", { horizonDays: "90" }, { cookie });
     expect(farAhead.status).toBe(400);
     expect(await farAhead.text()).toContain("between 1 and 31 days");
     // A change that is refused shows why in the dialog of what was changed.
     const mia = await instance.app.familyMembers.add({ name: "Mia" });
-    const view = await instance.app.views.create({ preselected: [], horizonDays: 7 });
-    if (!mia.ok || !view.ok) throw new Error("adding failed");
+    const agenda = await instance.app.agendas.create({ preselected: [], horizonDays: 7 });
+    if (!mia.ok || !agenda.ok) throw new Error("adding failed");
     const renamed = await instance.post(`/admin/family-members/${mia.id}`, { name: " " }, { cookie });
     expect(renamed.status).toBe(400);
     const renamedPage = await renamed.text();
@@ -219,19 +219,19 @@ describe("Views over HTTP", () => {
     const tooLargeAgain = await instance.request(`/admin/family-members/${mia.id}`, { body: hugeAgain, cookie });
     expect(tooLargeAgain.status).toBe(413);
     expect(await tooLargeAgain.text()).toContain('aria-labelledby="edit-member-title"');
-    const farAheadAgain = await instance.post(`/admin/views/${view.id}`, { horizonDays: "90" }, { cookie });
+    const farAheadAgain = await instance.post(`/admin/agendas/${agenda.id}`, { horizonDays: "90" }, { cookie });
     expect(farAheadAgain.status).toBe(400);
     const farAheadPage = await farAheadAgain.text();
-    expect(farAheadPage).toContain('aria-labelledby="edit-view-title"');
+    expect(farAheadPage).toContain('aria-labelledby="edit-agenda-title"');
     expect(farAheadPage).toContain("between 1 and 31 days");
   });
 
-  it("keeps the Family Member and View pages to signed-in Admins", async () => {
-    for (const path of ["/admin/family-members", "/admin/views"]) {
+  it("keeps the Family Member and Agenda pages to signed-in Admins", async () => {
+    for (const path of ["/admin/family-members", "/admin/agendas"]) {
       expect((await instance.get(path)).headers.get("location")).toBe("/admin/sign-in");
     }
-    const view = "3f0b2a52-0000-4000-8000-000000000000" as ViewId;
-    const post = await instance.post(`/admin/views/${view}/remove`, {});
+    const agenda = "3f0b2a52-0000-4000-8000-000000000000" as AgendaId;
+    const post = await instance.post(`/admin/agendas/${agenda}/remove`, {});
     expect(post.headers.get("location")).toBe("/admin/sign-in");
   });
 });

@@ -6,7 +6,7 @@ import {
   minimumPasswordLength,
   photoTypes,
   type FamilyLanguage,
-  type ViewKind,
+  type AgendaKind,
 } from "@family-agenda/domain";
 import type { Child } from "hono/jsx";
 import { plurals } from "./plurals";
@@ -21,7 +21,7 @@ const photoFormats = photoTypes.map((type) => type.replace("image/", "").toUpper
 const ordinals = ["first", "second", "third"];
 
 /**
- * Every text the Admin area, the Views and their feeds show, in English. It is the source of
+ * Every text the Admin area, the Agendas and their feeds show, in English. It is the source of
  * truth: each other language's catalogue has the type of this one.
  */
 export const en = {
@@ -58,9 +58,9 @@ export const en = {
     "invalid-photo": `The photo must be one of ${photoFormats}.`,
     "photo-too-large": `The photo must be at most ${maximumPhotoBytes / 1024 / 1024} MB.`,
     "unknown-member": "This Family Member does not exist.",
-    "unknown-kind": "Choose what the View shows: a timeline or a Task List.",
+    "unknown-kind": "Choose what the Agenda shows: a timeline or a Task List.",
     "invalid-horizon": `The horizon must be between ${horizonDaysRange.min} and ${horizonDaysRange.max} days.`,
-    "unknown-view": "This View does not exist.",
+    "unknown-agenda": "This Agenda does not exist.",
     "unknown-source-type": "This Source Type is not installed.",
     "not-loadable": "This Source Type cannot be loaded.",
     "risk-not-acknowledged": "Confirm that you understand the risk.",
@@ -129,8 +129,8 @@ export const en = {
     lookAtSources: "Look at the Sources",
     failing: (count: number) => `${count} failing`,
     noneYet: "None yet",
-    views: (count: number) =>
-      plural(count, { one: `${count} View on the home network`, other: `${count} Views on the home network` }),
+    agendas: (count: number) =>
+      plural(count, { one: `${count} Agenda on the home network`, other: `${count} Agendas on the home network` }),
     display: (family: string) => family,
     ocr: (languages: string) => `OCR in ${languages}`,
     sources: (count: number) => plural(count, { one: `${count} Source`, other: `${count} Sources` }),
@@ -187,7 +187,7 @@ export const en = {
     eyebrow: "Family",
     dialogTitle: "Add a Family Member",
     name: "Name",
-    nameHint: `How the Views call them, up to ${maximumNameLength} characters.`,
+    nameHint: `How the Agendas call them, up to ${maximumNameLength} characters.`,
     photo: "Photo (optional)",
     photoHint: "Without one, the avatar shows the initial on a colour of its own.",
     none: "No Family Members yet.",
@@ -198,18 +198,18 @@ export const en = {
     remove: (name: string) => `Remove ${name}`,
   },
 
-  views: {
-    title: "Views",
+  agendas: {
+    title: "Agendas",
     description: "What the Family opens on the home network, without signing in. Anyone on your Wi-Fi can open them.",
-    create: "Create View",
+    create: "Create Agenda",
     eyebrow: "Family",
-    dialogTitle: "Create a View",
-    none: "No Views yet.",
+    dialogTitle: "Create an Agenda",
+    none: "No Agendas yet.",
     everyone: "Everyone",
     entry: (who: string, days: number) => plural(days, { one: `${who} · ${days} day`, other: `${who} · ${days} days` }),
     taskListEntry: (who: string) => `Task List · ${who}`,
     shows: (who: string | null) => `Shows ${who ?? "everyone"}`,
-    remove: "Remove View",
+    remove: "Remove Agenda",
     address: "Address",
     feed: "Calendar feed",
     copy: "Copy",
@@ -218,9 +218,9 @@ export const en = {
     kinds: {
       timeline: { label: "Timeline", hint: "Events, school days and Tasks, day by day" },
       tasks: { label: "Task List", hint: "Only Tasks: to do, coming up, done" },
-    } satisfies Record<ViewKind, { label: string; hint: string }>,
+    } satisfies Record<AgendaKind, { label: string; hint: string }>,
     preselected: "Preselected Family Members",
-    preselectedHint: "The View shows only them, and its quick filter offers only them; none means everyone.",
+    preselectedHint: "The Agenda shows only them, and its quick filter offers only them; none means everyone.",
     noMembers: "No Family Members yet.",
     horizon: "Horizon in days",
     horizonHint: `How many days it shows at a time, today included: ${horizonDaysRange.min} to ${horizonDaysRange.max}.`,
@@ -345,7 +345,7 @@ export const en = {
   display: {
     title: "Display",
     description:
-      "Family Agenda speaks the Family Language, on the Views and here, and writes dates in it. How the pages look is up to each browser.",
+      "Family Agenda speaks the Family Language, on the Agendas and here, and writes dates in it. How the pages look is up to each browser.",
     familyLanguage: "Family Language",
     familyLanguageHint: "Applies to the whole Instance. Changing it leaves the OCR languages as they are.",
     theme: "Appearance",
@@ -392,8 +392,8 @@ export const en = {
     unreadable: (problem: string) => `Could not be read for extraction: ${problem}`,
   },
 
-  view: {
-    title: "View",
+  agenda: {
+    title: "Agenda",
     today: "Today",
     quickFilter: "Quick filter",
     theme: {
@@ -433,7 +433,7 @@ export const en = {
       "room-change": (room: string | null) => (room ? `moved to room ${room}` : "room change"),
     },
     instead: (previous: string) => `instead of ${previous}`,
-    /** The pinned Tasks at the top of a View. */
+    /** The pinned Tasks at the top of an Agenda. */
     toDo: "To do",
     by: (date: string) => `By ${date}`,
     due: "Due",

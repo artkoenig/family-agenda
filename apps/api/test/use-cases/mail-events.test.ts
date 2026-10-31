@@ -1,6 +1,6 @@
 import type { Origin } from "@family-agenda/source-sdk";
-import { openViewAccess } from "@family-agenda/application";
-import type { ViewId } from "@family-agenda/domain";
+import { openAgendaAccess } from "@family-agenda/application";
+import type { AgendaId } from "@family-agenda/domain";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { bootForTest, type TestInstance } from "../support/boot";
 import { InMemoryBlobStore } from "../support/in-memory-blob-store";
@@ -32,7 +32,7 @@ const parentsEvening = extracted({
 describe("Events extracted from mail", () => {
   let instance: TestInstance;
   let extractor: ScriptedExtractor;
-  let view: ViewId;
+  let agenda: AgendaId;
   beforeEach(async () => {
     // The clock starts on Monday 2026-09-14 at 09:00 in Berlin.
     extractor = new ScriptedExtractor();
@@ -44,9 +44,9 @@ describe("Events extracted from mail", () => {
     if (!added.ok) throw new Error(`adding failed: ${added.problem}`);
     const saved = await instance.app.llmEndpoint.save({ baseUrl: "http://ollama:11434/v1", model: "qwen3.5:9b", apiKey: "" });
     if (!saved.ok) throw new Error(`saving failed: ${saved.problem}`);
-    const created = await instance.app.views.create({ preselected: [], horizonDays: 7 });
+    const created = await instance.app.agendas.create({ preselected: [], horizonDays: 7 });
     if (!created.ok) throw new Error(`creating failed: ${created.problem}`);
-    view = created.id;
+    agenda = created.id;
   });
   afterEach(async () => {
     await instance.close();
@@ -61,7 +61,7 @@ describe("Events extracted from mail", () => {
   };
 
   const timeline = async () => {
-    const page = await openTimeline(instance.app, view, { access: openViewAccess });
+    const page = await openTimeline(instance.app, agenda, { access: openAgendaAccess });
     return Object.fromEntries(
       (page?.days ?? [])
         .filter((day) => day.items.length > 0)
@@ -75,7 +75,7 @@ describe("Events extracted from mail", () => {
     await arrive(mail("m1", "2026-09-14T06:12:00Z", invitation));
 
     expect(await timeline()).toEqual({ "2026-09-17": ["19:30-19:30 Elternabend Klasse 5b"] });
-    const page = await openTimeline(instance.app, view, { access: openViewAccess });
+    const page = await openTimeline(instance.app, agenda, { access: openAgendaAccess });
     const row = page?.days[3]?.items[0];
     expect(row).toMatchObject({ place: "Raum 104", links: [] });
     expect(row?.messages.map((message) => message.source)).toEqual(["mailbox"]);
@@ -106,7 +106,7 @@ describe("Events extracted from mail", () => {
 
     await arrive(mail("m2", "2026-09-15T10:00:00Z", "Der Elternabend wird auf 16 Uhr verlegt.", "m1"));
 
-    const page = await openTimeline(instance.app, view, { access: openViewAccess });
+    const page = await openTimeline(instance.app, agenda, { access: openAgendaAccess });
     expect(page?.days[3]?.items[0]).toMatchObject({ from: "19:30" });
     expect(page?.days[3]?.items[0]?.messages).toHaveLength(1);
   });
@@ -134,7 +134,7 @@ describe("Events extracted from mail", () => {
     expect(extractor.requests.at(-1)?.knownEvents).toEqual([
       { ref: "E1", title: "Elternabend Klasse 5b", when: "2026-09-17 19:30–19:30", place: "Raum 104" },
     ]);
-    const page = await openTimeline(instance.app, view, { access: openViewAccess });
+    const page = await openTimeline(instance.app, agenda, { access: openAgendaAccess });
     expect(page?.days[3]?.items[0]?.messages).toHaveLength(2);
   });
 

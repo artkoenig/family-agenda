@@ -1,4 +1,4 @@
-import { openViewAccess } from "@family-agenda/application";
+import { openAgendaAccess } from "@family-agenda/application";
 import { createHttpApp, type HttpOptions } from "../../src/http/app";
 import { bootForTest, type TestInstance, type TestOptions } from "./boot";
 
@@ -23,12 +23,12 @@ export async function bootHttpForTest(
   const instance = await bootForTest(testOptions);
   // The app of the Instance as it runs now, booted again after a restart.
   let booted = instance.app;
-  let current = createHttpApp(booted, { trustProxy: false, viewAccess: openViewAccess, ...options });
+  let current = createHttpApp(booted, { trustProxy: false, agendaAccess: openAgendaAccess, ...options });
   const http = {
     request: (path: string, init: Parameters<typeof current.request>[1]) => {
       if (instance.app !== booted) {
         booted = instance.app;
-        current = createHttpApp(booted, { trustProxy: false, viewAccess: openViewAccess, ...options });
+        current = createHttpApp(booted, { trustProxy: false, agendaAccess: openAgendaAccess, ...options });
       }
       return current.request(path, init);
     },

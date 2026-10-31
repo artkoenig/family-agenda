@@ -26,12 +26,12 @@ _Avoid_: User, profile, kid
 A parent who signs in with their own account to manage settings and Sources, and to correct Items.
 _Avoid_: Owner, superuser, parent account
 
-**View**:
+**Agenda**:
 A configurable perspective on the Family's Items, such as one showing only Items that concern a given Family Member, either as a timeline of days or as a Task List; opened without signing in, and read-only except for ticking Tasks done.
-_Avoid_: Dashboard, read-only user, kiosk
+_Avoid_: View, dashboard, read-only user, kiosk
 
 **Task List**:
-A View that lists the Tasks it shows instead of a timeline: Due and Overdue ones first, then those not Due yet, then those done in the last 30 days; ticked there as in a timeline.
+An Agenda that lists the Tasks it shows instead of a timeline: Due and Overdue ones first, then those not Due yet, then those done in the last 30 days; ticked there as in a timeline.
 _Avoid_: To-do view, task page, Tasks section
 
 ### Inputs
@@ -99,7 +99,7 @@ A deviation from the Timetable for a specific date, such as a cancellation or su
 _Avoid_: Substitution, update
 
 **School Day**:
-The Lessons of a Family Member on one date, which a View shows as one row until the last Lesson that takes place, and a feed as one all-day entry; not an Item of its own.
+The Lessons of a Family Member on one date, which an Agenda shows as one row until the last Lesson that takes place, and a feed as one all-day entry; not an Item of its own.
 _Avoid_: School row, school entry
 
 **Task**:
@@ -111,7 +111,7 @@ The date by which a Task must be done, the month's last day when a message names
 _Avoid_: Due date, Frist
 
 **Due**:
-A Task not yet done from its Deadline day on, or from when it arrives if it has none; a Due Task is pinned at the top of every View until someone ticks it done.
+A Task not yet done from its Deadline day on, or from when it arrives if it has none; a Due Task is pinned at the top of every Agenda until someone ticks it done.
 _Avoid_: Open, pending, active
 
 **Overdue**:
@@ -140,6 +140,6 @@ _Avoid_: Tunnel, relay, external access
 What an Admin prints or saves at first start to recover the Instance's master key: without it, a Backup cannot restore Source credentials; Backups to Agenda Cloud are encrypted with a key derived from it.
 _Avoid_: Recovery key, master key (for the document), backup code
 
-**View Link**:
-A secret, revocable URL that opens one View from outside the home network.
+**Agenda Link**:
+A secret, revocable URL that opens one Agenda from outside the home network.
 _Avoid_: Share link, token, magic link

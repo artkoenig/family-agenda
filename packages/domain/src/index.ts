@@ -3,7 +3,7 @@ export * from "./calendar";
 export * from "./family-member";
 export * from "./photo";
 export * from "./source";
-export * from "./view";
+export * from "./agenda";
 export * from "./item";
 export * from "./event";
 export * from "./lesson";
