@@ -174,6 +174,45 @@
   .vd-scrolled .f.on { border-color:var(--ink); background:var(--surface-raised); }
   .vd-scrolled .f .av { --sz:28px; }
   .vd-scrolled .stale { margin-left:2px; }
+
+  /* ---- Desktop / wall tablet (>= 1000 px) ---------------------------- */
+  .sec { font-size:18px; line-height:24px; margin:40px 0 4px; }
+  figure.wide { width:1000px; max-width:100%; }
+  .screen { width:1000px; max-width:100%; height:430px; overflow:hidden; background:var(--surface); border:1px solid var(--line-strong);
+            border-radius:14px; box-shadow:0 4px 16px rgba(0,0,0,.12); font-size:19px; line-height:28px; }
+  .screen .feed { max-width:852px; margin:0 auto; padding:14px 16px; }
+  .screen .feed h3 { font-size:14px; }
+  .screen .row { grid-template-columns:90px 1fr auto; font-size:19px; line-height:28px; padding:10px 0; }
+  .screen .row .av { --sz:32px; }
+  .screen .bar > .inner { max-width:820px; margin:0 auto; }
+
+  .d0 .bar { padding:12px 16px 8px; }
+  .d0 .top { display:flex; align-items:center; justify-content:space-between; }
+  .d0 .clock { font-size:44px; line-height:48px; }
+  .d0 .clock small { font-size:19px; font-weight:500; letter-spacing:0; color:var(--ink-muted); margin-left:6px; }
+  .d0 .stale-line { display:none; margin:8px 0 0; font-size:16px; line-height:22px; color:var(--ink-muted); }
+  [data-stale="on"] .d0 .stale-line { display:block; }
+  .d0 .filter { display:flex; gap:12px; padding:4px 2px; }
+  .d0 .f { display:flex; flex-direction:column; align-items:center; gap:8px; min-width:64px; font-size:14px; line-height:16px; padding:8px 4px 4px; }
+  .d0 .f .av { --sz:64px; font-size:26px; box-shadow:0 0 0 3px var(--surface); }
+  .d0 .f.on .av { box-shadow:0 0 0 3px var(--surface), 0 0 0 6px var(--ink); }
+  .d0 .f::after { display:none; }
+
+  .de .bar { padding:10px 16px 11px; }
+  .de .row-main { display:flex; align-items:center; gap:20px; min-height:48px; }
+  .de .when { display:flex; flex-direction:column; justify-content:center; }
+  .de .when .l1 { display:flex; align-items:baseline; gap:12px; white-space:nowrap; }
+  .de .clock { font-size:40px; line-height:44px; }
+  .de .date { font-size:18px; line-height:24px; color:var(--ink-muted); font-weight:500; }
+  .de .stale-text { display:none; margin:0; font-size:13px; line-height:18px; white-space:nowrap; color:var(--honey); font-weight:700; }
+  [data-stale="on"] .de .stale-text { display:block; }
+  .de .grow { flex:1; }
+  .de .filter { display:flex; gap:8px; }
+  .de .f { display:flex; align-items:center; gap:9px; height:48px; padding:0 16px 0 5px; border:1px solid var(--line); border-radius:99px; font-size:17px; }
+  .de .f.on { border-color:var(--ink); background:var(--surface-raised); box-shadow:0 0 0 1px var(--ink); }
+  .de .f .av { --sz:38px; }
+  .de .f::after { inset:-4px -2px; }
+  .de .f:hover { background:var(--hearth-tint); }
 </style>
 </head>
 <body data-fetch="off" data-stale="off">
@@ -407,6 +446,66 @@
     </figure>
 
   </div>
+
+  <h2 class="sec">Desktop and wall tablet (≥ 1000 px)</h2>
+  <p class="lead">Variant E on a wide screen. There is room, so nothing collapses: the bar is a single row with the clock and the full-width name pills, and it keeps the wall tablet's larger type. The activity stays the 2 px line along the bottom edge (full screen width here).</p>
+  <div class="grid wide">
+
+    <figure class="wide" data-base=".d0">
+      <div class="screen d0">
+        <header class="bar">
+          <div class="inner">
+            <div class="top">
+              <div class="clock">09:45 <small>Sa., 31. Okt.</small></div>
+              <div class="act"><span class="spin"></span><span>Quellen werden abgerufen 1/4</span><span class="meter"><i></i></span></div>
+            </div>
+            <p class="stale-line">Manches hier ist vielleicht nicht aktuell.</p>
+            <nav class="filter" aria-label="Quick filter">
+              <button class="f" data-m="all"><span class="av all"></span>Alle</button>
+              <button class="f" data-m="valentin"><span class="av m8">V</span>Valentin</button>
+              <button class="f" data-m="veronika"><span class="av m2">V</span>Veronika</button>
+              <button class="f" data-m="papa"><span class="av photo">P</span>Papa</button>
+            </nav>
+          </div>
+        </header>
+        <div class="feed" data-feed="top"></div>
+      </div>
+      <figcaption>
+        <h2>0 · Current (wall tablet)</h2>
+        <p>Reference. Bar height: <span class="h" data-h></span></p>
+      </figcaption>
+    </figure>
+
+    <figure class="wide" data-base=".d0">
+      <div class="screen de">
+        <header class="bar">
+          <div class="inner">
+            <div class="row-main">
+              <div class="when">
+                <div class="l1"><span class="clock">09:45</span><span class="date">Sa., 31. Okt.</span></div>
+                <p class="stale-text" role="status">Manches hier ist vielleicht nicht aktuell.</p>
+              </div>
+              <span class="grow"></span>
+              <nav class="filter" aria-label="Quick filter">
+                <button class="f" data-m="all"><span class="av all"></span>Alle</button>
+              <button class="f" data-m="valentin"><span class="av m8">V</span>Valentin</button>
+              <button class="f" data-m="veronika"><span class="av m2">V</span>Veronika</button>
+              <button class="f" data-m="papa"><span class="av photo">P</span>Papa</button>
+              </nav>
+            </div>
+          </div>
+          <div class="hairline"><i></i></div>
+        </header>
+        <div class="feed" data-feed="top"></div>
+      </div>
+      <figcaption>
+        <h2>E · Desktop</h2>
+        <p>Bar height: <span class="h" data-h></span> <span class="saved" data-saved></span></p>
+        <ul><li>One row: clock and date left, name pills right; larger type as on today’s wall tablet, no scroll-collapse needed</li><li>The “may be out of date” hint is written out under the clock instead of hiding behind a “!”: a wall tablet has no hover or tap, and it is the one place where nobody asks</li><li>Only while the hint is shown does the bar grow by one line (switch it on to see it)</li><li>Activity is the 2 px line along the bottom edge, as on the phone; it can run the full screen width</li></ul>
+      </figcaption>
+    </figure>
+
+  </div>
 </div>
 
 <script>
@@ -430,10 +529,9 @@
     el.innerHTML = el.dataset.feed === "top" ? feedHtml("Heute", 0) : feedHtml("Morgen", 5);
   });
 
-  const baseline = () => document.querySelector(".v0 .bar").offsetHeight;
   function measure() {
-    const base = baseline();
     document.querySelectorAll("figure").forEach(fig => {
+      const base = document.querySelector((fig.dataset.base || ".v0") + " .bar").offsetHeight;
       const bar = fig.querySelector(".bar");
       fig.querySelector("[data-h]").textContent = bar.offsetHeight + " px";
       const saved = fig.querySelector("[data-saved]");
