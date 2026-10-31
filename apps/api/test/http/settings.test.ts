@@ -32,11 +32,11 @@ describe("the settings in the Admin area", () => {
     await instance.app.familyMembers.add({ name: "Lina" });
     await instance.app.familyMembers.add({ name: "Jonas" });
 
-    const page = await get("/admin/views");
+    const page = await get("/admin/agendas");
 
     expect(entryOf(page, "Family Members")).toContain("Lina, Jonas");
-    expect(entryOf(page, "Views")).toContain("None yet");
-    expect(entryOf(page, "Views")).toContain('aria-current="page"');
+    expect(entryOf(page, "Agendas")).toContain("None yet");
+    expect(entryOf(page, "Agendas")).toContain('aria-current="page"');
     expect(entryOf(page, "Family Members")).not.toContain("aria-current");
     expect(entryOf(page, "LLM endpoint")).toContain("Not set up");
     expect(entryOf(page, "Admins")).toContain("1 Admin");
@@ -66,9 +66,9 @@ describe("the settings in the Admin area", () => {
     expect(dialogOf(await get("/admin/family-members"))).toBe("");
   });
 
-  it("creates a View and adds an Admin in dialogs, showing why either was refused there", async () => {
-    expect(dialogOf(await get("/admin/views/new"))).toContain("Create View");
-    const farAhead = await instance.post("/admin/views", { horizonDays: "90" }, { cookie });
+  it("creates an Agenda and adds an Admin in dialogs, showing why either was refused there", async () => {
+    expect(dialogOf(await get("/admin/agendas/new"))).toContain("Create Agenda");
+    const farAhead = await instance.post("/admin/agendas", { horizonDays: "90" }, { cookie });
     expect(dialogOf(await farAhead.text())).toContain("between 1 and 31 days");
 
     expect(dialogOf(await get("/admin/admins/new"))).toContain("Add Admin");

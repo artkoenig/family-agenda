@@ -29,7 +29,7 @@ import type {
   SourceTypeRepository,
   StoredLlmEndpoint,
   ThreadItem,
-  ViewRepository,
+  AgendaRepository,
 } from "@family-agenda/application";
 import type {
   Act,
@@ -50,9 +50,9 @@ import type {
   SourceFailure,
   SourceId,
   SourceTypeId,
-  View,
-  ViewId,
-  ViewKind,
+  Agenda,
+  AgendaId,
+  AgendaKind,
 } from "@family-agenda/domain";
 import { defaultFamilyLanguage, isFamilyLanguage } from "@family-agenda/domain";
 import { and, asc, eq, gt, gte, inArray, isNotNull, isNull, lt, lte, ne, or, sql, type SQL } from "drizzle-orm";
@@ -77,8 +77,8 @@ import {
   sourceMembers,
   sources,
   sourceTypes,
-  viewPreselections,
-  views,
+  agendaPreselections,
+  agendas,
 } from "./schema";
 
 /** Arbitrary key that serialises creating the first Admin. */
@@ -284,68 +284,68 @@ function photoColumns(member: FamilyMember) {
   };
 }
 
-export class PostgresViewRepository implements ViewRepository {
+export class PostgresAgendaRepository implements AgendaRepository {
   constructor(private readonly db: Database) {}
 
-  async add(view: View): Promise<void> {
+  async add(agenda: Agenda): Promise<void> {
     await this.db.transaction(async (tx) => {
-      await tx.insert(views).values(view);
-      await insertPreselections(tx, view);
+      await tx.insert(agendas).values(agenda);
+      await insertPreselections(tx, agenda);
     });
   }
 
-  async list(): Promise<View[]> {
+  async list(): Promise<Agenda[]> {
     return this.select();
   }
 
-  async findById(id: ViewId): Promise<View | null> {
+  async findById(id: AgendaId): Promise<Agenda | null> {
     if (!uuidPattern.test(id)) return null;
-    const [view] = await this.select(eq(views.id, id));
-    return view ?? null;
+    const [agenda] = await this.select(eq(agendas.id, id));
+    return agenda ?? null;
   }
 
-  async update(view: View): Promise<void> {
+  async update(agenda: Agenda): Promise<void> {
     await this.db.transaction(async (tx) => {
-      await tx.update(views).set({ kind: view.kind, horizonDays: view.horizonDays }).where(eq(views.id, view.id));
-      await tx.delete(viewPreselections).where(eq(viewPreselections.viewId, view.id));
-      await insertPreselections(tx, view);
+      await tx.update(agendas).set({ kind: agenda.kind, horizonDays: agenda.horizonDays }).where(eq(agendas.id, agenda.id));
+      await tx.delete(agendaPreselections).where(eq(agendaPreselections.agendaId, agenda.id));
+      await insertPreselections(tx, agenda);
     });
   }
 
-  async remove(id: ViewId): Promise<void> {
+  async remove(id: AgendaId): Promise<void> {
     if (!uuidPattern.test(id)) return;
-    await this.db.delete(views).where(eq(views.id, id));
+    await this.db.delete(agendas).where(eq(agendas.id, id));
   }
 
-  private async select(where?: SQL): Promise<View[]> {
+  private async select(where?: SQL): Promise<Agenda[]> {
     const rows = await this.db
-      .select({ view: views, familyMemberId: viewPreselections.familyMemberId })
-      .from(views)
-      .leftJoin(viewPreselections, eq(viewPreselections.viewId, views.id))
-      .leftJoin(familyMembers, eq(familyMembers.id, viewPreselections.familyMemberId))
+      .select({ agenda: agendas, familyMemberId: agendaPreselections.familyMemberId })
+      .from(agendas)
+      .leftJoin(agendaPreselections, eq(agendaPreselections.agendaId, agendas.id))
+      .leftJoin(familyMembers, eq(familyMembers.id, agendaPreselections.familyMemberId))
       .where(where)
-      .orderBy(asc(views.position), asc(familyMembers.position));
-    const byId = new Map<string, View>();
-    for (const { view, familyMemberId } of rows) {
-      const found = byId.get(view.id) ?? {
-        id: view.id as ViewId,
-        kind: view.kind as ViewKind,
+      .orderBy(asc(agendas.position), asc(familyMembers.position));
+    const byId = new Map<string, Agenda>();
+    for (const { agenda, familyMemberId } of rows) {
+      const found = byId.get(agenda.id) ?? {
+        id: agenda.id as AgendaId,
+        kind: agenda.kind as AgendaKind,
         preselected: [],
-        horizonDays: view.horizonDays,
-        createdAt: view.createdAt,
+        horizonDays: agenda.horizonDays,
+        createdAt: agenda.createdAt,
       };
       if (familyMemberId) found.preselected.push(familyMemberId as FamilyMemberId);
-      byId.set(view.id, found);
+      byId.set(agenda.id, found);
     }
     return [...byId.values()];
   }
 }
 
-async function insertPreselections(tx: Pick<Database, "insert">, view: View): Promise<void> {
-  if (view.preselected.length === 0) return;
+async function insertPreselections(tx: Pick<Database, "insert">, agenda: Agenda): Promise<void> {
+  if (agenda.preselected.length === 0) return;
   await tx
-    .insert(viewPreselections)
-    .values(view.preselected.map((familyMemberId) => ({ viewId: view.id, familyMemberId })));
+    .insert(agendaPreselections)
+    .values(agenda.preselected.map((familyMemberId) => ({ agendaId: agenda.id, familyMemberId })));
 }
 
 export class PostgresSourceTypeRepository implements SourceTypeRepository {
@@ -939,8 +939,9 @@ export class PostgresItemRepository implements ItemRepository {
       await tx.insert(revisions).values({
         id: randomUUID(),
         itemId: id,
-        author: author.kind,
-        viewId: author.kind === "view" ? author.viewId : null,
+        // An Agenda's ticks are stored as `view`, as before it was renamed (see `storedRevisionAuthors`).
+        author: author.kind === "agenda" ? "view" : author.kind,
+        agendaId: author.kind === "agenda" ? author.agendaId : null,
         adminId: author.kind === "admin" ? author.adminId : null,
         act: revision.act,
         fields: revision.fields,
@@ -969,7 +970,7 @@ export class PostgresItemRepository implements ItemRepository {
       sourceTime: row.sourceTime,
       author:
         row.author === "view"
-          ? { kind: "view", viewId: row.viewId as ViewId | null }
+          ? { kind: "agenda", agendaId: row.agendaId as AgendaId | null }
           : { kind: "admin", adminId: row.adminId as AdminId | null },
     }));
   }

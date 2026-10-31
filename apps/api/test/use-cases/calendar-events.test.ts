@@ -1,8 +1,8 @@
 import { rm } from "node:fs/promises";
 import { join } from "node:path";
 import type { Origin, PluginRevision } from "@family-agenda/source-sdk";
-import { openViewAccess } from "@family-agenda/application";
-import type { ViewId } from "@family-agenda/domain";
+import { openAgendaAccess } from "@family-agenda/application";
+import type { AgendaId } from "@family-agenda/domain";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { bootForTest, type TestInstance } from "../support/boot";
 import { testPluginControls, writeTestPluginPackage } from "../support/test-source-plugin";
@@ -29,7 +29,7 @@ const timed = (start: string, end: string) => ({ allDay: false, start, end });
 
 describe("calendar Events on the timeline", () => {
   let instance: TestInstance;
-  let view: ViewId;
+  let agenda: AgendaId;
   beforeEach(async () => {
     // The clock starts on Monday 2026-09-14 at 09:00 in Berlin.
     instance = await bootForTest();
@@ -42,9 +42,9 @@ describe("calendar Events on the timeline", () => {
       secrets: { password: "hunter2" },
     });
     if (!added.ok) throw new Error(`adding failed: ${added.problem}`);
-    const created = await instance.app.views.create({ preselected: [], horizonDays: 7 });
+    const created = await instance.app.agendas.create({ preselected: [], horizonDays: 7 });
     if (!created.ok) throw new Error(`creating failed: ${created.problem}`);
-    view = created.id;
+    agenda = created.id;
   });
   afterEach(async () => {
     await instance.close();
@@ -57,9 +57,9 @@ describe("calendar Events on the timeline", () => {
     await instance.app.polling.pollDue();
   };
 
-  /** The rows of the View, per day, as time, title and whether they are cancelled or earlier. */
-  const timeline = async (id: ViewId = view) => {
-    const page = await openTimeline(instance.app, id, { access: openViewAccess });
+  /** The rows of the Agenda, per day, as time, title and whether they are cancelled or earlier. */
+  const timeline = async (id: AgendaId = agenda) => {
+    const page = await openTimeline(instance.app, id, { access: openAgendaAccess });
     return Object.fromEntries(
       (page?.days ?? [])
         .filter((day) => day.items.length > 0)
@@ -67,8 +67,8 @@ describe("calendar Events on the timeline", () => {
     );
   };
 
-  it("shows a created Event on every View", async () => {
-    const other = await instance.app.views.create({ preselected: [], horizonDays: 3 });
+  it("shows a created Event on every Agenda", async () => {
+    const other = await instance.app.agendas.create({ preselected: [], horizonDays: 3 });
     if (!other.ok) throw new Error("creating failed");
 
     await arrive(
@@ -81,7 +81,7 @@ describe("calendar Events on the timeline", () => {
 
     expect(await timeline()).toEqual({ "2026-09-15": ["16:00-17:00 Piano lesson"] });
     expect(await timeline(other.id)).toEqual({ "2026-09-15": ["16:00-17:00 Piano lesson"] });
-    const page = await openTimeline(instance.app, view, { access: openViewAccess });
+    const page = await openTimeline(instance.app, agenda, { access: openAgendaAccess });
     expect(page?.days[1]?.items[0]).toMatchObject({
       place: "Music school",
       span: { allDay: false, start: { date: "2026-09-15", time: "16:00" }, end: { date: "2026-09-15", time: "17:00" } },
@@ -175,7 +175,7 @@ describe("calendar Events on the timeline", () => {
     await arrive({ ...piano(), link: "https://calendar.example.org/event/piano" });
     await arrive(rename);
 
-    const page = await openTimeline(instance.app, view, { access: openViewAccess });
+    const page = await openTimeline(instance.app, agenda, { access: openAgendaAccess });
     expect(page?.days[1]?.items[0]?.links).toEqual([{ url: "https://calendar.example.org/event/piano", source: "calendar" }]);
   });
 
@@ -184,7 +184,7 @@ describe("calendar Events on the timeline", () => {
     const [source] = await instance.app.sources.list();
     await instance.app.sources.rename(source!.id, "Music school");
 
-    const page = await openTimeline(instance.app, view, { access: openViewAccess });
+    const page = await openTimeline(instance.app, agenda, { access: openAgendaAccess });
     expect(page?.days[1]?.items[0]?.links).toEqual([{ url: "https://calendar.example.org/event/piano", source: "Music school" }]);
   });
 
@@ -203,7 +203,7 @@ describe("calendar Events on the timeline", () => {
     await instance.app.sources.remove(source!.id);
 
     expect(await timeline()).toEqual({});
-    expect((await instance.app.views.feed(view, { access: openViewAccess }))?.events).toEqual([]);
+    expect((await instance.app.agendas.feed(agenda, { access: openAgendaAccess }))?.events).toEqual([]);
     expect(await instance.query("SELECT id FROM items")).toEqual([]);
   });
 
@@ -233,7 +233,7 @@ describe("calendar Events on the timeline", () => {
 
     await instance.app.sources.setShown(source!.id, false);
     expect(await timeline()).toEqual({});
-    expect((await instance.app.views.feed(view, { access: openViewAccess }))?.events).toEqual([]);
+    expect((await instance.app.agendas.feed(agenda, { access: openAgendaAccess }))?.events).toEqual([]);
     expect(await instance.app.sources.list()).toMatchObject([{ shown: false }]);
 
     await arrive(rename);
@@ -315,7 +315,7 @@ describe("polling Sources", () => {
 
   it("fails a run whose Origins are invalid, without recording any of them", async () => {
     const school = await add("school-cal");
-    const created = await instance.app.views.create({ preselected: [], horizonDays: 7 });
+    const created = await instance.app.agendas.create({ preselected: [], horizonDays: 7 });
     if (!created.ok) throw new Error("creating failed");
     testPluginControls.emit("school-cal", [
       entry("ok", "create", "2026-09-01T10:00:00Z", { title: "Fine", span: timed("2026-09-15T14:00:00Z", "2026-09-15T15:00:00Z") }),
@@ -327,7 +327,7 @@ describe("polling Sources", () => {
     expect(report.failed).toEqual([
       { sourceId: school, kind: "definite", message: "The plugin emitted invalid Origins: the Origin has no external id" },
     ]);
-    const page = await openTimeline(instance.app, created.id, { access: openViewAccess });
+    const page = await openTimeline(instance.app, created.id, { access: openAgendaAccess });
     expect(page?.days.flatMap((day) => day.items)).toEqual([]);
   });
 

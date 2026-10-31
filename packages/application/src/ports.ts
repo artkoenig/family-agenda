@@ -22,8 +22,8 @@ import type {
   SourceFailure,
   SourceId,
   SourceTypeId,
-  View,
-  ViewId,
+  Agenda,
+  AgendaId,
 } from "@family-agenda/domain";
 
 export interface Clock {
@@ -66,25 +66,25 @@ export interface FamilyMemberRepository {
   remove(id: FamilyMemberId): Promise<void>;
 }
 
-export interface ViewRepository {
-  add(view: View): Promise<void>;
+export interface AgendaRepository {
+  add(agenda: Agenda): Promise<void>;
   /**
    * In the order they were created, each with its preselected Family Members in the order
    * those were added; Family Members removed since are no longer preselected.
    */
-  list(): Promise<View[]>;
-  findById(id: ViewId): Promise<View | null>;
-  /** Stores a changed View that was found before. */
-  update(view: View): Promise<void>;
-  remove(id: ViewId): Promise<void>;
+  list(): Promise<Agenda[]>;
+  findById(id: AgendaId): Promise<Agenda | null>;
+  /** Stores a changed Agenda that was found before. */
+  update(agenda: Agenda): Promise<void>;
+  remove(id: AgendaId): Promise<void>;
 }
 
 /**
- * Decides whether a View opens, depending on the listener that accepted the request
- * (ADR-0005). On the local listener every View opens (ADR-0003).
+ * Decides whether an Agenda opens, depending on the listener that accepted the request
+ * (ADR-0005). On the local listener every Agenda opens (ADR-0003).
  */
-export interface ViewAccessPolicy {
-  mayOpen(view: ViewId): Promise<boolean>;
+export interface AgendaAccessPolicy {
+  mayOpen(agenda: AgendaId): Promise<boolean>;
 }
 
 export type AdminSession = {
@@ -607,7 +607,7 @@ export interface ItemRepository {
     revision: AuthoredRevision,
     recompute: (kind: ItemKind, revisions: FoldableRevision[]) => ItemProjection,
   ): Promise<void>;
-  /** The Item's Revisions by Views and Admins, in the order they were made. */
+  /** The Item's Revisions by Agendas and Admins, in the order they were made. */
   authoredRevisions(id: ItemId): Promise<AuthoredRevision[]>;
 }
 

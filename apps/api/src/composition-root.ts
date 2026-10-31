@@ -22,7 +22,7 @@ import {
   PostgresSignInFailureLog,
   PostgresSourceRepository,
   PostgresSourceTypeRepository,
-  PostgresViewRepository,
+  PostgresAgendaRepository,
   readMasterKey,
   runMigrations,
   SystemClock,
@@ -48,7 +48,7 @@ import {
   createSourcePolling,
   createSourceTypeAccess,
   createTaskAccess,
-  createViewAccess,
+  createAgendaAccess,
   signInLimits,
   type AdminAccess,
   type CatalogueAccess,
@@ -70,7 +70,7 @@ import {
   type SourceTypeAccess,
   type TextExtractor,
   type TaskAccess,
-  type ViewAccess,
+  type AgendaAccess,
 } from "@family-agenda/application";
 import { SourceRegistry } from "./source-registry";
 
@@ -121,8 +121,8 @@ export type Application = {
   familyMembers: FamilyMemberAccess;
   /** The Family Language and the OCR languages. */
   languages: LanguageAccess;
-  views: ViewAccess;
-  /** Ticking Tasks done, from a View or the Admin area. */
+  agendas: AgendaAccess;
+  /** Ticking Tasks done, from an Agenda or the Admin area. */
   tasks: TaskAccess;
   sourceTypes: SourceTypeAccess;
   /** What an Admin enables within a Source Type, such as Messengers. */
@@ -201,20 +201,20 @@ export async function bootApplication(config: ApplicationConfig): Promise<Applic
     sourceTypes: sourceTypeRepository,
     sources: sourceRepository,
   });
-  const viewRepository = new PostgresViewRepository(postgres.db);
-  const views = createViewAccess({
+  const agendaRepository = new PostgresAgendaRepository(postgres.db);
+  const agendas = createAgendaAccess({
     clock,
     timeZone,
     families,
     members,
-    views: viewRepository,
+    agendas: agendaRepository,
     items,
     sources: sourceRepository,
     registry,
     activity,
     sourceHealth,
   });
-  const tasks = createTaskAccess({ clock, items, sources: sourceRepository, views: viewRepository });
+  const tasks = createTaskAccess({ clock, items, sources: sourceRepository, agendas: agendaRepository });
 
   const sourceTypes = createSourceTypeAccess({
     clock,
@@ -288,7 +288,7 @@ export async function bootApplication(config: ApplicationConfig): Promise<Applic
     recoveryKit,
     familyMembers,
     languages,
-    views,
+    agendas,
     tasks,
     sourceTypes,
     catalogues,

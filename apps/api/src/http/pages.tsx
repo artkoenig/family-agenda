@@ -12,7 +12,7 @@ import {
   type SourceHealth,
   type SourceSummary,
   type SourceTypeSummary,
-  type ViewSummary,
+  type AgendaSummary,
 } from "@family-agenda/application";
 import {
   defaultHorizonDays,
@@ -22,20 +22,20 @@ import {
   minimumPasswordLength,
   photoTypes,
   silentAfterMs,
-  viewKinds,
+  agendaKinds,
   type AdminId,
   type FamilyLanguage,
   type FamilyMemberId,
   type MultilingualText,
   type OcrLanguage,
-  type ViewId,
+  type AgendaId,
 } from "@family-agenda/domain";
 import type { Child } from "hono/jsx";
 import { raw } from "hono/html";
 import { useTranslation, type Translation } from "./i18n/translation";
 import type { Catalogue } from "./i18n/en";
 import { Layout, Problem } from "./layout";
-import { Avatar, viewUrl } from "./view-page";
+import { Avatar, agendaUrl } from "./agenda-page";
 
 /** The Family Languages to choose from, the given one selected. */
 function FamilyLanguageOptions(props: { selected: FamilyLanguage }) {
@@ -129,7 +129,7 @@ export function SignInPage(props: { email?: string; problem?: string }) {
 /** What the settings list says about each section, gathered for every Admin page. */
 export type SettingsSummary = {
   members: string[];
-  views: number;
+  agendas: number;
   sources: number;
   /** How many Sources are Failing, which the whole Admin area shows a banner for. */
   failingSources: number;
@@ -145,7 +145,7 @@ export type SignedInAdmin = AdminSummary & { newSourceTypes: boolean; settings: 
 
 type SectionId =
   | "members"
-  | "views"
+  | "agendas"
   | "language"
   | "sources"
   | "llm"
@@ -174,10 +174,10 @@ function settingsGroups(translation: Translation): SettingsGroup[] {
           summary: ({ settings }) => ({ text: settings.members.length > 0 ? settings.members.join(", ") : s.noneYet }),
         },
         {
-          id: "views",
-          href: "/admin/views",
-          label: t.views.title,
-          summary: ({ settings }) => ({ text: settings.views > 0 ? s.views(settings.views) : s.noneYet }),
+          id: "agendas",
+          href: "/admin/agendas",
+          label: t.agendas.title,
+          summary: ({ settings }) => ({ text: settings.agendas > 0 ? s.agendas(settings.agendas) : s.noneYet }),
         },
         {
           id: "language",
@@ -244,7 +244,7 @@ function SectionIcon(props: { id: SectionId }) {
         <path d="M17 14c2.4 0 4 1.5 4.5 4"></path>
       </>
     ),
-    views: (
+    agendas: (
       <>
         <rect x="3" y="4" width="18" height="13" rx="2.5"></rect>
         <path d="M9 21h6M12 17v4"></path>
@@ -741,9 +741,9 @@ function CopyButton(props: { text: string }) {
       type="button"
       class="fam-button fam-button--quiet fam-copy"
       data-copy={props.text}
-      data-copied={t.views.copied}
-      aria-label={t.views.copy}
-      title={t.views.copy}
+      data-copied={t.agendas.copied}
+      aria-label={t.agendas.copy}
+      title={t.agendas.copy}
     >
       <svg class="fam-copy__copy" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
         <rect x="9" y="9" width="11" height="11" rx="2"></rect>
@@ -756,36 +756,36 @@ function CopyButton(props: { text: string }) {
   );
 }
 
-export function ViewsPage(props: {
+export function AgendasPage(props: {
   admin: SignedInAdmin;
-  views: ViewSummary[];
+  agendas: AgendaSummary[];
   members: FamilyMemberSummary[];
-  /** Scheme and host the Admin reached the Instance by, so that a View's address can be copied as it is. */
+  /** Scheme and host the Admin reached the Instance by, so that an Agenda's address can be copied as it is. */
   origin: string;
   problem?: string;
   /** The create dialog, open with why it was refused. */
   creating?: { problem?: string };
-  /** A View's dialog, open with why a change was refused. */
-  editing?: { id: ViewId; problem?: string };
+  /** An Agenda's dialog, open with why a change was refused. */
+  editing?: { id: AgendaId; problem?: string };
 }) {
   const memberOf = (id: string) => props.members.find((member) => member.id === id);
   const { creating, editing } = props;
   const { t } = useTranslation();
-  const v = t.views;
-  const namesOf = (view: ViewSummary) => {
-    const names = view.preselected.flatMap((id) => memberOf(id)?.name ?? []);
+  const v = t.agendas;
+  const namesOf = (agenda: AgendaSummary) => {
+    const names = agenda.preselected.flatMap((id) => memberOf(id)?.name ?? []);
     return names.length > 0 ? names.join(", ") : null;
   };
   /** A timeline by whom it shows and its horizon, a Task List by whom it shows. */
-  const entryOf = (view: ViewSummary) => {
-    const who = namesOf(view) ?? v.everyone;
-    return view.kind === "tasks" ? v.taskListEntry(who) : v.entry(who, view.horizonDays);
+  const entryOf = (agenda: AgendaSummary) => {
+    const who = namesOf(agenda) ?? v.everyone;
+    return agenda.kind === "tasks" ? v.taskListEntry(who) : v.entry(who, agenda.horizonDays);
   };
-  const edited = editing ? props.views.find((view) => view.id === editing.id) : undefined;
-  const address = edited ? `${props.origin}${viewUrl(edited.id)}` : "";
+  const edited = editing ? props.agendas.find((agenda) => agenda.id === editing.id) : undefined;
+  const address = edited ? `${props.origin}${agendaUrl(edited.id)}` : "";
   const dialog = edited ? (
-    <Dialog id="edit-view" eyebrow={v.eyebrow} title={entryOf(edited)} closeHref="/admin/views">
-      <form method="post" action={`/admin/views/${edited.id}`} class="fam-dialog__form">
+    <Dialog id="edit-agenda" eyebrow={v.eyebrow} title={entryOf(edited)} closeHref="/admin/agendas">
+      <form method="post" action={`/admin/agendas/${edited.id}`} class="fam-dialog__form">
         <Problem message={editing?.problem} />
         <dl class="fam-addresses">
           <dt>{v.address}</dt>
@@ -799,35 +799,35 @@ export function ViewsPage(props: {
             <CopyButton text={`${address}/feed.ics`} />
           </dd>
         </dl>
-        <ViewSettingsFields members={props.members} view={edited} idSuffix={edited.id} />
-        <DialogFooter closeHref="/admin/views" submit={t.common.save} remove={{ form: "remove-view", label: v.remove }} />
+        <AgendaSettingsFields members={props.members} agenda={edited} idSuffix={edited.id} />
+        <DialogFooter closeHref="/admin/agendas" submit={t.common.save} remove={{ form: "remove-agenda", label: v.remove }} />
       </form>
-      <RemoveForm id="remove-view" action={`/admin/views/${edited.id}/remove`} />
+      <RemoveForm id="remove-agenda" action={`/admin/agendas/${edited.id}/remove`} />
     </Dialog>
   ) : creating ? (
-    <Dialog id="create-view" eyebrow={v.eyebrow} title={v.dialogTitle} closeHref="/admin/views">
-      <form method="post" action="/admin/views" class="fam-dialog__form">
+    <Dialog id="create-agenda" eyebrow={v.eyebrow} title={v.dialogTitle} closeHref="/admin/agendas">
+      <form method="post" action="/admin/agendas" class="fam-dialog__form">
         <Problem message={creating.problem} />
-        <ViewSettingsFields members={props.members} idSuffix="new" />
-        <DialogFooter closeHref="/admin/views" submit={v.create} />
+        <AgendaSettingsFields members={props.members} idSuffix="new" />
+        <DialogFooter closeHref="/admin/agendas" submit={v.create} />
       </form>
     </Dialog>
   ) : undefined;
   return (
-    <AdminLayout title={v.title} admin={props.admin} current="views" dialog={dialog}>
-      <SectionHeader title={v.title} description={v.description} action={addButton("/admin/views/new", v.create)} />
+    <AdminLayout title={v.title} admin={props.admin} current="agendas" dialog={dialog}>
+      <SectionHeader title={v.title} description={v.description} action={addButton("/admin/agendas/new", v.create)} />
       <Problem message={props.problem} />
-      {props.views.length === 0 ? (
+      {props.agendas.length === 0 ? (
         <p class="fam-empty">{v.none}</p>
       ) : (
         <section class="fam-sheet">
           <ul class="fam-rows">
-            {props.views.map((view) => {
-              const preselected = view.preselected.map(memberOf).filter((member) => member !== undefined);
-              const names = namesOf(view);
+            {props.agendas.map((agenda) => {
+              const preselected = agenda.preselected.map(memberOf).filter((member) => member !== undefined);
+              const names = namesOf(agenda);
               return (
                 <ListRow
-                  href={`/admin/views/${view.id}`}
+                  href={`/admin/agendas/${agenda.id}`}
                   lead={
                     preselected.length > 0 ? (
                       <span class="fam-avatars">
@@ -839,7 +839,7 @@ export function ViewsPage(props: {
                       <span class="fam-avatar fam-avatar--all fam-avatar--sm" aria-hidden="true"></span>
                     )
                   }
-                  name={entryOf(view)}
+                  name={entryOf(agenda)}
                   meta={v.shows(names)}
                 />
               );
@@ -851,30 +851,30 @@ export function ViewsPage(props: {
   );
 }
 
-function ViewSettingsFields(props: { members: FamilyMemberSummary[]; view?: ViewSummary; idSuffix: string }) {
+function AgendaSettingsFields(props: { members: FamilyMemberSummary[]; agenda?: AgendaSummary; idSuffix: string }) {
   const id = (name: string) => `${name}-${props.idSuffix}`;
   const { t } = useTranslation();
-  const kind = props.view?.kind ?? "timeline";
+  const kind = props.agenda?.kind ?? "timeline";
   return (
     <>
       <fieldset>
-        <legend>{t.views.kind}</legend>
+        <legend>{t.agendas.kind}</legend>
         <div class="fam-choices">
-          {viewKinds.map((value) => (
+          {agendaKinds.map((value) => (
             <label class="fam-choice fam-choice--kind">
               <input type="radio" name="kind" value={value} checked={kind === value} />
               <span class="fam-choice__text">
-                <span class="fam-choice__label">{t.views.kinds[value].label}</span>
-                <span class="fam-choice__hint">{t.views.kinds[value].hint}</span>
+                <span class="fam-choice__label">{t.agendas.kinds[value].label}</span>
+                <span class="fam-choice__hint">{t.agendas.kinds[value].hint}</span>
               </span>
             </label>
           ))}
         </div>
       </fieldset>
       <fieldset>
-        <legend>{t.views.preselected}</legend>
-        <small>{t.views.preselectedHint}</small>
-        {props.members.length === 0 ? <p>{t.views.noMembers}</p> : null}
+        <legend>{t.agendas.preselected}</legend>
+        <small>{t.agendas.preselectedHint}</small>
+        {props.members.length === 0 ? <p>{t.agendas.noMembers}</p> : null}
         <div class="fam-choices">
           {props.members.map((member) => (
             <label class="fam-choice">
@@ -882,15 +882,15 @@ function ViewSettingsFields(props: { members: FamilyMemberSummary[]; view?: View
                 type="checkbox"
                 name="preselected"
                 value={member.id}
-                checked={props.view?.preselected.includes(member.id) ?? false}
+                checked={props.agenda?.preselected.includes(member.id) ?? false}
               />{" "}
               <Avatar member={member} size="sm" /> {member.name}
             </label>
           ))}
         </div>
       </fieldset>
-      <div class="fam-field fam-view-horizon">
-        <label for={id("horizon")}>{t.views.horizon}</label>
+      <div class="fam-field fam-agenda-horizon">
+        <label for={id("horizon")}>{t.agendas.horizon}</label>
         <input
           id={id("horizon")}
           name="horizonDays"
@@ -899,10 +899,10 @@ function ViewSettingsFields(props: { members: FamilyMemberSummary[]; view?: View
           min={horizonDaysRange.min}
           max={horizonDaysRange.max}
           autofocus
-          value={String(props.view?.horizonDays ?? defaultHorizonDays)}
+          value={String(props.agenda?.horizonDays ?? defaultHorizonDays)}
           class="fam-input--short"
         />
-        <small>{t.views.horizonHint}</small>
+        <small>{t.agendas.horizonHint}</small>
       </div>
     </>
   );

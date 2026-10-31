@@ -60,7 +60,7 @@ describe("the pages in the Family Language", () => {
     expect(page).toContain("Sign out");
   });
 
-  it("renders a View and its feed in German when the Family Language is German", async () => {
+  it("renders an Agenda and its feed in German when the Family Language is German", async () => {
     await setUp("de", [{ sourceTypeId: "family-cal" }]);
     await instance.app.sourceTypes.enable("family-cal");
     await instance.app.sources.add({ sourceTypeId: "family-cal", plain: { url: "https://calendar.example.org" }, secrets: {} });
@@ -78,13 +78,13 @@ describe("the pages in the Family Language", () => {
       },
     ]);
     await instance.app.polling.pollDue();
-    const created = await instance.app.views.create({ preselected: [], horizonDays: 3 });
+    const created = await instance.app.agendas.create({ preselected: [], horizonDays: 3 });
     if (!created.ok) throw new Error("creating failed");
 
-    const page = await (await instance.get(`/views/${created.id}`)).text();
+    const page = await (await instance.get(`/agendas/${created.id}`)).text();
 
     expect(page).toContain('<html lang="de">');
-    expect(page).toContain("<title>Ansicht · Family Agenda</title>");
+    expect(page).toContain("<title>Agenda · Family Agenda</title>");
     expect(page).toMatch(/<span class="fam-day__name">Heute<\/span>/);
     expect(page).toMatch(/<span class="fam-day__name">Morgen<\/span>/);
     expect(page).toContain("Ganztägig");
@@ -94,25 +94,25 @@ describe("the pages in the Family Language", () => {
     expect(page).toContain("Frühere Tage");
     expect(page).not.toContain("Today");
 
-    const feed = await (await instance.get(`/views/${created.id}/feed.ics`)).text();
+    const feed = await (await instance.get(`/agendas/${created.id}/feed.ics`)).text();
     expect(feed).toContain("ganztägig");
   });
 
   it.each([
-    { language: "en", one: "1 View on the home network", two: "2 Views on the home network", day: "Everyone · 1 day", days: "Everyone · 2 days" },
-    { language: "de", one: "1 Ansicht im Heimnetz", two: "2 Ansichten im Heimnetz", day: "Alle · 1 Tag", days: "Alle · 2 Tage" },
+    { language: "en", one: "1 Agenda on the home network", two: "2 Agendas on the home network", day: "Everyone · 1 day", days: "Everyone · 2 days" },
+    { language: "de", one: "1 Agenda im Heimnetz", two: "2 Agenden im Heimnetz", day: "Alle · 1 Tag", days: "Alle · 2 Tage" },
   ] as const)("counts in the plural forms of $language", async ({ language, one, two, day, days }) => {
     await setUp(language);
-    const views = language === "de" ? "Ansichten" : "Views";
+    const agendas = language === "de" ? "Agenden" : "Agendas";
 
-    await instance.app.views.create({ preselected: [], horizonDays: 1 });
-    let page = await get("/admin/views");
-    expect(entryOf(page, views)).toContain(one);
+    await instance.app.agendas.create({ preselected: [], horizonDays: 1 });
+    let page = await get("/admin/agendas");
+    expect(entryOf(page, agendas)).toContain(one);
     expect(page).toContain(day);
 
-    await instance.app.views.create({ preselected: [], horizonDays: 2 });
-    page = await get("/admin/views");
-    expect(entryOf(page, views)).toContain(two);
+    await instance.app.agendas.create({ preselected: [], horizonDays: 2 });
+    page = await get("/admin/agendas");
+    expect(entryOf(page, agendas)).toContain(two);
     expect(page).toContain(days);
   });
 

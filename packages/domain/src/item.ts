@@ -1,5 +1,5 @@
 import type { AdminId } from "./admin";
-import type { ViewId } from "./view";
+import type { AgendaId } from "./agenda";
 
 export type ItemId = string & { readonly __brand: "ItemId" };
 
@@ -30,15 +30,13 @@ export type Revision = {
 };
 
 /**
- * Who said it: an Origin; or anyone with a View, or an Admin, who ticked a Task done or took the
- * tick back (decisions in #13). A View's or Admin's id is null once they are removed.
+ * Who said it: an Origin; or anyone with an Agenda, or an Admin, who ticked a Task done or took the
+ * tick back (decisions in #13). An Agenda's or Admin's id is null once they are removed.
  */
 export type RevisionAuthor =
   | { kind: "origin"; originId: OriginId }
-  | { kind: "view"; viewId: ViewId | null }
+  | { kind: "agenda"; agendaId: AgendaId | null }
   | { kind: "admin"; adminId: AdminId | null };
-
-export const revisionAuthorKinds = ["origin", "view", "admin"] as const satisfies readonly RevisionAuthor["kind"][];
 
 /** An Item as its accepted Revisions add up to, before its kind gives the fields a meaning. */
 export type FoldedItem = {
@@ -46,7 +44,7 @@ export type FoldedItem = {
   cancelled: boolean;
   /**
    * When the Item was first stated, as an ISO instant: the source time of its earliest accepted
-   * Revision. Set on a Task, which a View shows on that day when it is done without a Deadline.
+   * Revision. Set on a Task, which an Agenda shows on that day when it is done without a Deadline.
    */
   arrivedAt?: string;
 };

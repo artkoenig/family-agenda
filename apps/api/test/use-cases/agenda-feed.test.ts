@@ -1,6 +1,6 @@
 import type { Origin, PluginRevision } from "@family-agenda/source-sdk";
-import { openViewAccess } from "@family-agenda/application";
-import type { ViewId } from "@family-agenda/domain";
+import { openAgendaAccess } from "@family-agenda/application";
+import type { AgendaId } from "@family-agenda/domain";
 import ICAL from "ical.js";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { icsFeed } from "../../src/http/ics-feed";
@@ -32,9 +32,9 @@ const piano = entry("piano", "create", "2026-09-01T10:00:00Z", {
   place: "Music school",
 });
 
-describe("the ICS feed of a View", () => {
+describe("the ICS feed of an Agenda", () => {
   let instance: TestInstance;
-  let view: ViewId;
+  let agenda: AgendaId;
   beforeEach(async () => {
     // The clock starts on Monday 2026-09-14 at 09:00 in Berlin.
     instance = await bootForTest();
@@ -47,9 +47,9 @@ describe("the ICS feed of a View", () => {
       secrets: {},
     });
     if (!added.ok) throw new Error(`adding failed: ${added.problem}`);
-    const created = await instance.app.views.create({ preselected: [], horizonDays: 3 });
+    const created = await instance.app.agendas.create({ preselected: [], horizonDays: 3 });
     if (!created.ok) throw new Error(`creating failed: ${created.problem}`);
-    view = created.id;
+    agenda = created.id;
   });
   afterEach(async () => {
     await instance.close();
@@ -63,10 +63,10 @@ describe("the ICS feed of a View", () => {
   };
 
   /** The feed's VEVENTs as their main properties, parsed as a calendar app would. */
-  const feed = async (id: ViewId = view) => {
-    const found = await instance.app.views.feed(id, { access: openViewAccess });
+  const feed = async (id: AgendaId = agenda) => {
+    const found = await instance.app.agendas.feed(id, { access: openAgendaAccess });
     if (!found) return null;
-    const text = icsFeed(found, `http://agenda.local/views/${id}`);
+    const text = icsFeed(found, `http://agenda.local/agendas/${id}`);
     const calendar = new ICAL.Component(ICAL.parse(text) as unknown[]);
     return calendar.getAllSubcomponents("vevent").map((vevent) => {
       const start = vevent.getFirstPropertyValue("dtstart") as ICAL.Time;
@@ -84,7 +84,7 @@ describe("the ICS feed of a View", () => {
     });
   };
 
-  it("carries the Family's Events with their time, place and the details of the View", async () => {
+  it("carries the Family's Events with their time, place and the details of the Agenda", async () => {
     await arrive(
       piano,
       entry("trip", "create", "2026-09-01T10:00:00Z", {
@@ -102,7 +102,7 @@ describe("the ICS feed of a View", () => {
         end: "2026-09-15T15:00:00.000Z",
         location: "Music school",
         status: null,
-        description: `Tue 15 Sept, 16:00 – 17:00\nMusic school\n\nhttp://agenda.local/views/${view}`,
+        description: `Tue 15 Sept, 16:00 – 17:00\nMusic school\n\nhttp://agenda.local/agendas/${agenda}`,
       },
       {
         summary: "Class trip",
@@ -110,7 +110,7 @@ describe("the ICS feed of a View", () => {
         end: "2026-09-18",
         location: null,
         status: null,
-        description: `Wed 16 Sept – Thu 17 Sept\n\nhttp://agenda.local/views/${view}`,
+        description: `Wed 16 Sept – Thu 17 Sept\n\nhttp://agenda.local/agendas/${agenda}`,
       },
     ]);
   });
@@ -129,7 +129,7 @@ describe("the ICS feed of a View", () => {
     expect(before?.[0]?.uid).not.toEqual(before?.[1]?.uid);
   });
 
-  it("covers the last 30 days and all of the future, whatever the View's horizon", async () => {
+  it("covers the last 30 days and all of the future, whatever the Agenda's horizon", async () => {
     await arrive(
       entry("late-party", "create", "2026-08-01T10:00:00Z", {
         title: "Party until midnight",
@@ -166,7 +166,7 @@ describe("the ICS feed of a View", () => {
   it("keeps Items concerning the whole Family in a feed filtered to preselected Family Members", async () => {
     const mia = await instance.app.familyMembers.add({ name: "Mia" });
     if (!mia.ok) throw new Error("adding failed");
-    const forMia = await instance.app.views.create({ preselected: [mia.id], horizonDays: 3 });
+    const forMia = await instance.app.agendas.create({ preselected: [mia.id], horizonDays: 3 });
     if (!forMia.ok) throw new Error("creating failed");
     await arrive(piano);
 
@@ -191,10 +191,10 @@ describe("the ICS feed of a View", () => {
     expect((await feed())?.map((event) => event.summary)).toEqual(["Piano lesson"]);
   });
 
-  it("has no feed for an unknown View or one the access policy refuses", async () => {
-    expect(await instance.app.views.feed("00000000-0000-4000-8000-000000000000" as ViewId, { access: openViewAccess })).toBeNull();
+  it("has no feed for an unknown Agenda or one the access policy refuses", async () => {
+    expect(await instance.app.agendas.feed("00000000-0000-4000-8000-000000000000" as AgendaId, { access: openAgendaAccess })).toBeNull();
     const refused = { mayOpen: () => Promise.resolve(false) };
-    expect(await instance.app.views.feed(view, { access: refused })).toBeNull();
+    expect(await instance.app.agendas.feed(agenda, { access: refused })).toBeNull();
   });
 
   it("sends a cancelled Event as cancelled", async () => {
@@ -205,7 +205,7 @@ describe("the ICS feed of a View", () => {
       expect.objectContaining({
         summary: "Piano lesson",
         status: "CANCELLED",
-        description: `Tue 15 Sept, 16:00 – 17:00\nMusic school\nCancelled\n\nhttp://agenda.local/views/${view}`,
+        description: `Tue 15 Sept, 16:00 – 17:00\nMusic school\nCancelled\n\nhttp://agenda.local/agendas/${agenda}`,
       }),
     ]);
   });
