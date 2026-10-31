@@ -199,12 +199,15 @@ export function TaskList(props: { page: TaskListPage }) {
 }
 
 /**
- * An Agenda's sticky top bar, whatever its kind: the clock, the quick filter, a hint that some of it
- * may be out of date, and, as a line along its bottom edge, what the worker is busy with.
+ * An Agenda's sticky top bar, whatever its kind: the clock, the Theme switch, its title if it has
+ * one, a hint that some of it may be out of date, the quick filter, and, as a line along its bottom
+ * edge, what the worker is busy with.
  *
- * On a phone the filter is a row of pills under the clock, and `agendaBar` folds the bar into one
- * line once the page is scrolled, the filter becoming the avatars of those shown, which unfold it
- * again. A wall tablet and a desktop have room for all of it in one row.
+ * On a phone the title, the hint and the filter are rows under the clock, and `agendaBar` folds the
+ * bar into one line once the page is scrolled, the filter becoming the avatars of those shown, which
+ * unfold it again; the title waits for the top, and the hint shrinks to an icon. A wall tablet and
+ * a desktop show the clock, the title and the switch in one row, the hint and a small filter under
+ * them.
  */
 function AgendaBar(props: { page: AgendaPage | TaskListPage; kind?: string }) {
   const { page } = props;
@@ -217,14 +220,12 @@ function AgendaBar(props: { page: AgendaPage | TaskListPage; kind?: string }) {
         <div class="fam-clock">
           {page.now.time} <span class="fam-clock__date">{dateLabel(page.now.date, locale)}</span>
         </div>
-        <div class="fam-bar__notes">
-          {props.kind ? <span class="fam-bar__kind">{props.kind}</span> : null}
-          {page.mayBeOutOfDate ? (
-            <p class="fam-out-of-date" role="status" tabindex={0}>
-              <span class="fam-out-of-date__text">{t.agenda.outOfDate}</span>
-            </p>
-          ) : null}
-        </div>
+        {props.kind ? <h1 class="fam-bar__title">{props.kind}</h1> : null}
+        {page.mayBeOutOfDate ? (
+          <p class="fam-out-of-date" role="status" tabindex={0}>
+            <span class="fam-out-of-date__text">{t.agenda.outOfDate}</span>
+          </p>
+        ) : null}
         {page.choices.length > 1 ? (
           <>
             <button type="button" class="fam-bar__summary" aria-controls="quick-filter" aria-expanded="false" aria-label={t.agenda.quickFilter}>
