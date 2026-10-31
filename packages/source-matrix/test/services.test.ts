@@ -7,9 +7,10 @@ import { fileURLToPath } from "node:url";
 import pg from "pg";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { Services } from "@family-agenda/source-sdk";
-import { matrixServices, type MatrixServicesOptions } from "../src/services";
+import { ensureDatabase, matrixServices, type MatrixServicesOptions } from "../src/services";
 
-const databaseUrl = process.env.TEST_DATABASE_URL ?? "postgres://postgres:postgres@localhost:5432/postgres";
+/** A Postgres server to create Synapse's database on; without one, those tests skip. */
+const databaseUrl = process.env.TEST_DATABASE_URL;
 const fixture = (name: string) => fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url));
 
 async function freePort(): Promise<number> {
@@ -45,33 +46,33 @@ describe("Synapse and the bridges, run by the worker", () => {
   let synapseUrl: string;
   let bridgeUrl: string;
   const lines: string[] = [];
+  /** The databases created for Synapse, with the password its role was given. */
+  let created: { name: string; user: string; password: string }[];
   beforeEach(async () => {
     root = await mkdtemp(join(tmpdir(), "family-agenda-matrix-"));
-    const name = `synapse_test_${randomBytes(4).toString("hex")}`;
     const ports = { synapse: await freePort(), bridges: { whatsapp: await freePort() } };
     synapseUrl = `http://127.0.0.1:${ports.synapse}`;
     bridgeUrl = `http://127.0.0.1:${ports.bridges.whatsapp}`;
-    const database = new URL(databaseUrl);
+    created = [];
     options = {
       programs: { synapse: fixture("fake-synapse.mjs"), bridges: { whatsapp: fixture("fake-bridge.mjs") } },
-      databaseUrl,
+      databaseUrl: "postgres://family_agenda@postgres:5432/family_agenda",
+      ensureDatabase: (database, password) => {
+        created.push({ name: database.name, user: database.user, password });
+        return Promise.resolve();
+      },
       dataDirectory: join(root, "data"),
       instanceFile: join(root, "instance", "instance.json"),
       host: "worker",
       serverName: "family-agenda.local",
       ports,
-      database: { host: database.hostname, port: Number(database.port || 5432), name, user: name },
+      database: { host: "postgres", port: 5432, name: "synapse", user: "synapse" },
       log: (line) => lines.push(line),
     };
     services = matrixServices(options);
   });
   afterEach(async () => {
     await services.stop();
-    const client = new pg.Client({ connectionString: databaseUrl });
-    await client.connect();
-    await client.query(`DROP DATABASE IF EXISTS ${options.database.name}`);
-    await client.query(`DROP ROLE IF EXISTS ${options.database.user}`);
-    await client.end();
     await rm(root, { recursive: true, force: true });
   });
 
@@ -89,14 +90,9 @@ describe("Synapse and the bridges, run by the worker", () => {
     await reconcileUntil(services, whatsapp, () => answers(`${bridgeUrl}/_matrix/mau/live`));
 
     expect(await answers(`${synapseUrl}/health`)).toBe(true);
-    const client = new pg.Client({ connectionString: databaseUrl });
-    await client.connect();
-    const { rows } = await client.query<{ datcollate: string; owner: string }>(
-      "SELECT datcollate, pg_get_userbyid(datdba) AS owner FROM pg_database WHERE datname = $1",
-      [options.database.name],
-    );
-    await client.end();
-    expect(rows).toEqual([{ datcollate: "C", owner: options.database.user }]);
+    const homeserver = await readFile(join(options.dataDirectory, "synapse", "homeserver.yaml"), "utf8");
+    expect(created).toEqual([{ name: "synapse", user: "synapse", password: expect.any(String) as string }]);
+    expect(homeserver).toContain(`password: "${created[0]!.password}"`);
     const instance = JSON.parse(await readFile(options.instanceFile, "utf8")) as { homeserver: { url: string } };
     expect(instance.homeserver.url).toBe(`http://worker:${options.ports.synapse}`);
     expect(JSON.parse(await readFile(join(root, "instance", "status.json"), "utf8"))).toEqual({ problem: null });
@@ -122,12 +118,66 @@ describe("Synapse and the bridges, run by the worker", () => {
   });
 
   it("tells the api container why it cannot set Synapse up", async () => {
-    const broken = matrixServices({ ...options, databaseUrl: `postgres://nobody:wrong@127.0.0.1:${await freePort()}/postgres` });
+    const broken = matrixServices({
+      ...options,
+      ensureDatabase: () => Promise.reject(new Error('password authentication failed for user "family_agenda"')),
+    });
 
     await expect(broken.reconcile(whatsapp)).rejects.toThrow("Matrix could not be set up:");
 
     const status = JSON.parse(await readFile(join(root, "instance", "status.json"), "utf8")) as { problem: string };
-    expect(status.problem).toMatch(/^Matrix could not be set up: /);
+    expect(status.problem).toBe('Matrix could not be set up: password authentication failed for user "family_agenda"');
     await broken.stop();
+  });
+});
+
+describe.skipIf(!databaseUrl)("Synapse's database, on the Instance's Postgres server", () => {
+  const serverUrl = databaseUrl ?? "";
+  const name = `synapse_test_${randomBytes(4).toString("hex")}`;
+  // Where Synapse would connect; ensureDatabase itself only uses the name and the role.
+  const database = { host: "postgres", port: 5432, name, user: name };
+
+  async function query<T extends pg.QueryResultRow>(sql: string, values: unknown[] = []): Promise<T[]> {
+    const client = new pg.Client({ connectionString: serverUrl });
+    await client.connect();
+    try {
+      return (await client.query<T>(sql, values)).rows;
+    } finally {
+      await client.end();
+    }
+  }
+
+  afterEach(async () => {
+    await query(`DROP DATABASE IF EXISTS ${name}`);
+    await query(`DROP ROLE IF EXISTS ${name}`);
+  });
+
+  it("is created with the C collation Synapse needs, owned by a role of its own", async () => {
+    await ensureDatabase(serverUrl, database, "first");
+
+    expect(
+      await query("SELECT datcollate, pg_get_userbyid(datdba) AS owner FROM pg_database WHERE datname = $1", [name]),
+    ).toEqual([{ datcollate: "C", owner: name }]);
+    const login = new pg.Client({ connectionString: serverUrl, user: name, password: "first", database: name });
+    await login.connect();
+    await login.end();
+  });
+
+  it("is kept on a later start, which gives the role the password again", async () => {
+    await ensureDatabase(serverUrl, database, "first");
+    await ensureDatabase(serverUrl, database, "second");
+
+    expect(await query("SELECT 1 FROM pg_database WHERE datname = $1", [name])).toHaveLength(1);
+    const login = new pg.Client({ connectionString: serverUrl, user: name, password: "second", database: name });
+    await login.connect();
+    await login.end();
+  });
+
+  it("cannot be created where Postgres does not let the URL in", async () => {
+    const wrong = new URL(serverUrl);
+    wrong.username = "nobody";
+    wrong.password = "wrong";
+
+    await expect(ensureDatabase(wrong.toString(), database, "first")).rejects.toThrow();
   });
 });

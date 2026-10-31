@@ -26,10 +26,10 @@
     "tsx": "^4.23.15"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.14",
     "@family-agenda/source-matrix": "workspace:*",
-    "@types/pg": "^8.23.1",
     "@types/qrcode": "^1.5.6",
-    "ical.js": "^2.2.1",
-    "pg": "^8.23.1"
+    "drizzle-orm": "^0.45.4",
+    "ical.js": "^2.2.1"
   }
 }
