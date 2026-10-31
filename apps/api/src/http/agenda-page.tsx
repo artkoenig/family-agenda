@@ -84,7 +84,21 @@ document.addEventListener("click", (event) => {
     mark(all, everyone);
   }
 });
-document.body.addEventListener("htmx:afterSettle", syncSummary);
+// A swap brings a new row of pills, which starts at the left again: it goes back to where it was.
+let filterScroll = 0;
+document.addEventListener("scroll", (event) => {
+  if (event.target.classList?.contains("fam-filter")) filterScroll = event.target.scrollLeft;
+}, true);
+document.body.addEventListener("htmx:afterSettle", () => {
+  const filter = document.querySelector(".fam-filter");
+  if (filter) {
+    filter.scrollLeft = filterScroll;
+    // The chosen pill has grown: if it now reaches past the edge, the row scrolls on to show it.
+    const chosen = [...filter.querySelectorAll("[aria-current]")].pop();
+    if (chosen) filter.scrollLeft += Math.max(0, chosen.getBoundingClientRect().right + 28 - filter.getBoundingClientRect().right);
+  }
+  syncSummary();
+});
 fold();
 syncSummary();
 `;
