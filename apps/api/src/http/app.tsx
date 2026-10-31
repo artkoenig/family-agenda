@@ -38,7 +38,7 @@ import {
   AdminsPage,
   FamilyMembersPage,
   FirstAdminPage,
-  LanguagePage,
+  DisplayPage,
   LiveStepProgress,
   LlmEndpointPage,
   MessagePage,
@@ -365,9 +365,9 @@ export function createHttpApp(application: Application, options: HttpOptions) {
       llm: endpoint ? { model: endpoint.model, local: endpoint.local } : null,
       admins: (await admins.listAdmins()).length,
       kitSaved: await recoveryKit.isConfirmed(),
-      language: {
-        family: language.language,
-        ocr: language.ocrLanguages.map((ocr) => ocr.language),
+      family: language.language,
+      ocr: {
+        languages: language.ocrLanguages.map((ocr) => ocr.language),
         missing: language.ocrLanguages.some((ocr) => !ocr.installed),
       },
     };
@@ -840,48 +840,59 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     return c.redirect(sourceTypeHref(source.sourceTypeId), 303);
   });
 
-  const languagePage = async (c: Context<Env>, problem?: string) => {
-    const page = <LanguagePage admin={c.get("admin")} languages={await languages.current()} {...(problem ? { problem } : {})} />;
+  const displayPage = async (c: Context<Env>, problem?: string) => {
+    const page = <DisplayPage admin={c.get("admin")} family={await languages.familyLanguage()} {...(problem ? { problem } : {})} />;
     return render(c, page, problem ? 400 : 200);
   };
 
-  app.get("/admin/language", (c) => languagePage(c));
+  app.get("/admin/display", (c) => displayPage(c));
 
-  app.post("/admin/language", async (c) => {
+  app.post("/admin/display", async (c) => {
     const result = await languages.setLanguage(field(await c.req.parseBody(), "language"));
-    if (!result.ok) return languagePage(c, problemIn(c, result.problem));
-    return c.redirect("/admin/language", 303);
+    if (!result.ok) return displayPage(c, problemIn(c, result.problem));
+    return c.redirect("/admin/display", 303);
   });
+
+  const llmEndpointPage = async (c: Context<Env>, problem?: string) => {
+    const page = (
+      <LlmEndpointPage
+        admin={c.get("admin")}
+        endpoint={await llmEndpoint.current()}
+        languages={await languages.current()}
+        waiting={await extraction.waiting()}
+        {...(problem ? { problem } : {})}
+      />
+    );
+    return render(c, page, problem ? 400 : 200);
+  };
 
   // The OCR languages in Tesseract's notation, `deu+eng`, as each button of the page posts them.
-  app.post("/admin/language/ocr", async (c) => {
+  app.post("/admin/llm/ocr", async (c) => {
     const chosen = field(await c.req.parseBody(), "ocrLanguages").split("+").filter((language) => language !== "");
     const result = await languages.setOcrLanguages(chosen);
-    if (!result.ok) return languagePage(c, problemIn(c, result.problem));
-    return c.redirect("/admin/language", 303);
+    if (!result.ok) return llmEndpointPage(c, problemIn(c, result.problem));
+    return c.redirect("/admin/llm", 303);
   });
 
-  app.post("/admin/language/models", async (c) => {
+  app.post("/admin/llm/models", async (c) => {
     const result = await languages.install(field(await c.req.parseBody(), "language"));
     if (!result.ok) {
       const problem =
         result.problem === "download-failed"
           ? c.get("translation").t.problemsWith.downloadFailed(result.message)
           : problemIn(c, result.problem);
-      return languagePage(c, problem);
+      return llmEndpointPage(c, problem);
     }
-    return c.redirect("/admin/language", 303);
+    return c.redirect("/admin/llm", 303);
   });
 
-  app.post("/admin/language/models/:language/remove", async (c) => {
+  app.post("/admin/llm/models/:language/remove", async (c) => {
     const result = await languages.remove(c.req.param("language"));
-    if (!result.ok) return languagePage(c, problemIn(c, result.problem));
-    return c.redirect("/admin/language", 303);
+    if (!result.ok) return llmEndpointPage(c, problemIn(c, result.problem));
+    return c.redirect("/admin/llm", 303);
   });
 
-  app.get("/admin/llm", async (c) =>
-    render(c, <LlmEndpointPage admin={c.get("admin")} endpoint={await llmEndpoint.current()} waiting={await extraction.waiting()} />),
-  );
+  app.get("/admin/llm", (c) => llmEndpointPage(c));
 
   // Has every message read again with the current prompt and model (ADR-0015).
   app.post("/admin/llm/reread", async (c) => {
@@ -903,6 +914,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
         <LlmEndpointPage
           admin={c.get("admin")}
           endpoint={await llmEndpoint.current()}
+          languages={await languages.current()}
           waiting={await extraction.waiting()}
           entered={entered}
           problem={problemIn(c, result.problem)}

@@ -12,6 +12,7 @@ import type {
   AgendaPage,
 } from "@family-agenda/application";
 import { addDays, daysBetween, type FamilyMemberId, type LocalDate } from "@family-agenda/domain";
+import type { Child } from "hono/jsx";
 import { raw } from "hono/html";
 import type { Catalogue } from "./i18n/en";
 import { useTranslation, type Translation } from "./i18n/translation";
@@ -259,9 +260,62 @@ function AgendaBar(props: { page: AgendaPage | TaskListPage; kind?: string }) {
             </nav>
           </>
         ) : null}
+        <ThemeSwitch />
       </div>
       <ActivityIndicator agendaId={page.id} activity={page.activity} />
     </header>
+  );
+}
+
+/**
+ * The button that steps this browser's Theme through the device's, light and dark (`layout.tsx`
+ * makes it work). It draws all three icons and the stylesheet shows the one of the current mode.
+ */
+function ThemeSwitch() {
+  const { t } = useTranslation();
+  const icon = (mode: string, shapes: Child) => (
+    <svg
+      class={`fam-theme__icon fam-theme__icon--${mode}`}
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="1.9"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+    >
+      {shapes}
+    </svg>
+  );
+  return (
+    <button
+      type="button"
+      class="fam-theme"
+      data-theme-switch
+      data-system={t.agenda.theme.system}
+      data-light={t.agenda.theme.light}
+      data-dark={t.agenda.theme.dark}
+      aria-label={t.agenda.theme.system}
+      title={t.agenda.theme.system}
+    >
+      {icon(
+        "system",
+        <>
+          <circle cx="12" cy="12" r="8.5"></circle>
+          <path d="M12 3.5v17a8.5 8.5 0 0 0 0-17z" fill="currentColor" stroke="none"></path>
+        </>,
+      )}
+      {icon(
+        "light",
+        <>
+          <circle cx="12" cy="12" r="4"></circle>
+          <path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.6 1.6M17.1 17.1l1.6 1.6M18.7 5.3l-1.6 1.6M6.9 17.1l-1.6 1.6"></path>
+        </>,
+      )}
+      {icon("dark", <path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z"></path>)}
+    </button>
   );
 }
 
