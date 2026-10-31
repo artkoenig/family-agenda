@@ -1,0 +1,581 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>View header – compact proposals (mockup)</title>
+<style>
+  /* Tokens copied from apps/api/src/http/design/tokens.css (light and dark). */
+  :root {
+    color-scheme: light;
+    --surface:#faf6f0; --surface-raised:#fffdf9; --surface-sunken:#f1e9de; --surface-bar:#faf6f0e6;
+    --line:#e6dccd; --line-strong:#8c7a66; --ink:#2b221b; --ink-muted:#6b5c4e;
+    --hearth:#bb4f29; --hearth-strong:#a6421d; --hearth-tint:#f8e3d8;
+    --honey:#a8720f; --honey-tint:#fbefd4; --sage:#6f8f63; --sage-tint:#e6eedf;
+    --member-1:#b5502b; --member-2:#557548; --member-4:#2c6b74; --member-5:#8a5e16; --member-8:#6b5846;
+  }
+  [data-theme="dark"] {
+    color-scheme: dark;
+    --surface:#1c1814; --surface-raised:#262019; --surface-sunken:#15120f; --surface-bar:#1c1814e6;
+    --line:#3a3129; --line-strong:#857462; --ink:#f5eee5; --ink-muted:#b8a999;
+    --hearth:#e8875f; --hearth-strong:#f0a07f; --hearth-tint:#3b261c;
+    --honey:#e0ae4e; --honey-tint:#352a17; --sage:#8fb083; --sage-tint:#222b1e;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--surface-sunken); color:var(--ink); padding:20px 16px 48px;
+         font:16px/24px "Atkinson Hyperlegible Next", system-ui, sans-serif; }
+  .wrap { max-width:1560px; margin:0 auto; }
+  h1 { font-size:22px; line-height:28px; margin:0 0 4px; }
+  .lead { color:var(--ink-muted); margin:0 0 14px; max-width:78ch; }
+  .controls { display:flex; flex-wrap:wrap; gap:8px; margin:0 0 24px; }
+  .controls button { font:inherit; font-size:14px; padding:6px 14px; border-radius:999px; cursor:pointer;
+                     border:1px solid var(--line-strong); background:transparent; color:var(--ink); }
+  .controls button[aria-pressed="true"] { background:var(--hearth); border-color:var(--hearth); color:#fff; font-weight:700; }
+  .grid { display:flex; flex-wrap:wrap; gap:28px 24px; align-items:flex-start; }
+  figure { margin:0; width:360px; }
+  figcaption h2 { font-size:16px; line-height:22px; margin:10px 0 2px; color:var(--hearth-strong); }
+  figcaption p { margin:0 0 6px; font-size:14px; line-height:20px; color:var(--ink-muted); }
+  figcaption ul { margin:0; padding-left:18px; font-size:14px; line-height:20px; color:var(--ink-muted); }
+  .h { font-weight:700; color:var(--ink); }
+  .saved { color:var(--sage); font-weight:700; }
+
+  /* ---- Phone ------------------------------------------------------- */
+  .phone { width:360px; height:470px; overflow:hidden; background:var(--surface); border:1px solid var(--line-strong);
+           border-radius:22px; position:relative; box-shadow:0 4px 16px rgba(0,0,0,.12); }
+  .bar { position:relative; background:var(--surface-bar); border-bottom:1px solid var(--line); padding:12px 16px 8px; }
+  .clock { font-weight:800; font-variant-numeric:tabular-nums; letter-spacing:-.01em; }
+  .muted { color:var(--ink-muted); }
+
+  /* Avatars */
+  .av { --sz:48px; width:var(--sz); height:var(--sz); border-radius:50%; flex:none; display:inline-grid; place-items:center;
+        background:var(--c,var(--member-8)); color:#fff; font-weight:700; font-size:calc(var(--sz) * .42); line-height:1; overflow:hidden; }
+  .av.m8 { --c:var(--member-8); } .av.m2 { --c:var(--member-2); }
+  .av.photo { background:repeating-linear-gradient(90deg,#0c3 0 6px,#052 6px 9px), #052; color:transparent; }
+  .av.all { background:
+      radial-gradient(circle at 50% 34%, var(--member-1) 0 12%, transparent 13%),
+      radial-gradient(circle at 33% 63%, var(--member-4) 0 12%, transparent 13%),
+      radial-gradient(circle at 67% 63%, var(--member-5) 0 12%, transparent 13%),
+      var(--surface-sunken); border:1px solid var(--line); color:transparent; }
+
+  /* Filter items share state: .on = selected */
+  .f { position:relative; color:var(--ink-muted); font:inherit; font-weight:600; background:none; border:0; padding:0; cursor:pointer; flex:none; text-align:center; }
+  .f.on { color:var(--ink); }
+  .f::after { content:""; position:absolute; inset:-6px -3px; }               /* 44px touch target without layout cost */
+
+  /* Activity + stale hint: only when switched on */
+  .act, .stale { display:none; }
+  [data-fetch="on"] .act { display:flex; }
+  [data-stale="on"] .stale { display:inline-grid; }
+  .act { align-items:center; gap:8px; color:var(--ink-muted); font-size:14px; line-height:20px; }
+  .spin { flex:none; width:14px; height:14px; border-radius:50%; border:2px solid var(--line); border-top-color:var(--hearth); animation:spin 1s linear infinite; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  .act progress, .meter { width:64px; height:4px; appearance:none; border:0; border-radius:99px; background:var(--line); overflow:hidden; }
+  .act .meter { width:40px; }
+  .vd-scrolled .act .meter { width:22px; }
+  .va .date, .vb .date, .vd-top .date, .vd-scrolled .date { white-space:nowrap; }
+  .vd-scrolled .act { gap:6px; }
+  .meter i { display:block; width:25%; height:100%; background:var(--hearth); }
+  .stale { place-items:center; width:20px; height:20px; border-radius:50%; background:var(--honey-tint); color:var(--honey);
+           border:1px solid var(--honey); font-size:12px; font-weight:800; cursor:pointer; position:relative; padding:0; font-family:inherit; flex:none; }
+  .stale .tip { display:none; position:absolute; top:26px; left:-8px; width:220px; text-align:left; z-index:3;
+                background:var(--surface-raised); color:var(--ink); border:1px solid var(--line-strong); border-radius:10px;
+                padding:8px 10px; font-size:13px; line-height:18px; font-weight:500; box-shadow:0 4px 12px rgba(0,0,0,.18); }
+  .stale:focus .tip, .stale:hover .tip { display:block; }
+  .hairline { position:absolute; left:0; right:0; bottom:-1px; height:2px; background:transparent; display:none; }
+  .hairline i { display:block; width:25%; height:100%; background:var(--hearth); }
+  [data-fetch="on"] .hairline { display:block; }
+
+  /* ---- Fake feed below the bar -------------------------------------- */
+  .feed { padding:12px 16px; }
+  .feed h3 { margin:6px 0 6px; font-size:13px; line-height:16px; text-transform:uppercase; letter-spacing:.06em; color:var(--hearth-strong); }
+  .row { display:grid; grid-template-columns:52px 1fr auto; gap:10px; align-items:center; padding:9px 0; border-bottom:1px solid var(--line); font-size:15px; line-height:20px; }
+  .row b { font-variant-numeric:tabular-nums; }
+  .row .av { --sz:26px; }
+
+  /* ---- 0 · Current -------------------------------------------------- */
+  .v0 .top { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+  .v0 .clock { font-size:30px; line-height:36px; }
+  .v0 .clock small { font-size:16px; font-weight:500; letter-spacing:0; color:var(--ink-muted); margin-left:4px; }
+  .v0 .stale-line { display:none; margin:8px 0 0; font-size:14px; line-height:20px; color:var(--ink-muted); }
+  [data-stale="on"] .v0 .stale-line { display:block; }
+  .v0 .filter { display:flex; gap:12px; overflow-x:auto; padding:4px 2px; scrollbar-width:none; }
+  .v0 .f { display:flex; flex-direction:column; align-items:center; gap:8px; min-width:64px; font-size:13px; line-height:16px; padding:8px 4px 4px; }
+  .v0 .f .av { box-shadow:0 0 0 3px var(--surface); }
+  .v0 .f.on .av { box-shadow:0 0 0 3px var(--surface), 0 0 0 6px var(--ink); }
+  .v0 .f::after { display:none; }
+
+  /* ---- A · Pills ---------------------------------------------------- */
+  .va { padding-bottom:10px; }
+  .va .top { display:flex; align-items:center; gap:8px; height:36px; }
+  .va .clock { font-size:26px; line-height:30px; }
+  .va .date { font-size:14px; line-height:18px; color:var(--ink-muted); font-weight:500; }
+  .va .grow { flex:1; }
+  .va .filter { display:flex; gap:6px; overflow-x:auto; margin:6px -16px 0; padding:0 16px; scrollbar-width:none;
+                -webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 28px),transparent); mask-image:linear-gradient(90deg,#000 calc(100% - 28px),transparent); }
+  .va .f { display:flex; align-items:center; gap:7px; height:36px; padding:0 12px 0 4px; border:1px solid var(--line); border-radius:99px; font-size:14px; }
+  .va .f.on { border-color:var(--ink); background:var(--surface-raised); }
+  .va .f .av { --sz:28px; }
+
+  /* ---- B · Names on the selected only ------------------------------- */
+  .vb { padding-bottom:10px; }
+  .vb .top { display:flex; align-items:center; gap:8px; height:34px; }
+  .vb .clock { font-size:26px; line-height:30px; }
+  .vb .date { font-size:14px; line-height:18px; color:var(--ink-muted); font-weight:500; }
+  .vb .grow { flex:1; }
+  .vb .filter { display:flex; gap:8px; margin-top:8px; align-items:center; }
+  .vb .f { display:flex; align-items:center; gap:6px; height:32px; border-radius:99px; font-size:14px; }
+  .vb .f .av { --sz:32px; }
+  .vb .f .nm { display:none; padding-right:10px; }
+  .vb .f.on { background:var(--surface-raised); box-shadow:0 0 0 2px var(--ink); margin:0 2px; }
+  .vb .f.on .nm { display:inline; }
+
+  /* ---- C · One row -------------------------------------------------- */
+  .vc { padding:8px 16px 9px; }
+  .vc .top { display:flex; align-items:center; gap:10px; height:44px; }
+  .vc .when { display:flex; flex-direction:column; justify-content:center; min-width:0; }
+  .vc .clock { font-size:26px; line-height:28px; }
+  .vc .date { font-size:12px; line-height:15px; color:var(--ink-muted); font-weight:600; white-space:nowrap; }
+  .vc .grow { flex:1; }
+  .vc .filter { display:flex; gap:7px; padding:0 3px; }
+  .vc .f .av { --sz:36px; box-shadow:0 0 0 2px var(--surface); }
+  .vc .f.on .av { box-shadow:0 0 0 2px var(--surface), 0 0 0 4px var(--ink); }
+  .vc .f:not(.on) .av { opacity:.55; }
+  .vc .f.on .av { opacity:1; }
+  .vc .f .nm { display:none; }
+  .vc .stale { position:static; }
+  .vc .stale .tip { top:50px; left:16px; }
+
+  /* ---- D · Collapses on scroll ------------------------------------- */
+  .vd-top { padding-bottom:10px; }                       /* at the top of the page: same as A */
+  .vd-top .top { display:flex; align-items:center; gap:8px; height:36px; }
+  .vd-top .clock { font-size:26px; line-height:30px; }
+  .vd-top .date { font-size:14px; line-height:18px; color:var(--ink-muted); font-weight:500; }
+  .vd-top .grow { flex:1; }
+  .vd-top .filter { display:flex; gap:6px; overflow-x:auto; margin:6px -16px 0; padding:0 16px; scrollbar-width:none;
+                    -webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 28px),transparent); mask-image:linear-gradient(90deg,#000 calc(100% - 28px),transparent); }
+  .vd-top .f { display:flex; align-items:center; gap:7px; height:36px; padding:0 12px 0 4px; border:1px solid var(--line); border-radius:99px; font-size:14px; }
+  .vd-top .f.on { border-color:var(--ink); background:var(--surface-raised); }
+  .vd-top .f .av { --sz:28px; }
+  .vd-top .f .nm { display:inline; }
+
+  .vd-scrolled { padding:8px 16px; }
+  .vd-scrolled .top { display:flex; align-items:center; gap:8px; height:32px; }
+  .vd-scrolled .clock { font-size:22px; line-height:26px; }
+  .vd-scrolled .date { font-size:12px; color:var(--ink-muted); font-weight:500; }
+  .vd-scrolled .grow { flex:1; }
+  .vd-scrolled .stack { margin-left:6px; display:flex; align-items:center; background:none; border:0; padding:0; cursor:pointer; color:var(--ink-muted); }
+  .vd-scrolled .stack .av { --sz:28px; box-shadow:0 0 0 2px var(--surface); }
+  .vd-scrolled .stack .av + .av { margin-left:-8px; }
+  .vd-scrolled .stack .chev { margin-left:6px; width:20px; font-size:12px; text-align:center; }
+  .vd-scrolled .stack .s { display:none; } .vd-scrolled .stack .s.on { display:inline-grid; }
+  .vd-scrolled .filter { display:none; gap:6px; overflow-x:auto; margin:8px -16px 0; padding:0 16px 2px; scrollbar-width:none; }
+  .vd-scrolled.open .filter { display:flex; }
+  .vd-scrolled .f { display:flex; align-items:center; gap:7px; height:36px; padding:0 12px 0 4px; border:1px solid var(--line); border-radius:99px; font-size:14px; }
+  .vd-scrolled .f.on { border-color:var(--ink); background:var(--surface-raised); }
+  .vd-scrolled .f .av { --sz:28px; }
+  .vd-scrolled .stale { margin-left:2px; }
+
+  /* ---- Desktop / wall tablet (>= 1000 px) ---------------------------- */
+  .sec { font-size:18px; line-height:24px; margin:40px 0 4px; }
+  figure.wide { width:1000px; max-width:100%; }
+  .screen { width:1000px; max-width:100%; height:430px; overflow:hidden; background:var(--surface); border:1px solid var(--line-strong);
+            border-radius:14px; box-shadow:0 4px 16px rgba(0,0,0,.12); font-size:19px; line-height:28px; }
+  .screen .feed { max-width:852px; margin:0 auto; padding:14px 16px; }
+  .screen .feed h3 { font-size:14px; }
+  .screen .row { grid-template-columns:90px 1fr auto; font-size:19px; line-height:28px; padding:10px 0; }
+  .screen .row .av { --sz:32px; }
+  .screen .bar > .inner { max-width:820px; margin:0 auto; }
+
+  .d0 .bar { padding:12px 16px 8px; }
+  .d0 .top { display:flex; align-items:center; justify-content:space-between; }
+  .d0 .clock { font-size:44px; line-height:48px; }
+  .d0 .clock small { font-size:19px; font-weight:500; letter-spacing:0; color:var(--ink-muted); margin-left:6px; }
+  .d0 .stale-line { display:none; margin:8px 0 0; font-size:16px; line-height:22px; color:var(--ink-muted); }
+  [data-stale="on"] .d0 .stale-line { display:block; }
+  .d0 .filter { display:flex; gap:12px; padding:4px 2px; }
+  .d0 .f { display:flex; flex-direction:column; align-items:center; gap:8px; min-width:64px; font-size:14px; line-height:16px; padding:8px 4px 4px; }
+  .d0 .f .av { --sz:64px; font-size:26px; box-shadow:0 0 0 3px var(--surface); }
+  .d0 .f.on .av { box-shadow:0 0 0 3px var(--surface), 0 0 0 6px var(--ink); }
+  .d0 .f::after { display:none; }
+
+  .de .bar { padding:10px 16px 11px; }
+  .de .row-main { display:flex; align-items:center; gap:20px; min-height:48px; }
+  .de .when { display:flex; flex-direction:column; justify-content:center; }
+  .de .when .l1 { display:flex; align-items:baseline; gap:12px; white-space:nowrap; }
+  .de .clock { font-size:40px; line-height:44px; }
+  .de .date { font-size:18px; line-height:24px; color:var(--ink-muted); font-weight:500; }
+  .de .stale-text { display:none; margin:0; font-size:13px; line-height:18px; white-space:nowrap; color:var(--honey); font-weight:700; }
+  [data-stale="on"] .de .stale-text { display:block; }
+  .de .grow { flex:1; }
+  .de .filter { display:flex; gap:8px; }
+  .de .f { display:flex; align-items:center; gap:9px; height:48px; padding:0 16px 0 5px; border:1px solid var(--line); border-radius:99px; font-size:17px; }
+  .de .f.on { border-color:var(--ink); background:var(--surface-raised); box-shadow:0 0 0 1px var(--ink); }
+  .de .f .av { --sz:38px; }
+  .de .f::after { inset:-4px -2px; }
+  .de .f:hover { background:var(--hearth-tint); }
+</style>
+</head>
+<body data-fetch="off" data-stale="off">
+<div class="wrap">
+  <h1>View header – compact proposals</h1>
+  <p class="lead">Goal: a much shorter sticky bar on phones. The wall tablet (≥ 1000 px) keeps today's large bar; only the narrow layout changes. Tap the avatars to change the filter; use the switches to see the busy and stale states. Heights are measured live, against today's bar in the same state. Touch targets stay 44 px: every filter item has an invisible hit area around it.</p>
+  <div class="controls" role="group" aria-label="Preview state">
+    <button id="t-fetch" aria-pressed="false">Sources being fetched</button>
+    <button id="t-stale" aria-pressed="false">May be out of date</button>
+    <button id="t-theme" aria-pressed="false">Dark theme</button>
+  </div>
+
+  <div class="grid">
+
+    <!-- 0 · Current ------------------------------------------------------ -->
+    <figure>
+      <div class="phone v0">
+        <header class="bar">
+          <div class="top">
+            <div class="clock">09:45 <small>Sa., 31. Okt.</small></div>
+            <div class="act"><span class="spin"></span><span>Quellen werden abgerufen 1/4</span><span class="meter"><i></i></span></div>
+          </div>
+          <p class="stale-line">Manches hier ist vielleicht nicht aktuell.</p>
+          <nav class="filter" aria-label="Quick filter">
+            <button class="f" data-m="all"><span class="av all"></span>Alle</button>
+            <button class="f" data-m="valentin"><span class="av m8">V</span>Valentin</button>
+            <button class="f" data-m="veronika"><span class="av m2">V</span>Veronika</button>
+            <button class="f" data-m="papa"><span class="av photo">P</span>Papa</button>
+          </nav>
+        </header>
+        <div class="feed" data-feed="top"></div>
+      </div>
+      <figcaption>
+        <h2>0 · Current</h2>
+        <p>Reference. Bar height: <span class="h" data-h></span></p>
+        <ul><li>Status line and activity push the bar even taller when they appear</li><li>48 px avatars plus a label row cost the most space</li></ul>
+      </figcaption>
+    </figure>
+
+    <!-- A · Pills -------------------------------------------------------- -->
+    <figure>
+      <div class="phone va">
+        <header class="bar va">
+          <div class="top">
+            <span class="clock">09:45</span><span class="date">Sa., 31. Okt.</span>
+            <span class="grow"></span>
+            <button class="stale" aria-label="Manches hier ist vielleicht nicht aktuell.">!<span class="tip">Manches hier ist vielleicht nicht aktuell.</span></button>
+            <div class="act" title="Quellen werden abgerufen"><span class="spin"></span><span>1/4</span><span class="meter"><i></i></span></div>
+          </div>
+          <nav class="filter" aria-label="Quick filter">
+            <button class="f" data-m="all"><span class="av all"></span>Alle</button>
+            <button class="f" data-m="valentin"><span class="av m8">V</span>Valentin</button>
+            <button class="f" data-m="veronika"><span class="av m2">V</span>Veronika</button>
+            <button class="f" data-m="papa"><span class="av photo">P</span>Papa</button>
+          </nav>
+        </header>
+        <div class="feed" data-feed="top"></div>
+      </div>
+      <figcaption>
+        <h2>A · Name pills</h2>
+        <p>Bar height: <span class="h" data-h></span> <span class="saved" data-saved></span></p>
+        <ul><li>Smaller clock; the date sits next to it instead of wrapping</li><li>Filter becomes one row of pills (28 px avatar + name), scrolls sideways with a fade cue</li><li>Status line shrinks to a “!” that explains itself on tap; activity keeps spinner, 1/4 and a short progress bar</li><li>Names stay visible, so the two V avatars remain distinguishable</li></ul>
+      </figcaption>
+    </figure>
+
+    <!-- B · Names on selected ------------------------------------------- -->
+    <figure>
+      <div class="phone vb">
+        <header class="bar vb">
+          <div class="top">
+            <span class="clock">09:45</span><span class="date">Sa., 31. Okt.</span>
+            <span class="grow"></span>
+            <button class="stale" aria-label="Manches hier ist vielleicht nicht aktuell.">!<span class="tip">Manches hier ist vielleicht nicht aktuell.</span></button>
+            <div class="act" title="Quellen werden abgerufen"><span class="spin"></span><span>1/4</span><span class="meter"><i></i></span></div>
+          </div>
+          <nav class="filter" aria-label="Quick filter">
+            <button class="f" data-m="all"><span class="av all"></span><span class="nm">Alle</span></button>
+            <button class="f" data-m="valentin"><span class="av m8">V</span><span class="nm">Valentin</span></button>
+            <button class="f" data-m="veronika"><span class="av m2">V</span><span class="nm">Veronika</span></button>
+            <button class="f" data-m="papa"><span class="av photo">P</span><span class="nm">Papa</span></button>
+          </nav>
+        </header>
+        <div class="feed" data-feed="top"></div>
+      </div>
+      <figcaption>
+        <h2>B · Names only on the selected</h2>
+        <p>Bar height: <span class="h" data-h></span> <span class="saved" data-saved></span></p>
+        <ul><li>Unselected members are bare 32 px avatars; selected ones expand into a ringed pill with their name</li><li>The selection reads at a glance and the row still fits four members without scrolling</li><li>The unselected ones are recognisable by colour or photo, less so by initial (V / V)</li></ul>
+      </figcaption>
+    </figure>
+
+    <!-- C · One row ------------------------------------------------------ -->
+    <figure>
+      <div class="phone vc">
+        <header class="bar vc">
+          <div class="top">
+            <div class="when"><span class="clock">09:45</span><span class="date">Sa., 31. Okt.</span></div>
+            <button class="stale" aria-label="Manches hier ist vielleicht nicht aktuell.">!<span class="tip">Manches hier ist vielleicht nicht aktuell.</span></button>
+            <span class="grow"></span>
+            <nav class="filter" aria-label="Quick filter">
+              <button class="f" data-m="all" title="Alle"><span class="av all"></span><span class="nm">Alle</span></button>
+              <button class="f" data-m="valentin" title="Valentin"><span class="av m8">V</span><span class="nm">Valentin</span></button>
+              <button class="f" data-m="veronika" title="Veronika"><span class="av m2">V</span><span class="nm">Veronika</span></button>
+              <button class="f" data-m="papa" title="Papa"><span class="av photo">P</span><span class="nm">Papa</span></button>
+            </nav>
+          </div>
+          <div class="hairline"><i></i></div>
+        </header>
+        <div class="feed" data-feed="top"></div>
+      </div>
+      <figcaption>
+        <h2>C · Everything in one row</h2>
+        <p>Bar height: <span class="h" data-h></span> <span class="saved" data-saved></span></p>
+        <ul><li>Clock with the date beneath it on the left, avatars on the right; no labels</li><li>Activity becomes a 2 px progress line along the bottom edge of the bar</li><li>Trade-off: names are gone (long-press / tooltip only), and with the two V avatars you tell Valentin and Veronika apart by colour alone. Needs a photo or a distinct colour per member</li><li>More than ~5 members would need to scroll</li></ul>
+      </figcaption>
+    </figure>
+
+    <!-- D · Collapses on scroll ----------------------------------------- -->
+    <figure>
+      <div class="phone vd-top">
+        <header class="bar vd-top">
+          <div class="top">
+            <span class="clock">09:45</span><span class="date">Sa., 31. Okt.</span>
+            <span class="grow"></span>
+            <button class="stale" aria-label="Manches hier ist vielleicht nicht aktuell.">!<span class="tip">Manches hier ist vielleicht nicht aktuell.</span></button>
+            <div class="act" title="Quellen werden abgerufen"><span class="spin"></span><span>1/4</span><span class="meter"><i></i></span></div>
+          </div>
+          <nav class="filter" aria-label="Quick filter">
+            <button class="f" data-m="all"><span class="av all"></span><span class="nm">Alle</span></button>
+            <button class="f" data-m="valentin"><span class="av m8">V</span><span class="nm">Valentin</span></button>
+            <button class="f" data-m="veronika"><span class="av m2">V</span><span class="nm">Veronika</span></button>
+            <button class="f" data-m="papa"><span class="av photo">P</span><span class="nm">Papa</span></button>
+          </nav>
+        </header>
+        <div class="feed" data-feed="top"></div>
+      </div>
+      <figcaption>
+        <h2>D · Collapses on scroll (1/2: at the top)</h2>
+        <p>Bar height: <span class="h" data-h></span> <span class="saved" data-saved></span></p>
+        <ul><li>Same as A while the page is at the top</li><li>Once the family scrolls down, the filter folds away (next phone)</li></ul>
+      </figcaption>
+    </figure>
+
+    <figure>
+      <div class="phone">
+        <header class="bar vd-scrolled" id="d-scrolled">
+          <div class="top">
+            <span class="clock">09:45</span><span class="date">Sa., 31. Okt.</span>
+            <span class="grow"></span>
+            <button class="stale" aria-label="Manches hier ist vielleicht nicht aktuell.">!<span class="tip">Manches hier ist vielleicht nicht aktuell.</span></button>
+            <div class="act" title="Quellen werden abgerufen"><span class="spin"></span><span>1/4</span><span class="meter"><i></i></span></div>
+            <button class="stack" id="d-toggle" aria-expanded="false" aria-label="Filter">
+              <span class="av all s" data-m="all"></span>
+              <span class="av m8 s" data-m="valentin">V</span>
+              <span class="av m2 s" data-m="veronika">V</span>
+              <span class="av photo s" data-m="papa">P</span>
+              <span class="chev">▾</span>
+            </button>
+          </div>
+          <nav class="filter" aria-label="Quick filter">
+            <button class="f" data-m="all"><span class="av all"></span>Alle</button>
+            <button class="f" data-m="valentin"><span class="av m8">V</span>Valentin</button>
+            <button class="f" data-m="veronika"><span class="av m2">V</span>Veronika</button>
+            <button class="f" data-m="papa"><span class="av photo">P</span>Papa</button>
+          </nav>
+        </header>
+        <div class="feed" data-feed="scrolled"></div>
+      </div>
+      <figcaption>
+        <h2>D · Collapses on scroll (2/2: scrolled)</h2>
+        <p>Bar height: <span class="h" data-h></span> <span class="saved" data-saved></span> — tap the avatars to unfold the filter again.</p>
+        <ul><li>One 48 px line: clock, date, and a stack of the avatars currently shown (all dots when nobody is picked)</li><li>Always shows who the view is filtered to, which C cannot</li><li>Needs a few lines of scroll-direction JS; the rest is CSS</li></ul>
+      </figcaption>
+    </figure>
+
+    <figure>
+      <div class="phone vd-top e">
+        <header class="bar vd-top">
+          <div class="top">
+            <span class="clock">09:45</span><span class="date">Sa., 31. Okt.</span>
+            <span class="grow"></span>
+            <button class="stale" aria-label="Manches hier ist vielleicht nicht aktuell.">!<span class="tip">Manches hier ist vielleicht nicht aktuell.</span></button>
+          </div>
+          <nav class="filter" aria-label="Quick filter">
+            <button class="f" data-m="all"><span class="av all"></span><span class="nm">Alle</span></button>
+            <button class="f" data-m="valentin"><span class="av m8">V</span><span class="nm">Valentin</span></button>
+            <button class="f" data-m="veronika"><span class="av m2">V</span><span class="nm">Veronika</span></button>
+            <button class="f" data-m="papa"><span class="av photo">P</span><span class="nm">Papa</span></button>
+          </nav>
+          <div class="hairline"><i></i></div>
+        </header>
+        <div class="feed" data-feed="top"></div>
+      </div>
+      <figcaption>
+        <h2>E · D with C's progress line (1/2: at the top)</h2>
+        <p>Bar height: <span class="h" data-h></span> <span class="saved" data-saved></span></p>
+        <ul><li>Same as D at the top, but without the spinner, “1/4” and mini bar</li><li>While sources are fetched, a 2 px line fills along the bottom edge of the bar, as in C</li></ul>
+      </figcaption>
+    </figure>
+
+    <figure>
+      <div class="phone">
+        <header class="bar vd-scrolled" id="e-scrolled">
+          <div class="top">
+            <span class="clock">09:45</span><span class="date">Sa., 31. Okt.</span>
+            <span class="grow"></span>
+            <button class="stale" aria-label="Manches hier ist vielleicht nicht aktuell.">!<span class="tip">Manches hier ist vielleicht nicht aktuell.</span></button>
+            <button class="stack" id="e-toggle" aria-expanded="false" aria-label="Filter">
+              <span class="av all s" data-m="all"></span>
+              <span class="av m8 s" data-m="valentin">V</span>
+              <span class="av m2 s" data-m="veronika">V</span>
+              <span class="av photo s" data-m="papa">P</span>
+              <span class="chev">▾</span>
+            </button>
+          </div>
+          <nav class="filter" aria-label="Quick filter">
+            <button class="f" data-m="all"><span class="av all"></span>Alle</button>
+            <button class="f" data-m="valentin"><span class="av m8">V</span>Valentin</button>
+            <button class="f" data-m="veronika"><span class="av m2">V</span>Veronika</button>
+            <button class="f" data-m="papa"><span class="av photo">P</span>Papa</button>
+          </nav>
+          <div class="hairline"><i></i></div>
+        </header>
+        <div class="feed" data-feed="scrolled"></div>
+      </div>
+      <figcaption>
+        <h2>E · D with C's progress line (2/2: scrolled)</h2>
+        <p>Bar height: <span class="h" data-h></span> <span class="saved" data-saved></span> — tap the avatars to unfold the filter again.</p>
+        <ul><li>Clock, date, selection stack and the same 2 px line; the line is the only busy signal here, which frees the space the spinner took</li><li>Trade-off: no “1/4” count and no spinner, so a stalled fetch looks the same as a slow one</li></ul>
+      </figcaption>
+    </figure>
+
+  </div>
+
+  <h2 class="sec">Desktop and wall tablet (≥ 1000 px)</h2>
+  <p class="lead">Variant E on a wide screen. There is room, so nothing collapses: the bar is a single row with the clock and the full-width name pills, and it keeps the wall tablet's larger type. The activity stays the 2 px line along the bottom edge (full screen width here).</p>
+  <div class="grid wide">
+
+    <figure class="wide" data-base=".d0">
+      <div class="screen d0">
+        <header class="bar">
+          <div class="inner">
+            <div class="top">
+              <div class="clock">09:45 <small>Sa., 31. Okt.</small></div>
+              <div class="act"><span class="spin"></span><span>Quellen werden abgerufen 1/4</span><span class="meter"><i></i></span></div>
+            </div>
+            <p class="stale-line">Manches hier ist vielleicht nicht aktuell.</p>
+            <nav class="filter" aria-label="Quick filter">
+              <button class="f" data-m="all"><span class="av all"></span>Alle</button>
+              <button class="f" data-m="valentin"><span class="av m8">V</span>Valentin</button>
+              <button class="f" data-m="veronika"><span class="av m2">V</span>Veronika</button>
+              <button class="f" data-m="papa"><span class="av photo">P</span>Papa</button>
+            </nav>
+          </div>
+        </header>
+        <div class="feed" data-feed="top"></div>
+      </div>
+      <figcaption>
+        <h2>0 · Current (wall tablet)</h2>
+        <p>Reference. Bar height: <span class="h" data-h></span></p>
+      </figcaption>
+    </figure>
+
+    <figure class="wide" data-base=".d0">
+      <div class="screen de">
+        <header class="bar">
+          <div class="inner">
+            <div class="row-main">
+              <div class="when">
+                <div class="l1"><span class="clock">09:45</span><span class="date">Sa., 31. Okt.</span></div>
+                <p class="stale-text" role="status">Manches hier ist vielleicht nicht aktuell.</p>
+              </div>
+              <span class="grow"></span>
+              <nav class="filter" aria-label="Quick filter">
+                <button class="f" data-m="all"><span class="av all"></span>Alle</button>
+              <button class="f" data-m="valentin"><span class="av m8">V</span>Valentin</button>
+              <button class="f" data-m="veronika"><span class="av m2">V</span>Veronika</button>
+              <button class="f" data-m="papa"><span class="av photo">P</span>Papa</button>
+              </nav>
+            </div>
+          </div>
+          <div class="hairline"><i></i></div>
+        </header>
+        <div class="feed" data-feed="top"></div>
+      </div>
+      <figcaption>
+        <h2>E · Desktop</h2>
+        <p>Bar height: <span class="h" data-h></span> <span class="saved" data-saved></span></p>
+        <ul><li>One row: clock and date left, name pills right; larger type as on today’s wall tablet, no scroll-collapse needed</li><li>The “may be out of date” hint is written out under the clock instead of hiding behind a “!”: a wall tablet has no hover or tap, and it is the one place where nobody asks</li><li>Only while the hint is shown does the bar grow by one line (switch it on to see it)</li><li>Activity is the 2 px line along the bottom edge, as on the phone; it can run the full screen width</li></ul>
+      </figcaption>
+    </figure>
+
+  </div>
+</div>
+
+<script>
+  const body = document.body;
+  const state = new Set(["valentin", "veronika"]);
+
+  // Same fake feed in every phone, so that the visible amount of content can be compared.
+  const rows = [
+    ["08:00", "Schule: Mathe, Deutsch", "valentin", "m8", "V"],
+    ["10:30", "Zahnarzt", "veronika", "m2", "V"],
+    ["15:30", "Fußballtraining", "valentin", "m8", "V"],
+    ["17:00", "Elternabend Kita", "papa", "photo", "P"],
+    ["18:30", "Abendessen bei Oma", "all", "all", ""],
+    ["20:00", "Müll rausstellen", "papa", "photo", "P"],
+    ["09:00", "Schwimmkurs", "veronika", "m2", "V"],
+    ["11:00", "Wocheneinkauf", "all", "all", ""],
+  ];
+  const feedHtml = (heading, from) => `<h3>${heading}</h3>` + rows.slice(from).map(r =>
+    `<div class="row"><b>${r[0]}</b><span>${r[1]}</span><span class="av ${r[3]}">${r[4]}</span></div>`).join("");
+  document.querySelectorAll("[data-feed]").forEach(el => {
+    el.innerHTML = el.dataset.feed === "top" ? feedHtml("Heute", 0) : feedHtml("Morgen", 5);
+  });
+
+  function measure() {
+    document.querySelectorAll("figure").forEach(fig => {
+      const base = document.querySelector((fig.dataset.base || ".v0") + " .bar").offsetHeight;
+      const bar = fig.querySelector(".bar");
+      fig.querySelector("[data-h]").textContent = bar.offsetHeight + " px";
+      const saved = fig.querySelector("[data-saved]");
+      if (saved) saved.textContent = "(−" + Math.round((1 - bar.offsetHeight / base) * 100) + " %)";
+    });
+  }
+  function render() {
+    document.querySelectorAll("[data-m]").forEach(el => {
+      const m = el.dataset.m;
+      const on = m === "all" ? state.size === 0 : state.has(m);
+      el.classList.toggle("on", on);
+      if (el.tagName === "BUTTON") el.setAttribute("aria-pressed", on);
+    });
+    requestAnimationFrame(measure);
+  }
+  document.addEventListener("click", e => {
+    const f = e.target.closest("button.f[data-m]");
+    if (!f) return;
+    const m = f.dataset.m;
+    if (m === "all") state.clear(); else state.has(m) ? state.delete(m) : state.add(m);
+    render();
+  });
+  document.querySelectorAll(".stack").forEach(btn => btn.addEventListener("click", () => {
+    const open = btn.closest(".bar").classList.toggle("open");
+    btn.setAttribute("aria-expanded", open);
+    requestAnimationFrame(measure);
+  }));
+
+  function toggle(id, apply) {
+    const b = document.getElementById(id);
+    b.addEventListener("click", () => {
+      const on = b.getAttribute("aria-pressed") !== "true";
+      b.setAttribute("aria-pressed", on);
+      apply(on);
+      requestAnimationFrame(measure);
+    });
+  }
+  toggle("t-fetch", on => body.dataset.fetch = on ? "on" : "off");
+  toggle("t-stale", on => body.dataset.stale = on ? "on" : "off");
+  toggle("t-theme", on => document.documentElement.dataset.theme = on ? "dark" : "light");
+  if (matchMedia("(prefers-color-scheme: dark)").matches) document.getElementById("t-theme").click();
+
+  render();
+  if (document.fonts) document.fonts.ready.then(measure);
+</script>
+</body>
+</html>

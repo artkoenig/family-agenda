@@ -120,7 +120,8 @@ describe("Source health in the Admin area and on Views", () => {
     const created = await instance.app.views.create({ preselected: [], horizonDays: 7 });
     if (!created.ok) throw new Error("creating failed");
     const view = async () => (await instance.get(`/views/${created.id}`)).text();
-    const line = '<p class="fam-out-of-date" role="status">Some of this may be out of date.</p>';
+    const line =
+      '<p class="fam-out-of-date" role="status" tabindex="0"><span class="fam-out-of-date__text">Some of this may be out of date.</span></p>';
     expect(await view()).not.toContain(line);
 
     testPluginControls.failNext("calendar", "definite");
