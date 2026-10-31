@@ -80,8 +80,15 @@ const packageVersion = (
   JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as { version: string }
 ).version;
 
-export type ApplicationConfig = {
-  databaseUrl: string;
+/** Where the Instance keeps its data: a Postgres server, or a connection made some other way. */
+export type DatabaseConfig =
+  | { databaseUrl: string }
+  | {
+      /** Connects to Postgres in place of `databaseUrl`, such as to one in-process; called on every boot. */
+      connectDatabase: () => PostgresConnection;
+    };
+
+export type ApplicationConfig = DatabaseConfig & {
   /** Where the master key is kept, outside Postgres; created on first start. */
   masterKeyFile: string;
   /** Where files such as photos are kept, outside Postgres. */
@@ -142,7 +149,7 @@ export type Application = {
 
 /** Wires the use cases to their adapters. Shared by `api`, `worker` and the CLI. */
 export async function bootApplication(config: ApplicationConfig): Promise<Application> {
-  const postgres = connectPostgres(config.databaseUrl);
+  const postgres = "connectDatabase" in config ? config.connectDatabase() : connectPostgres(config.databaseUrl);
   let masterKey: Buffer;
   try {
     await runMigrations(postgres);
@@ -318,7 +325,7 @@ async function loadMasterKey(postgres: PostgresConnection, file: string): Promis
 export type Worker = Application & { jobs: JobQueue };
 
 /** The same Application, plus the job queue whose jobs the worker runs. */
-export async function bootWorker(config: ApplicationConfig): Promise<Worker> {
+export async function bootWorker(config: ApplicationConfig & { databaseUrl: string }): Promise<Worker> {
   const application = await bootApplication(config);
   const jobs = new PgBossJobQueue(config.databaseUrl);
   await jobs.start();

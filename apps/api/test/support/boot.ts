@@ -1,16 +1,12 @@
-import { randomBytes } from "node:crypto";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { TessdataCatalog } from "@family-agenda/adapters";
 import type { BlobStore, Extractor, SecretStore, TextExtractor } from "@family-agenda/application";
-import pg from "pg";
 import { bootApplication, type Application, type ApplicationConfig } from "../../src/composition-root";
 import { FakeClock } from "./fake-clock";
+import { acquirePostgres } from "./in-process-postgres";
 import { writeTestPluginPackage, type TestPluginPackage } from "./test-source-plugin";
-
-const serverUrl =
-  process.env.TEST_DATABASE_URL ?? "postgres://postgres:postgres@localhost:5432/postgres";
 
 export type TestOptions = {
   /** Replaces the envelope-encrypting SecretStore, such as with an `InMemorySecretStore`. */
@@ -51,14 +47,11 @@ export type TestInstance = {
 };
 
 /**
- * Boots the application through the real composition root against a throwaway
- * Postgres database and master key file, with a controllable Clock.
+ * Boots the application through the real composition root against a throwaway in-process
+ * Postgres database (PGlite, no server needed) and master key file, with a controllable Clock.
  */
 export async function bootForTest(options: TestOptions = {}): Promise<TestInstance> {
-  const databaseName = `family_agenda_test_${randomBytes(6).toString("hex")}`;
-  await withServer((client) => client.query(`CREATE DATABASE ${databaseName}`));
-  const databaseUrl = new URL(serverUrl);
-  databaseUrl.pathname = `/${databaseName}`;
+  const postgres = await acquirePostgres();
   const keyDirectory = await mkdtemp(join(tmpdir(), "family-agenda-test-"));
 
   const workspacePackages = join(keyDirectory, "packages");
@@ -76,7 +69,7 @@ export async function bootForTest(options: TestOptions = {}): Promise<TestInstan
 
   const clock = new FakeClock(new Date("2026-09-14T07:00:00Z"));
   let config: ApplicationConfig = {
-    databaseUrl: databaseUrl.toString(),
+    connectDatabase: () => postgres.connect(),
     masterKeyFile: join(keyDirectory, "master.key"),
     blobDirectory: join(keyDirectory, "blobs"),
     workspacePackages,
@@ -96,15 +89,7 @@ export async function bootForTest(options: TestOptions = {}): Promise<TestInstan
     workspacePackages,
     pluginDirectory,
     tessdataDirectory: config.tessdataDirectory,
-    async query(sql) {
-      const client = new pg.Client({ connectionString: config.databaseUrl });
-      await client.connect();
-      try {
-        return (await client.query<Record<string, unknown>>(sql)).rows;
-      } finally {
-        await client.end();
-      }
-    },
+    query: (sql) => postgres.query(sql),
     async restart(changes = {}) {
       config = { ...config, ...changes };
       const stopped = instance.app;
@@ -115,31 +100,9 @@ export async function bootForTest(options: TestOptions = {}): Promise<TestInstan
     },
     async close() {
       await instance.app.close();
-      await withServer(async (client) => {
-        // A closed pool's clients may still be connected; forcing them off sends them an error
-        // nothing listens for any more.
-        for (let attempt = 0; attempt < 50; attempt++) {
-          const { rows } = await client.query<{ count: number }>(
-            "SELECT count(*)::int AS count FROM pg_stat_activity WHERE datname = $1",
-            [databaseName],
-          );
-          if (rows[0]!.count === 0) break;
-          await new Promise((resolve) => setTimeout(resolve, 20));
-        }
-        await client.query(`DROP DATABASE ${databaseName} WITH (FORCE)`);
-      });
+      await postgres.release();
       await rm(keyDirectory, { recursive: true, force: true });
     },
   };
   return instance;
-}
-
-async function withServer(run: (client: pg.Client) => Promise<unknown>): Promise<void> {
-  const client = new pg.Client({ connectionString: serverUrl });
-  await client.connect();
-  try {
-    await run(client);
-  } finally {
-    await client.end();
-  }
 }
