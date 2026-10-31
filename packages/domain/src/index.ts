@@ -11,5 +11,4 @@ export * from "./task";
 export * from "./mention";
 export * from "./network";
 export * from "./language";
-export * from "./theme";
 export * from "./attribution";

@@ -22,7 +22,6 @@ import type {
   SourceFailure,
   SourceId,
   SourceTypeId,
-  Theme,
   View,
   ViewId,
 } from "@family-agenda/domain";
@@ -43,8 +42,6 @@ export interface FamilyRepository {
   confirmRecoveryKit(at: Date): Promise<void>;
   languages(): Promise<FamilyLanguages>;
   saveLanguages(languages: FamilyLanguages): Promise<void>;
-  theme(): Promise<Theme>;
-  saveTheme(theme: Theme): Promise<void>;
 }
 
 export interface AdminRepository {

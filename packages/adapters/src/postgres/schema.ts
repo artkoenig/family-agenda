@@ -1,5 +1,5 @@
 import type { ActivityKind } from "@family-agenda/application";
-import { acts, familyLanguages, revisionAuthorKinds, horizonDaysRange, itemKinds, photoTypes, themes, viewKinds, type RunError } from "@family-agenda/domain";
+import { acts, familyLanguages, revisionAuthorKinds, horizonDaysRange, itemKinds, photoTypes, viewKinds, type RunError } from "@family-agenda/domain";
 import { sql, type SQL } from "drizzle-orm";
 import {
   bigint,
@@ -51,13 +51,10 @@ export const settings = pgTable(
     language: text("language").notNull().default("en"),
     /** The Tesseract codes OCR reads in, in order; by default the one of the Family Language. */
     ocrLanguages: text("ocr_languages").array().notNull().default(sql`'{eng}'::text[]`),
-    /** How the pages look, `system`, `light` or `dark`. */
-    theme: text("theme").notNull().default("system"),
   },
   (table) => [
     singleRow("settings", table.id),
     oneOf("settings_language_known", table.language, familyLanguages),
-    oneOf("settings_theme_known", table.theme, themes),
     check("settings_ocr_languages_not_empty", sql`cardinality(${table.ocrLanguages}) > 0`),
   ],
 );

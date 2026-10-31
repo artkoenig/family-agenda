@@ -36,13 +36,6 @@
       "when": 1793400000001,
       "tag": "0004_view_kinds",
       "breakpoints": true
-    },
-    {
-      "idx": 5,
-      "version": "7",
-      "when": 1793447975943,
-      "tag": "0005_display_theme",
-      "breakpoints": true
     }
   ]
 }

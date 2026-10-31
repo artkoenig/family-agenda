@@ -50,12 +50,11 @@ import type {
   SourceFailure,
   SourceId,
   SourceTypeId,
-  Theme,
   View,
   ViewId,
   ViewKind,
 } from "@family-agenda/domain";
-import { defaultFamilyLanguage, defaultTheme, isFamilyLanguage, isTheme } from "@family-agenda/domain";
+import { defaultFamilyLanguage, isFamilyLanguage } from "@family-agenda/domain";
 import { and, asc, eq, gt, gte, inArray, isNotNull, isNull, lt, lte, ne, or, sql, type SQL } from "drizzle-orm";
 import { uuidPattern } from "../uuid";
 import type { Database } from "./database";
@@ -113,16 +112,6 @@ export class PostgresFamilyRepository implements FamilyRepository {
 
   async saveLanguages(languages: FamilyLanguages): Promise<void> {
     await this.db.update(settings).set({ language: languages.language, ocrLanguages: languages.ocrLanguages });
-  }
-
-  async theme(): Promise<Theme> {
-    const [row] = await this.db.select({ theme: settings.theme }).from(settings);
-    if (!row) throw new Error("the settings row is missing");
-    return isTheme(row.theme) ? row.theme : defaultTheme;
-  }
-
-  async saveTheme(theme: Theme): Promise<void> {
-    await this.db.update(settings).set({ theme });
   }
 }
 
