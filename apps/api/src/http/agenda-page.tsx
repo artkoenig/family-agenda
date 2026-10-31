@@ -66,6 +66,24 @@ document.addEventListener("click", (event) => {
   syncSummary();
   document.dispatchEvent(new Event("fam-bar-resized"));
 });
+// Marks the quick filter new choice at once, as the server will, so that its switches slide
+// during the 250 ms before htmx swaps the bar in.
+document.addEventListener("click", (event) => {
+  const item = event.target.closest(".fam-filter__item");
+  if (!item || event.button || event.ctrlKey || event.metaKey || event.shiftKey) return;
+  const [all, ...members] = item.parentElement.querySelectorAll(".fam-filter__item");
+  const mark = (element, on) => (on ? element.setAttribute("aria-current", "true") : element.removeAttribute("aria-current"));
+  if (item === all || all.hasAttribute("aria-current")) {
+    for (const member of members) mark(member, member === item);
+    mark(all, item === all);
+  } else {
+    mark(item, !item.hasAttribute("aria-current"));
+    const chosen = members.filter((member) => member.hasAttribute("aria-current"));
+    const everyone = chosen.length === 0 || chosen.length === members.length;
+    if (everyone) for (const member of members) mark(member, false);
+    mark(all, everyone);
+  }
+});
 document.body.addEventListener("htmx:afterSettle", syncSummary);
 fold();
 syncSummary();
@@ -242,20 +260,21 @@ function AgendaBar(props: { page: AgendaPage | TaskListPage; kind?: string }) {
               aria-label={t.agenda.quickFilter}
               hx-boost="true"
               hx-target="#agenda"
-              hx-swap="outerHTML"
+              hx-swap="outerHTML swap:250ms"
             >
-              <a class="fam-filter__item" href={agendaUrl(page.id, "all")} aria-current={everyone ? "true" : undefined}>
+              <a class="fam-filter__item fam-pillswitch" href={agendaUrl(page.id, "all")} aria-current={everyone ? "true" : undefined} title={t.agenda.all}>
                 <span class="fam-avatar fam-avatar--all" aria-hidden="true"></span>
-                {t.agenda.all}
+                <span class="fam-pillswitch__name">{t.agenda.all}</span>
               </a>
               {page.choices.map((member) => (
                 <a
-                  class="fam-filter__item"
+                  class="fam-filter__item fam-pillswitch"
                   href={agendaUrl(page.id, toggled(page, member.id))}
                   aria-current={!everyone && page.showing.includes(member.id) ? "true" : undefined}
+                  title={member.name}
                 >
                   <Avatar member={member} />
-                  {member.name}
+                  <span class="fam-pillswitch__name">{member.name}</span>
                 </a>
               ))}
             </nav>
