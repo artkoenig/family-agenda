@@ -349,6 +349,63 @@
       </figcaption>
     </figure>
 
+    <figure>
+      <div class="phone vd-top e">
+        <header class="bar vd-top">
+          <div class="top">
+            <span class="clock">09:45</span><span class="date">Sa., 31. Okt.</span>
+            <span class="grow"></span>
+            <button class="stale" aria-label="Manches hier ist vielleicht nicht aktuell.">!<span class="tip">Manches hier ist vielleicht nicht aktuell.</span></button>
+          </div>
+          <nav class="filter" aria-label="Quick filter">
+            <button class="f" data-m="all"><span class="av all"></span><span class="nm">Alle</span></button>
+            <button class="f" data-m="valentin"><span class="av m8">V</span><span class="nm">Valentin</span></button>
+            <button class="f" data-m="veronika"><span class="av m2">V</span><span class="nm">Veronika</span></button>
+            <button class="f" data-m="papa"><span class="av photo">P</span><span class="nm">Papa</span></button>
+          </nav>
+          <div class="hairline"><i></i></div>
+        </header>
+        <div class="feed" data-feed="top"></div>
+      </div>
+      <figcaption>
+        <h2>E · D with C's progress line (1/2: at the top)</h2>
+        <p>Bar height: <span class="h" data-h></span> <span class="saved" data-saved></span></p>
+        <ul><li>Same as D at the top, but without the spinner, “1/4” and mini bar</li><li>While sources are fetched, a 2 px line fills along the bottom edge of the bar, as in C</li></ul>
+      </figcaption>
+    </figure>
+
+    <figure>
+      <div class="phone">
+        <header class="bar vd-scrolled" id="e-scrolled">
+          <div class="top">
+            <span class="clock">09:45</span><span class="date">Sa., 31. Okt.</span>
+            <span class="grow"></span>
+            <button class="stale" aria-label="Manches hier ist vielleicht nicht aktuell.">!<span class="tip">Manches hier ist vielleicht nicht aktuell.</span></button>
+            <button class="stack" id="e-toggle" aria-expanded="false" aria-label="Filter">
+              <span class="av all s" data-m="all"></span>
+              <span class="av m8 s" data-m="valentin">V</span>
+              <span class="av m2 s" data-m="veronika">V</span>
+              <span class="av photo s" data-m="papa">P</span>
+              <span class="chev">▾</span>
+            </button>
+          </div>
+          <nav class="filter" aria-label="Quick filter">
+            <button class="f" data-m="all"><span class="av all"></span>Alle</button>
+            <button class="f" data-m="valentin"><span class="av m8">V</span>Valentin</button>
+            <button class="f" data-m="veronika"><span class="av m2">V</span>Veronika</button>
+            <button class="f" data-m="papa"><span class="av photo">P</span>Papa</button>
+          </nav>
+          <div class="hairline"><i></i></div>
+        </header>
+        <div class="feed" data-feed="scrolled"></div>
+      </div>
+      <figcaption>
+        <h2>E · D with C's progress line (2/2: scrolled)</h2>
+        <p>Bar height: <span class="h" data-h></span> <span class="saved" data-saved></span> — tap the avatars to unfold the filter again.</p>
+        <ul><li>Clock, date, selection stack and the same 2 px line; the line is the only busy signal here, which frees the space the spinner took</li><li>Trade-off: no “1/4” count and no spinner, so a stalled fetch looks the same as a slow one</li></ul>
+      </figcaption>
+    </figure>
+
   </div>
 </div>
 
@@ -399,12 +456,11 @@
     if (m === "all") state.clear(); else state.has(m) ? state.delete(m) : state.add(m);
     render();
   });
-  document.getElementById("d-toggle").addEventListener("click", e => {
-    const bar = document.getElementById("d-scrolled");
-    const open = bar.classList.toggle("open");
-    e.currentTarget.setAttribute("aria-expanded", open);
+  document.querySelectorAll(".stack").forEach(btn => btn.addEventListener("click", () => {
+    const open = btn.closest(".bar").classList.toggle("open");
+    btn.setAttribute("aria-expanded", open);
     requestAnimationFrame(measure);
-  });
+  }));
 
   function toggle(id, apply) {
     const b = document.getElementById(id);
