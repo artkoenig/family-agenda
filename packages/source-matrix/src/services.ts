@@ -39,6 +39,8 @@ export type MatrixServicesOptions = MatrixLayout & {
   programs: MatrixPrograms;
   /** A Postgres URL allowed to create a role and a database, for Synapse's own. */
   databaseUrl: string;
+  /** Replaces creating Synapse's role and database at `databaseUrl`, such as in tests without Postgres. */
+  ensureDatabase?: (database: MatrixLayout["database"], password: string) => Promise<void>;
   log?: (line: string) => void;
 };
 
@@ -66,6 +68,8 @@ export function matrixServices(options: MatrixServicesOptions): Services {
   const log = options.log ?? ((line: string) => {
     console.log(line);
   });
+  const createDatabase =
+    options.ensureDatabase ?? ((database, password) => ensureDatabase(options.databaseUrl, database, password));
   const paths = pathsOf(options);
   const synapse = new Program({
     name: "synapse",
@@ -121,7 +125,7 @@ export function matrixServices(options: MatrixServicesOptions): Services {
       if (!prepared) {
         try {
           const secrets = await secretsOf(options);
-          await ensureDatabase(options.databaseUrl, options.database, secrets.databasePassword);
+          await createDatabase(options.database, secrets.databasePassword);
           await writeConfiguration(options, secrets);
         } catch (error) {
           const message = `Matrix could not be set up: ${error instanceof Error ? error.message : String(error)}`;
