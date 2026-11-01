@@ -92,11 +92,11 @@ export function describeSourcePluginContract(
       it("emits valid Origins and state for a Source", async () => {
         const plugin = createPlugin();
         if (plugin.ingestion.mode !== "polling") return;
-        const result = await plugin.ingestion.poll({ config, state: null, now, timeZone: "Europe/Berlin" });
+        const result = await plugin.ingestion.poll({ config, syncCursor: null, now, timeZone: "Europe/Berlin" });
         for (const origin of result.origins) expect(problemsWithOrigin(origin)).toEqual([]);
-        expect(result.state === null || typeof result.state === "string").toBe(true);
-        const again = await plugin.ingestion.poll({ config, state: result.state, now, timeZone: "Europe/Berlin" });
-        expect(again.origins, "a second run with the state of the first emits no Origin again").toEqual([]);
+        expect(result.syncCursor === null || typeof result.syncCursor === "string").toBe(true);
+        const again = await plugin.ingestion.poll({ config, syncCursor: result.syncCursor, now, timeZone: "Europe/Berlin" });
+        expect(again.origins, "a second run with the sync cursor of the first emits no Origin again").toEqual([]);
       });
     }
   });

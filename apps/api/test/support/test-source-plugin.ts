@@ -177,14 +177,14 @@ function basicTestSourcePlugin(options: TestPluginOptions): SourcePlugin {
       mode: "polling",
       suggestedIntervalSeconds: 600,
       poll: (context) => {
-        const { state } = context;
+        const { syncCursor } = context;
         runs.set(sourceTypeId, [...(runs.get(sourceTypeId) ?? []), context]);
         const next = pending.get(sourceTypeId) ?? { origins: [] };
         pending.delete(sourceTypeId);
         if (next.failure) return Promise.reject(next.failure);
         return Promise.resolve({
           origins: next.origins,
-          state: String(Number(state ?? 0) + 1),
+          syncCursor: String(Number(syncCursor ?? 0) + 1),
           ...(next.withdrawn ? { withdrawn: next.withdrawn } : {}),
         });
       },

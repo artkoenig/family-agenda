@@ -62,7 +62,7 @@ describe("Admin sign-in", () => {
 
     await signIn("anna@example.org", password);
 
-    expect(await instance.query("SELECT expires_at FROM admin_sessions")).toEqual([
+    expect(await instance.query("SELECT expires_at FROM admin_session")).toEqual([
       { expires_at: new Date(instance.clock.now().getTime() + 14 * 24 * 60 * minutes) },
     ]);
   });

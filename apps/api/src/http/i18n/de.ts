@@ -102,8 +102,6 @@ export const de: Catalogue = {
     title: "Einstellungen",
     signOut: "Abmelden",
     groups: { family: "Familie", sources: "Quellen", instance: "Instanz" },
-    newSourceTypes: "Neue Quellentypen sind verfügbar",
-    lookAtThem: "Ansehen",
     failingSource: "Eine Quelle funktioniert nicht",
     failingSourceBody: "Manche Einträge sind vielleicht nicht aktuell, bis sie behoben ist.",
     lookAtSources: "Zu den Quellen",
@@ -114,7 +112,6 @@ export const de: Catalogue = {
     ocr: (languages) => `OCR auf ${languages}`,
     ocrOff: "OCR aus",
     sources: (count) => plural(count, { one: `${count} Quelle`, other: `${count} Quellen` }),
-    newOnes: "Neue sind verfügbar",
     llmLocal: (model) => `${model}, im Heimnetz`,
     llmRemote: (model) => `${model}, außerhalb des Heimnetzes`,
     notSetUp: "Nicht eingerichtet",
@@ -211,7 +208,6 @@ export const de: Catalogue = {
 
   sourceTypes: {
     use: (name) => `${name} verwenden`,
-    newIn: (version) => `Neu in ${version}`,
     version: (version) => `Version ${version}`,
     needsLlm: ". Seine Quellen brauchen den LLM-Endpunkt.",
     notLoadable: (reason) => `Nicht ladbar: ${reason}`,

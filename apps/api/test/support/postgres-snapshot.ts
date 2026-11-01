@@ -11,7 +11,7 @@ declare module "vitest" {
   export interface ProvidedContext {
     /** A data directory of in-process Postgres with every migration run, as `dumpDataDir` makes it. */
     postgresSnapshot: string;
-    /** Empties every table and puts back the rows the migrations insert, such as `settings`. */
+    /** Empties every table and puts back the rows the migrations insert, such as `family`. */
     postgresReset: string;
   }
 }

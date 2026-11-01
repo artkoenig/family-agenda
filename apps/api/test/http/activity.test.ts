@@ -19,7 +19,7 @@ describe("The worker's activity on an Agenda over HTTP", () => {
   /** The worker records that it has read `done` of `total` messages. */
   const extracting = (done: number, total: number) =>
     instance.query(
-      `INSERT INTO background_activities (kind, done, total, updated_at)
+      `INSERT INTO background_activity (kind, done, total, updated_at)
        VALUES ('extracting', ${done}, ${total}, '2026-09-14T06:59:00Z')`,
     );
 
