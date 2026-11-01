@@ -2223,7 +2223,7 @@ export function MessagePage(props: { admin: SignedInAdmin; message: MessageDetai
           </>
         ))}
       </dl>
-      {message.text === null ? <p>{m.deleted}</p> : <pre class="fam-message">{message.text}</pre>}
+      <pre class="fam-message">{message.text}</pre>
       {message.attachments.length > 0 ? (
         <>
           <h2>{m.attachments}</h2>

@@ -359,7 +359,6 @@ export const de: Catalogue = {
     title: "Nachricht",
     description: "Das Original, aus dem ein Termin gelesen wurde. Nur Admins öffnen es.",
     sent: "Gesendet",
-    deleted: "Der Text dieser Nachricht wurde gelöscht.",
     attachments: "Anhänge",
     attachment: (contentType, kilobytes) => `(${contentType}, ${kilobytes} KB)`,
     unreadable: (problem) => `Konnte für die Auswertung nicht gelesen werden: ${problem}`,

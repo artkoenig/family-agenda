@@ -6,8 +6,7 @@ export type MessageDetails = {
   sentAt: Date;
   /** The Origin attributes of the message, such as its sender. */
   attributes: Record<string, string>;
-  /** Null once retention has deleted it. */
-  text: string | null;
+  text: string;
   /** Each with its place among the attachments, and why it could not be turned into text for extraction, or null. */
   attachments: { position: number; filename: string; contentType: string; size: number; conversionProblem: string | null }[];
 };
@@ -19,12 +18,11 @@ export function createMessageAccess(deps: { items: ItemRepository; blobs: BlobSt
     async open(id: RawMessageId): Promise<MessageDetails | null> {
       const message = await items.findMessage(id);
       if (!message) return null;
-      const bytes = await blobs.get(message.text);
       return {
         id: message.id,
         sentAt: message.sentAt,
         attributes: message.attributes,
-        text: bytes ? new TextDecoder().decode(bytes) : null,
+        text: message.body,
         attachments: message.attachments.map(({ position, filename, contentType, size, conversionProblem }) => ({
           position,
           filename,

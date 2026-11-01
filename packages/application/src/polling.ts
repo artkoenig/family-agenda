@@ -50,17 +50,26 @@ export function createSourcePolling(deps: PollingDeps) {
     return { blob: await blobs.put(contents), sha256, size: contents.byteLength };
   }
 
-  /** Puts a message's text and attachments into the BlobStore. */
-  async function stored(message: IngestedMessage): Promise<StoredMessage> {
+  /**
+   * Puts a message's attachments into the BlobStore; its text goes to Postgres. Its sender is the
+   * one the plugin tells among its attributes.
+   */
+  async function stored(message: IngestedMessage, attributes: Record<string, string>): Promise<StoredMessage> {
     const attachments: StoredMessage["attachments"] = [];
     for (const { filename, contentType, bytes } of message.attachments) {
       attachments.push({ ...(await store(bytes)), filename, contentType });
     }
-    return { text: await store(new TextEncoder().encode(message.text)), attachments, thread: message.thread };
+    return {
+      sender: attributes.sender || null,
+      subject: null,
+      body: message.text,
+      attachments,
+      thread: message.thread,
+    };
   }
 
   async function removeBlobsOf(message: StoredMessage): Promise<void> {
-    for (const file of [message.text, ...message.attachments]) await blobs.remove(file.blob);
+    for (const file of message.attachments) await blobs.remove(file.blob);
   }
 
   /** Runs one Source and records what it emitted; the failure, if it failed. */
@@ -80,7 +89,7 @@ export function createSourcePolling(deps: PollingDeps) {
         link: origin.link,
         part: origin.part,
         revisions: origin.revisions.map((revision) => checked(revision, origin.occurredAt)),
-        message: origin.message ? await stored(origin.message) : null,
+        message: origin.message ? await stored(origin.message, origin.attributes) : null,
       });
     }
     let known: string[];

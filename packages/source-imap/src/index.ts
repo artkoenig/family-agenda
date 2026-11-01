@@ -197,7 +197,7 @@ async function readFolder(
     if (uids.length === 0) return { mails: [], state: { uidValidity, lastUid: highest } };
     range = uids.join(",");
   }
-  const fetched = await client.fetchAll(range, { uid: true, source: true }, { uid: true });
+  const fetched = await client.fetchAll(range, { uid: true, source: true, internalDate: true }, { uid: true });
   // `n:*` names the last mail even when its UID is below n.
   const fresh = fetched.filter((mail) => !resuming || mail.uid > previous.lastUid);
   const mails: Origin[] = [];
@@ -222,7 +222,8 @@ async function originOf(mail: FetchMessageObject, uidValidity: string, now: Date
     }));
   return {
     externalId: messageId || `uid:${uidValidity}:${mail.uid}`,
-    occurredAt: parsed.date ?? (mail.internalDate ? new Date(mail.internalDate) : now),
+    // When the mailbox received it; the Date header is whatever the sender's program wrote.
+    occurredAt: (mail.internalDate ? new Date(mail.internalDate) : null) ?? parsed.date ?? now,
     attributes: sender ? { sender } : {},
     content: {
       kind: "raw-message",
