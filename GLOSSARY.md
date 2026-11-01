@@ -7,15 +7,15 @@ Gathers family-relevant information from many channels into one overview of who 
 ### People
 
 **Family**:
-The household the system serves; the unit that owns all Sources and Items. Each Instance serves exactly one, so the data never names it.
+The household the system serves, owning all Sources and Items; each Instance serves exactly one.
 _Avoid_: Account, tenant, user group
 
 **Family Language**:
-The language the Instance speaks to the Family in and formats dates in, English or German; an Admin chooses it when setting up the Instance and can change it in the settings.
+The language, English or German, in which the Instance speaks to the Family and formats dates; chosen by an Admin.
 _Avoid_: Locale, UI language, region
 
 **Theme**:
-How the pages look in one browser: as the device prefers, light or dark. Each device chooses its own; the Instance does not know it.
+How the pages look on one device: as the device prefers, light or dark; each device chooses its own.
 _Avoid_: Skin, mode
 
 **Family Member**:
@@ -27,33 +27,33 @@ A parent who signs in with their own account to manage settings and Sources, and
 _Avoid_: Owner, superuser, parent account
 
 **Agenda**:
-A configurable perspective on the Family's Items, as a timeline of days or as a Task List, for chosen Family Members or for the whole Family; opened without signing in, and read-only except for ticking Tasks done. One for chosen Family Members shows only the Items that concern at least one of them, not those that concern the whole Family; one for the whole Family shows every Item.
+A perspective on the Family's Items, as a timeline of days or a Task List, opened without signing in and read-only except for ticking Tasks done. It is for chosen Family Members, showing only the Items that concern at least one of them, or for the whole Family, showing every Item.
 _Avoid_: View, dashboard, read-only user, kiosk
 
 **Task List**:
-An Agenda that lists only Tasks instead of a timeline: Due and Overdue ones first, then those not Due yet, then those done in the last 30 days; ticked there as in a timeline.
+An Agenda showing only Tasks instead of a timeline: Due and Overdue ones first, then those not Due yet, then those done in the last 30 days.
 _Avoid_: To-do view, task page, Tasks section
 
 **Quick Filter**:
-A choice among an Agenda's Family Members made while looking at it, narrowing it to those members by the Agenda's own rule; it is not kept.
+A passing choice among an Agenda's Family Members that narrows the Agenda to them while it is open.
 _Avoid_: Preselection, member filter, tab
 
 ### Inputs
 
 **Source**:
-A channel information arrives through, such as a timetable service, a calendar, a mailbox, or a Messenger account.
+A channel information arrives through, such as a timetable service, a calendar, a mailbox or a Messenger account.
 _Avoid_: Channel, integration, feed, connector
 
 **Source Type**:
-The kind of channel a Source is, such as WebUntis, an ICS calendar, an IMAP mailbox or Matrix; each is provided by a plugin, and a Family can have several Sources of one type.
+The kind of channel a Source is, such as WebUntis, an ICS calendar, an IMAP mailbox or Matrix; a Family can have several Sources of one type.
 _Avoid_: Source kind, provider, plugin (for the domain concept)
 
 **Source Attribute**:
-A subdivision of a Source that the Source itself reports, such as a mailbox folder or label, a WhatsApp group, a child in a timetable account, or the one calendar of an ICS Source; every Source has at least one, and only those an Admin chose to read count. A Source Attribute the Source no longer knows is archived and keeps its Source Assignment.
+A subdivision of a Source that the Source itself reports, such as a mailbox folder or label, a WhatsApp group, a child in a timetable account, or the one calendar of an ICS Source; only those an Admin chose to read count.
 _Avoid_: Part, folder (for the domain concept), channel, sub-source, label
 
 **Source Assignment**:
-The Family Members an Admin assigns a Source Attribute to, and so the only thing that decides whom an Item concerns, never a sender or whom the content mentions. An Item concerns everyone its Origin's Source Attributes are assigned to, or the whole Family if one of them is assigned to no one.
+The Family Members an Admin assigns a Source Attribute to; the only thing that decides whom an Item concerns. An Item concerns everyone its Origin's Source Attributes are assigned to, or the whole Family if one of them is assigned to no one.
 _Avoid_: Attribution Rule, mapping, routing rule, filter
 
 **Source Status**:
@@ -65,45 +65,45 @@ A problem shown beside a Source Status without changing it, such as an Origin na
 _Avoid_: Fourth status, error, alert
 
 **Messenger**:
-A chat network, such as WhatsApp, Signal or Telegram, that the Matrix Source Type reads through a bridge on the Instance; an Admin enables each one, and each Source of the Matrix type is one linked Messenger account.
+A chat network, such as WhatsApp, Signal or Telegram, that the Matrix Source Type can read; each Source of that type is one linked Messenger account.
 _Avoid_: Bridge (for the domain concept), network, chat app
 
 **Catalogue**:
-What a Source Type offers for an Admin to enable entry by entry, such as the Messengers of the Matrix Source Type; each Source of that type uses one enabled entry.
+The entries a Source Type offers for an Admin to enable one by one, such as the Messengers of the Matrix Source Type.
 _Avoid_: Option list, sub-type
 
-### Items
-
 **Origin**:
-One thing a Source delivered that Items come from: a message, such as a mail or a WhatsApp message, or an entry the Source states itself, such as a calendar entry or a Lesson of a timetable. Each Item has exactly one Origin.
+One thing a Source delivered that Items come from: a message, such as a mail or a WhatsApp message, or an entry the Source states itself, such as a calendar entry or a Lesson. Each Item has exactly one Origin.
 _Avoid_: Source message, provenance
 
 **Withdrawn**:
-Said of an Origin its Source no longer has, such as a deleted message or calendar entry; its Items are gone. A calendar entry or Lesson that comes back brings its Item back, a message does not.
+Said of an Origin its Source no longer has, such as a deleted message or calendar entry; it backs no Items.
 _Avoid_: Deleted, revoked, removed
 
 **Extraction**:
-Reading a message with the LLM to find its Items, done once per message; a message edited later keeps what its first reading found.
+The one reading of a message by the LLM that finds its Items; a message edited later keeps what it found.
 _Avoid_: Parsing, re-import, reprocessing
 
 **Automatic Check**:
-A test an Item found by Extraction must pass to be written, such as its stated weekday matching its date; when one fails, the message is read once more, and an Item failing again is left out.
+A test an Item found by Extraction must pass to be written, such as its stated weekday matching its date.
 _Avoid_: Validation, confidence
 
 **Not extracted**:
-Said of a message whose Extraction keeps failing on its own content; an Admin can retry it while its content is kept.
+Said of a message whose Extraction keeps failing on its own content; an Admin can retry it.
 _Avoid_: Failed, broken, unread
 
 **Retention Period**:
-How long the Instance keeps a message's content, about half a year from its arrival, or less once none of its Items needs it any more. Older messages are not taken in.
+How long the Instance keeps a message's content at most, about half a year from its arrival.
 _Avoid_: Archive time, expiry, TTL
 
+### Items
+
 **Item**:
-Any single piece of family-relevant information that came from an Origin; one of Event, Lesson or Task.
+A single piece of family-relevant information from an Origin: an Event, a Lesson or a Task.
 _Avoid_: Entry, record, info
 
 **Event**:
-A one-off appointment at a time or over whole days, usually with a place, such as a piano lesson, a sports match, a study day without school, or a bike check at school. A cancelled Event stays shown, struck through.
+A one-off appointment at a time or over whole days, usually with a place, such as a piano lesson, a sports match, a study day without school, or a bike check at school.
 _Avoid_: Appointment, date, meeting
 
 **Timetable**:
@@ -115,27 +115,27 @@ One slot of a Timetable on a date: a subject at a time, in a room, with a teache
 _Avoid_: Class, period
 
 **Lesson Change**:
-How a Lesson deviates from the Timetable: cancelled, held by a substitute, or moved to another room; shown on the Lesson with what it replaces, not as an Item of its own.
+How a Lesson deviates from the Timetable: cancelled, held by a substitute, or moved to another room; part of the Lesson, not an Item of its own.
 _Avoid_: Timetable Change, substitution (for the concept), update
 
 **School Day**:
-The Lessons of a Family Member on one date, which an Agenda shows as one row until the last Lesson that takes place, and a feed as one all-day entry; not an Item of its own.
+The Lessons of a Family Member on one date, shown together as one entry; not an Item of its own.
 _Avoid_: School row, school entry
 
 **Task**:
-Something a Family Member or parent must do or bring, optionally with a Deadline; a packing list is a Task with things to bring, ticked done together. A cancelled Task stays pinned, struck through, until someone ticks it.
+Something a Family Member or parent must do or bring, optionally with a Deadline; a packing list is one Task with things to bring.
 _Avoid_: Todo, action item, packing list (as a separate type)
 
 **Deadline**:
-The date by which a Task must be done, the month's last day when a message names only a month; an attribute of a Task, not an Item of its own.
+The date by which a Task must be done, the month's last day when only a month is named; belongs to a Task, not an Item of its own.
 _Avoid_: Due date, Frist
 
 **Due**:
-A Task not yet done from its Deadline day on, or from when it arrives if it has none; a Due Task is pinned at the top of every Agenda that shows it until someone ticks it done.
+Said of a Task not yet done, from its Deadline day on, or from its arrival if it has none; pinned at the top of every Agenda that shows it until ticked done.
 _Avoid_: Open, pending, active
 
 **Overdue**:
-A Task not yet done after its Deadline day; it stays pinned, marked overdue, as nothing completes a Task but a tick.
+Said of a Task not yet done after its Deadline day; it stays pinned until ticked done.
 _Avoid_: Late, expired, missed
 
 ### Operation
@@ -153,9 +153,9 @@ Reaching an Instance from outside the home network through Agenda Cloud.
 _Avoid_: Tunnel, relay, external access
 
 **Recovery Kit**:
-What an Admin prints or saves at first start to recover the Instance's master key: without it, a Backup cannot restore Source credentials; Backups to Agenda Cloud are encrypted with a key derived from it.
+What an Admin prints or saves at first start to recover the Instance; without it, a backup cannot restore Source credentials.
 _Avoid_: Recovery key, master key (for the document), backup code
 
 **Agenda Link**:
-A secret, revocable URL that opens one Agenda from outside the home network.
+A secret, revocable link that opens one Agenda from outside the home network.
 _Avoid_: Share link, token, magic link
