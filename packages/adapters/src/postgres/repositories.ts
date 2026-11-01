@@ -452,7 +452,7 @@ export class PostgresSourceRepository implements SourceRepository {
       });
       await tx.insert(sourceRuns).values({
         sourceId: source.id,
-        syncCursor: cursorToJson(source.state),
+        syncCursor: cursorToJson(source.syncCursor),
         lastRunAt: source.lastRunAt,
         lastSuccessAt: source.lastSuccessAt,
         ...failureColumns(source.failure),
@@ -611,7 +611,7 @@ export class PostgresSourceRepository implements SourceRepository {
       plain: source.config,
       configVersion: source.configVersion,
       secrets: source.secretRefs as Record<string, SecretRef>,
-      state: syncCursor,
+      syncCursor,
       pollIntervalSeconds: source.pollIntervalSeconds,
       shown: source.shown,
       name: source.name,
@@ -630,12 +630,12 @@ export class PostgresSourceRepository implements SourceRepository {
 }
 
 /**
- * A plugin's state as the JSON string `sync_cursor` holds. It is converted in SQL, as drizzle would
- * parse again a `jsonb` value the driver has already parsed, turning the state `"1"` into 1.
+ * A plugin's sync cursor as the JSON string `sync_cursor` holds. It is converted in SQL, as drizzle
+ * would parse again a `jsonb` value the driver has already parsed, turning the cursor `"1"` into 1.
  */
-const cursorToJson = (state: string | null): SQL => sql`to_jsonb(${state}::text)`;
+const cursorToJson = (syncCursor: string | null): SQL => sql`to_jsonb(${syncCursor}::text)`;
 
-/** The `sync_cursor` as the plugin's state again, selected as text for the reason above. */
+/** The plugin's sync cursor read back from `sync_cursor`, as text for the reason above. */
 const syncCursorAsText = sql<string | null>`${sourceRuns.syncCursor} #>> '{}'`;
 
 function failureColumns(failure: SourceFailure | null) {
@@ -722,7 +722,7 @@ export class PostgresItemRepository implements ItemRepository {
       await tx
         .update(sourceRuns)
         .set({
-          syncCursor: cursorToJson(run.state),
+          syncCursor: cursorToJson(run.syncCursor),
           lastRunAt: run.at,
           lastSuccessAt: run.at,
           ...failureColumns(null),

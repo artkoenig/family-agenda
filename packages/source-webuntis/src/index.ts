@@ -24,7 +24,7 @@ const daysAhead = 14;
 /** A Lesson as the last run saw it, with its Timetable Change if it had one. */
 type SeenLesson = { day: string; lesson: Required<LessonFields>; cancelled: boolean; change: Required<TimetableChangeFields> | null };
 
-/** The state blob: the children of the account, and every Lesson of the days read, by key. */
+/** The sync cursor: the children of the account, and every Lesson of the days read, by key. */
 type State = { children: Choice[]; lessons: Record<string, SeenLesson> };
 
 type Json = Record<string, unknown>;
@@ -95,7 +95,7 @@ export function createWebUntisPlugin(options: WebUntisPluginOptions = {}): Sourc
   }
 
   async function poll(context: RunContext) {
-    const previous = parseState(context.state);
+    const previous = parseState(context.syncCursor);
     const children = await childrenOf(context);
     const ticked = ticksOf(context.config.plain.children);
     const read = ticked.length > 0 ? children.filter((child) => ticked.includes(String(child.id))) : children;
@@ -132,7 +132,7 @@ export function createWebUntisPlugin(options: WebUntisPluginOptions = {}): Sourc
       if (!childRead || seen.day <= lastDay) withdrawn.push(key);
     }
     const state: State = { children: children.map((child) => ({ value: String(child.id), label: child.name })), lessons };
-    return { origins, state: JSON.stringify(state), withdrawn };
+    return { origins, syncCursor: JSON.stringify(state), withdrawn };
   }
 
   return {
@@ -186,7 +186,7 @@ export function createWebUntisPlugin(options: WebUntisPluginOptions = {}): Sourc
             en: "Without a tick, every child of the account is read. Tick one per Source to assign each child's Timetable to its Family Member.",
             de: "Ohne Haken werden alle Kinder des Kontos gelesen. Hake je Quelle eines an, um den Stundenplan jedes Kindes seinem Familienmitglied zuzuordnen.",
           },
-          choices: (context) => Promise.resolve(parseState(context.state).children),
+          choices: (context) => Promise.resolve(parseState(context.syncCursor).children),
         },
       ],
     },

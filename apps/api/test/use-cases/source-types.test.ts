@@ -104,7 +104,7 @@ describe("Source Types", () => {
       {
         id: "old-portal",
         enabled: false,
-        notLoadable: "built for SDK 9.0.0, but this is SDK 0.7.0",
+        notLoadable: "built for SDK 9.0.0, but this is SDK 0.8.0",
       },
     ]);
     expect(await instance.app.sourceTypes.enable("old-portal")).toEqual({ ok: false, problem: "not-loadable" });
@@ -249,7 +249,7 @@ describe("Sources", () => {
   /** What the plugin was run with last time. */
   const lastRun = () => {
     const run = testPluginControls.runs("school-portal").at(-1);
-    return run && { config: run.config, state: run.state };
+    return run && { config: run.config, syncCursor: run.syncCursor };
   };
 
   it("offers the enabled Source Types with the form their plugin declares", async () => {
@@ -277,7 +277,7 @@ describe("Sources", () => {
     await instance.app.polling.pollDue();
     expect(lastRun()).toEqual({
       config: { plain: { url: "https://new.example.org" }, secrets: { password: "hunter2" } },
-      state: null,
+      syncCursor: null,
     });
 
     await instance.app.sources.edit(id, { plain: { url: "https://new.example.org" }, secrets: { password: "s3cret" } });
@@ -285,7 +285,7 @@ describe("Sources", () => {
     await instance.app.polling.pollDue();
     expect(lastRun()).toEqual({
       config: { plain: { url: "https://new.example.org" }, secrets: { password: "s3cret" } },
-      state: "1",
+      syncCursor: "1",
     });
   });
 

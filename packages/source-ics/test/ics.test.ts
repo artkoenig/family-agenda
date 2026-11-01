@@ -27,7 +27,7 @@ const calendar = (body: string, headers: Record<string, string> = {}) =>
 
 const poll = (plugin: SourcePlugin, context: Partial<RunContext> = {}): Promise<IngestResult> => {
   if (plugin.ingestion.mode !== "polling") throw new Error("the ICS plugin polls");
-  return plugin.ingestion.poll({ config, state: null, now, timeZone: "Europe/Berlin", ...context });
+  return plugin.ingestion.poll({ config, syncCursor: null, now, timeZone: "Europe/Berlin", ...context });
 };
 
 /** Each Origin as the Item key, act and fields of its Revisions, at its source time. */
@@ -127,7 +127,7 @@ describe("the ICS plugin", () => {
     const first = await poll(plugin);
     const later = new Date("2026-09-14T08:00:00Z");
 
-    const { origins } = await poll(plugin, { state: first.state, now: later });
+    const { origins } = await poll(plugin, { syncCursor: first.syncCursor, now: later });
 
     expect(statements(origins)).toEqual([
       {
@@ -168,11 +168,11 @@ describe("the ICS plugin", () => {
       ).fetch,
     });
     const first = await poll(plugin);
-    const gone = await poll(plugin, { state: first.state, now: new Date("2026-09-14T08:00:00Z") });
-    const stillGone = await poll(plugin, { state: gone.state, now: new Date("2026-09-14T08:15:00Z") });
+    const gone = await poll(plugin, { syncCursor: first.syncCursor, now: new Date("2026-09-14T08:00:00Z") });
+    const stillGone = await poll(plugin, { syncCursor: gone.syncCursor, now: new Date("2026-09-14T08:15:00Z") });
     expect(stillGone.origins).toEqual([]);
 
-    const back = await poll(plugin, { state: stillGone.state, now: new Date("2026-09-14T08:30:00Z") });
+    const back = await poll(plugin, { syncCursor: stillGone.syncCursor, now: new Date("2026-09-14T08:30:00Z") });
 
     expect(statements(back.origins).filter((statement) => statement.key === "dentist@google.com")).toEqual([
       {
@@ -208,9 +208,9 @@ describe("the ICS plugin", () => {
     const plugin = createIcsPlugin({ fetch });
     const first = await poll(plugin);
 
-    const second = await poll(plugin, { state: first.state });
+    const second = await poll(plugin, { syncCursor: first.syncCursor });
 
-    expect(second).toEqual({ origins: [], state: first.state });
+    expect(second).toEqual({ origins: [], syncCursor: first.syncCursor });
     expect(requests.map((request) => [request.url, request.headers.get("if-none-match")])).toEqual([
       [url, null],
       [url, '"v1"'],

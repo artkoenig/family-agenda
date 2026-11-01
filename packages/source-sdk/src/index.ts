@@ -2,7 +2,7 @@
  * The contract a Source plugin implements (ADR-0010). It is the only Family Agenda package a
  * plugin may import.
  */
-export const sdkVersion = "0.7.0";
+export const sdkVersion = "0.8.0";
 
 /**
  * A text the Admin area shows: plain, or per language as `{ en: "Calendar", de: "Kalender" }`.
@@ -117,8 +117,11 @@ export type SetupProgress =
 /** What a plugin gets for one Source on each run. */
 export type RunContext = {
   config: { plain: JsonObject; secrets: Record<string, string> };
-  /** The opaque state the plugin returned last time for this Source, such as a sync token. */
-  state: string | null;
+  /**
+   * What the plugin returned last time for this Source to resume from, such as a sync token or
+   * the last mail read; opaque to the Instance. Null on the first run.
+   */
+  syncCursor: string | null;
   /** The time of the run, as the Instance's clock tells it. */
   now: Date;
   /** The IANA time zone the Family lives in, for times a Source gives without one. */
@@ -127,7 +130,8 @@ export type RunContext = {
 
 export type IngestResult = {
   origins: Origin[];
-  state: string | null;
+  /** Where the next run resumes; stored only together with these Origins. */
+  syncCursor: string | null;
   /**
    * External ids of Origins deleted in the Source since, such as redacted messages; their
    * Revisions are rejected. Ids the core never recorded are ignored.
@@ -301,7 +305,7 @@ export interface SourcePlugin {
    * Prepares a Source an Admin adds, such as by creating an account for it, and returns the
    * values of its fields set by the plugin. A `SourceError` refuses adding the Source.
    */
-  sourceAdded?(context: Omit<RunContext, "state">): Promise<{ plain: JsonObject; secrets: Record<string, string> }>;
+  sourceAdded?(context: Omit<RunContext, "syncCursor">): Promise<{ plain: JsonObject; secrets: Record<string, string> }>;
   /** Cleans up after a Source was removed, such as by logging its account out; a failure is ignored. */
   sourceRemoved?(context: RunContext): Promise<void>;
 }

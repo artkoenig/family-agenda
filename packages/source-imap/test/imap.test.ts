@@ -69,7 +69,7 @@ const plugin = () => createImapPlugin({ allowPlaintext: true });
 
 const poll = (context: Partial<RunContext> = {}, of: SourcePlugin = plugin()): Promise<IngestResult> => {
   if (of.ingestion.mode !== "polling") throw new Error("the IMAP plugin polls");
-  return of.ingestion.poll({ config: config(), state: null, now, timeZone: "Europe/Berlin", ...context });
+  return of.ingestion.poll({ config: config(), syncCursor: null, now, timeZone: "Europe/Berlin", ...context });
 };
 
 const message = (origin: Origin | undefined) => {
@@ -113,13 +113,13 @@ describe("the IMAP plugin", () => {
     const first = await poll();
     server.deliver("Schule", moved, new Date("2026-09-15T10:00:00Z"));
 
-    const { origins, state } = await poll({ state: first.state, now: new Date(now.getTime() + days) });
+    const { origins, syncCursor } = await poll({ syncCursor: first.syncCursor, now: new Date(now.getTime() + days) });
 
     expect(origins.map((origin) => origin.externalId)).toEqual(["<elternabend-2@schule.example.org>"]);
     const content = message(origins[0]);
     expect(content.thread).toBe("<elternabend-1@schule.example.org>");
     expect(content.text).toContain("Der Elternabend wird auf 16 Uhr verlegt.");
-    expect((await poll({ state })).origins).toEqual([]);
+    expect((await poll({ syncCursor })).origins).toEqual([]);
   });
 
   it("reads INBOX as the Source itself when no folder is configured", async () => {
@@ -130,7 +130,7 @@ describe("the IMAP plugin", () => {
     expect(message(origins[0]).text).toContain("Nicht für die Schule.");
   });
 
-  it("reads each configured folder as a Part of its own, with state per folder", async () => {
+  it("reads each configured folder as a Part of its own, with a sync cursor per folder", async () => {
     const both = config({ folders: ["Schule", "INBOX"] });
     const first = await poll({ config: both });
 
@@ -138,15 +138,15 @@ describe("the IMAP plugin", () => {
     expect(parts).toContain("Schule");
     expect(parts.filter((part) => part === "INBOX")).toHaveLength(1);
     expect(parts.every((part) => part === "Schule" || part === "INBOX")).toBe(true);
-    expect(Object.keys(JSON.parse(first.state ?? "{}") as object).sort()).toEqual(["INBOX", "Schule"]);
-    expect((await poll({ config: both, state: first.state })).origins).toEqual([]);
+    expect(Object.keys(JSON.parse(first.syncCursor ?? "{}") as object).sort()).toEqual(["INBOX", "Schule"]);
+    expect((await poll({ config: both, syncCursor: first.syncCursor })).origins).toEqual([]);
   });
 
-  it("keeps the state of the single folder from before a Source had several", async () => {
-    const legacy = (await poll()).state as string;
+  it("keeps the sync cursor of the single folder from before a Source had several", async () => {
+    const legacy = (await poll()).syncCursor as string;
     const [only] = Object.values(JSON.parse(legacy) as Record<string, unknown>);
 
-    const { origins } = await poll({ state: JSON.stringify(only) });
+    const { origins } = await poll({ syncCursor: JSON.stringify(only) });
 
     expect(origins).toEqual([]);
   });
@@ -162,7 +162,7 @@ describe("the IMAP plugin", () => {
     server.commands.length = 0;
 
     const first = await poll();
-    await poll({ state: first.state });
+    await poll({ syncCursor: first.syncCursor });
 
     expect(server.commands.some((command) => command.startsWith("EXAMINE"))).toBe(true);
     const fetches = server.commands.filter((command) => command.startsWith("UID FETCH"));
@@ -172,11 +172,11 @@ describe("the IMAP plugin", () => {
   });
 
   it("starts over when the folder's UIDVALIDITY changes", async () => {
-    const { state } = await poll();
+    const { syncCursor } = await poll();
     const mailbox = server.folders.get("Schule")!;
     mailbox.uidValidity += 1;
 
-    const again = await poll({ state });
+    const again = await poll({ syncCursor });
 
     expect(again.origins.map((origin) => origin.externalId)).toContain("<elternabend-1@schule.example.org>");
     mailbox.uidValidity -= 1;

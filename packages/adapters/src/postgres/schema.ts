@@ -233,7 +233,7 @@ export const sourceRuns = pgTable(
       .primaryKey()
       .references(() => sources.id, { onDelete: "cascade" }),
     /**
-     * The plugin's opaque state, handed back on its next run; written in the same transaction as
+     * Where the plugin resumes, handed back on its next run; written in the same transaction as
      * the run's Origins, so that it never runs ahead of what was recorded. A JSON string, which
      * the repositories convert in SQL.
      */

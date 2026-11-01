@@ -22,7 +22,7 @@ export type ImapPluginOptions = {
 /** What was read of one folder: its UIDVALIDITY and the highest UID read, as the IMAP standard keys mails. */
 type FolderState = { uidValidity: string; lastUid: number };
 
-/** The state blob: what was read of each folder, by its name. */
+/** The sync cursor: what was read of each folder, by its name. */
 type State = Record<string, FolderState>;
 
 /** How far back the first run of a Source reads, so that adding a mailbox does not extract years of mail. */
@@ -144,7 +144,7 @@ export function createImapPlugin(options: ImapPluginOptions = {}): SourcePlugin 
           const configured = foldersOf(context.config.plain);
           // Without folders, INBOX is read as the Source itself.
           const folders = configured.length > 0 ? configured : ["INBOX"];
-          const previous = parseState(context.state, folders[0]);
+          const previous = parseState(context.syncCursor, folders[0]);
           const origins = new Map<string, Origin>();
           const state: State = {};
           for (const folder of folders) {
@@ -156,7 +156,7 @@ export function createImapPlugin(options: ImapPluginOptions = {}): SourcePlugin 
               origins.set(mail.externalId, configured.length > 0 ? { ...mail, part: folder } : mail);
             }
           }
-          return { origins: [...origins.values()], state: JSON.stringify(state) };
+          return { origins: [...origins.values()], syncCursor: JSON.stringify(state) };
         }),
     },
     // School mail pauses for weeks in the holidays.
@@ -245,7 +245,7 @@ function senderOf(parsed: ParsedMail): string | null {
 }
 
 /**
- * What was read of each folder. A state from before a Source had several folders is that of its
+ * What was read of each folder. A sync cursor from before a Source had several folders is that of its
  * only folder, which is `first` now.
  */
 function parseState(state: string | null, first: string | undefined): State {

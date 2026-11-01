@@ -227,8 +227,8 @@ function loadedSourceType(plugin: SourcePlugin): LoadedSourceType {
 }
 
 function runContextOf(context: SourceRunContext) {
-  const { plain, secrets, state, now, timeZone } = context;
-  return { config: { plain: plain as JsonObject, secrets }, state, now, timeZone };
+  const { plain, secrets, syncCursor, now, timeZone } = context;
+  return { config: { plain: plain as JsonObject, secrets }, syncCursor, now, timeZone };
 }
 
 /** A plugin's run as the core sees it: what it emitted, or why it failed. */
@@ -247,7 +247,7 @@ async function run(ingest: () => Promise<IngestResult>): Promise<SourceRunResult
   }
   return {
     ok: true,
-    state: result.state,
+    syncCursor: result.syncCursor,
     withdrawn: (result.withdrawn ?? []).filter((id) => typeof id === "string" && id !== ""),
     origins: result.origins.map((origin) => ({
       externalId: origin.externalId,

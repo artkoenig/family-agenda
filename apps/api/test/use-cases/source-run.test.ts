@@ -82,7 +82,7 @@ describe("A Source's run", () => {
     expect(await cursor()).toBe("1");
     await execute(healed("origins"));
     await tick();
-    expect(testPluginControls.runs("school-portal").at(-1)?.state).toBe("1");
+    expect(testPluginControls.runs("school-portal").at(-1)?.syncCursor).toBe("1");
   });
 
   it("does not record its Origins when the sync cursor is not advanced", async () => {
