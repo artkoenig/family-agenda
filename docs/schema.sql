@@ -11,6 +11,15 @@
 --   - raw messages and attachments are files behind the BlobStore (ADR-0006); Postgres holds
 --     their reference, hash and size, never BYTEA content;
 --   - secrets are referenced without foreign keys, as the SecretStore is its own port (ADR-0006).
+--
+-- Files and secrets outside Postgres (ADR-0016). They are referred to only by:
+--   files:   source_record.raw_blob, source_record_attachment.blob, family_member.photo_blob;
+--   secrets: source.secret_refs (its values), llm_endpoint.api_key_ref.
+-- No foreign key or trigger follows them. A transaction that drops such a reference, also through
+-- a cascade (e.g. deleting a source), returns the references it read before deleting, and the
+-- caller removes the files and secrets after the commit. The worker's sweep, at start and daily,
+-- removes every file and secret that none of these columns refers to and that is older than an
+-- hour.
 
 -- ---------------------------------------------------------------------------------------------
 -- Helpers

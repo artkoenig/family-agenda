@@ -4,7 +4,7 @@ status: proposed
 
 # Items are rows written from their one Source Record, without Revisions
 
-Supersedes ADR-0009 and ADR-0015. Amends ADR-0010, ADR-0013 and ADR-0014.
+Supersedes ADR-0009 and ADR-0015. Amends ADR-0006, ADR-0010, ADR-0013 and ADR-0014.
 
 Items were projections of append-only Revisions (ADR-0009), with Re-reading superseding what a message stated (ADR-0015). That design paid for undoing any single input with folding, rejection, restoring, conflict marks, positional Item keys and a thread-aware prompt, while nothing in the Family's daily use needed it. We rebuild the data model from scratch instead. Every Item is an ordinary row that comes from exactly one Source Record. A message's Items are written once. A calendar entry's or Lesson's one Item is overwritten when the entry changes. The target schema is [`docs/schema.sql`](../schema.sql). There is no data migration: existing Instances start over.
 
@@ -34,15 +34,25 @@ Family Members are assigned only to Source Attributes (`source_attribute_member`
 
 A message's files are deleted once no Item needs them (an Event or Lesson has ended, a Task is done or past its Deadline, the Item was deleted or withdrawn) or once a constant retention period of about 180 days has passed since it arrived, whichever comes first. The Source Record then stays as a tombstone (`purged_at`, with its content cleared), which the Admin area shows as "content no longer kept". The row is deleted once no Item points to it and it is older than the period. Messages older than the period are ignored on arrival, so a Source redelivering them (an IMAP `UIDVALIDITY` reset, a Matrix backfill) cannot bring them back. Stated Source Records have no files and are not subject to retention.
 
+## Files and secrets
+
+Postgres refers to files in the BlobStore and to secrets in the SecretStore without foreign keys (ADR-0006). So a cascade, a crash or a forgotten call can leave a file or a secret that nothing refers to any more. Both are removed in two ways.
+
+- **Directly, after the commit.** A transaction that stops referring to files or secrets returns their references, and the caller removes them once it has committed. This covers removing a Source, a withdrawn or purged message, a replaced photo or secret, and a run's new files when the message was already known. A cascade drops the references with the rows, so the repository reads them before it deletes.
+- **By a sweep, as the safety net.** When the worker starts, and once a day after that, it removes every file and every secret that nothing refers to and that is older than an hour. A younger one may belong to a transaction still running. Files are referred to by `source_record.raw_blob`, `source_record_attachment.blob` and `family_member.photo_blob`, and secrets by `source.secret_refs` and `llm_endpoint.api_key_ref`. The BlobStore gains a `list()`, as the SecretStore already has.
+
+The sweep is what makes this correct. A missed direct removal costs only disk space until the next sweep, and never leaves a row pointing at nothing.
+
 ## Agendas
 
 An Agenda filters only on Family Members (`agenda_member`). Its `layout` (`timeline` or `task_list`) fixes the kinds it shows, and `horizon_days` how far ahead it reaches. An Agenda with no members shows every Item. One with members shows only the Items that concern at least one of them, so Items that concern the whole Family are not shown there. This reverses the earlier behaviour. The unstored Quick Filter follows the same rule. Deleting a Family Member deletes the Agendas left with no member, so none silently widens to the whole Family.
 
 ## Amendments
 
+- **ADR-0006**: files and secrets that nothing refers to are swept (see Files and secrets), so a deleted row never leaves its file behind for good.
 - **ADR-0010**: a Source Record carries a message or a stated Item, never Revisions. The SDK loses its Revisions vocabulary (create, change, move and cancel). Parts give way to the Source Attributes port. In a Source Record, `attributes` lists only Source Attribute ids, and the state blob is `source_run.sync_cursor`. Removing a plugin keeps its Sources' Source Records and Items. The "New Source Types are available" banner and its `is_new` and `first_seen_*` fields are dropped: a newly discovered Source Type or Catalogue entry simply appears disabled.
 - **ADR-0013**: `settings` becomes `family`, the one row of what belongs to the Family itself. Still no Family id. The single-row tables are `family`, `llm_endpoint` and `background_activity`.
-- **ADR-0014**: tables are named in the singular. Run state is `source_run` (formerly `source_health`), which also holds the `sync_cursor` (no longer on `source`) and the warnings beside the Source Status. `source` holds only configuration. A Source's cascade removes its Source Attributes, Source Records, attachments and Items. Triggers keep the invariants that a check cannot: no Family Member deleted while they alone are assigned to a Source Attribute, no Agenda left with no member by such a deletion, no Item on a withdrawn Source Record, and every Item with its detail row.
+- **ADR-0014**: tables are named in the singular. Run state is `source_run` (formerly `source_health`), which also holds the `sync_cursor` (no longer on `source`) and the warnings beside the Source Status. `source` holds only configuration. A Source's cascade removes its Source Attributes, Source Records, attachments and Items. Triggers keep the invariants that a check cannot: no Family Member deleted while they alone are assigned to a Source Attribute, no Agenda left with no member by such a deletion, no Item on a withdrawn Source Record, and every Item with its detail row. The worker sweeps unreferenced secrets once a day as well as at start, and sweeps unreferenced files the same way.
 
 ## Consequences
 
@@ -61,4 +71,5 @@ An Agenda filters only on Family Members (`agenda_member`). Its `layout` (`timel
 - **Recurring Events**, from `RRULE`s or recurring rules in messages: needs expanding series and exceptions, and is not needed for this redesign.
 - **Admins creating or correcting Items by hand**: an Item without a Source Record would have no Source Attribute to say whom it concerns. A correction would have to survive overwriting, which is the override table this design avoids.
 - **A `read` flag on Source Attributes instead of the allow-lists**, or a `rename` in the port: the plugin would declare Sent, Trash and private chats only to have them ignored. A name-keyed rename cannot be told from delete plus create anyway.
+- **An outbox of dropped file references**, filled by triggers on the rows that refer to files: catches cascades without a scan, but not a file written for a transaction that never commits. That still needs the sweep, which alone covers every case.
 - **An Agenda filter as JSONB**, or on Sources, Source Attributes or kinds: JSONB has no foreign keys (ADR-0014), and assigning Source Attributes already turns where an Item came from into whom it concerns.
