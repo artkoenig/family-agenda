@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: superseded by ADR-0016
 ---
 
 # Items are projections of append-only Revisions, applied without review
@@ -28,3 +28,5 @@ We chose this because a review gate in front of every uncertain Item makes the F
 
 - **A Review Inbox that holds uncertain Items as pending until an Admin approves them**: safer per Item, but nine triggers, a pending mark in every Agenda, and an overview that degrades whenever nobody reviews.
 - **Overwriting Item rows in place, with a history table next to them**: simpler to query, but rejecting one input in the middle of an Item's history would need hand-written undo logic for every kind of change.
+
+_Superseded by ADR-0016: there are no Revisions. Each Item is a row written from its one Source Record. A message's Items are written once, and a calendar entry's or Lesson's Item is overwritten. Admins can only delete Items, and there is no reject, restore or conflict list._

@@ -22,3 +22,5 @@ Raw source messages and attachments, such as PDFs and images, are kept behind a 
 - **An S3-compatible store (MinIO, Garage) in Compose**: one more service to run, for no gain on a single Instance.
 
 _Amended by ADR-0011: the whatsmeow session store is replaced by the bridges' volumes, which hold the Messenger sessions outside Postgres. A backup also includes Synapse's own database and the Synapse and bridge volumes, under the same recovery kit._
+
+_Amended by ADR-0016: files nothing refers to are removed after the commit that stops referring to them, and a sweep removes the rest. When the worker starts and once a day after that, it removes every file and secret that nothing in Postgres refers to and that is older than an hour, so a crash or a cascade never leaves a file behind for good._
