@@ -154,7 +154,6 @@ export function createExtraction(deps: ExtractionDeps) {
         at: clock.now(),
         revisions,
         attachmentProblems: problems,
-        supersedes: true,
       },
       project,
     );
@@ -163,23 +162,7 @@ export function createExtraction(deps: ExtractionDeps) {
 
   /** Extracts one message; the failure, if it failed. */
   async function extractMessage(message: PendingMessage, endpoint: LlmEndpoint): Promise<ExtractionReport["failed"][number] | null> {
-    const bytes = await blobs.get(message.text);
-    if (!bytes) {
-      // Its text was deleted before it was read, so it states nothing new, and keeps what it said before.
-      await items.recordExtraction(
-        {
-          messageId: message.id,
-          sourceId: message.sourceId,
-          at: clock.now(),
-          revisions: [],
-          attachmentProblems: [],
-          supersedes: false,
-        },
-        project,
-      );
-      return null;
-    }
-    const full = await fullTextOf(message, new TextDecoder().decode(bytes));
+    const full = await fullTextOf(message, message.body);
     const result = await extractOne(message, full.text, full.problems, endpoint);
     return result.ok ? null : { messageId: message.id, problem: result.problem, message: result.message };
   }

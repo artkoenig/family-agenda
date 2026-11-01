@@ -8,12 +8,12 @@
 --   - orders are identity columns;
 --   - single-row tables have a boolean key held at true by a check (ADR-0013);
 --   - UUID keys default to gen_random_uuid(), and the app may pass its own id;
---   - raw messages and attachments are files behind the BlobStore (ADR-0006); Postgres holds
---     their reference, hash and size, never BYTEA content;
+--   - attachments are files behind the BlobStore (ADR-0006); Postgres holds their reference,
+--     hash and size, never BYTEA content. A message's text is in Postgres, with no file;
 --   - secrets are referenced without foreign keys, as the SecretStore is its own port (ADR-0006).
 --
 -- Files and secrets outside Postgres (ADR-0016). They are referred to only by:
---   files:   source_record.raw_blob, source_record_attachment.blob, family_member.photo_blob;
+--   files:   source_record_attachment.blob, family_member.photo_blob;
 --   secrets: source.secret_refs (its values), llm_endpoint.api_key_ref.
 -- No foreign key or trigger follows them. A transaction that drops such a reference, also through
 -- a cascade (e.g. deleting a source), returns the references it read before deleting, and the
@@ -227,10 +227,10 @@ CREATE INDEX source_attribute_member_family_member_id_idx
 
 -- One Source Record: what a Source delivered under one external id.
 --
--- A message (mail, Messenger message): stated IS NULL. Its raw file is behind the BlobStore
--- (raw_blob), its text in body; it is read once by the LLM, and processed_at is set when its
--- Items are written. NULL means waiting, or extraction keeps failing (an Admin can retry it while its files
--- are kept). An edited message (same external_id, new content) keeps its first reading.
+-- A message (mail, Messenger message): stated IS NULL. Its text is in body (empty for a message
+-- of attachments only), its attachments behind the BlobStore; there is no file of the message
+-- itself. It is read once by the LLM, and processed_at is set when its Items are written. NULL
+-- means waiting, or extraction keeps failing (an Admin can retry it while its content is kept). An edited message (same external_id, new content) keeps its first reading.
 --
 -- A calendar entry or a Lesson (ICS UID, WebUntis `<childId>/<lessonId>`): stated holds the Item
 -- as the plugin states it, e.g. {"kind": "event", "title": ..., "starts_at": ...}. No file, no
@@ -240,16 +240,16 @@ CREATE INDEX source_attribute_member_family_member_id_idx
 -- overwrites its Item, keeping only whether a Task was ticked done.
 --
 -- withdrawn_at: the Source no longer has it (deleted message, deleted calendar entry, unplanned
--- Lesson, or an empty Source Attribute list). Its Items are deleted (trigger below), and after
--- commit a message's files are removed from the BlobStore and its row purged. Arriving
+-- Lesson, or an empty Source Attribute list). Its Items are deleted (trigger below), a message's
+-- row is purged, and after commit its attachments are removed from the BlobStore. Arriving
 -- again clears it: a stated Source Record then writes its Item as new; a message is not read again and
 -- its Items do not come back.
 --
--- Retention (messages only): a message's files are deleted once none of its Items is needed any
+-- Retention (messages only): a message's content is deleted once none of its Items is needed any
 -- more (an Event or Lesson has ended, a Task is done or past its Deadline, the Item was deleted
 -- or withdrawn) or once the retention period (a constant of about 180 days) has passed since
--- occurred_at, whichever comes first. The row then becomes a tombstone: purged_at set, raw_*,
--- sender, subject and body cleared, its source_record_attachment rows deleted. A message row is
+-- occurred_at, whichever comes first. The row then becomes a tombstone: purged_at set, sender,
+-- subject and body cleared, its source_record_attachment rows and their files deleted. A message row is
 -- deleted once no Item points to it and it is older than the retention period. Messages whose
 -- occurred_at (the Source's receive time) is older than the period are ignored on arrival.
 CREATE TABLE source_record (
@@ -260,9 +260,6 @@ CREATE TABLE source_record (
   sender        TEXT,
   subject       TEXT,
   body          TEXT,
-  raw_blob      TEXT,                        -- BlobStore reference of the raw message
-  raw_sha256    TEXT,
-  raw_size      INT,
   stated        JSONB,
   processed_at  TIMESTAMPTZ,
   withdrawn_at  TIMESTAMPTZ,
@@ -273,16 +270,13 @@ CREATE TABLE source_record (
     CHECK (stated IS NULL OR stated->>'kind' IN ('event', 'lesson')),
   -- A stated Source Record carries nothing of a message.
   CONSTRAINT source_record_stated_is_no_message
-    CHECK (stated IS NULL OR (raw_blob IS NULL AND sender IS NULL AND subject IS NULL
-                              AND body IS NULL AND purged_at IS NULL AND occurred_at IS NULL)),
-  -- A message has its file exactly until it is purged.
-  CONSTRAINT source_record_message_has_file
-    CHECK (stated IS NOT NULL OR (raw_blob IS NULL) = (purged_at IS NOT NULL)),
+    CHECK (stated IS NULL OR (sender IS NULL AND subject IS NULL AND body IS NULL
+                              AND purged_at IS NULL AND occurred_at IS NULL)),
+  -- A message has its text exactly until it is purged.
+  CONSTRAINT source_record_message_has_body
+    CHECK (stated IS NOT NULL OR (body IS NULL) = (purged_at IS NOT NULL)),
   CONSTRAINT source_record_message_occurred
     CHECK (stated IS NOT NULL OR occurred_at IS NOT NULL),
-  CONSTRAINT source_record_raw_complete
-    CHECK ((raw_blob IS NULL) = (raw_sha256 IS NULL) AND (raw_blob IS NULL) = (raw_size IS NULL)),
-  CONSTRAINT source_record_raw_size_not_negative CHECK (raw_size >= 0),
   CONSTRAINT source_record_purged_is_cleared
     CHECK (purged_at IS NULL OR (sender IS NULL AND subject IS NULL AND body IS NULL))
 );

@@ -143,6 +143,7 @@ export class ImapServerFixture {
             messages.forEach((message, index) => {
               if (!matching.includes(message.uid)) return;
               const parts = [`UID ${message.uid}`];
+              if (wanted.includes("INTERNALDATE")) parts.push(`INTERNALDATE "${internalDateOf(message.internalDate)}"`);
               let literal = "";
               if (wanted.includes("BODY.PEEK[HEADER.FIELDS (FROM)]")) {
                 const header = (/^From:.*$/im.exec(message.raw)?.[0] ?? "") + "\r\n\r\n";
@@ -189,4 +190,11 @@ function inRange(range: string, uids: number[]): number[] {
       return uid >= low && uid <= high;
     }),
   );
+}
+
+/** A date as IMAP's INTERNALDATE gives it, such as `14-Sep-2026 06:12:00 +0000`. */
+function internalDateOf(date: Date): string {
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${pad(date.getUTCDate())}-${months[date.getUTCMonth()]}-${date.getUTCFullYear()} ${pad(date.getUTCHours())}:${pad(date.getUTCMinutes())}:${pad(date.getUTCSeconds())} +0000`;
 }
