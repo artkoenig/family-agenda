@@ -49,20 +49,12 @@ The kind of channel a Source is, such as WebUntis, an ICS calendar, an IMAP mail
 _Avoid_: Source kind, provider, plugin (for the domain concept)
 
 **Source Attribute**:
-A subdivision of a Source that the Source itself reports, such as a mailbox folder or label, a WhatsApp group, a child in a timetable account, or the one calendar of an ICS Source; only those an Admin chose to read count.
+A subdivision of a Source that the Source itself reports, such as a mailbox folder or label, a WhatsApp group, a child in a timetable account, or the one calendar of an ICS Source; only those an Admin chose to read count. An Admin assigns it to Family Members, and its Items concern them, or the whole Family if it is assigned to no one.
 _Avoid_: Folder (for the domain concept), channel, sub-source, label
-
-**Source Assignment**:
-The Family Members an Admin assigns a Source Attribute to; the only thing that decides whom an Item concerns. An Item concerns everyone its Source Record's Source Attributes are assigned to, or the whole Family if one of them is assigned to no one.
-_Avoid_: Mapping, routing rule, filter
 
 **Source Status**:
 Whether a Source works: **OK**; **Failing** when it needs an Admin, at once on a definite error and after 6 hours of temporary ones; or **Silent** when a Source Type that declares it has brought no new Source Record for 14 days.
 _Avoid_: Health state, broken, stale (for the status)
-
-**Source Warning**:
-A problem shown beside a Source Status without changing it, such as a Source Record naming a Source Attribute its Source never reported, or a calendar entry that cannot become an Item.
-_Avoid_: Fourth status, error, alert
 
 **Messenger**:
 A chat network, such as WhatsApp, Signal or Telegram, that the Matrix Source Type can read; each Source of that type is one linked Messenger account.
@@ -84,18 +76,6 @@ _Avoid_: Deleted, revoked, removed
 The one reading of a message by the LLM that finds its Items; a message edited later keeps what it found.
 _Avoid_: Parsing, re-import, reprocessing
 
-**Automatic Check**:
-A test an Item found by Extraction must pass to be written, such as its stated weekday matching its date.
-_Avoid_: Validation, confidence
-
-**Not extracted**:
-Said of a message whose Extraction keeps failing on its own content; an Admin can retry it.
-_Avoid_: Failed, broken, unread
-
-**Retention Period**:
-How long the Instance keeps a message's content at most, about half a year from its arrival.
-_Avoid_: Archive time, expiry, TTL
-
 ### Items
 
 **Item**:
@@ -111,12 +91,8 @@ The regular school schedule of a Family Member, made up of Lessons.
 _Avoid_: Schedule, plan
 
 **Lesson**:
-One slot of a Timetable on a date: a subject at a time, in a room, with a teacher.
+One slot of a Timetable on a date: a subject at a time, in a room, with a teacher; it may be cancelled, held by a substitute, or moved to another room.
 _Avoid_: Class, period
-
-**Lesson Change**:
-How a Lesson deviates from the Timetable: cancelled, held by a substitute, or moved to another room; part of the Lesson, not an Item of its own.
-_Avoid_: Substitution (for the concept), update
 
 **School Day**:
 The Lessons of a Family Member on one date, shown together as one entry; not an Item of its own.
@@ -143,14 +119,6 @@ _Avoid_: Late, expired, missed
 **Instance**:
 One installation of Family Agenda with its own database, serving exactly one Family.
 _Avoid_: Server, deployment, tenant
-
-**Agenda Cloud**:
-The paid services an Instance can subscribe to, such as Remote Access, push notifications, a hosted LLM endpoint and off-site backups; never a place where Items live.
-_Avoid_: Hosted version, SaaS, cloud edition
-
-**Remote Access**:
-Reaching an Instance from outside the home network through Agenda Cloud.
-_Avoid_: Tunnel, relay, external access
 
 **Recovery Kit**:
 What an Admin prints or saves at first start to recover the Instance; without it, a backup cannot restore Source credentials.

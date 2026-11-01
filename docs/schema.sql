@@ -182,7 +182,7 @@ CREATE TABLE source_run (
 );
 
 -- ---------------------------------------------------------------------------------------------
--- Source Attributes and Source Assignment
+-- Source Attributes and their assignment
 -- ---------------------------------------------------------------------------------------------
 
 -- A subdivision of a Source: an IMAP folder or Gmail label, a WhatsApp group (by its JID, not the
@@ -202,7 +202,7 @@ CREATE TABLE source_attribute (
   CONSTRAINT source_attribute_external_id_unique UNIQUE (source_id, external_id)
 );
 
--- Source Assignment: the only place where Family Members are assigned. A Source Attribute with
+-- The only place where Family Members are assigned. A Source Attribute with
 -- no rows is assigned to the whole Family.
 CREATE TABLE source_attribute_member (
   attribute_id      UUID NOT NULL REFERENCES source_attribute(id) ON DELETE CASCADE,
@@ -220,7 +220,7 @@ CREATE INDEX source_attribute_member_family_member_id_idx
 --
 -- A message (mail, Messenger message): stated IS NULL. Its raw file is behind the BlobStore
 -- (raw_blob), its text in body; it is read once by the LLM, and processed_at is set when its
--- Items are written. NULL means waiting or Not extracted (an Admin can retry it while its files
+-- Items are written. NULL means waiting, or extraction keeps failing (an Admin can retry it while its files
 -- are kept). An edited message (same external_id, new content) keeps its first reading.
 --
 -- A calendar entry or a Lesson (ICS UID, WebUntis `<childId>/<lessonId>`): stated holds the Item
@@ -238,10 +238,10 @@ CREATE INDEX source_attribute_member_family_member_id_idx
 --
 -- Retention (messages only): a message's files are deleted once none of its Items is needed any
 -- more (an Event or Lesson has ended, a Task is done or past its Deadline, the Item was deleted
--- or withdrawn) or once the Retention Period (a constant of about 180 days) has passed since
+-- or withdrawn) or once the retention period (a constant of about 180 days) has passed since
 -- occurred_at, whichever comes first. The row then becomes a tombstone: purged_at set, raw_*,
 -- sender, subject and body cleared, its source_record_attachment rows deleted. A message row is
--- deleted once no Item points to it and it is older than the Retention Period. Messages whose
+-- deleted once no Item points to it and it is older than the retention period. Messages whose
 -- occurred_at (the Source's receive time) is older than the period are ignored on arrival.
 CREATE TABLE source_record (
   id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
