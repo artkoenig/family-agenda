@@ -132,6 +132,7 @@ export const en = {
     sources: (count: number) => plural(count, { one: `${count} Source`, other: `${count} Sources` }),
     llmLocal: (model: string) => `${model}, on the home network`,
     llmRemote: (model: string) => `${model}, outside the home network`,
+    llmFailing: "Connection problem",
     notSetUp: "Not set up",
     admins: (count: number) => plural(count, { one: `${count} Admin`, other: `${count} Admins` }),
     saved: "Saved",
@@ -314,12 +315,6 @@ export const en = {
     title: "AI",
     description:
       "Sources such as mailboxes bring in messages, not Events. A language model reads the Events from each message. Family Agenda talks to any server with an OpenAI-compatible API: a local one such as Ollama, llama.cpp or LM Studio, or a cloud provider with an API key.",
-    readBy: (model: Child, baseUrl: string, local: boolean): Child[] => [
-      "Messages are read by ",
-      model,
-      ` at ${baseUrl}, ${local ? "on your home network." : "outside your home network."}`,
-    ],
-    none: "No LLM endpoint is configured yet. Messages wait until one is.",
     baseUrl: "Base URL of the OpenAI-compatible API",
     baseUrlHint: "Such as http://ollama:11434/v1 for Ollama in Compose, or https://api.openai.com/v1.",
     model: "Model",
@@ -332,6 +327,9 @@ export const en = {
       "After an update the model may find more in messages than it did. Has every message read again with the current endpoint. What they brought in stays until each is read again.",
     rereadButton: "Re-read all",
     waiting: (count: number) => plural(count, { one: `${count} message waits to be read.`, other: `${count} messages wait to be read.` }),
+    statusOk: "OK",
+    statusFailing: "Failing",
+    connectionError: "Connection error",
   },
 
   display: {

@@ -38,8 +38,24 @@ describe("the LLM endpoint and mail over HTTP", () => {
     expect(saved.status).toBe(303);
     const page = await settings();
     expect(page).toContain('value="http://ollama:11434/v1"');
-    expect(page).toContain("on your home network");
+    expect(page).toContain("fam-chip--ok");
     expect(page).not.toContain('name="vision"');
+  });
+
+  it("shows the error in a red banner when the endpoint fails", async () => {
+    await instance.post(
+      "/admin/llm",
+      { baseUrl: "http://ollama:11434/v1", model: "qwen3.5:9b", apiKey: "" },
+      { cookie },
+    );
+
+    extractor.failHealth("connection refused");
+
+    const page = await settings();
+    expect(page).toContain("fam-banner--problem");
+    expect(page).toContain("Connection error");
+    expect(page).toContain("connection refused");
+    expect(page).toContain("fam-chip--problem");
   });
 
   it("saves an endpoint outside the home network only with the acknowledgement, and never shows its key", async () => {

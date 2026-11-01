@@ -252,7 +252,8 @@ export async function bootApplication(config: ApplicationConfig): Promise<Applic
   });
   const services = createServiceSupervision({ registry, sourceTypes: sourceTypeRepository, catalogues: catalogueRepository });
   const endpoints = new PostgresLlmEndpointRepository(postgres.db);
-  const llmEndpoint = createLlmEndpointAccess({ clock, endpoints, secrets });
+  const extractor = config.extractor ?? new OpenAiCompatibleExtractor();
+  const llmEndpoint = createLlmEndpointAccess({ clock, endpoints, secrets, extractor });
   const secretSweep = createSecretSweep({ clock, secrets, sources: sourceRepository, endpoints });
   const extraction = createExtraction({
     clock,
@@ -262,7 +263,7 @@ export async function bootApplication(config: ApplicationConfig): Promise<Applic
     secrets,
     items,
     blobs,
-    extractor: config.extractor ?? new OpenAiCompatibleExtractor(),
+    extractor,
     textExtractor: config.textExtractor ?? new CommandLineTextExtractor({ tessdataDirectory: config.tessdataDirectory }),
     ocrModels,
     activity,

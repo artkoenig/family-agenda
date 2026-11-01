@@ -114,6 +114,7 @@ export const de: Catalogue = {
     sources: (count) => plural(count, { one: `${count} Quelle`, other: `${count} Quellen` }),
     llmLocal: (model) => `${model}, im Heimnetz`,
     llmRemote: (model) => `${model}, außerhalb des Heimnetzes`,
+    llmFailing: "Erreichbarkeitsproblem",
     notSetUp: "Nicht eingerichtet",
     admins: (count) => plural(count, { one: `${count} Admin`, other: `${count} Admins` }),
     saved: "Gespeichert",
@@ -299,12 +300,6 @@ export const de: Catalogue = {
     title: "KI",
     description:
       "Quellen wie Postfächer bringen Nachrichten, keine Termine. Ein Sprachmodell liest die Termine aus jeder Nachricht. Family Agenda spricht mit jedem Server mit OpenAI-kompatibler API: einem lokalen wie Ollama, llama.cpp oder LM Studio, oder einem Cloud-Anbieter mit API-Schlüssel.",
-    readBy: (model, baseUrl, local) => [
-      "Nachrichten liest ",
-      model,
-      ` unter ${baseUrl}, ${local ? "in deinem Heimnetz." : "außerhalb deines Heimnetzes."}`,
-    ],
-    none: "Noch ist kein LLM-Endpunkt eingerichtet. Nachrichten warten, bis einer eingerichtet ist.",
     baseUrl: "Basis-URL der OpenAI-kompatiblen API",
     baseUrlHint: "Etwa http://ollama:11434/v1 für Ollama in Compose oder https://api.openai.com/v1.",
     model: "Modell",
@@ -317,6 +312,9 @@ export const de: Catalogue = {
       "Nach einem Update findet das Modell womöglich mehr in Nachrichten als zuvor. Lässt jede Nachricht mit dem aktuellen Endpunkt neu lesen. Was sie gebracht haben, bleibt, bis jede neu gelesen ist.",
     rereadButton: "Alle neu lesen",
     waiting: (count) => plural(count, { one: `${count} Nachricht wartet aufs Lesen.`, other: `${count} Nachrichten warten aufs Lesen.` }),
+    statusOk: "OK",
+    statusFailing: "Gestört",
+    connectionError: "Verbindungsfehler",
   },
 
   display: {
