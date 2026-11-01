@@ -1,4 +1,5 @@
 import type {
+  EndpointHealth,
   ExtractedEvent,
   ExtractedTask,
   ExtractionRequest,
@@ -42,6 +43,7 @@ export function extractedTask(
 export class ScriptedExtractor implements Extractor {
   readonly requests: ExtractionRequest[] = [];
   private readonly scripts: { contains: string; result: ExtractionResult }[] = [];
+  private healthResult: EndpointHealth = { ok: true };
 
   /** The Events and Tasks a message containing `contains` yields. */
   script(contains: string, events: ExtractedEvent[], tasks: ExtractedTask[] = []): void {
@@ -58,9 +60,22 @@ export class ScriptedExtractor implements Extractor {
     if (failing >= 0) this.scripts.splice(failing, 1);
   }
 
+  /** Makes the health check report a problem, until recovered. */
+  failHealth(message: string): void {
+    this.healthResult = { ok: false, message };
+  }
+
+  recoverHealth(): void {
+    this.healthResult = { ok: true };
+  }
+
   extract(request: ExtractionRequest): Promise<ExtractionResult> {
     this.requests.push(request);
     const script = this.scripts.find(({ contains }) => request.message.text.includes(contains));
     return Promise.resolve(script?.result ?? { ok: true, events: [], tasks: [] });
+  }
+
+  health(): Promise<EndpointHealth> {
+    return Promise.resolve(this.healthResult);
   }
 }

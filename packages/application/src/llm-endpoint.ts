@@ -1,10 +1,11 @@
 import { isLocalHost } from "@family-agenda/domain";
-import type { Clock, LlmEndpoint, LlmEndpointRepository, SecretRef, SecretStore } from "./ports";
+import type { Clock, Extractor, LlmEndpoint, LlmEndpointRepository, SecretRef, SecretStore } from "./ports";
 
 export type LlmEndpointDeps = {
   clock: Clock;
   endpoints: LlmEndpointRepository;
   secrets: SecretStore;
+  extractor: Extractor;
 };
 
 export type LlmEndpointSummary = {
@@ -15,6 +16,10 @@ export type LlmEndpointSummary = {
   /** Whether it is on the home network, so that messages do not leave the house. */
   local: boolean;
 };
+
+export type LlmEndpointHealth =
+  | { ok: true }
+  | { ok: false; message: string };
 
 export type LlmEndpointInput = {
   /** The base URL of an OpenAI-compatible server, such as `http://ollama:11434/v1`. */
@@ -46,6 +51,12 @@ export function createLlmEndpointAccess(deps: LlmEndpointDeps) {
         hasApiKey: stored.apiKey !== null,
         local: isLocalHost(new URL(stored.baseUrl).hostname),
       };
+    },
+
+    async health(): Promise<LlmEndpointHealth | null> {
+      const endpoint = await llmEndpointOf({ endpoints, secrets });
+      if (!endpoint) return null;
+      return deps.extractor.health(endpoint);
     },
 
     /**
@@ -83,7 +94,7 @@ export function createLlmEndpointAccess(deps: LlmEndpointDeps) {
 export type LlmEndpointAccess = ReturnType<typeof createLlmEndpointAccess>;
 
 /** The Family's LLM endpoint with its API key, or null if none is configured. */
-export async function llmEndpointOf(deps: Omit<LlmEndpointDeps, "clock">): Promise<LlmEndpoint | null> {
+export async function llmEndpointOf(deps: { endpoints: LlmEndpointRepository; secrets: SecretStore }): Promise<LlmEndpoint | null> {
   const stored = await deps.endpoints.find();
   if (!stored) return null;
   const apiKey = stored.apiKey ? await deps.secrets.get(stored.apiKey) : null;

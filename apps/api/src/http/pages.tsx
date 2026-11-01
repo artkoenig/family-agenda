@@ -4,6 +4,7 @@ import {
   type CatalogueSummary,
   type FamilyMemberSummary,
   type LanguageSettings,
+  type LlmEndpointHealth,
   type LlmEndpointSummary,
   type MessageDetails,
   type RecoveryKit,
@@ -134,6 +135,8 @@ export type SettingsSummary = {
   /** How many Sources are Failing, which the whole Admin area shows a banner for. */
   failingSources: number;
   llm: { model: string; local: boolean } | null;
+  /** The LLM endpoint's connection status; null if none is configured. */
+  llmHealth: "ok" | "failing" | null;
   admins: number;
   kitSaved: boolean;
   /** The Family Language. */
@@ -205,13 +208,12 @@ function settingsGroups(translation: Translation): SettingsGroup[] {
           id: "llm",
           href: "/admin/llm",
           label: t.llm.title,
-          summary: ({ settings: { llm, ocr } }) => ({
-            text: [
-              llm ? (llm.local ? s.llmLocal(llm.model) : s.llmRemote(llm.model)) : s.notSetUp,
-              ocr.enabled ? s.ocr(list(ocr.languages.map(ocrLanguageName))) : s.ocrOff,
-            ].join("; "),
-            ...(ocr.missing ? { tone: "attention" as const } : {}),
-          }),
+          summary: ({ settings: { llm, llmHealth, ocr } }) => {
+            const llmText = llm ? (llmHealth === "failing" ? s.llmFailing : llm.model) : s.notSetUp;
+            const text = [llmText, ocr.enabled ? s.ocr(list(ocr.languages.map(ocrLanguageName))) : s.ocrOff].join("; ");
+            const tone = llmHealth === "failing" || ocr.missing ? ("attention" as const) : undefined;
+            return { text, ...(tone ? { tone } : {}) };
+          },
         },
       ],
     },
@@ -1251,11 +1253,11 @@ export function SourcePage(props: {
 }
 
 /** A titled group of rows in a sheet, such as a Messenger's accounts; its heading at `level`. */
-function Group(props: { title: string; level: 2 | 3 | 4; intro?: Child; children: Child }) {
+function Group(props: { title: string; level: 2 | 3 | 4; status?: Child; intro?: Child; children: Child }) {
   const Heading = `h${props.level}` as const;
   return (
     <section class="fam-group">
-      <Heading class="fam-group__title">{props.title}</Heading>
+      {props.status ? (<div class="fam-group__heading"><Heading class="fam-group__title">{props.title}</Heading>{props.status}</div>) : <Heading class="fam-group__title">{props.title}</Heading>}
       {props.intro ? <p class="fam-group__intro">{props.intro}</p> : null}
       {props.children}
     </section>
@@ -1959,6 +1961,8 @@ export function LlmEndpointPage(props: {
   /** What the Admin entered, shown again with a problem. */
   entered?: { baseUrl: string; model: string };
   problem?: string;
+  /** The endpoint's connection health, null when no endpoint is configured. */
+  health: LlmEndpointHealth | null;
 }) {
   const { endpoint } = props;
   const shown = props.entered ?? endpoint;
@@ -1966,17 +1970,32 @@ export function LlmEndpointPage(props: {
   const l = t.llm;
   return (
     <AdminLayout title={l.title} admin={props.admin} current="llm">
-      <SectionHeader title={l.title} description={l.description} />
-      {endpoint ? (
-        <p class={endpoint.local ? "fam-callout fam-callout--ok" : "fam-callout"}>
-          {l.readBy(<strong>{endpoint.model}</strong>, endpoint.baseUrl, endpoint.local)}
-        </p>
-      ) : (
-        <p class="fam-callout">{l.none}</p>
-      )}
+      <SectionHeader
+        title={l.title}
+        status={
+          props.health ? (
+            <span class={props.health.ok ? "fam-chip fam-chip--ok" : "fam-chip fam-chip--problem"}>
+              {props.health.ok ? l.statusOk : l.statusFailing}
+            </span>
+          ) : undefined
+        }
+        description={l.description}
+      />
       <Problem message={props.problem} />
       <form method="post" action="/admin/llm" class="fam-sheet fam-sheet__form">
-        <Group title={l.connection} level={2}>
+        <Group
+          title={l.connection}
+          level={2}
+        >
+          {props.health && !props.health.ok ? (
+            <div class="fam-banner fam-banner--problem" role="status">
+              <span class="fam-banner__glyph" aria-hidden="true">
+                !
+              </span>
+              <span class="fam-banner__title">{l.connectionError}</span>
+              <div class="fam-banner__body">{props.health.message}</div>
+            </div>
+          ) : null}
           <div class="fam-group__fields">
             <div class="fam-field">
               <label for="baseUrl">{l.baseUrl}</label>

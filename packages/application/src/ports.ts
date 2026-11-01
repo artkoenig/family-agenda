@@ -689,7 +689,11 @@ export type ExtractionResult = { ok: true; events: ExtractedEvent[]; tasks: Extr
 /** Reads the Items a message states through the Family's LLM endpoint. */
 export interface Extractor {
   extract(request: ExtractionRequest): Promise<ExtractionResult>;
+  /** Whether the endpoint answers, and why not if it does not. */
+  health(endpoint: LlmEndpoint): Promise<EndpointHealth>;
 }
+
+export type EndpointHealth = { ok: true } | { ok: false; message: string };
 
 /** What converting a file gave, or why it could not be converted. */
 export type Conversion<T> = { ok: true; value: T } | { ok: false; message: string };

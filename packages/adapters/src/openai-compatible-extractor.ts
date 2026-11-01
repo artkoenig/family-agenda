@@ -5,6 +5,7 @@ import {
 } from "@family-agenda/domain";
 import type {
   EndpointFailure,
+  EndpointHealth,
   ExtractedEvent,
   ExtractedTask,
   ExtractionRequest,
@@ -137,6 +138,24 @@ export class OpenAiCompatibleExtractor implements Extractor {
     const tasks = tasksOf(output);
     if (!events || !tasks) return { ok: false, problem: "invalid-output", message: "The answer does not fit the schema." };
     return { ok: true, events, tasks };
+  }
+
+  async health(endpoint: LlmEndpoint): Promise<EndpointHealth> {
+    try {
+      const response = await fetch(`${endpoint.baseUrl}/models`, {
+        headers: endpoint.apiKey ? { authorization: `Bearer ${endpoint.apiKey}` } : {},
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (response.status === 401 || response.status === 403) {
+        return { ok: false, message: `The LLM endpoint refused the API key (HTTP ${response.status}).` };
+      }
+      if (!response.ok) {
+        return { ok: false, message: `The LLM endpoint answered with HTTP ${response.status}.` };
+      }
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, message: `The LLM endpoint could not be reached: ${reason(error)}` };
+    }
   }
 
   /** The text of a chat completion, complete and not cut off at the token limit. */

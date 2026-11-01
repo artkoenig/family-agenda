@@ -507,6 +507,7 @@ html[data-theme-mode="dark"] .fam-theme__icon--dark { display: block; }
 .fam-sheet > .fam-group:first-child, .fam-sheet > .fam-sheet__form:first-child > .fam-group:first-child { margin-top: 0; }
 .fam-group > * { margin: 0; }
 :where(.fam-admin) .fam-group__title { margin: 0 0 var(--space-1); font-size: 14px; line-height: 20px; font-weight: 700; color: var(--hearth-strong); }
+.fam-group__heading { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); }
 .fam-group__intro { margin: 0 0 var(--space-2); font-size: 14px; line-height: 20px; color: var(--ink-muted); }
 .fam-group__fields { display: grid; gap: var(--space-5); padding-top: var(--space-3); }
 .fam-group__fields > * { max-width: 560px; }

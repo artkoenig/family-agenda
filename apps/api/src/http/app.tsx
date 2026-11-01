@@ -355,6 +355,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
   /** What the settings list says about each section. */
   const settings = async (): Promise<SettingsSummary> => {
     const endpoint = await llmEndpoint.current();
+    const llmHealth = endpoint ? (await llmEndpoint.health())?.ok ? "ok" as const : "failing" as const : null;
     const language = await languages.current();
     const allSources = await sources.list();
     return {
@@ -363,6 +364,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
       sources: allSources.length,
       failingSources: allSources.filter((source) => source.health.status === "failing").length,
       llm: endpoint ? { model: endpoint.model, local: endpoint.local } : null,
+      llmHealth,
       admins: (await admins.listAdmins()).length,
       kitSaved: await recoveryKit.isConfirmed(),
       family: language.language,
@@ -859,6 +861,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
         endpoint={await llmEndpoint.current()}
         languages={await languages.current()}
         waiting={await extraction.waiting()}
+        health={await llmEndpoint.health()}
         {...(problem ? { problem } : {})}
       />
     );
@@ -919,6 +922,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
           endpoint={await llmEndpoint.current()}
           languages={await languages.current()}
           waiting={await extraction.waiting()}
+          health={await llmEndpoint.health()}
           entered={entered}
           problem={problemIn(c, result.problem)}
         />
