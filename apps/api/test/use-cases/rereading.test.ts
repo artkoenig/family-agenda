@@ -176,8 +176,7 @@ describe("Re-reading messages", () => {
   it("keeps what a message stated when its text is gone", async () => {
     extractor.script("Studientag", [studyDay]);
     await arrive(mail("m1", "2026-09-14T06:12:00Z", autumn));
-    const [message] = await instance.query("UPDATE source_record SET body = NULL RETURNING raw_blob");
-    await blobs.remove(message!.raw_blob as never);
+    await instance.query("UPDATE source_record SET body = NULL");
 
     await instance.app.extraction.reread();
     await instance.app.extraction.extractPending();

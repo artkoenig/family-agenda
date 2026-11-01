@@ -51,8 +51,8 @@ export function createSourcePolling(deps: PollingDeps) {
   }
 
   /**
-   * Puts a message's raw file, which is its text as the plugin delivered it, and its attachments
-   * into the BlobStore. Its sender is the one the plugin tells among its attributes.
+   * Puts a message's attachments into the BlobStore; its text goes to Postgres. Its sender is the
+   * one the plugin tells among its attributes.
    */
   async function stored(message: IngestedMessage, attributes: Record<string, string>): Promise<StoredMessage> {
     const attachments: StoredMessage["attachments"] = [];
@@ -63,14 +63,13 @@ export function createSourcePolling(deps: PollingDeps) {
       sender: attributes.sender || null,
       subject: null,
       body: message.text,
-      raw: await store(new TextEncoder().encode(message.text)),
       attachments,
       thread: message.thread,
     };
   }
 
   async function removeBlobsOf(message: StoredMessage): Promise<void> {
-    for (const file of [message.raw, ...message.attachments]) await blobs.remove(file.blob);
+    for (const file of message.attachments) await blobs.remove(file.blob);
   }
 
   /** Runs one Source and records what it emitted; the failure, if it failed. */

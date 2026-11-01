@@ -1,8 +1,14 @@
 -- Origins and raw messages become one source_record per (source_id, external_id), and message
--- attachments its source_record_attachment rows (ADR-0016). The files stay in the BlobStore; the
--- raw file is the text file of the raw message. A Source Record keeps the id it had as an Origin,
--- so that the Revisions keep pointing at it. Messages from before have no body: it is only in
--- their raw file. A withdrawn one keeps no sender, as withdrawing clears it now.
+-- attachments its source_record_attachment rows (ADR-0016). A message's text is in Postgres, only
+-- its attachments are files in the BlobStore. Nothing is carried over: the Items, their Revisions
+-- and what the Sources delivered start over, and every Source reads again from its first run.
+-- The files of the old messages are left in the BlobStore.
+TRUNCATE "revisions", "item_keys", "items";--> statement-breakpoint
+ALTER TABLE "revisions" DROP CONSTRAINT "revisions_origin_id_origins_id_fk";--> statement-breakpoint
+DROP TABLE "message_attachments";--> statement-breakpoint
+DROP TABLE "raw_messages";--> statement-breakpoint
+DROP TABLE "origins";--> statement-breakpoint
+UPDATE "source_run" SET "sync_cursor" = NULL;--> statement-breakpoint
 CREATE TABLE "source_record" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"source_id" uuid NOT NULL,
@@ -11,9 +17,6 @@ CREATE TABLE "source_record" (
 	"sender" text,
 	"subject" text,
 	"body" text,
-	"raw_blob" text,
-	"raw_sha256" text,
-	"raw_size" integer,
 	"processed_at" timestamp with time zone,
 	"withdrawn_at" timestamp with time zone,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
@@ -21,9 +24,7 @@ CREATE TABLE "source_record" (
 	"link" text,
 	"part" text,
 	"thread" text,
-	CONSTRAINT "source_record_external_id_unique" UNIQUE("source_id","external_id"),
-	CONSTRAINT "source_record_raw_complete" CHECK (("source_record"."raw_blob" IS NULL) = ("source_record"."raw_sha256" IS NULL) AND ("source_record"."raw_blob" IS NULL) = ("source_record"."raw_size" IS NULL)),
-	CONSTRAINT "source_record_raw_size_not_negative" CHECK ("source_record"."raw_size" >= 0)
+	CONSTRAINT "source_record_external_id_unique" UNIQUE("source_id","external_id")
 );
 --> statement-breakpoint
 CREATE TABLE "source_record_attachment" (
@@ -43,16 +44,6 @@ CREATE TABLE "source_record_attachment" (
 --> statement-breakpoint
 ALTER TABLE "source_record" ADD CONSTRAINT "source_record_source_id_source_id_fk" FOREIGN KEY ("source_id") REFERENCES "public"."source"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "source_record_attachment" ADD CONSTRAINT "source_record_attachment_record_id_source_record_id_fk" FOREIGN KEY ("record_id") REFERENCES "public"."source_record"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-CREATE INDEX "source_record_pending_idx" ON "source_record" USING btree ("created_at") WHERE "source_record"."processed_at" IS NULL AND "source_record"."raw_blob" IS NOT NULL AND "source_record"."withdrawn_at" IS NULL;--> statement-breakpoint
-CREATE INDEX "source_record_thread_idx" ON "source_record" USING btree ("source_id","thread");--> statement-breakpoint
-INSERT INTO "source_record" ("id", "source_id", "external_id", "occurred_at", "sender", "raw_blob", "raw_sha256", "raw_size", "processed_at", "withdrawn_at", "created_at", "attributes", "link", "part", "thread")
-SELECT o."id", o."source_id", o."external_id", coalesce(m."sent_at", o."first_seen_at"), CASE WHEN m."origin_id" IS NOT NULL THEN nullif(o."attributes"->>'sender', '') END,
-       m."text_blob", m."text_sha256", m."text_size", m."extracted_at", o."withdrawn_at", o."first_seen_at", o."attributes", o."link", o."part", m."thread"
-FROM "origins" o LEFT JOIN "raw_messages" m ON m."origin_id" = o."id";--> statement-breakpoint
-INSERT INTO "source_record_attachment" ("record_id", "position", "filename", "media_type", "blob", "sha256", "size", "conversion_problem")
-SELECT "raw_message_id", "position", "filename", "content_type", "blob", "sha256", "size", "conversion_problem" FROM "message_attachments";--> statement-breakpoint
-ALTER TABLE "revisions" DROP CONSTRAINT "revisions_origin_id_origins_id_fk";--> statement-breakpoint
 ALTER TABLE "revisions" ADD CONSTRAINT "revisions_origin_id_source_record_id_fk" FOREIGN KEY ("origin_id") REFERENCES "public"."source_record"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-DROP TABLE "message_attachments";--> statement-breakpoint
-DROP TABLE "raw_messages";--> statement-breakpoint
-DROP TABLE "origins";
+CREATE INDEX "source_record_pending_idx" ON "source_record" USING btree ("created_at") WHERE "source_record"."processed_at" IS NULL AND "source_record"."body" IS NOT NULL AND "source_record"."withdrawn_at" IS NULL;--> statement-breakpoint
+CREATE INDEX "source_record_thread_idx" ON "source_record" USING btree ("source_id","thread");

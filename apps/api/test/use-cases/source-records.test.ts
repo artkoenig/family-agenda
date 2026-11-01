@@ -10,7 +10,7 @@ import { openTimeline } from "../support/timeline";
 
 const minutes = 60 * 1000;
 
-const sha256 = (bytes: Uint8Array | string) => createHash("sha256").update(bytes).digest("hex");
+const sha256 = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex");
 
 const letter = new TextEncoder().encode("%PDF-1.7 Elternbrief");
 
@@ -69,14 +69,13 @@ describe("Source Records, as what a Source delivered is stored", () => {
     await instance.app.polling.pollDue();
   };
 
-  it("stores a message as one record, its text in Postgres and its files behind the BlobStore by reference and hash", async () => {
+  it("stores a message as one record, its text in Postgres and only its attachments behind the BlobStore", async () => {
     testPluginControls.emit("mailbox", [mail]);
     await run();
 
     const records = await instance.query(
-      "SELECT external_id, occurred_at, sender, subject, body, raw_sha256, raw_size, processed_at, withdrawn_at FROM source_record",
+      "SELECT external_id, occurred_at, sender, subject, body, processed_at, withdrawn_at FROM source_record",
     );
-    const text = new TextEncoder().encode("Liebe Eltern, im Anhang der Elternbrief.");
     expect(records).toEqual([
       {
         external_id: "<m1@schule.example.org>",
@@ -84,8 +83,6 @@ describe("Source Records, as what a Source delivered is stored", () => {
         sender: "klasse5b@schule.example.org",
         subject: null,
         body: "Liebe Eltern, im Anhang der Elternbrief.",
-        raw_sha256: sha256(text),
-        raw_size: text.byteLength,
         processed_at: null,
         withdrawn_at: null,
       },
@@ -93,9 +90,9 @@ describe("Source Records, as what a Source delivered is stored", () => {
     expect(await instance.query("SELECT filename, media_type, sha256, size FROM source_record_attachment")).toEqual([
       { filename: "elternbrief.pdf", media_type: "application/pdf", sha256: sha256(letter), size: letter.byteLength },
     ]);
-    const [files] = await instance.query("SELECT raw_blob, blob FROM source_record JOIN source_record_attachment ON record_id = source_record.id");
-    expect(await blobs.get(files!.raw_blob as BlobRef)).toEqual(text);
-    expect(await blobs.get(files!.blob as BlobRef)).toEqual(letter);
+    const [attachment] = await instance.query("SELECT blob FROM source_record_attachment");
+    expect(await blobs.get(attachment!.blob as BlobRef)).toEqual(letter);
+    expect(blobs.size).toBe(1);
   });
 
   it("keeps one record per external id, however often the Source delivers it", async () => {
@@ -106,7 +103,7 @@ describe("Source Records, as what a Source delivered is stored", () => {
 
     expect(await instance.query("SELECT count(*)::int AS n FROM source_record")).toEqual([{ n: 1 }]);
     expect(await instance.query("SELECT count(*)::int AS n FROM source_record_attachment")).toEqual([{ n: 1 }]);
-    expect(blobs.size).toBe(2);
+    expect(blobs.size).toBe(1);
   });
 
   it("shows a withdrawn calendar entry again once it arrives again", async () => {

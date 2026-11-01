@@ -430,13 +430,11 @@ export type NewRevision = {
 /** A file of a raw message, kept in the BlobStore with a hash of its contents (ADR-0006). */
 export type StoredFile = { blob: BlobRef; sha256: string; size: number };
 
-/** A message as it is recorded: its text, and its raw file and attachments already in the BlobStore. */
+/** A message as it is recorded: its text, and its attachments already in the BlobStore. */
 export type StoredMessage = {
   sender: string | null;
   subject: string | null;
   body: string;
-  /** The message as the Source delivered it. */
-  raw: StoredFile;
   attachments: (StoredFile & { filename: string; contentType: string })[];
   thread: string | null;
 };
@@ -470,9 +468,7 @@ export type PendingMessage = {
   externalId: string;
   sentAt: Date;
   thread: string | null;
-  /** Its text; null for a message recorded before Source Records, whose text is only in its raw file. */
-  body: string | null;
-  raw: BlobRef;
+  body: string;
   /** In the order the message has them. */
   attachments: PendingAttachment[];
 };
@@ -486,9 +482,7 @@ export type RawMessage = {
   sourceId: SourceId;
   sentAt: Date;
   attributes: Record<string, string>;
-  /** Its text; null for a message recorded before Source Records, whose text is only in its raw file. */
-  body: string | null;
-  raw: BlobRef;
+  body: string;
   attachments: {
     position: number;
     filename: string;
@@ -511,11 +505,6 @@ export type Extraction = {
   revisions: NewRevision[];
   /** The attachments that could not be turned into text, by position, and why. */
   attachmentProblems: AttachmentProblem[];
-  /**
-   * Whether the Revisions replace what the message stated before (ADR-0015): false when its text
-   * is gone, so that a re-read without it keeps what it said.
-   */
-  supersedes: boolean;
 };
 
 export type AttachmentProblem = { position: number; problem: string };
@@ -556,11 +545,11 @@ export interface ItemRepository {
    * Records a run in one transaction: the Origins, their Revisions unless the same Revision is
    * already recorded, and the Source's sync cursor. An Item is found by the Source and the Revision's
    * Item key, or created; every Item a new Revision reached is recomputed with `recompute` from all
-   * its Revisions. A withdrawn Source Record's Revisions are rejected and its message's content and
-   * files are removed. Arriving again, it is no longer withdrawn: its Revisions count again when the
+   * its Revisions. A withdrawn Source Record's Revisions are rejected and its message's text and
+   * attachments are removed. Arriving again, it is no longer withdrawn: its Revisions count again when the
    * Source states them again, but its message is not recorded again.
-   * Returns the external ids of messages recorded before or withdrawn, whose new files the
-   * caller removes, and the files of the withdrawn messages, for the caller to remove.
+   * Returns the external ids of messages recorded before or withdrawn, whose new attachments the
+   * caller removes, and the attachments of the withdrawn messages, for the caller to remove.
    */
   recordRun(
     run: SourceRun,
@@ -589,7 +578,7 @@ export interface ItemRepository {
   /**
    * Records a message's extraction in one transaction: its Revisions, appended to its Origin like
    * those of a run, and the message as extracted, so that it is not extracted again until asked
-   * to. Unless told not to, the Revisions the Origin stated before are superseded first; a new
+   * to. The Revisions the Source Record stated before are superseded first; a new
    * one the same as one of them brings it back.
    */
   recordExtraction(

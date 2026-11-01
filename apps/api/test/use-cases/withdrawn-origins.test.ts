@@ -69,7 +69,7 @@ describe("Origins a Source withdraws, such as deleted chat messages", () => {
     expect(await titles()).toEqual([]);
     expect(await instance.app.messages.open(extracted!.id)).toBeNull();
     expect(blobs.size).toBe(0);
-    expect(await instance.query("SELECT raw_blob, sender, body FROM source_record")).toEqual([{ raw_blob: null, sender: null, body: null }]);
+    expect(await instance.query("SELECT sender, body FROM source_record")).toEqual([{ sender: null, body: null }]);
     expect(await instance.query("SELECT count(*)::int AS n FROM source_record_attachment")).toEqual([{ n: 0 }]);
     expect(await instance.query("SELECT accepted, rejection FROM revisions")).toEqual([
       { accepted: false, rejection: "origin-withdrawn" },
@@ -87,8 +87,8 @@ describe("Origins a Source withdraws, such as deleted chat messages", () => {
 
     expect(await titles()).toEqual([]);
     expect(
-      await instance.query("SELECT withdrawn_at, raw_blob, body, processed_at FROM source_record WHERE external_id = '$m1'"),
-    ).toEqual([{ withdrawn_at: null, raw_blob: null, body: null, processed_at: null }]);
+      await instance.query("SELECT withdrawn_at, body, processed_at FROM source_record WHERE external_id = '$m1'"),
+    ).toEqual([{ withdrawn_at: null, body: null, processed_at: null }]);
     expect(blobs.size).toBe(0);
   });
 

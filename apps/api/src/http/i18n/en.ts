@@ -373,7 +373,6 @@ export const en = {
     title: "Message",
     description: "The original an Event was read from. Only Admins open it.",
     sent: "Sent",
-    deleted: "The text of this message has been deleted.",
     attachments: "Attachments",
     attachment: (contentType: string, kilobytes: number) => `(${contentType}, ${kilobytes} KB)`,
     unreadable: (problem: string) => `Could not be read for extraction: ${problem}`,

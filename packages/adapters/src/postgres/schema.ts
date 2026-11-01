@@ -282,8 +282,8 @@ export const sourceMembers = pgTable(
 
 /**
  * What a Source delivered under one external id (ADR-0016): a message, with its text here and its
- * raw file and attachments behind the BlobStore (ADR-0006), or an entry carrying Revisions, such
- * as a calendar entry, with no file.
+ * attachments behind the BlobStore (ADR-0006), or an entry carrying Revisions, such as a calendar
+ * entry, without text. A message has a body, empty if it is only attachments, until it is withdrawn.
  */
 export const sourceRecords = pgTable(
   "source_record",
@@ -299,15 +299,11 @@ export const sourceRecords = pgTable(
     sender: text("sender"),
     subject: text("subject"),
     body: text("body"),
-    /** The BlobStore file of the message as the Source delivered it; null for no message, or once withdrawn. */
-    rawBlob: text("raw_blob"),
-    rawSha256: text("raw_sha256"),
-    rawSize: integer("raw_size"),
     /** When its message was extracted successfully; null while it waits. */
     processedAt: timestamptz("processed_at"),
     /**
      * When the Source said it no longer has it, such as a redacted message: its Revisions are
-     * rejected and its message's content and files are gone. Arriving again clears it.
+     * rejected and its message's text and attachments are gone. Arriving again clears it.
      */
     withdrawnAt: timestamptz("withdrawn_at"),
     createdAt: timestamptz("created_at").notNull().defaultNow(),
@@ -324,13 +320,8 @@ export const sourceRecords = pgTable(
     unique("source_record_external_id_unique").on(table.sourceId, table.externalId),
     index("source_record_pending_idx")
       .on(table.createdAt)
-      .where(sql`${table.processedAt} IS NULL AND ${table.rawBlob} IS NOT NULL AND ${table.withdrawnAt} IS NULL`),
+      .where(sql`${table.processedAt} IS NULL AND ${table.body} IS NOT NULL AND ${table.withdrawnAt} IS NULL`),
     index("source_record_thread_idx").on(table.sourceId, table.thread),
-    check(
-      "source_record_raw_complete",
-      sql`(${table.rawBlob} IS NULL) = (${table.rawSha256} IS NULL) AND (${table.rawBlob} IS NULL) = (${table.rawSize} IS NULL)`,
-    ),
-    check("source_record_raw_size_not_negative", sql`${table.rawSize} >= 0`),
   ],
 );
 

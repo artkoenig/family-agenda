@@ -1,5 +1,5 @@
 {
-  "id": "1c1eaa3c-537e-4043-9b93-0cb59384ad21",
+  "id": "8e193c6f-798a-45f8-b593-2344dc90fa1f",
   "prevId": "fa8f429b-f8e6-4c5d-8cd5-5376cc984d7a",
   "version": "7",
   "dialect": "postgresql",
@@ -1342,24 +1342,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "raw_blob": {
-          "name": "raw_blob",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "raw_sha256": {
-          "name": "raw_sha256",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "raw_size": {
-          "name": "raw_size",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
         "processed_at": {
           "name": "processed_at",
           "type": "timestamp with time zone",
@@ -1417,7 +1399,7 @@
             }
           ],
           "isUnique": false,
-          "where": "\"source_record\".\"processed_at\" IS NULL AND \"source_record\".\"raw_blob\" IS NOT NULL AND \"source_record\".\"withdrawn_at\" IS NULL",
+          "where": "\"source_record\".\"processed_at\" IS NULL AND \"source_record\".\"body\" IS NOT NULL AND \"source_record\".\"withdrawn_at\" IS NULL",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -1471,16 +1453,7 @@
         }
       },
       "policies": {},
-      "checkConstraints": {
-        "source_record_raw_complete": {
-          "name": "source_record_raw_complete",
-          "value": "(\"source_record\".\"raw_blob\" IS NULL) = (\"source_record\".\"raw_sha256\" IS NULL) AND (\"source_record\".\"raw_blob\" IS NULL) = (\"source_record\".\"raw_size\" IS NULL)"
-        },
-        "source_record_raw_size_not_negative": {
-          "name": "source_record_raw_size_not_negative",
-          "value": "\"source_record\".\"raw_size\" >= 0"
-        }
-      },
+      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "public.source_record_attachment": {

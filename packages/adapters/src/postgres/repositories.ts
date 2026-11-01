@@ -539,10 +539,6 @@ export class PostgresSourceRepository implements SourceRepository {
     if (!uuidPattern.test(id)) return [];
     return this.db.transaction(async (tx) => {
       const recordsOfSource = tx.select({ id: sourceRecords.id }).from(sourceRecords).where(eq(sourceRecords.sourceId, id));
-      const raws = await tx
-        .select({ blob: sourceRecords.rawBlob })
-        .from(sourceRecords)
-        .where(and(eq(sourceRecords.sourceId, id), isNotNull(sourceRecords.rawBlob)));
       const attachments = await tx
         .select({ blob: sourceRecordAttachments.blob })
         .from(sourceRecordAttachments)
@@ -573,7 +569,7 @@ export class PostgresSourceRepository implements SourceRepository {
         const kept = reached.filter((item) => !gone.has(item.id));
         await recomputeAll(tx, new Map(kept.map((item) => [item.id as ItemId, item.kind as ItemKind])), recompute);
       }
-      return [...raws, ...attachments].map((row) => row.blob as BlobRef);
+      return attachments.map((row) => row.blob as BlobRef);
     });
   }
 
@@ -667,9 +663,6 @@ export class PostgresItemRepository implements ItemRepository {
             sender: message?.sender ?? null,
             subject: message?.subject ?? null,
             body: message?.body ?? null,
-            rawBlob: message?.raw.blob ?? null,
-            rawSha256: message?.raw.sha256 ?? null,
-            rawSize: message?.raw.size ?? null,
             createdAt: run.at,
             attributes: origin.attributes,
             link: origin.link,
@@ -727,8 +720,8 @@ export class PostgresItemRepository implements ItemRepository {
 
   /**
    * Marks the Source Records the Source deleted as withdrawn, rejects their Revisions and removes
-   * their messages' content and attachments; notes the Items they reach. Returns the files of the
-   * removed messages.
+   * their messages' text and attachments; notes the Items they reach. Returns the files of the
+   * removed attachments.
    */
   private async withdraw(tx: Transaction, run: SourceRun, reached: Map<ItemId, ItemKind>): Promise<BlobRef[]> {
     if (run.withdrawn.length === 0) return [];
@@ -737,27 +730,24 @@ export class PostgresItemRepository implements ItemRepository {
       inArray(sourceRecords.externalId, run.withdrawn),
       isNull(sourceRecords.withdrawnAt),
     );
-    const files = await tx
-      .select({ raw: sourceRecords.rawBlob, attachment: sourceRecordAttachments.blob })
-      .from(sourceRecords)
-      .leftJoin(sourceRecordAttachments, eq(sourceRecordAttachments.recordId, sourceRecords.id))
-      .where(withdrawing);
     const withdrawn = await tx
       .update(sourceRecords)
-      .set({ withdrawnAt: run.at, sender: null, subject: null, body: null, rawBlob: null, rawSha256: null, rawSize: null })
+      .set({ withdrawnAt: run.at, sender: null, subject: null, body: null })
       .where(withdrawing)
       .returning({ id: sourceRecords.id });
     if (withdrawn.length === 0) return [];
     const ids = withdrawn.map((row) => row.id);
-    await tx.delete(sourceRecordAttachments).where(inArray(sourceRecordAttachments.recordId, ids));
+    const attachments = await tx
+      .delete(sourceRecordAttachments)
+      .where(inArray(sourceRecordAttachments.recordId, ids))
+      .returning({ blob: sourceRecordAttachments.blob });
     const rejected = await tx
       .update(revisions)
       .set({ accepted: false, rejection: "origin-withdrawn" })
       .where(and(inArray(revisions.originId, ids), eq(revisions.accepted, true)))
       .returning({ itemId: revisions.itemId });
     await noteReached(tx, rejected.map((row) => row.itemId as ItemId), reached);
-    const blobs = new Set(files.flatMap(({ raw, attachment }) => [raw, attachment].filter((blob) => blob !== null)));
-    return [...blobs].map((blob) => blob as BlobRef);
+    return attachments.map((row) => row.blob as BlobRef);
   }
 
   async pendingMessages(limit: number): Promise<PendingMessage[]> {
@@ -769,7 +759,6 @@ export class PostgresItemRepository implements ItemRepository {
         sentAt: sourceRecords.occurredAt,
         thread: sourceRecords.thread,
         body: sourceRecords.body,
-        raw: sourceRecords.rawBlob,
       })
       .from(sourceRecords)
       .where(pendingMessage)
@@ -787,7 +776,8 @@ export class PostgresItemRepository implements ItemRepository {
       ...row,
       id: row.id as RawMessageId,
       sourceId: row.sourceId as SourceId,
-      raw: row.raw as BlobRef,
+      // The query takes only records with a body.
+      body: row.body ?? "",
       attachments: attachments.flatMap((attachment) =>
         attachment.recordId === row.id
           ? [{ position: attachment.position, filename: attachment.filename, contentType: attachment.mediaType, blob: attachment.blob as BlobRef }]
@@ -825,7 +815,7 @@ export class PostgresItemRepository implements ItemRepository {
       .select({ ...foldable, itemId: revisions.itemId, originId: revisions.originId, sentAt: sourceRecords.occurredAt })
       .from(revisions)
       // Only a message's time decides whether it came before; other Revisions always count.
-      .leftJoin(sourceRecords, and(eq(sourceRecords.id, revisions.originId), isNotNull(sourceRecords.rawBlob)))
+      .leftJoin(sourceRecords, and(eq(sourceRecords.id, revisions.originId), isNotNull(sourceRecords.body)))
       .where(and(inArray(revisions.itemId, rows.map((row) => row.id)), notSuperseded));
     // What the message itself and later ones stated is left out, as if they had not arrived yet.
     const earlier = stated.filter(({ originId, sentAt }) => !sentAt || (originId !== before.messageId && sentAt < before.sentAt));
@@ -843,7 +833,7 @@ export class PostgresItemRepository implements ItemRepository {
       .where(
         and(
           isNotNull(sourceRecords.processedAt),
-          isNotNull(sourceRecords.rawBlob),
+          isNotNull(sourceRecords.body),
           isNull(sourceRecords.withdrawnAt),
           scope.sourceId ? eq(sourceRecords.sourceId, scope.sourceId) : undefined,
         ),
@@ -877,15 +867,13 @@ export class PostgresItemRepository implements ItemRepository {
       }
       const reached = new Map<ItemId, ItemKind>();
       const { sourceId, at } = extraction;
-      if (extraction.supersedes) {
-        // A re-read replaces what the message stated before (ADR-0015); the same Revision comes back.
-        const superseded = await tx
-          .update(revisions)
-          .set({ accepted: false, rejection: "superseded" })
-          .where(and(eq(revisions.originId, message.recordId), notSuperseded))
-          .returning({ itemId: revisions.itemId });
-        await noteReached(tx, superseded.map((row) => row.itemId as ItemId), reached);
-      }
+      // A re-read replaces what the message stated before (ADR-0015); the same Revision comes back.
+      const superseded = await tx
+        .update(revisions)
+        .set({ accepted: false, rejection: "superseded" })
+        .where(and(eq(revisions.originId, message.recordId), notSuperseded))
+        .returning({ itemId: revisions.itemId });
+      await noteReached(tx, superseded.map((row) => row.itemId as ItemId), reached);
       await this.append(tx, { sourceId, originId: message.recordId, at }, extraction.revisions, reached);
       await recomputeAll(tx, reached, recompute);
     });
@@ -896,8 +884,9 @@ export class PostgresItemRepository implements ItemRepository {
     const [row] = await this.db
       .select()
       .from(sourceRecords)
-      .where(and(eq(sourceRecords.id, id), isNotNull(sourceRecords.rawBlob)));
-    if (!row) return null;
+      .where(eq(sourceRecords.id, id));
+    // A record without a body is no message, or one withdrawn.
+    if (!row || row.body === null) return null;
     const attachments = await this.db
       .select()
       .from(sourceRecordAttachments)
@@ -909,7 +898,6 @@ export class PostgresItemRepository implements ItemRepository {
       sentAt: row.occurredAt,
       attributes: row.attributes,
       body: row.body,
-      raw: row.rawBlob as BlobRef,
       attachments: attachments.map(({ position, filename, mediaType, size, blob, conversionProblem }) => ({
         position,
         filename,
@@ -1020,7 +1008,7 @@ export class PostgresItemRepository implements ItemRepository {
       .innerJoin(sourceRecords, eq(sourceRecords.id, revisions.originId))
       .innerJoin(sources, eq(sources.id, sourceRecords.sourceId))
       // A message whose Revisions were all rejected said nothing that shows.
-      .where(and(inArray(revisions.itemId, ids), eq(revisions.accepted, true), isNotNull(sourceRecords.rawBlob)))
+      .where(and(inArray(revisions.itemId, ids), eq(revisions.accepted, true), isNotNull(sourceRecords.body)))
       .orderBy(asc(sourceRecords.occurredAt));
     // Only the Sources, and their Parts, of Origins whose statements count say whom the Item concerns.
     const sourcesOfItems = await this.db
@@ -1103,8 +1091,8 @@ export class PostgresItemRepository implements ItemRepository {
   }
 }
 
-/** A message waiting for its one successful extraction: its file is kept and it is not withdrawn. */
-const pendingMessage = and(isNull(sourceRecords.processedAt), isNotNull(sourceRecords.rawBlob), isNull(sourceRecords.withdrawnAt));
+/** A message, with its text, waiting for its one successful extraction. */
+const pendingMessage = and(isNull(sourceRecords.processedAt), isNotNull(sourceRecords.body), isNull(sourceRecords.withdrawnAt));
 
 /** What `fold` needs of a Revision. */
 const foldable = {
