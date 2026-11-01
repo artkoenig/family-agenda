@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: superseded by ADR-0016
 ---
 
 # Re-reading supersedes what a message stated
@@ -25,3 +25,5 @@ A message is extracted once. When the prompt or the model improves, messages rea
 - **A flag requesting a re-read, next to the extraction time**: it would keep the time of the last reading, but nothing reads that time yet, and the flag adds a second state for "waits to be read".
 - **Deleting the old Revisions**: would lose why an Item looked as it did, against ADR-0009.
 - **Re-reading without superseding**: Items that the old reading found by mistake would stay, and changed fields would depend on source-time ordering of identical times.
+
+_Superseded by ADR-0016: Re-reading is removed. A message's Items are written once and an edited message keeps its first reading, so Items keep no key. An Admin can still retry a Not extracted message._

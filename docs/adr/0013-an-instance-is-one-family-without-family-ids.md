@@ -17,3 +17,5 @@ Every Instance has its own database, and a hosted offering would give each Famil
 ## Considered Options
 
 - **Keep a `family_id` on every aggregate root (ADR-0007)**: kept the Family an explicit boundary for a later change of mind, but every query carried an id that only ever had one value. It was also copied into Origins, Revisions and raw messages, where nothing checked that it matched their Item's.
+
+_Amended by ADR-0016: `settings` is now `family`, still without a Family id, and tables are named in the singular, so the single-row tables are `family`, `llm_endpoint` and `background_activity`._
