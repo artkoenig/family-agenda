@@ -36,7 +36,7 @@ _Avoid_: To-do view, task page, Tasks section
 
 **Quick Filter**:
 A passing choice among an Agenda's Family Members that narrows the Agenda to them while it is open.
-_Avoid_: Preselection, member filter, tab
+_Avoid_: Member filter, tab
 
 ### Inputs
 
@@ -50,18 +50,18 @@ _Avoid_: Source kind, provider, plugin (for the domain concept)
 
 **Source Attribute**:
 A subdivision of a Source that the Source itself reports, such as a mailbox folder or label, a WhatsApp group, a child in a timetable account, or the one calendar of an ICS Source; only those an Admin chose to read count.
-_Avoid_: Part, folder (for the domain concept), channel, sub-source, label
+_Avoid_: Folder (for the domain concept), channel, sub-source, label
 
 **Source Assignment**:
-The Family Members an Admin assigns a Source Attribute to; the only thing that decides whom an Item concerns. An Item concerns everyone its Origin's Source Attributes are assigned to, or the whole Family if one of them is assigned to no one.
-_Avoid_: Attribution Rule, mapping, routing rule, filter
+The Family Members an Admin assigns a Source Attribute to; the only thing that decides whom an Item concerns. An Item concerns everyone its Source Record's Source Attributes are assigned to, or the whole Family if one of them is assigned to no one.
+_Avoid_: Mapping, routing rule, filter
 
 **Source Status**:
-Whether a Source works: **OK**; **Failing** when it needs an Admin, at once on a definite error and after 6 hours of temporary ones; or **Silent** when a Source Type that declares it has brought no new Origin for 14 days.
+Whether a Source works: **OK**; **Failing** when it needs an Admin, at once on a definite error and after 6 hours of temporary ones; or **Silent** when a Source Type that declares it has brought no new Source Record for 14 days.
 _Avoid_: Health state, broken, stale (for the status)
 
 **Source Warning**:
-A problem shown beside a Source Status without changing it, such as an Origin naming a Source Attribute its Source never reported, or a calendar entry that cannot become an Item.
+A problem shown beside a Source Status without changing it, such as a Source Record naming a Source Attribute its Source never reported, or a calendar entry that cannot become an Item.
 _Avoid_: Fourth status, error, alert
 
 **Messenger**:
@@ -72,12 +72,12 @@ _Avoid_: Bridge (for the domain concept), network, chat app
 The entries a Source Type offers for an Admin to enable one by one, such as the Messengers of the Matrix Source Type.
 _Avoid_: Option list, sub-type
 
-**Origin**:
-One thing a Source delivered that Items come from: a message, such as a mail or a WhatsApp message, or an entry the Source states itself, such as a calendar entry or a Lesson. Each Item has exactly one Origin.
+**Source Record**:
+One thing a Source delivered that Items come from: a message, such as a mail or a WhatsApp message, or an entry the Source states itself, such as a calendar entry or a Lesson. Each Item has exactly one Source Record.
 _Avoid_: Source message, provenance
 
 **Withdrawn**:
-Said of an Origin its Source no longer has, such as a deleted message or calendar entry; it backs no Items.
+Said of a Source Record its Source no longer has, such as a deleted message or calendar entry; it backs no Items.
 _Avoid_: Deleted, revoked, removed
 
 **Extraction**:
@@ -99,7 +99,7 @@ _Avoid_: Archive time, expiry, TTL
 ### Items
 
 **Item**:
-A single piece of family-relevant information from an Origin: an Event, a Lesson or a Task.
+A single piece of family-relevant information from a Source Record: an Event, a Lesson or a Task.
 _Avoid_: Entry, record, info
 
 **Event**:
@@ -116,7 +116,7 @@ _Avoid_: Class, period
 
 **Lesson Change**:
 How a Lesson deviates from the Timetable: cancelled, held by a substitute, or moved to another room; part of the Lesson, not an Item of its own.
-_Avoid_: Timetable Change, substitution (for the concept), update
+_Avoid_: Substitution (for the concept), update
 
 **School Day**:
 The Lessons of a Family Member on one date, shown together as one entry; not an Item of its own.

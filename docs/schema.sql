@@ -147,16 +147,16 @@ CREATE TABLE source (
 CREATE INDEX source_source_type_id_idx ON source (source_type_id);
 
 -- Run state, one row per Source, written by the worker on every run (ADR-0014).
--- sync_cursor is written in the same transaction as the run's Origins. For ICS and WebUntis it
+-- sync_cursor is written in the same transaction as the run's Source Records. For ICS and WebUntis it
 -- holds only the ETag and the set of known external ids, from which the plugin reports vanished
 -- entries as withdrawn.
 --
 -- Two warnings sit beside the Source Status (OK / Failing / Silent), never a state of their own:
---   unknown_attributes: Source Attribute external ids that refused Origins named although they
---     were unknown or archived (a plugin bug). Cleared by a run that refuses no Origin, or by a
+--   unknown_attributes: Source Attribute external ids that refused Source Records named although they
+--     were unknown or archived (a plugin bug). Cleared by a run that refuses no Source Record, or by a
 --     declare covering the ids.
---   invalid_records: external ids of Origins whose stated Item failed a CHECK, so no Item was
---     written. An id leaves the list when its Origin writes its Item or is withdrawn.
+--   invalid_records: external ids of Source Records whose stated Item failed a CHECK, so no Item was
+--     written. An id leaves the list when its Source Record writes its Item or is withdrawn.
 CREATE TABLE source_run (
   source_id                 UUID PRIMARY KEY REFERENCES source(id) ON DELETE CASCADE,
   sync_cursor               JSONB,
@@ -213,10 +213,10 @@ CREATE INDEX source_attribute_member_family_member_id_idx
   ON source_attribute_member (family_member_id);
 
 -- ---------------------------------------------------------------------------------------------
--- Origins
+-- Source Records
 -- ---------------------------------------------------------------------------------------------
 
--- One Origin: what a Source delivered under one external id.
+-- One Source Record: what a Source delivered under one external id.
 --
 -- A message (mail, Messenger message): stated IS NULL. Its raw file is behind the BlobStore
 -- (raw_blob), its text in body; it is read once by the LLM, and processed_at is set when its
@@ -226,14 +226,14 @@ CREATE INDEX source_attribute_member_family_member_id_idx
 -- A calendar entry or a Lesson (ICS UID, WebUntis `<childId>/<lessonId>`): stated holds the Item
 -- as the plugin states it, e.g. {"kind": "event", "title": ..., "starts_at": ...}. No file, no
 -- sender/subject/body, occurred_at NULL. The core writes its one Item from it without the LLM,
--- in the same transaction that sets processed_at. Every run emits the full state; an Origin
+-- in the same transaction that sets processed_at. Every run emits the full state; a Source Record
 -- whose stated equals the stored one (compared by hash in the core) is skipped, a changed one
 -- overwrites its Item, keeping only whether a Task was ticked done.
 --
 -- withdrawn_at: the Source no longer has it (deleted message, deleted calendar entry, unplanned
 -- Lesson, or an empty Source Attribute list). Its Items are deleted (trigger below), and after
 -- commit a message's files are removed from the BlobStore and its row purged. Arriving
--- again clears it: a stated Origin then writes its Item as new; a message is not read again and
+-- again clears it: a stated Source Record then writes its Item as new; a message is not read again and
 -- its Items do not come back.
 --
 -- Retention (messages only): a message's files are deleted once none of its Items is needed any
@@ -262,7 +262,7 @@ CREATE TABLE source_record (
   CONSTRAINT source_record_external_id_unique UNIQUE (source_id, external_id),
   CONSTRAINT source_record_stated_kind_known
     CHECK (stated IS NULL OR stated->>'kind' IN ('event', 'lesson')),
-  -- A stated Origin carries nothing of a message.
+  -- A stated Source Record carries nothing of a message.
   CONSTRAINT source_record_stated_is_no_message
     CHECK (stated IS NULL OR (raw_blob IS NULL AND sender IS NULL AND subject IS NULL
                               AND body IS NULL AND purged_at IS NULL AND occurred_at IS NULL)),
@@ -297,13 +297,13 @@ CREATE TABLE source_record_attachment (
 );
 CREATE INDEX source_record_attachment_record_id_idx ON source_record_attachment (record_id);
 
--- The Source Attributes an Origin carries (a mail under two allow-listed labels has two).
--- Re-emitting an Origin with another list replaces its rows without reading it again; who its
--- Items concern follows. An empty list withdraws the Origin. An Origin naming an unknown or
+-- The Source Attributes a Source Record carries (a mail under two allow-listed labels has two).
+-- Re-emitting a Source Record with another list replaces its rows without reading it again; who its
+-- Items concern follows. An empty list withdraws the Source Record. A Source Record naming an unknown or
 -- archived external id is refused and warned on source_run.unknown_attributes.
 -- No cascade from the attribute: archiving must not unassign Items, so deleting an attribute on
 -- its own is refused. Attributes are deleted only together with their Source, whose cascade
--- also deletes these Origins; the check is deferred so that it sees the cascade completed.
+-- also deletes these Source Records; the check is deferred so that it sees the cascade completed.
 CREATE TABLE source_record_attribute (
   record_id     UUID NOT NULL REFERENCES source_record(id) ON DELETE CASCADE,
   attribute_id  UUID NOT NULL REFERENCES source_attribute(id) DEFERRABLE INITIALLY DEFERRED,
@@ -315,13 +315,13 @@ CREATE INDEX source_record_attribute_attribute_id_idx ON source_record_attribute
 -- Items
 -- ---------------------------------------------------------------------------------------------
 
--- An Item comes from exactly one Origin. It has no key: a message's Items are written once, and
--- a stated Origin's one Item is found again through the Origin. An Admin can only delete an
+-- An Item comes from exactly one Source Record. It has no key: a message's Items are written once, and
+-- a stated Source Record's one Item is found again through the Source Record. An Admin can only delete an
 -- Item (DELETE FROM item); nothing remembers it. There are no corrections, no confidence and no
 -- evidence. An extracted Item failing an automatic check makes the whole message be read once
 -- more; failing again, it is only logged and not written.
 --
--- Whom an Item concerns is computed on read from its Origin's Source Attributes:
+-- Whom an Item concerns is computed on read from its Source Record's Source Attributes:
 --   the union of their source_attribute_member rows, or the whole Family if one of them has no
 --   row. Items of a Source with shown = false are left out of Agendas.
 CREATE TABLE item (
@@ -362,7 +362,7 @@ CREATE TABLE event (
 CREATE INDEX event_starts_at_idx ON event (starts_at, ends_at);
 CREATE INDEX event_first_day_idx ON event (first_day, last_day);
 
--- Something to do or bring. Only messages produce Tasks; its arrival is its Origin's
+-- Something to do or bring. Only messages produce Tasks; its arrival is its Source Record's
 -- occurred_at. deadline is the month's last day when a message names only a month.
 -- bring is ticked with the Task, never entry by entry. A cancelled Task stays pinned, struck
 -- through, until ticked. done_at serves "done in the last 30 days".
@@ -470,7 +470,7 @@ END $$;
 CREATE TRIGGER family_member_before_delete BEFORE DELETE ON family_member
   FOR EACH ROW EXECUTE FUNCTION family_member_before_delete();
 
--- A withdrawn Origin backs no Item: withdrawing it deletes its Items.
+-- A withdrawn Source Record backs no Item: withdrawing it deletes its Items.
 CREATE FUNCTION source_record_withdrawn() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
   DELETE FROM item WHERE record_id = NEW.id;
