@@ -305,25 +305,19 @@ export interface SourceTypeRegistry {
 export type SourceTypeRecord = {
   id: SourceTypeId;
   enabled: boolean;
-  /** The application version the Source Type was first discovered in. */
-  firstSeenIn: string;
-  /** Whether it was discovered since an Admin last opened the list. */
-  isNew: boolean;
 };
 
 /** What the Instance stores per entry of a Source Type's catalogue. */
 export type CatalogueRecord = {
   entryId: string;
   enabled: boolean;
-  /** The application version the entry was first discovered in. */
-  firstSeenIn: string;
   /** How often the Sources using it are polled; null for their plugin's suggestion. */
   pollIntervalSeconds: number | null;
 };
 
 export interface CatalogueRepository {
   /** Records the entries not stored yet as disabled; keeps the others as they are. */
-  recordDiscovered(sourceTypeId: SourceTypeId, entryIds: string[], applicationVersion: string, at: Date): Promise<void>;
+  recordDiscovered(sourceTypeId: SourceTypeId, entryIds: string[]): Promise<void>;
   list(sourceTypeId: SourceTypeId): Promise<CatalogueRecord[]>;
   enable(sourceTypeId: SourceTypeId, entryId: string): Promise<void>;
   setPollInterval(sourceTypeId: SourceTypeId, entryId: string, seconds: number | null): Promise<void>;
@@ -335,13 +329,12 @@ export interface CatalogueRepository {
 }
 
 export interface SourceTypeRepository {
-  /** Records the ids not stored yet as new and disabled; keeps the others as they are. */
-  recordDiscovered(ids: SourceTypeId[], applicationVersion: string, at: Date): Promise<void>;
+  /** Records the ids not stored yet as disabled; keeps the others as they are. */
+  recordDiscovered(ids: SourceTypeId[]): Promise<void>;
   list(): Promise<SourceTypeRecord[]>;
   enable(id: SourceTypeId): Promise<void>;
   /** Disables the Source Type unless it has Sources. Returns whether it did. */
   disableIfUnused(id: SourceTypeId): Promise<boolean>;
-  markAllSeen(): Promise<void>;
 }
 
 export type Source = {

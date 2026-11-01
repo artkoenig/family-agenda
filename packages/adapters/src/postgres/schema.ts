@@ -41,9 +41,12 @@ const allOrNone = (...columns: AnyPgColumn[]): SQL =>
 
 const timestamptz = (name: string) => timestamp(name, { withTimezone: true });
 
-/** The settings of the Instance's one Family; its one row is created with the schema. */
-export const settings = pgTable(
-  "settings",
+/**
+ * What belongs to the Instance's one Family itself, as there is no Family id (ADR-0013); its one
+ * row is created with the schema.
+ */
+export const family = pgTable(
+  "family",
   {
     id: singleRowId(),
     recoveryKitConfirmedAt: timestamptz("recovery_kit_confirmed_at"),
@@ -55,22 +58,22 @@ export const settings = pgTable(
     ocrEnabled: boolean("ocr_enabled").notNull().default(true),
   },
   (table) => [
-    singleRow("settings", table.id),
-    oneOf("settings_language_known", table.language, familyLanguages),
-    check("settings_ocr_languages_not_empty", sql`cardinality(${table.ocrLanguages}) > 0`),
+    singleRow("family", table.id),
+    oneOf("family_language_known", table.language, familyLanguages),
+    check("family_ocr_languages_not_empty", sql`cardinality(${table.ocrLanguages}) > 0`),
   ],
 );
 
-export const admins = pgTable("admins", {
-  id: uuid("id").primaryKey(),
+export const admins = pgTable("admin", {
+  id: uuid("id").primaryKey().defaultRandom(),
   email: text("email").notNull().unique(),
   passwordHash: text("password_hash").notNull(),
-  createdAt: timestamptz("created_at").notNull(),
+  createdAt: timestamptz("created_at").notNull().defaultNow(),
 });
 
 /** Sessions by the SHA-256 of their token, so that a leaked table signs no one in. */
 export const adminSessions = pgTable(
-  "admin_sessions",
+  "admin_session",
   {
     id: text("id").primaryKey(),
     adminId: uuid("admin_id")
@@ -78,17 +81,17 @@ export const adminSessions = pgTable(
       .references(() => admins.id, { onDelete: "cascade" }),
     expiresAt: timestamptz("expires_at").notNull(),
   },
-  (table) => [index("admin_sessions_admin_id_idx").on(table.adminId), index("admin_sessions_expires_at_idx").on(table.expiresAt)],
+  (table) => [index("admin_session_admin_id_idx").on(table.adminId), index("admin_session_expires_at_idx").on(table.expiresAt)],
 );
 
 export const signInFailures = pgTable(
-  "sign_in_failures",
+  "sign_in_failure",
   {
     id: bigint("id", { mode: "number" }).primaryKey().generatedAlwaysAsIdentity(),
     key: text("key").notNull(),
     at: timestamptz("at").notNull(),
   },
-  (table) => [index("sign_in_failures_key_at_idx").on(table.key, table.at)],
+  (table) => [index("sign_in_failure_key_at_idx").on(table.key, table.at)],
 );
 
 /**
@@ -96,44 +99,44 @@ export const signInFailures = pgTable(
  * Sources and the LLM endpoint refer to them by id without a foreign key, as the SecretStore is a
  * port of its own; secrets no one refers to are swept.
  */
-export const secrets = pgTable("secrets", {
-  id: uuid("id").primaryKey(),
+export const secrets = pgTable("secret", {
+  id: uuid("id").primaryKey().defaultRandom(),
   wrappedDataKey: bytea("wrapped_data_key").notNull(),
   ciphertext: bytea("ciphertext").notNull(),
   createdAt: timestamptz("created_at").notNull().defaultNow(),
 });
 
 export const familyMembers = pgTable(
-  "family_members",
+  "family_member",
   {
-    id: uuid("id").primaryKey(),
+    id: uuid("id").primaryKey().defaultRandom(),
     /** The order Family Members were added in, which lists and quick filters keep. */
     position: bigint("position", { mode: "number" }).notNull().generatedAlwaysAsIdentity(),
     name: text("name").notNull(),
     /** The photo in the BlobStore, if any, and its image format. */
     photoBlob: text("photo_blob"),
     photoContentType: text("photo_content_type"),
-    createdAt: timestamptz("created_at").notNull(),
+    createdAt: timestamptz("created_at").notNull().defaultNow(),
   },
   (table) => [
-    check("family_members_photo_complete", allOrNone(table.photoBlob, table.photoContentType)),
-    oneOf("family_members_photo_content_type_known", table.photoContentType, photoTypes),
+    check("family_member_photo_complete", allOrNone(table.photoBlob, table.photoContentType)),
+    oneOf("family_member_photo_content_type_known", table.photoContentType, photoTypes),
   ],
 );
 
 export const agendas = pgTable(
-  "views",
+  "agenda",
   {
-    id: uuid("id").primaryKey(),
+    id: uuid("id").primaryKey().defaultRandom(),
     position: bigint("position", { mode: "number" }).notNull().generatedAlwaysAsIdentity(),
     kind: text("kind").notNull().default("timeline"),
     horizonDays: integer("horizon_days").notNull(),
-    createdAt: timestamptz("created_at").notNull(),
+    createdAt: timestamptz("created_at").notNull().defaultNow(),
   },
   (table) => [
-    oneOf("views_kind_known", table.kind, agendaKinds),
+    oneOf("agenda_kind_known", table.kind, agendaKinds),
     check(
-      "views_horizon_days_in_range",
+      "agenda_horizon_days_in_range",
       sql`${table.horizonDays} BETWEEN ${sql.raw(String(horizonDaysRange.min))} AND ${sql.raw(String(horizonDaysRange.max))}`,
     ),
   ],
@@ -141,9 +144,9 @@ export const agendas = pgTable(
 
 /** An Agenda's preselected Family Members; removing a Family Member removes them here too. */
 export const agendaPreselections = pgTable(
-  "view_preselections",
+  "agenda_preselection",
   {
-    agendaId: uuid("view_id")
+    agendaId: uuid("agenda_id")
       .notNull()
       .references(() => agendas.id, { onDelete: "cascade" }),
     familyMemberId: uuid("family_member_id")
@@ -152,88 +155,89 @@ export const agendaPreselections = pgTable(
   },
   (table) => [
     primaryKey({ columns: [table.agendaId, table.familyMemberId] }),
-    index("view_preselections_family_member_id_idx").on(table.familyMemberId),
+    index("agenda_preselection_family_member_id_idx").on(table.familyMemberId),
   ],
 );
 
 /**
- * Per Source Type id, whether an Admin enabled it and when it was discovered (ADR-0010). A row is
- * never removed, so that a Source keeps its Source Type while the plugin is not installed.
+ * Per discovered Source Type id, whether an Admin enabled it (ADR-0010); a newly discovered one is
+ * disabled. A row is never removed, so that a Source keeps its Source Type while the plugin is not
+ * installed.
  */
-export const sourceTypes = pgTable("source_types", {
+export const sourceTypes = pgTable("source_type", {
   id: text("id").primaryKey(),
   enabled: boolean("enabled").notNull().default(false),
-  /** The application version the Source Type was first discovered in. */
-  firstSeenIn: text("first_seen_in").notNull(),
-  firstSeenAt: timestamptz("first_seen_at").notNull(),
-  /** Until an Admin opens the list of Source Types. */
-  isNew: boolean("is_new").notNull().default(true),
 });
 
 /**
- * Per entry of a Source Type's catalogue, such as a Messenger of the Matrix plugin, whether an
- * Admin enabled it and when it was discovered (ADR-0011).
+ * Per discovered entry of a Source Type's catalogue, such as a Messenger of the Matrix plugin,
+ * whether an Admin enabled it (ADR-0011); a newly discovered one is disabled.
  */
 export const catalogueEntries = pgTable(
-  "catalogue_entries",
+  "catalogue_entry",
   {
     sourceTypeId: text("source_type_id")
       .notNull()
       .references(() => sourceTypes.id),
     entryId: text("entry_id").notNull(),
     enabled: boolean("enabled").notNull().default(false),
-    /** The application version the entry was first discovered in. */
-    firstSeenIn: text("first_seen_in").notNull(),
-    firstSeenAt: timestamptz("first_seen_at").notNull(),
     /** How often the Sources using it are polled; null for their plugin's suggestion. */
     pollIntervalSeconds: integer("poll_interval_seconds"),
   },
   (table) => [
     primaryKey({ columns: [table.sourceTypeId, table.entryId] }),
-    check("catalogue_entries_poll_interval_positive", sql`${table.pollIntervalSeconds} > 0`),
+    check("catalogue_entry_poll_interval_positive", sql`${table.pollIntervalSeconds} > 0`),
   ],
 );
 
 /**
- * Sources of every Source Type, so that a new one needs no migration. A Source keeps its
- * Source Type id even when the plugin is removed, and resumes once it is installed again.
- * Removing a Source removes everything it brought in, down to the Revisions, by cascade.
+ * Sources of every Source Type, so that a new one needs no migration; only what an Admin
+ * configures, as how their runs went is in `source_run` (ADR-0014). A Source keeps its Source
+ * Type id even when the plugin is removed, and resumes once it is installed again. Removing a
+ * Source removes everything it brought in, down to the Revisions, by cascade.
  */
 export const sources = pgTable(
-  "sources",
+  "source",
   {
-    id: uuid("id").primaryKey(),
+    id: uuid("id").primaryKey().defaultRandom(),
     position: bigint("position", { mode: "number" }).notNull().generatedAlwaysAsIdentity(),
     sourceTypeId: text("source_type_id")
       .notNull()
       .references(() => sourceTypes.id),
-    config: jsonb("config").$type<Record<string, unknown>>().notNull(),
+    config: jsonb("config").$type<Record<string, unknown>>().notNull().default({}),
     configVersion: integer("config_version").notNull(),
     /** The SecretStore references of the secret fields, by field key. */
-    secretRefs: jsonb("secret_refs").$type<Record<string, string>>().notNull(),
-    /** The plugin's opaque state, handed back on its next run. */
-    state: text("state"),
+    secretRefs: jsonb("secret_refs").$type<Record<string, string>>().notNull().default({}),
     /** As an Admin set it; null for the plugin's suggestion. */
     pollIntervalSeconds: integer("poll_interval_seconds"),
     /** Whether its Items show on the timeline; a hidden Source is still read. */
     shown: boolean("shown").notNull().default(true),
     /** As an Admin named it; null for the name the Admin area derives from its settings. */
     name: text("name"),
-    createdAt: timestamptz("created_at").notNull(),
+    createdAt: timestamptz("created_at").notNull().defaultNow(),
   },
   (table) => [
-    index("sources_source_type_id_idx").on(table.sourceTypeId),
-    check("sources_poll_interval_positive", sql`${table.pollIntervalSeconds} > 0`),
+    index("source_source_type_id_idx").on(table.sourceTypeId),
+    check("source_poll_interval_positive", sql`${table.pollIntervalSeconds} > 0`),
   ],
 );
 
-/** How a Source's runs went, one row per Source, apart from what an Admin configures. */
-export const sourceHealth = pgTable(
-  "source_health",
+/**
+ * How a Source's runs went, one row per Source, apart from what an Admin configures (ADR-0014);
+ * written by every run.
+ */
+export const sourceRuns = pgTable(
+  "source_run",
   {
     sourceId: uuid("source_id")
       .primaryKey()
       .references(() => sources.id, { onDelete: "cascade" }),
+    /**
+     * The plugin's opaque state, handed back on its next run; written in the same transaction as
+     * the run's Origins, so that it never runs ahead of what was recorded. A JSON string, which
+     * the repositories convert in SQL.
+     */
+    syncCursor: jsonb("sync_cursor"),
     /** When it last ran; null to run it at the next tick. */
     lastRunAt: timestamptz("last_run_at"),
     /** When it last ran successfully, which the Admin area shows. */
@@ -248,8 +252,8 @@ export const sourceHealth = pgTable(
     lastNewOriginAt: timestamptz("last_new_origin_at"),
   },
   (table) => [
-    check("source_health_failure_complete", allOrNone(table.failingSince, table.lastErrorKind, table.lastError)),
-    oneOf("source_health_last_error_kind_known", table.lastErrorKind, ["definite", "temporary"] satisfies RunError["kind"][]),
+    check("source_run_failure_complete", allOrNone(table.failingSince, table.lastErrorKind, table.lastError)),
+    oneOf("source_run_last_error_kind_known", table.lastErrorKind, ["definite", "temporary"] satisfies RunError["kind"][]),
   ],
 );
 
@@ -446,7 +450,7 @@ export const messageAttachments = pgTable(
 
 /** The Family's one LLM endpoint; its API key is in the SecretStore. */
 export const llmEndpoints = pgTable(
-  "llm_endpoints",
+  "llm_endpoint",
   {
     id: singleRowId(),
     baseUrl: text("base_url").notNull(),
@@ -456,12 +460,12 @@ export const llmEndpoints = pgTable(
     acknowledgedAt: timestamptz("acknowledged_at"),
     savedAt: timestamptz("saved_at").notNull(),
   },
-  (table) => [singleRow("llm_endpoints", table.id)],
+  (table) => [singleRow("llm_endpoint", table.id)],
 );
 
 /** What the worker is busy with, one row while it is; read by the api for the Agendas. */
 export const backgroundActivities = pgTable(
-  "background_activities",
+  "background_activity",
   {
     id: singleRowId(),
     kind: text("kind").notNull(),
@@ -470,8 +474,8 @@ export const backgroundActivities = pgTable(
     updatedAt: timestamptz("updated_at").notNull(),
   },
   (table) => [
-    singleRow("background_activities", table.id),
-    oneOf("background_activities_kind_known", table.kind, ["polling", "extracting"] satisfies ActivityKind[]),
-    check("background_activities_progress", sql`0 <= ${table.done} AND ${table.done} <= ${table.total}`),
+    singleRow("background_activity", table.id),
+    oneOf("background_activity_kind_known", table.kind, ["polling", "extracting"] satisfies ActivityKind[]),
+    check("background_activity_progress", sql`0 <= ${table.done} AND ${table.done} <= ${table.total}`),
   ],
 );

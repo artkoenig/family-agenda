@@ -52,7 +52,7 @@ describe("the LLM endpoint", () => {
       apiKey: "sk-first",
       thirdPartiesAcknowledged: true,
     });
-    const [stored] = await instance.query("SELECT * FROM llm_endpoints");
+    const [stored] = await instance.query("SELECT * FROM llm_endpoint");
     expect(JSON.stringify(stored)).not.toContain("sk-first");
 
     // Left empty, the stored key stays; a new one replaces it.

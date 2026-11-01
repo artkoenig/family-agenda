@@ -119,8 +119,6 @@ export const en = {
     title: "Settings",
     signOut: "Sign out",
     groups: { family: "Family", sources: "Sources", instance: "Instance" },
-    newSourceTypes: "New Source Types are available",
-    lookAtThem: "Look at them",
     failingSource: "A Source is failing",
     failingSourceBody: "Some Items may be out of date until it is fixed.",
     lookAtSources: "Look at the Sources",
@@ -132,7 +130,6 @@ export const en = {
     ocr: (languages: string) => `OCR in ${languages}`,
     ocrOff: "OCR off",
     sources: (count: number) => plural(count, { one: `${count} Source`, other: `${count} Sources` }),
-    newOnes: "New ones are available",
     llmLocal: (model: string) => `${model}, on the home network`,
     llmRemote: (model: string) => `${model}, outside the home network`,
     notSetUp: "Not set up",
@@ -226,7 +223,6 @@ export const en = {
 
   sourceTypes: {
     use: (name: string) => `Use ${name}`,
-    newIn: (version: string) => `New in ${version}`,
     version: (version: string) => `Version ${version}`,
     needsLlm: ". Its Sources need the LLM endpoint.",
     notLoadable: (reason: string) => `Not loadable: ${reason}`,

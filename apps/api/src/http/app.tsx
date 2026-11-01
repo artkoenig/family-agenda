@@ -382,7 +382,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     const token = getCookie(c, sessionCookie);
     const admin = token ? await admins.authenticate(token) : null;
     if (!admin) return c.redirect("/admin/sign-in");
-    c.set("admin", { ...admin, newSourceTypes: await sourceTypes.hasNew(), settings: await settings() });
+    c.set("admin", { ...admin, settings: await settings() });
     await next();
   });
   // Until an Admin confirms saving the Recovery Kit, the Admin area shows only the kit (ADR-0006).
@@ -597,9 +597,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
 
   // Each Source Type's card, leading to its page with its Sources.
   const sourcesPage = async (c: Context<Env>) => {
-    // Opening the Sources ends the new-Source-Types banner, so this page no longer shows it.
-    const list = await sourceTypes.open();
-    const page = <SourcesPage admin={{ ...c.get("admin"), newSourceTypes: false }} sourceTypes={list} sources={await sources.list()} />;
+    const page = <SourcesPage admin={c.get("admin")} sourceTypes={await sourceTypes.list()} sources={await sources.list()} />;
     return render(c, page);
   };
 

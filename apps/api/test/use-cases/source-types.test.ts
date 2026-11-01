@@ -14,23 +14,22 @@ describe("Source Types", () => {
   let instance: TestInstance;
   beforeEach(async () => {
     loadedTestPlugins.length = 0;
-    instance = await bootForTest({ applicationVersion: "1.0.0" });
+    instance = await bootForTest();
   });
   afterEach(async () => {
     await instance.close();
   });
 
   /** Installs plugins as workspace packages and restarts, as an update shipping them would. */
-  const installAndRestart = async (plugins: TestPluginPackage[], applicationVersion = "1.0.0") => {
+  const installAndRestart = async (plugins: TestPluginPackage[]) => {
     for (const plugin of plugins) await writeTestPluginPackage(instance.workspacePackages, plugin);
-    await instance.restart({ applicationVersion });
+    await instance.restart();
   };
 
   const list = async () =>
-    (await instance.app.sourceTypes.open()).map((type) => ({
+    (await instance.app.sourceTypes.list()).map((type) => ({
       id: type.id,
       enabled: type.enabled,
-      isNew: type.isNew,
       notLoadable: type.notLoadable,
     }));
 
@@ -51,7 +50,7 @@ describe("Source Types", () => {
     await writeFile(join(other, "package.json"), JSON.stringify({ name: "@family-agenda/domain" }));
     await instance.restart();
 
-    const types = await instance.app.sourceTypes.open();
+    const types = await instance.app.sourceTypes.list();
     expect(
       types.map(({ id, displayName, description, needsLlm, enabled }) => ({
         id, displayName, description, needsLlm, enabled,
@@ -70,8 +69,8 @@ describe("Source Types", () => {
 
     expect(loadedTestPlugins).toEqual(["school-portal"]);
     expect(await list()).toEqual([
-      { id: "club-mail", enabled: false, isNew: true, notLoadable: null },
-      { id: "school-portal", enabled: true, isNew: true, notLoadable: null },
+      { id: "club-mail", enabled: false, notLoadable: null },
+      { id: "school-portal", enabled: true, notLoadable: null },
     ]);
 
     await instance.restart();
@@ -86,7 +85,7 @@ describe("Source Types", () => {
   it("enables a Source Type with a risk notice only once it is acknowledged", async () => {
     await installAndRestart([{ sourceTypeId: "messenger", riskNotice: "Uses an unofficial client." }]);
 
-    const [messenger] = await instance.app.sourceTypes.open();
+    const [messenger] = await instance.app.sourceTypes.list();
     expect(messenger?.riskNotice).toBe("Uses an unofficial client.");
     expect(await instance.app.sourceTypes.enable("messenger")).toEqual({
       ok: false,
@@ -105,7 +104,6 @@ describe("Source Types", () => {
       {
         id: "old-portal",
         enabled: false,
-        isNew: true,
         notLoadable: "built for SDK 9.0.0, but this is SDK 0.7.0",
       },
     ]);
@@ -113,29 +111,18 @@ describe("Source Types", () => {
     expect(loadedTestPlugins).toEqual([]);
   });
 
-  it("marks Source Types an update brings as new, with a banner until an Admin has opened the list", async () => {
+  it("lists Source Types an update brings as disabled, keeping the ones enabled before", async () => {
     await installAndRestart([{ sourceTypeId: "school-portal" }]);
-    await instance.app.sourceTypes.open();
     await instance.app.sourceTypes.enable("school-portal");
-    expect(await instance.app.sourceTypes.hasNew()).toBe(false);
 
     await writeTestPluginPackage(instance.pluginDirectory, { sourceTypeId: "club-mail" });
-    await installAndRestart([{ sourceTypeId: "calendar" }], "1.1.0");
+    await installAndRestart([{ sourceTypeId: "calendar" }]);
 
-    expect(await instance.app.sourceTypes.hasNew()).toBe(true);
-    expect((await instance.app.sourceTypes.list()).filter((type) => type.isNew)).toHaveLength(2);
-    expect(await instance.app.sourceTypes.hasNew(), "listing them without opening keeps the banner").toBe(true);
-    const opened = await instance.app.sourceTypes.open();
-    expect(opened.map(({ id, isNew, firstSeenIn, enabled }) => [id, isNew, firstSeenIn, enabled])).toEqual([
-      ["calendar", true, "1.1.0", false],
-      ["club-mail", true, "1.1.0", false],
-      ["school-portal", false, "1.0.0", true],
+    expect((await list()).map(({ id, enabled }) => [id, enabled])).toEqual([
+      ["calendar", false],
+      ["club-mail", false],
+      ["school-portal", true],
     ]);
-    expect(await instance.app.sourceTypes.hasNew()).toBe(false);
-    expect((await list()).every((type) => !type.isNew)).toBe(true);
-
-    await instance.restart({ applicationVersion: "1.2.0" });
-    expect(await instance.app.sourceTypes.hasNew()).toBe(false);
   });
 
   it("disables a Source Type only while it has no Sources", async () => {
@@ -195,10 +182,12 @@ describe("Sources", () => {
         partConcerns: {},
       },
     ]);
-    const [row] = await instance.query("SELECT config, secret_refs::text AS refs, state FROM sources");
+    const [row] = await instance.query(
+      "SELECT config, secret_refs::text AS refs, sync_cursor FROM source JOIN source_run ON source_run.source_id = source.id",
+    );
     expect(row?.config).toEqual({ url: "https://school.example.org" });
     expect(row?.refs).not.toContain("hunter2");
-    expect(row?.state).toBeNull();
+    expect(row?.sync_cursor).toBeNull();
   });
 
   it("are added only to an enabled Source Type, with every required field", async () => {

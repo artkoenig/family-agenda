@@ -2,7 +2,6 @@ import { textIn, type MultilingualText, type SourceTypeId } from "@family-agenda
 import type {
   CatalogueEntrySpec,
   CatalogueRepository,
-  Clock,
   LoadedSourceType,
   SourceTypeRegistry,
   SourceTypeRepository,
@@ -12,9 +11,6 @@ import { isPollInterval } from "./poll-interval";
 import { disableIfUnused, enableIfAllowed, type DisableResult, type Enableable, type EnableResult } from "./enablement";
 
 export type CataloguesDeps = {
-  clock: Clock;
-  /** The version of Family Agenda this Instance runs, which new entries are recorded with. */
-  applicationVersion: string;
   registry: SourceTypeRegistry;
   sourceTypes: SourceTypeRepository;
   catalogues: CatalogueRepository;
@@ -22,8 +18,6 @@ export type CataloguesDeps = {
 
 export type CatalogueEntrySummary = CatalogueEntrySpec & {
   enabled: boolean;
-  /** The application version that brought it. */
-  firstSeenIn: string;
   /** How often the Sources using it are polled; null for their plugin's suggestion. */
   pollIntervalSeconds: number | null;
 };
@@ -59,7 +53,7 @@ export async function usableEntries(
  * update, and one that a Source uses cannot be disabled.
  */
 export function createCatalogueAccess(deps: CataloguesDeps) {
-  const { clock, applicationVersion, registry, sourceTypes, catalogues } = deps;
+  const { registry, sourceTypes, catalogues } = deps;
 
   /** The enabled Source Types that have a catalogue, with their plugins. */
   async function withCatalogues(): Promise<{ id: SourceTypeId; sourceType: LoadedSourceType }[]> {
@@ -76,7 +70,7 @@ export function createCatalogueAccess(deps: CataloguesDeps) {
     const { catalogue } = sourceType;
     if (!catalogue) return null;
     const entries = await catalogue.entries();
-    await catalogues.recordDiscovered(id, entries.map((entry) => entry.id), applicationVersion, clock.now());
+    await catalogues.recordDiscovered(id, entries.map((entry) => entry.id));
     const records = new Map((await catalogues.list(id)).map((record) => [record.entryId, record]));
     return {
       sourceTypeId: id,
@@ -85,7 +79,7 @@ export function createCatalogueAccess(deps: CataloguesDeps) {
         .flatMap((entry) => {
           const record = records.get(entry.id);
           return record
-            ? [{ ...entry, enabled: record.enabled, firstSeenIn: record.firstSeenIn, pollIntervalSeconds: record.pollIntervalSeconds }]
+            ? [{ ...entry, enabled: record.enabled, pollIntervalSeconds: record.pollIntervalSeconds }]
             : [];
         })
         .sort((a, b) => textIn(a.displayName, "en").localeCompare(textIn(b.displayName, "en"))),

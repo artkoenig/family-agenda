@@ -8,8 +8,6 @@ export type Config = {
   tessdataDirectory: string;
   /** Where the image keeps the Tesseract models it ships; empty for none. */
   bundledTessdataDirectory: string | null;
-  /** The version of Family Agenda, if the image sets one; otherwise the package's. */
-  applicationVersion?: string;
   port: number;
   trustProxy: boolean;
   /** The address the Family reaches the Instance at, such as `http://192.168.1.10:8080`; null to use the one a request came by. */
@@ -26,7 +24,6 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): Config {
     pluginDirectory: env.PLUGIN_DIRECTORY ?? "/var/lib/family-agenda/plugins",
     tessdataDirectory: env.TESSDATA_DIRECTORY ?? "/var/lib/family-agenda/tessdata",
     bundledTessdataDirectory: (env.BUNDLED_TESSDATA_DIRECTORY ?? "/usr/share/tesseract-ocr/5/tessdata") || null,
-    ...(env.FAMILY_AGENDA_VERSION ? { applicationVersion: env.FAMILY_AGENDA_VERSION } : {}),
     port: Number(env.PORT ?? 3000),
     trustProxy: env.TRUST_PROXY === "true",
     publicUrl: publicUrlOf(env.PUBLIC_URL),
