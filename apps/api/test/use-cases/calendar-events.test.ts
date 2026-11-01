@@ -267,7 +267,7 @@ describe("polling Sources", () => {
     return added.id;
   };
 
-  it("runs each Source on its plugin's suggested interval, with its secrets and the state of its last run", async () => {
+  it("runs each Source on its plugin's suggested interval, with its secrets and the sync cursor of its last run", async () => {
     await add("school-cal");
     const runs = () => testPluginControls.runs("school-cal").slice(-3);
     const before = testPluginControls.runs("school-cal").length;
@@ -279,15 +279,15 @@ describe("polling Sources", () => {
     await instance.app.polling.pollDue();
 
     expect(testPluginControls.runs("school-cal").length - before).toBe(2);
-    expect(runs().slice(-2).map(({ state, config, now, timeZone }) => ({ state, config, now, timeZone }))).toEqual([
+    expect(runs().slice(-2).map(({ syncCursor, config, now, timeZone }) => ({ syncCursor, config, now, timeZone }))).toEqual([
       {
-        state: null,
+        syncCursor: null,
         config: { plain: { url: "https://calendar.example.org" }, secrets: { password: "hunter2" } },
         now: new Date("2026-09-14T07:00:00Z"),
         timeZone: "Europe/Berlin",
       },
       {
-        state: "1",
+        syncCursor: "1",
         config: { plain: { url: "https://calendar.example.org" }, secrets: { password: "hunter2" } },
         now: new Date("2026-09-14T07:10:00Z"),
         timeZone: "Europe/Berlin",
@@ -295,7 +295,7 @@ describe("polling Sources", () => {
     ]);
   });
 
-  it("waits for the next interval after a failed run, keeping the state, and runs the other Sources", async () => {
+  it("waits for the next interval after a failed run, keeping the sync cursor, and runs the other Sources", async () => {
     const school = await add("school-cal");
     const club = await add("club-cal");
     await instance.app.polling.pollDue();
@@ -310,7 +310,7 @@ describe("polling Sources", () => {
 
     instance.clock.advance(10 * minutes);
     await instance.app.polling.pollDue();
-    expect(testPluginControls.runs("school-cal").at(-1)?.state).toBe("1");
+    expect(testPluginControls.runs("school-cal").at(-1)?.syncCursor).toBe("1");
   });
 
   it("fails a run whose Origins are invalid, without recording any of them", async () => {

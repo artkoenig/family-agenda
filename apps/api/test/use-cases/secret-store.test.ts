@@ -57,7 +57,7 @@ describe("the secret sweep", () => {
     const forgotten = await secrets.put("left behind by a crash");
     const fresh = await secrets.put("about to be referred to");
     // The clock stands at 07:00; all but the fresh one were stored two hours before.
-    await instance.query(`UPDATE secrets SET created_at = '2026-09-14T05:00:00Z' WHERE id <> '${fresh}'`);
+    await instance.query(`UPDATE secret SET created_at = '2026-09-14T05:00:00Z' WHERE id <> '${fresh}'`);
 
     expect(await secretSweep.sweep()).toBe(1);
 
@@ -78,7 +78,7 @@ describe("secrets at rest", () => {
   const storedValues = async () =>
     JSON.stringify(
       await instance.query(
-        "SELECT id, encode(wrapped_data_key, 'escape') AS k, encode(ciphertext, 'escape') AS c FROM secrets",
+        "SELECT id, encode(wrapped_data_key, 'escape') AS k, encode(ciphertext, 'escape') AS c FROM secret",
       ),
     );
 

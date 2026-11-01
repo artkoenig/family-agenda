@@ -26,9 +26,9 @@ async function addSource(of: SourcePlugin = plugin()): Promise<RunContext["confi
 
 const userOf = (config: RunContext["config"]) => config.plain.userId as string;
 
-const poll = (config: RunContext["config"], state: string | null = null, of: SourcePlugin = plugin(), at = now): Promise<IngestResult> => {
+const poll = (config: RunContext["config"], syncCursor: string | null = null, of: SourcePlugin = plugin(), at = now): Promise<IngestResult> => {
   if (of.ingestion.mode !== "polling") throw new Error("the Matrix plugin polls");
-  return of.ingestion.poll({ config, state, now: at, timeZone: "Europe/Berlin" });
+  return of.ingestion.poll({ config, syncCursor, now: at, timeZone: "Europe/Berlin" });
 };
 
 const allowListing = (config: RunContext["config"], ...chats: string[]): RunContext["config"] => ({
@@ -36,8 +36,8 @@ const allowListing = (config: RunContext["config"], ...chats: string[]): RunCont
   plain: { ...config.plain, chats },
 });
 
-const choicesOf = (config: RunContext["config"], state: string | null) =>
-  plugin().configuration.fields.find((field) => field.key === "chats")!.choices!({ config, state, now, timeZone: "Europe/Berlin" });
+const choicesOf = (config: RunContext["config"], syncCursor: string | null) =>
+  plugin().configuration.fields.find((field) => field.key === "chats")!.choices!({ config, syncCursor, now, timeZone: "Europe/Berlin" });
 
 const textOf = (origin: Origin | undefined) => {
   if (origin?.content.kind !== "raw-message") throw new Error("not a raw message");
@@ -118,7 +118,7 @@ describe("recorded /sync responses", () => {
     homeserver.replaySync(userOf(config), [recorded("sync-initial", userOf(config)), recorded("sync-redaction", userOf(config))]);
     const first = await poll(config);
 
-    const second = await poll(config, first.state);
+    const second = await poll(config, first.syncCursor);
 
     expect(second.origins).toEqual([]);
     expect(second.withdrawn).toEqual(["$WnDtrip5bfriday0aTreffpunktSchultor8Uhr0001", "$PrivateOmaKaffeeSonntag00000000000000006"]);
@@ -128,14 +128,14 @@ describe("recorded /sync responses", () => {
     homeserver.replaySync(userOf(config), [recorded("sync-initial", userOf(config)), recorded("sync-backfill", userOf(config))]);
     const first = await poll(config);
 
-    const { origins, state } = await poll(config, first.state);
+    const { origins, syncCursor } = await poll(config, first.syncCursor);
 
     expect(origins.map((origin) => [origin.occurredAt.toISOString(), origin.attributes.chat, textOf(origin)])).toEqual([
       ["2026-09-12T08:00:00.000Z", "FC Eltern U11", "Training am Dienstag fällt aus, Platz gesperrt."],
       ["2026-09-13T06:13:20.000Z", "FC Eltern U11", "Samstag Turnier in Musterstadt, Abfahrt 9 Uhr."],
     ]);
     // The chats a Source can allow-list are the group chats, named as the bridge names them.
-    const choices = await plugin().configuration.fields.find((field) => field.key === "chats")!.choices!({ config, state, now, timeZone: "Europe/Berlin" });
+    const choices = await plugin().configuration.fields.find((field) => field.key === "chats")!.choices!({ config, syncCursor, now, timeZone: "Europe/Berlin" });
     expect(choices).toEqual([
       { value: club, label: "FC Eltern U11" },
       { value: klasse, label: "Klasse 5b Eltern" },
@@ -201,7 +201,7 @@ describe("linking the account by QR code", () => {
     const of = plugin();
     const config = await addSource(of);
     const step = of.setupSteps.find((candidate) => candidate.id === "login")!;
-    const progress = (): Promise<SetupProgress> => step.progress!({ config, state: null, now, timeZone: "Europe/Berlin" });
+    const progress = (): Promise<SetupProgress> => step.progress!({ config, syncCursor: null, now, timeZone: "Europe/Berlin" });
 
     const first = await progress();
     expect(first).toMatchObject({ status: "waiting", qrCode: expect.stringMatching(/^2@qr-code-\d+$/) as unknown });
@@ -228,7 +228,7 @@ describe("linking the account by QR code", () => {
     const config = await addSource(of);
     homeserver.setLogin(userOf(config), "CONNECTED");
 
-    expect(await of.setupSteps[0]!.progress!({ config, state: null, now, timeZone: "Europe/Berlin" })).toMatchObject({ status: "done" });
+    expect(await of.setupSteps[0]!.progress!({ config, syncCursor: null, now, timeZone: "Europe/Berlin" })).toMatchObject({ status: "done" });
   });
 });
 
@@ -250,10 +250,10 @@ describe("chats", () => {
     expect(first.origins).toEqual([]);
     expect(homeserver.isMember(room, userOf(config))).toBe(true);
 
-    const second = await poll(allowListing(config, room), first.state);
+    const second = await poll(allowListing(config, room), first.syncCursor);
 
     expect(second.origins.map(textOf)).toEqual(["Vor einer Woche: Wandertag am Freitag."]);
-    const third = await poll(allowListing(config, room), second.state);
+    const third = await poll(allowListing(config, room), second.syncCursor);
     expect(third.origins).toEqual([]);
   });
 
@@ -263,7 +263,7 @@ describe("chats", () => {
       homeserver.text(room, sender, `Nachricht ${message}`, new Date(now.getTime() - 60_000 + message * 1000));
     }
 
-    const { origins } = await poll(allowListing(config, room), first.state);
+    const { origins } = await poll(allowListing(config, room), first.syncCursor);
 
     expect(origins.map(textOf)).toEqual(Array.from({ length: 60 }, (_, index) => `Nachricht ${index + 1}`));
   });
@@ -283,7 +283,7 @@ describe("chats", () => {
       now,
     );
 
-    const { origins } = await poll(allowListing(config, room), first.state);
+    const { origins } = await poll(allowListing(config, room), first.syncCursor);
 
     expect(origins.map((origin) => [textOf(origin), origin.content.kind === "raw-message" ? origin.content.thread : null])).toEqual([
       ["Elternabend um 19 Uhr", original],
@@ -300,10 +300,10 @@ describe("chats", () => {
       { msgtype: "m.text", body: "* um 19:30", "m.new_content": { msgtype: "m.text", body: "Elternabend um 19:30 Uhr" }, "m.relates_to": { rel_type: "m.replace", event_id: original } },
       now,
     );
-    const second = await poll(allowListing(config, room), first.state);
+    const second = await poll(allowListing(config, room), first.syncCursor);
     homeserver.redact(room, original, now);
 
-    const third = await poll(allowListing(config, room), second.state);
+    const third = await poll(allowListing(config, room), second.syncCursor);
 
     expect(third.withdrawn).toEqual([original, edit]);
   });
@@ -313,9 +313,9 @@ describe("chats", () => {
     homeserver.text(later, sender, "Turnier am Samstag.", new Date(now.getTime() - 2 * days));
     const first = await poll(allowListing(config, room, later));
     homeserver.invite(later, userOf(config));
-    const second = await poll(allowListing(config, room, later), first.state);
+    const second = await poll(allowListing(config, room, later), first.syncCursor);
 
-    const third = await poll(allowListing(config, room, later), second.state);
+    const third = await poll(allowListing(config, room, later), second.syncCursor);
 
     expect([...second.origins, ...third.origins].map(textOf)).toEqual(["Turnier am Samstag."]);
   });
@@ -326,23 +326,23 @@ describe("chats", () => {
     const first = await poll(config);
     homeserver.text(direct, sender, "Kommt ihr Sonntag zum Kaffee?", now);
 
-    const { origins } = await poll(allowListing(config, room, direct), first.state);
+    const { origins } = await poll(allowListing(config, room, direct), first.syncCursor);
 
     expect(origins).toEqual([]);
-    expect(await choicesOf(config, first.state)).toEqual([{ value: room, label: "Klasse 5b Eltern" }]);
+    expect(await choicesOf(config, first.syncCursor)).toEqual([{ value: room, label: "Klasse 5b Eltern" }]);
   });
 
   it("are told apart as groups or direct chats when joined before they were", async () => {
     const direct = homeserver.createRoom("Oma (WA)", { [sender]: "Oma (WA)" }, { direct: true });
     homeserver.invite(direct, userOf(config));
     const first = await poll(config);
-    // A state written before group chats were told apart.
-    const older = JSON.parse(first.state ?? "{}") as Record<string, unknown>;
+    // A sync cursor written before group chats were told apart.
+    const older = JSON.parse(first.syncCursor ?? "{}") as Record<string, unknown>;
     delete older.groups;
 
     const second = await poll(config, JSON.stringify(older));
 
-    expect(await choicesOf(config, second.state)).toEqual([{ value: room, label: "Klasse 5b Eltern" }]);
+    expect(await choicesOf(config, second.syncCursor)).toEqual([{ value: room, label: "Klasse 5b Eltern" }]);
   });
 
   it("are joined on a later run when the homeserver refused to at first", async () => {
@@ -350,23 +350,23 @@ describe("chats", () => {
     const first = await poll(config);
     expect(homeserver.isMember(room, userOf(config))).toBe(false);
 
-    const second = await poll(config, first.state);
+    const second = await poll(config, first.syncCursor);
 
     expect(homeserver.isMember(room, userOf(config))).toBe(true);
-    expect(await choicesOf(config, second.state)).toEqual([{ value: room, label: "Klasse 5b Eltern" }]);
+    expect(await choicesOf(config, second.syncCursor)).toEqual([{ value: room, label: "Klasse 5b Eltern" }]);
   });
 
-  it("are joined when invited before the state kept invitations", async () => {
+  it("are joined when invited before the sync cursor kept invitations", async () => {
     homeserver.limitedJoins = 1;
     const first = await poll(config);
-    // A state written before invitations were kept.
-    const older = JSON.parse(first.state ?? "{}") as Record<string, unknown>;
+    // A sync cursor written before invitations were kept.
+    const older = JSON.parse(first.syncCursor ?? "{}") as Record<string, unknown>;
     delete older.invites;
 
     const second = await poll(config, JSON.stringify(older));
 
     expect(homeserver.isMember(room, userOf(config))).toBe(true);
-    expect(await choicesOf(config, second.state)).toEqual([{ value: room, label: "Klasse 5b Eltern" }]);
+    expect(await choicesOf(config, second.syncCursor)).toEqual([{ value: room, label: "Klasse 5b Eltern" }]);
   });
 
   it("are never written to, marked read or shown as typing, and nobody else's invitation is accepted", async () => {
@@ -374,7 +374,7 @@ describe("chats", () => {
     homeserver.invite(stranger, userOf(config), "@spam:other.example");
     const first = await poll(allowListing(config, room));
     homeserver.text(room, sender, "Bitte bestätigen!", now);
-    await poll(allowListing(config, room), first.state);
+    await poll(allowListing(config, room), first.syncCursor);
 
     expect(homeserver.isMember(stranger, userOf(config))).toBe(false);
     const writes = homeserver.requests.filter((request) => /\/(send|receipt|read_markers|typing|presence|state)\//.test(request));
@@ -414,7 +414,7 @@ describe("a Messenger the worker is still starting", () => {
     const error = await poll(config, null, starting()).catch((caught: unknown) => caught);
 
     expect(error).toMatchObject({ kind: "temporary", message: "WhatsApp is starting on this Instance. This takes up to a minute the first time." });
-    expect(await starting().setupSteps[0]!.progress!({ config, state: null, now, timeZone: "Europe/Berlin" })).toEqual({
+    expect(await starting().setupSteps[0]!.progress!({ config, syncCursor: null, now, timeZone: "Europe/Berlin" })).toEqual({
       status: "waiting",
       message: expect.objectContaining({ de: "WhatsApp startet auf dieser Instanz. Beim ersten Mal dauert das bis zu einer Minute." }) as unknown,
     });
@@ -445,7 +445,7 @@ describe("a removed Source", () => {
     const config = await addSource(of);
     homeserver.setLogin(userOf(config), "CONNECTED");
 
-    await of.sourceRemoved!({ config, state: null, now, timeZone: "Europe/Berlin" });
+    await of.sourceRemoved!({ config, syncCursor: null, now, timeZone: "Europe/Berlin" });
 
     await expect(poll(config)).rejects.toThrow("The WhatsApp account is not linked.");
     homeserver.setLogin(userOf(config), "CONNECTED");

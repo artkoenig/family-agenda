@@ -25,9 +25,9 @@ const examplePlugin = (overrides: Partial<SourcePlugin> = {}): SourcePlugin => (
   ingestion: {
     mode: "polling",
     suggestedIntervalSeconds: 900,
-    poll: ({ state }) =>
+    poll: ({ syncCursor }) =>
       Promise.resolve({
-        origins: state !== null ? [] : [
+        origins: syncCursor !== null ? [] : [
           {
             externalId: "mail-1",
             occurredAt: new Date("2026-09-14T07:00:00Z"),
@@ -35,7 +35,7 @@ const examplePlugin = (overrides: Partial<SourcePlugin> = {}): SourcePlugin => (
             content: { kind: "raw-message", text: "Trip on Friday", attachments: [] },
           },
         ],
-        state: `${state ?? ""}+1`,
+        syncCursor: `${syncCursor ?? ""}+1`,
       }),
   },
   health: { silentApplies: true },

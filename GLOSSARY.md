@@ -72,6 +72,10 @@ _Avoid_: Source message, provenance
 Said of a Source Record its Source no longer has, such as a deleted message or calendar entry; it backs no Items.
 _Avoid_: Deleted, revoked, removed
 
+**Sync Cursor**:
+Where a Source resumes reading on its next run, such as the last mail read in each folder or a calendar's version; only its Source Type understands it, and it never moves past the Source Records kept.
+_Avoid_: State, state blob, sync token, checkpoint
+
 **Extraction**:
 The one reading of a message by the LLM that finds its Items; a message edited later keeps what it found.
 _Avoid_: Parsing, re-import, reprocessing

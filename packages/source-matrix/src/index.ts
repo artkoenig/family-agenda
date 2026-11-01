@@ -41,7 +41,7 @@ export type MatrixPluginOptions = {
 };
 
 /**
- * The state blob: where `/sync` resumes, the names of the joined rooms and of the senders seen,
+ * The sync cursor: where `/sync` resumes, the names of the joined rooms and of the senders seen,
  * whether each joined room is a group chat, the bridge's invitations not accepted yet, which
  * `/sync` names only once, the allow-listed rooms read so far, so that a room
  * allow-listed later is read back first, and the edits of each message read, which go with it
@@ -166,7 +166,7 @@ export function createMatrixPlugin(options: MatrixPluginOptions = {}): SourcePlu
     const { homeserver, messenger, bridge, instance } = await connectionOf(context.config.plain);
     const { userId, token } = accountOf(context);
     await checkLogin(bridge, messenger, userId);
-    const previous = parseState(context.state);
+    const previous = parseState(context.syncCursor);
     const backfillStart = context.now.getTime() - backfillDays * 24 * 60 * 60 * 1000;
 
     try {
@@ -184,7 +184,7 @@ export function createMatrixPlugin(options: MatrixPluginOptions = {}): SourcePlu
       state.rooms = Object.fromEntries(Object.entries(state.rooms).filter(([roomId]) => !left.has(roomId)));
       state.groups = Object.fromEntries(Object.entries(state.groups).filter(([roomId]) => !left.has(roomId)));
       const bridge = { userId, messenger, serverName: instance.homeserver.serverName };
-      // A state from before invitations were kept does not know those `/sync` named back then.
+      // A sync cursor from before invitations were kept does not know those `/sync` named back then.
       const invitations = previous && previous.invites === null ? await homeserver.invites(token) : {};
       Object.assign(state.invites, invitationsOf(invitations, bridge), invitationsOf(sync.rooms?.invite ?? {}, bridge));
       const pending = Object.entries(state.invites).filter(([roomId]) => !left.has(roomId));
@@ -253,7 +253,7 @@ export function createMatrixPlugin(options: MatrixPluginOptions = {}): SourcePlu
         if (origin) origins.push(origin);
       }
       origins.sort((a, b) => a.occurredAt.getTime() - b.occurredAt.getTime());
-      return { origins, state: JSON.stringify(state), withdrawn: [...withdrawn] };
+      return { origins, syncCursor: JSON.stringify(state), withdrawn: [...withdrawn] };
     } catch (error) {
       throw homeserverError(error);
     }
@@ -612,7 +612,7 @@ function editedBy(event: MatrixEvent): string | null {
 
 /** The joined group chats a Source can allow-list, by name. */
 function chatChoices(context: RunContext): Choice[] {
-  const state = parseState(context.state);
+  const state = parseState(context.syncCursor);
   return Object.entries(state?.rooms ?? {})
     .filter(([roomId]) => state?.groups[roomId] === true)
     .map(([value, label]) => ({ value, label }))
@@ -623,7 +623,7 @@ function chatsOf(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((chat): chat is string => typeof chat === "string") : [];
 }
 
-/** A state blob as read; `invites` is null in one written before invitations were kept. */
+/** A sync cursor as read; `invites` is null in one written before invitations were kept. */
 function parseState(state: string | null): (Omit<State, "invites"> & { invites: Record<string, string> | null }) | null {
   if (!state) return null;
   try {

@@ -281,7 +281,7 @@ export function createSourceAccess(deps: SourcesDeps) {
         plain: { ...given.plain, ...Object.fromEntries(ofPlugin(prepared.plain)) },
         configVersion: sourceType.configuration.version,
         secrets: refs,
-        state: null,
+        syncCursor: null,
         pollIntervalSeconds: input.pollIntervalSeconds ?? null,
         shown: true,
         name: null,
@@ -299,7 +299,7 @@ export function createSourceAccess(deps: SourcesDeps) {
 
     /**
      * Changes a Source's configuration and polling interval, and runs it on the next tick, so
-     * that a fix shows at once. Its state stays, so that a calendar whose address an Admin fixes
+     * that a fix shows at once. Its sync cursor stays, so that a calendar whose address an Admin fixes
      * resumes where it was.
      */
     async edit(id: SourceId, input: SourceInput): Promise<EditSourceResult> {
@@ -406,5 +406,5 @@ export async function runContextOf(
     const value = await context.secrets.get(ref);
     if (value !== null) secretValues[key] = value;
   }
-  return { plain: source.plain, secrets: secretValues, state: source.state, now: context.now, timeZone: context.timeZone };
+  return { plain: source.plain, secrets: secretValues, syncCursor: source.syncCursor, now: context.now, timeZone: context.timeZone };
 }

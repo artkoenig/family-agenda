@@ -63,6 +63,7 @@ import {
   adminSessions,
   backgroundActivities,
   catalogueEntries,
+  family,
   familyMembers,
   itemKeys,
   items,
@@ -71,9 +72,8 @@ import {
   origins,
   rawMessages,
   revisions,
-  settings,
   signInFailures,
-  sourceHealth,
+  sourceRuns,
   sourceMembers,
   sources,
   sourceTypes,
@@ -84,26 +84,26 @@ import {
 /** Arbitrary key that serialises creating the first Admin. */
 const setupLockKey = 7_342_002;
 
-/** Reads and writes the one row of `settings`, which the schema creates (ADR-0013). */
+/** Reads and writes the one row of `family`, which the schema creates (ADR-0013). */
 export class PostgresFamilyRepository implements FamilyRepository {
   constructor(private readonly db: Database) {}
 
   async recoveryKitConfirmed(): Promise<boolean> {
-    const [row] = await this.db.select({ at: settings.recoveryKitConfirmedAt }).from(settings);
+    const [row] = await this.db.select({ at: family.recoveryKitConfirmedAt }).from(family);
     return row?.at != null;
   }
 
   async confirmRecoveryKit(at: Date): Promise<void> {
     await this.db
-      .update(settings)
-      .set({ recoveryKitConfirmedAt: sql`coalesce(${settings.recoveryKitConfirmedAt}, ${at})` });
+      .update(family)
+      .set({ recoveryKitConfirmedAt: sql`coalesce(${family.recoveryKitConfirmedAt}, ${at})` });
   }
 
   async languages(): Promise<FamilyLanguages> {
     const [row] = await this.db
-      .select({ language: settings.language, ocrLanguages: settings.ocrLanguages })
-      .from(settings);
-    if (!row) throw new Error("the settings row is missing");
+      .select({ language: family.language, ocrLanguages: family.ocrLanguages })
+      .from(family);
+    if (!row) throw new Error("the family row is missing");
     return {
       language: isFamilyLanguage(row.language) ? row.language : defaultFamilyLanguage,
       ocrLanguages: row.ocrLanguages as OcrLanguage[],
@@ -111,17 +111,17 @@ export class PostgresFamilyRepository implements FamilyRepository {
   }
 
   async saveLanguages(languages: FamilyLanguages): Promise<void> {
-    await this.db.update(settings).set({ language: languages.language, ocrLanguages: languages.ocrLanguages });
+    await this.db.update(family).set({ language: languages.language, ocrLanguages: languages.ocrLanguages });
   }
 
   async ocrEnabled(): Promise<boolean> {
-    const [row] = await this.db.select({ ocrEnabled: settings.ocrEnabled }).from(settings);
-    if (!row) throw new Error("the settings row is missing");
+    const [row] = await this.db.select({ ocrEnabled: family.ocrEnabled }).from(family);
+    if (!row) throw new Error("the family row is missing");
     return row.ocrEnabled;
   }
 
   async saveOcrEnabled(enabled: boolean): Promise<void> {
-    await this.db.update(settings).set({ ocrEnabled: enabled });
+    await this.db.update(family).set({ ocrEnabled: enabled });
   }
 }
 
@@ -361,22 +361,17 @@ async function insertPreselections(tx: Pick<Database, "insert">, agenda: Agenda)
 export class PostgresSourceTypeRepository implements SourceTypeRepository {
   constructor(private readonly db: Database) {}
 
-  async recordDiscovered(ids: SourceTypeId[], applicationVersion: string, at: Date): Promise<void> {
+  async recordDiscovered(ids: SourceTypeId[]): Promise<void> {
     if (ids.length === 0) return;
     await this.db
       .insert(sourceTypes)
-      .values(ids.map((id) => ({ id, firstSeenIn: applicationVersion, firstSeenAt: at })))
+      .values(ids.map((id) => ({ id })))
       .onConflictDoNothing({ target: sourceTypes.id });
   }
 
   async list(): Promise<SourceTypeRecord[]> {
     const rows = await this.db.select().from(sourceTypes).orderBy(asc(sourceTypes.id));
-    return rows.map((row) => ({
-      id: row.id as SourceTypeId,
-      enabled: row.enabled,
-      firstSeenIn: row.firstSeenIn,
-      isNew: row.isNew,
-    }));
+    return rows.map((row) => ({ id: row.id as SourceTypeId, enabled: row.enabled }));
   }
 
   async enable(id: SourceTypeId): Promise<void> {
@@ -392,20 +387,16 @@ export class PostgresSourceTypeRepository implements SourceTypeRepository {
       .returning({ id: sourceTypes.id });
     return updated.length === 1;
   }
-
-  async markAllSeen(): Promise<void> {
-    await this.db.update(sourceTypes).set({ isNew: false }).where(eq(sourceTypes.isNew, true));
-  }
 }
 
 export class PostgresCatalogueRepository implements CatalogueRepository {
   constructor(private readonly db: Database) {}
 
-  async recordDiscovered(sourceTypeId: SourceTypeId, entryIds: string[], applicationVersion: string, at: Date): Promise<void> {
+  async recordDiscovered(sourceTypeId: SourceTypeId, entryIds: string[]): Promise<void> {
     if (entryIds.length === 0) return;
     await this.db
       .insert(catalogueEntries)
-      .values(entryIds.map((entryId) => ({ sourceTypeId, entryId, firstSeenIn: applicationVersion, firstSeenAt: at })))
+      .values(entryIds.map((entryId) => ({ sourceTypeId, entryId })))
       .onConflictDoNothing({ target: [catalogueEntries.sourceTypeId, catalogueEntries.entryId] });
   }
 
@@ -415,7 +406,7 @@ export class PostgresCatalogueRepository implements CatalogueRepository {
       .from(catalogueEntries)
       .where(eq(catalogueEntries.sourceTypeId, sourceTypeId))
       .orderBy(asc(catalogueEntries.entryId));
-    return rows.map(({ entryId, enabled, firstSeenIn, pollIntervalSeconds }) => ({ entryId, enabled, firstSeenIn, pollIntervalSeconds }));
+    return rows.map(({ entryId, enabled, pollIntervalSeconds }) => ({ entryId, enabled, pollIntervalSeconds }));
   }
 
   async enable(sourceTypeId: SourceTypeId, entryId: string): Promise<void> {
@@ -454,14 +445,14 @@ export class PostgresSourceRepository implements SourceRepository {
         config: source.plain,
         configVersion: source.configVersion,
         secretRefs: source.secrets,
-        state: source.state,
         pollIntervalSeconds: source.pollIntervalSeconds,
         shown: source.shown,
         name: source.name,
         createdAt: source.createdAt,
       });
-      await tx.insert(sourceHealth).values({
+      await tx.insert(sourceRuns).values({
         sourceId: source.id,
+        syncCursor: cursorToJson(source.syncCursor),
         lastRunAt: source.lastRunAt,
         lastSuccessAt: source.lastSuccessAt,
         ...failureColumns(source.failure),
@@ -502,20 +493,20 @@ export class PostgresSourceRepository implements SourceRepository {
           pollIntervalSeconds: source.pollIntervalSeconds,
         })
         .where(eq(sources.id, source.id));
-      await tx.update(sourceHealth).set({ lastRunAt: source.lastRunAt }).where(eq(sourceHealth.sourceId, source.id));
+      await tx.update(sourceRuns).set({ lastRunAt: source.lastRunAt }).where(eq(sourceRuns.sourceId, source.id));
     });
   }
 
   async recordFailedRun(id: SourceId, at: Date, error: RunError): Promise<void> {
     await this.db
-      .update(sourceHealth)
+      .update(sourceRuns)
       .set({
         lastRunAt: at,
-        failingSince: sql`coalesce(${sourceHealth.failingSince}, ${at})`,
-        lastErrorKind: sql`CASE WHEN ${sourceHealth.lastErrorKind} = 'definite' THEN 'definite' ELSE ${error.kind} END`,
+        failingSince: sql`coalesce(${sourceRuns.failingSince}, ${at})`,
+        lastErrorKind: sql`CASE WHEN ${sourceRuns.lastErrorKind} = 'definite' THEN 'definite' ELSE ${error.kind} END`,
         lastError: error.message,
       })
-      .where(eq(sourceHealth.sourceId, id));
+      .where(eq(sourceRuns.sourceId, id));
   }
 
   async setShown(id: SourceId, shown: boolean): Promise<void> {
@@ -589,9 +580,9 @@ export class PostgresSourceRepository implements SourceRepository {
 
   private async select(where?: SQL): Promise<Source[]> {
     const rows = await this.db
-      .select({ source: sources, health: sourceHealth })
+      .select({ source: sources, run: sourceRuns, syncCursor: syncCursorAsText })
       .from(sources)
-      .innerJoin(sourceHealth, eq(sourceHealth.sourceId, sources.id))
+      .innerJoin(sourceRuns, eq(sourceRuns.sourceId, sources.id))
       .where(where)
       .orderBy(asc(sources.position));
     const assigned = await this.db
@@ -614,29 +605,38 @@ export class PostgresSourceRepository implements SourceRepository {
       for (const row of assigned) if (row.sourceId === id && row.part !== "") (parts[row.part] ??= []).push(row.familyMemberId as FamilyMemberId);
       return parts;
     };
-    return rows.map(({ source, health }) => ({
+    return rows.map(({ source, run, syncCursor }) => ({
       id: source.id as SourceId,
       sourceTypeId: source.sourceTypeId as SourceTypeId,
       plain: source.config,
       configVersion: source.configVersion,
       secrets: source.secretRefs as Record<string, SecretRef>,
-      state: source.state,
+      syncCursor,
       pollIntervalSeconds: source.pollIntervalSeconds,
       shown: source.shown,
       name: source.name,
       concerns: concernsOf(source.id),
       partConcerns: partConcernsOf(source.id),
-      lastRunAt: health.lastRunAt,
-      lastSuccessAt: health.lastSuccessAt,
+      lastRunAt: run.lastRunAt,
+      lastSuccessAt: run.lastSuccessAt,
       failure:
-        health.failingSince && health.lastError !== null
-          ? { kind: health.lastErrorKind === "definite" ? "definite" : "temporary", message: health.lastError, since: health.failingSince }
+        run.failingSince && run.lastError !== null
+          ? { kind: run.lastErrorKind === "definite" ? "definite" : "temporary", message: run.lastError, since: run.failingSince }
           : null,
-      lastNewOriginAt: health.lastNewOriginAt,
+      lastNewOriginAt: run.lastNewOriginAt,
       createdAt: source.createdAt,
     }));
   }
 }
+
+/**
+ * A plugin's sync cursor as the JSON string `sync_cursor` holds. It is converted in SQL, as drizzle
+ * would parse again a `jsonb` value the driver has already parsed, turning the cursor `"1"` into 1.
+ */
+const cursorToJson = (syncCursor: string | null): SQL => sql`to_jsonb(${syncCursor}::text)`;
+
+/** The plugin's sync cursor read back from `sync_cursor`, as text for the reason above. */
+const syncCursorAsText = sql<string | null>`${sourceRuns.syncCursor} #>> '{}'`;
 
 function failureColumns(failure: SourceFailure | null) {
   return {
@@ -715,20 +715,20 @@ export class PostgresItemRepository implements ItemRepository {
       }
       const withdrawnFiles = await this.withdraw(tx, run, reached);
       await recomputeAll(tx, reached, recompute);
-      await tx.update(sources).set({ state: run.state }).where(eq(sources.id, run.sourceId));
       const lastNewOrigin = tx
         .select({ at: sql`max(${origins.firstSeenAt})` })
         .from(origins)
         .where(eq(origins.sourceId, run.sourceId));
       await tx
-        .update(sourceHealth)
+        .update(sourceRuns)
         .set({
+          syncCursor: cursorToJson(run.syncCursor),
           lastRunAt: run.at,
           lastSuccessAt: run.at,
           ...failureColumns(null),
           lastNewOriginAt: sql`(${lastNewOrigin})`,
         })
-        .where(eq(sourceHealth.sourceId, run.sourceId));
+        .where(eq(sourceRuns.sourceId, run.sourceId));
       return { knownMessages, withdrawnFiles };
     });
   }

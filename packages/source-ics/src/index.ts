@@ -23,7 +23,7 @@ export type IcsPluginOptions = {
  */
 type Entry = { title: string; span: EventSpan; place: string | null; cancelled: boolean; goneAt?: string };
 
-/** The state blob: the calendar's ETag and every entry as last seen, by UID. */
+/** The sync cursor: the calendar's ETag and every entry as last seen, by UID. */
 type State = { etag: string | null; entries: Record<string, Entry> };
 
 type Download = { body: string; etag: string | null };
@@ -92,9 +92,9 @@ export function createIcsPlugin(options: IcsPluginOptions = {}): SourcePlugin {
       mode: "polling",
       suggestedIntervalSeconds: 15 * 60,
       async poll(context) {
-        const previous = parseState(context.state);
+        const previous = parseState(context.syncCursor);
         const downloaded = await download(context, previous.etag);
-        if (!downloaded) return { origins: [], state: context.state };
+        if (!downloaded) return { origins: [], syncCursor: context.syncCursor };
         const calendar = parseCalendar(downloaded.body, context.timeZone);
         const attributes = { calendar: nameOf(context, calendar.name) };
 
@@ -127,7 +127,7 @@ export function createIcsPlugin(options: IcsPluginOptions = {}): SourcePlugin {
           });
         }
         const state: State = { etag: downloaded.etag, entries };
-        return { origins, state: JSON.stringify(state) };
+        return { origins, syncCursor: JSON.stringify(state) };
       },
     },
     health: { silentApplies: false },

@@ -154,10 +154,10 @@ describe("Source health", () => {
     expect(calendar?.health.status).toBe("ok");
   });
 
-  it("is Failing while its plugin is not installed, keeping its Items, and resumes from its state once reinstalled", async () => {
+  it("is Failing while its plugin is not installed, keeping its Items, and resumes from its sync cursor once reinstalled", async () => {
     testPluginControls.emit("school-portal", [notice("evening")]);
     await tick();
-    expect(testPluginControls.runs("school-portal").at(-1)?.state).toBeNull();
+    expect(testPluginControls.runs("school-portal").at(-1)?.syncCursor).toBeNull();
 
     await rm(join(instance.workspacePackages, "school-portal"), { recursive: true });
     await instance.restart();
@@ -175,7 +175,7 @@ describe("Source health", () => {
     await instance.restart();
     await tick();
 
-    expect(testPluginControls.runs("school-portal").at(-1)?.state).toBe("1");
+    expect(testPluginControls.runs("school-portal").at(-1)?.syncCursor).toBe("1");
     expect(await health()).toEqual({ status: "ok", problem: null, lastSuccessAt: new Date("2026-09-14T07:30:00Z") });
   });
 

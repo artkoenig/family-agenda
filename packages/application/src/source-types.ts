@@ -1,7 +1,6 @@
 import { textIn, type SourceTypeId } from "@family-agenda/domain";
 import { disableIfUnused, enableIfAllowed, type DisableResult, type Enableable, type EnableResult } from "./enablement";
 import type {
-  Clock,
   InstalledSourceType,
   SourceRepository,
   SourceTypeRegistry,
@@ -9,27 +8,18 @@ import type {
 } from "./ports";
 
 export type SourceTypesDeps = {
-  clock: Clock;
-  /** The version of Family Agenda this Instance runs, which new Source Types are recorded with. */
-  applicationVersion: string;
   registry: SourceTypeRegistry;
   sourceTypes: SourceTypeRepository;
   sources: SourceRepository;
 };
 
-export type SourceTypeSummary = InstalledSourceType & {
-  enabled: boolean;
-  /** Discovered since an Admin last opened the list. */
-  isNew: boolean;
-  /** The application version that brought it. */
-  firstSeenIn: string;
-};
+export type SourceTypeSummary = InstalledSourceType & { enabled: boolean };
 
 /** How enabling and disabling a Source Type is refused. */
 const problems = { unknown: "unknown-source-type", unavailable: "not-loadable", inUse: "has-sources" } as const;
 
 export function createSourceTypeAccess(deps: SourceTypesDeps) {
-  const { clock, applicationVersion, registry, sourceTypes, sources } = deps;
+  const { registry, sourceTypes, sources } = deps;
 
   /** Brings the stored configuration of a Source Type's Sources to its plugin's version. */
   async function migrateSources(id: SourceTypeId): Promise<void> {
@@ -77,24 +67,19 @@ export function createSourceTypeAccess(deps: SourceTypesDeps) {
       .installed()
       .flatMap((installed) => {
         const record = records.get(installed.id);
-        return record
-          ? [{ ...installed, enabled: record.enabled, isNew: record.isNew, firstSeenIn: record.firstSeenIn }]
-          : [];
+        return record ? [{ ...installed, enabled: record.enabled }] : [];
       })
-      .sort(
-        (a, b) =>
-          Number(b.isNew) - Number(a.isNew) || textIn(a.displayName, "en").localeCompare(textIn(b.displayName, "en")),
-      );
+      .sort((a, b) => textIn(a.displayName, "en").localeCompare(textIn(b.displayName, "en")));
   }
 
   return {
     /**
-     * At startup: records Source Types seen for the first time as new and disabled, loads the
+     * At startup: records Source Types seen for the first time as disabled, loads the
      * enabled ones and migrates their Sources' configuration. Nothing is ever enabled here.
      */
     async start(): Promise<void> {
       const installed = registry.installed();
-      await sourceTypes.recordDiscovered(installed.map((type) => type.id), applicationVersion, clock.now());
+      await sourceTypes.recordDiscovered(installed.map((type) => type.id));
       const enabled = (await sourceTypes.list()).filter((record) => record.enabled);
       for (const record of enabled) {
         if (installed.some((type) => type.id === record.id && type.notLoadable === null)) {
@@ -103,23 +88,8 @@ export function createSourceTypeAccess(deps: SourceTypesDeps) {
       }
     },
 
-    /** Whether the Admin area shows the "New Source Types are available" banner. */
-    async hasNew(): Promise<boolean> {
-      return (await summaries()).some((type) => type.isNew);
-    },
-
-    /** Every installed Source Type, new ones first, leaving the banner as it is. */
+    /** Every installed Source Type the Instance has recorded, by name. */
     list: summaries,
-
-    /**
-     * Every installed Source Type, new ones first, as an Admin opens the list. Opening it ends the
-     * banner, so the next list shows none as new.
-     */
-    async open(): Promise<SourceTypeSummary[]> {
-      const list = await summaries();
-      if (list.some((type) => type.isNew)) await sourceTypes.markAllSeen();
-      return list;
-    },
 
     async enable(id: string, input: { riskAcknowledged?: boolean } = {}): Promise<EnableResult<typeof problems>> {
       const installed = registry.installed().some((type) => type.id === id);

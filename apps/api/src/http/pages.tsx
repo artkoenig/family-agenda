@@ -142,8 +142,8 @@ export type SettingsSummary = {
   ocr: { enabled: boolean; languages: OcrLanguage[]; missing: boolean };
 };
 
-/** The Admin a page is shown to, whether the new-Source-Types banner shows, and the settings list. */
-export type SignedInAdmin = AdminSummary & { newSourceTypes: boolean; settings: SettingsSummary };
+/** The Admin a page is shown to, and the settings list. */
+export type SignedInAdmin = AdminSummary & { settings: SettingsSummary };
 
 type SectionId =
   | "members"
@@ -196,12 +196,10 @@ function settingsGroups(translation: Translation): SettingsGroup[] {
           id: "sources",
           href: "/admin/sources",
           label: t.sources.title,
-          summary: ({ settings, newSourceTypes }) =>
+          summary: ({ settings }) =>
             settings.failingSources > 0
               ? { text: s.failing(settings.failingSources), tone: "attention" }
-              : newSourceTypes
-                ? { text: s.newOnes, tone: "attention" }
-                : { text: settings.sources > 0 ? s.sources(settings.sources) : s.noneYet },
+              : { text: settings.sources > 0 ? s.sources(settings.sources) : s.noneYet },
         },
         {
           id: "llm",
@@ -345,17 +343,6 @@ function AdminLayout(props: {
           ))}
         </nav>
         <main class="fam-settings__main">
-          {admin.newSourceTypes && current !== "sources" ? (
-            <div class="fam-banner fam-banner--attention" role="status">
-              <span class="fam-banner__glyph" aria-hidden="true">
-                !
-              </span>
-              <span class="fam-banner__title">{t.settings.newSourceTypes}</span>
-              <div class="fam-banner__body">
-                <a href="/admin/sources">{t.settings.lookAtThem}</a>
-              </div>
-            </div>
-          ) : null}
           {admin.settings.failingSources > 0 ? (
             <div class="fam-banner fam-banner--problem" role="status">
               <span class="fam-banner__glyph" aria-hidden="true">
@@ -937,10 +924,7 @@ export function SourcesPage(props: { admin: SignedInAdmin; sourceTypes: SourceTy
         {props.sourceTypes.map((type) => (
           <li>
             <a class={type.enabled ? "fam-type-card" : "fam-type-card fam-type-card--off"} href={sourceTypeHref(type.id)}>
-              <span class="fam-type-card__name">
-                {text(type.displayName)}
-                {type.isNew ? <span class="fam-tag">{t.sourceTypes.newIn(type.firstSeenIn)}</span> : null}
-              </span>
+              <span class="fam-type-card__name">{text(type.displayName)}</span>
               <span class="fam-type-card__description">{text(type.description)}</span>
               {type.notLoadable !== null ? (
                 <span class="fam-status fam-status--problem">{s.cannotLoad}</span>

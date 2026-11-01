@@ -212,7 +212,7 @@ export type ServicesSpec = {
 export type SourceRunContext = {
   plain: PlainConfig;
   secrets: Record<string, string>;
-  state: string | null;
+  syncCursor: string | null;
   now: Date;
   timeZone: string;
 };
@@ -248,7 +248,7 @@ export type IngestedOrigin = {
 
 export type SourceRunResult =
   /** `withdrawn` are the external ids of Origins the Source deleted since, such as redacted messages. */
-  | { ok: true; origins: IngestedOrigin[]; state: string | null; withdrawn: string[] }
+  | { ok: true; origins: IngestedOrigin[]; syncCursor: string | null; withdrawn: string[] }
   /** A definite error needs an Admin; a temporary one is retried. */
   | { ok: false; kind: "definite" | "temporary"; message: string };
 
@@ -285,7 +285,7 @@ export type LoadedSourceType = {
    * the fields the plugin sets, or why the Source cannot be added.
    */
   sourceAdded(
-    context: Omit<SourceRunContext, "state">,
+    context: Omit<SourceRunContext, "syncCursor">,
   ): Promise<{ ok: true; plain: PlainConfig; secrets: Record<string, string> } | { ok: false; message: string }>;
   /** Cleans up after a removed Source; failures are ignored. */
   sourceRemoved(context: SourceRunContext): Promise<void>;
@@ -305,25 +305,19 @@ export interface SourceTypeRegistry {
 export type SourceTypeRecord = {
   id: SourceTypeId;
   enabled: boolean;
-  /** The application version the Source Type was first discovered in. */
-  firstSeenIn: string;
-  /** Whether it was discovered since an Admin last opened the list. */
-  isNew: boolean;
 };
 
 /** What the Instance stores per entry of a Source Type's catalogue. */
 export type CatalogueRecord = {
   entryId: string;
   enabled: boolean;
-  /** The application version the entry was first discovered in. */
-  firstSeenIn: string;
   /** How often the Sources using it are polled; null for their plugin's suggestion. */
   pollIntervalSeconds: number | null;
 };
 
 export interface CatalogueRepository {
   /** Records the entries not stored yet as disabled; keeps the others as they are. */
-  recordDiscovered(sourceTypeId: SourceTypeId, entryIds: string[], applicationVersion: string, at: Date): Promise<void>;
+  recordDiscovered(sourceTypeId: SourceTypeId, entryIds: string[]): Promise<void>;
   list(sourceTypeId: SourceTypeId): Promise<CatalogueRecord[]>;
   enable(sourceTypeId: SourceTypeId, entryId: string): Promise<void>;
   setPollInterval(sourceTypeId: SourceTypeId, entryId: string, seconds: number | null): Promise<void>;
@@ -335,13 +329,12 @@ export interface CatalogueRepository {
 }
 
 export interface SourceTypeRepository {
-  /** Records the ids not stored yet as new and disabled; keeps the others as they are. */
-  recordDiscovered(ids: SourceTypeId[], applicationVersion: string, at: Date): Promise<void>;
+  /** Records the ids not stored yet as disabled; keeps the others as they are. */
+  recordDiscovered(ids: SourceTypeId[]): Promise<void>;
   list(): Promise<SourceTypeRecord[]>;
   enable(id: SourceTypeId): Promise<void>;
   /** Disables the Source Type unless it has Sources. Returns whether it did. */
   disableIfUnused(id: SourceTypeId): Promise<boolean>;
-  markAllSeen(): Promise<void>;
 }
 
 export type Source = {
@@ -352,8 +345,8 @@ export type Source = {
   configVersion: number;
   /** Where each secret field's value is kept in the SecretStore. */
   secrets: Record<string, SecretRef>;
-  /** The plugin's opaque state, such as a sync token, handed back on its next run. */
-  state: string | null;
+  /** Where the plugin resumes on its next run, such as a sync token; opaque to the Instance. */
+  syncCursor: string | null;
   /** How often the worker polls it, as an Admin set it; null for the plugin's suggestion. */
   pollIntervalSeconds: number | null;
   /** Whether its Items show on the timeline and in the feeds; a hidden Source is still read. */
@@ -396,7 +389,7 @@ export interface SourceRepository {
    */
   update(source: Source): Promise<void>;
   /**
-   * Records a run that failed, which keeps the state for the next one. The Source fails since the
+   * Records a run that failed, which keeps the sync cursor for the next one. The Source fails since the
    * first failed run after its last successful one, and definitely once any of them did.
    */
   recordFailedRun(id: SourceId, at: Date, error: RunError): Promise<void>;
@@ -448,8 +441,8 @@ export type StoredMessage = {
 export type SourceRun = {
   sourceId: SourceId;
   at: Date;
-  /** The plugin's state after the run. */
-  state: string | null;
+  /** Where the plugin resumes on its next run, stored only together with the run's Origins. */
+  syncCursor: string | null;
   /** External ids of Origins the Source deleted, whose Revisions are rejected and whose messages go. */
   withdrawn: string[];
   origins: {
@@ -553,7 +546,7 @@ export type AuthoredRevision = {
 export interface ItemRepository {
   /**
    * Records a run in one transaction: the Origins, their Revisions unless the same Revision is
-   * already recorded, and the Source's state. An Item is found by the Source and the Revision's
+   * already recorded, and the Source's sync cursor. An Item is found by the Source and the Revision's
    * Item key, or created; every Item a new Revision reached is recomputed with `recompute` from all
    * its Revisions. A withdrawn Origin's Revisions are rejected, its raw message is removed, and it
    * is never recorded again.

@@ -71,17 +71,17 @@ describe("a Source Type's catalogue and the Sources that use it", () => {
     expect(await entries()).toContainEqual({ id: "whatsapp", installed: true, enabled: true });
   });
 
-  it("keeps an entry new after an update disabled", async () => {
+  it("lists an entry an update brings as disabled, keeping the ones enabled before", async () => {
     await instance.app.catalogues.enable("bridged", "whatsapp", { riskAcknowledged: true });
     testPluginControls.catalogue("bridged", [whatsapp, { ...signal, installed: true }, { ...signal, id: "telegram", displayName: "Telegram" }]);
 
-    await instance.restart({ applicationVersion: "1.1.0" });
+    await instance.restart();
 
     const list = (await instance.app.catalogues.list())[0]?.entries;
-    expect(list?.map(({ id, enabled, firstSeenIn }) => ({ id, enabled, firstSeenIn }))).toEqual([
-      { id: "signal", enabled: false, firstSeenIn: "1.0.0" },
-      { id: "telegram", enabled: false, firstSeenIn: "1.1.0" },
-      { id: "whatsapp", enabled: true, firstSeenIn: "1.0.0" },
+    expect(list?.map(({ id, enabled }) => ({ id, enabled }))).toEqual([
+      { id: "signal", enabled: false },
+      { id: "telegram", enabled: false },
+      { id: "whatsapp", enabled: true },
     ]);
   });
 
@@ -140,7 +140,7 @@ describe("a Source Type's catalogue and the Sources that use it", () => {
     const [source] = await instance.app.sources.list();
     expect(source?.plain).toMatchObject({ network: "whatsapp", account: expect.stringMatching(/^account-\d+$/) as unknown });
     expect(source?.storedSecrets).toEqual(["token"]);
-    const [run] = await instance.query("SELECT secret_refs FROM sources");
+    const [run] = await instance.query("SELECT secret_refs FROM source");
     const ref = (run?.secret_refs as Record<string, string>).token!;
     expect(await secrets.get(ref as never)).toMatch(/^token-\d+$/);
 

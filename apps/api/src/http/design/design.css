@@ -596,10 +596,6 @@ html[data-theme-mode="dark"] .fam-theme__icon--dark { display: block; }
   content: ""; width: 8px; height: 8px; border-radius: var(--radius-full); background: currentColor;
 }
 .fam-chip--waiting::before { background: var(--honey); }
-.fam-tag {
-  display: inline-block; margin-left: var(--space-2); padding: 0 8px; border-radius: var(--radius-full);
-  background: var(--honey-tint); color: var(--ink); font-size: 13px; line-height: 20px; font-weight: 600; vertical-align: 2px;
-}
 .fam-health { display: flex; flex-wrap: wrap; align-items: center; column-gap: var(--space-2); row-gap: var(--space-1); }
 
 /* The Sources: a card per Source Type, its catalogue, a Source's setup -- */

@@ -7,13 +7,13 @@ const config = { plain: { url: "https://example.org" }, secrets: {} };
 describeSourcePluginContract(() => testSourcePlugin({ sourceTypeId: "contract" }), { config });
 
 describe("the test plugin", () => {
-  const poll = (sourceTypeId: string, state: string | null) => {
+  const poll = (sourceTypeId: string, syncCursor: string | null) => {
     const { ingestion } = testSourcePlugin({ sourceTypeId });
     if (ingestion.mode !== "polling") throw new Error("the test plugin polls");
-    return ingestion.poll({ config, state, now: new Date(), timeZone: "Europe/Berlin" });
+    return ingestion.poll({ config, syncCursor, now: new Date(), timeZone: "Europe/Berlin" });
   };
 
-  it("emits the Origins it is given, once, and advances its state", async () => {
+  it("emits the Origins it is given, once, and advances its sync cursor", async () => {
     const origin = {
       externalId: "mail-1",
       occurredAt: new Date("2026-09-14T07:00:00Z"),
@@ -22,8 +22,8 @@ describe("the test plugin", () => {
     };
     testPluginControls.emit("emitting", [origin]);
 
-    expect(await poll("emitting", null)).toEqual({ origins: [origin], state: "1" });
-    expect(await poll("emitting", "1")).toEqual({ origins: [], state: "2" });
+    expect(await poll("emitting", null)).toEqual({ origins: [origin], syncCursor: "1" });
+    expect(await poll("emitting", "1")).toEqual({ origins: [], syncCursor: "2" });
   });
 
   it("fails on demand with a definite or temporary error", async () => {

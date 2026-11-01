@@ -41,7 +41,8 @@ describe("the settings in the Admin area", () => {
     expect(entryOf(page, "AI")).toContain("Not set up");
     expect(entryOf(page, "Admins")).toContain("1 Admin");
     expect(entryOf(page, "Recovery Kit")).toContain("Saved");
-    expect(entryOf(page, "Sources")).toContain("New ones are available");
+    expect(entryOf(page, "Sources")).toContain("None yet");
+    expect(page, "an installed Source Type simply appears disabled").not.toContain("New Source Types");
     expect(entryOf(page, "Source Types")).toBe("");
   });
 

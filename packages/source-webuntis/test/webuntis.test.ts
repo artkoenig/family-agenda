@@ -43,7 +43,7 @@ function server(timetables: Record<number, Json> = { 1201: fixture("timetable-mi
 
 const poll = (plugin: SourcePlugin, context: Partial<RunContext> = {}): Promise<IngestResult> => {
   if (plugin.ingestion.mode !== "polling") throw new Error("the WebUntis plugin polls");
-  return plugin.ingestion.poll({ config, state: null, now, timeZone: "Europe/Berlin", ...context });
+  return plugin.ingestion.poll({ config, syncCursor: null, now, timeZone: "Europe/Berlin", ...context });
 };
 
 /** Each Origin's Revisions as Item kind, key, act and fields, at its source time. */
@@ -212,7 +212,7 @@ describe("the WebUntis plugin", () => {
     physics.text = { lesson: "", substitution: "", info: "" };
     const later = new Date("2026-09-14T07:15:00Z");
 
-    const { origins } = await poll(plugin, { state: first.state, now: later });
+    const { origins } = await poll(plugin, { syncCursor: first.syncCursor, now: later });
 
     expect(statements(origins)).toEqual([
       {
@@ -237,7 +237,7 @@ describe("the WebUntis plugin", () => {
     maths.endDateTime = "2026-09-16T09:35Z";
     const later = new Date("2026-09-14T07:15:00Z");
 
-    const { origins, withdrawn } = await poll(plugin, { state: first.state, now: later });
+    const { origins, withdrawn } = await poll(plugin, { syncCursor: first.syncCursor, now: later });
 
     expect(statements(origins)).toEqual([
       { kind: "lesson", key: "1201/90004", action: "move", at: later.toISOString(), fields: { span: span("2026-09-16", "08:50", "09:35") } },
@@ -253,7 +253,7 @@ describe("the WebUntis plugin", () => {
     // On Thursday, Tuesday and Wednesday have passed and the Timetable starts with Thursday.
     for (const id of [1201, 1202]) ((untis.timetables[id]!.result as Json).timetable as { periods: Json[] }).periods = [];
 
-    const { origins, withdrawn } = await poll(plugin, { state: first.state, now: new Date("2026-09-17T07:00:00Z") });
+    const { origins, withdrawn } = await poll(plugin, { syncCursor: first.syncCursor, now: new Date("2026-09-17T07:00:00Z") });
 
     expect(origins).toEqual([]);
     expect(withdrawn).toEqual([]);
@@ -264,11 +264,11 @@ describe("the WebUntis plugin", () => {
     const plugin = createWebUntisPlugin({ fetch: untis.fetch });
     const leoOnly = { ...config, plain: { ...config.plain, children: ["1202"] } };
 
-    const { origins, state } = await poll(plugin, { config: leoOnly });
+    const { origins, syncCursor } = await poll(plugin, { config: leoOnly });
 
     expect(new Set(origins.map((origin) => origin.externalId.split("/")[0]))).toEqual(new Set(["1202"]));
     const field = plugin.configuration.fields.find((candidate) => candidate.key === "children");
-    expect(await field?.choices?.({ config: leoOnly, state, now, timeZone: "Europe/Berlin" })).toEqual([
+    expect(await field?.choices?.({ config: leoOnly, syncCursor, now, timeZone: "Europe/Berlin" })).toEqual([
       { value: "1201", label: "Mia König" },
       { value: "1202", label: "Leo König" },
     ]);
@@ -278,7 +278,7 @@ describe("the WebUntis plugin", () => {
     const plugin = createWebUntisPlugin({ fetch: server().fetch });
     const first = await poll(plugin);
 
-    const { origins, withdrawn } = await poll(plugin, { config: { ...config, plain: { ...config.plain, children: ["1201"] } }, state: first.state });
+    const { origins, withdrawn } = await poll(plugin, { config: { ...config, plain: { ...config.plain, children: ["1201"] } }, syncCursor: first.syncCursor });
 
     expect(origins).toEqual([]);
     expect(withdrawn).toEqual(["1202/91001"]);

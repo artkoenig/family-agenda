@@ -19,8 +19,6 @@ export type TestOptions = {
   textExtractor?: TextExtractor;
   /** Replaces downloading Tesseract models, such as with a `FakeTessdataCatalog`. */
   tessdataCatalog?: TessdataCatalog;
-  /** The application version the Instance runs, as an update would change it. */
-  applicationVersion?: string;
   /** Test plugins installed as workspace packages before the first boot. */
   sourcePlugins?: TestPluginPackage[];
 };
@@ -40,9 +38,9 @@ export type TestInstance = {
   query(sql: string): Promise<Record<string, unknown>[]>;
   /**
    * Stops the application and boots it again on the same database, master key file and plugin
-   * directories, with `changes` such as a new application version.
+   * directories, as an update would.
    */
-  restart(changes?: Pick<TestOptions, "applicationVersion">): Promise<void>;
+  restart(): Promise<void>;
   close(): Promise<void>;
 };
 
@@ -68,7 +66,7 @@ export async function bootForTest(options: TestOptions = {}): Promise<TestInstan
   for (const plugin of sourcePlugins) await writeTestPluginPackage(workspacePackages, plugin);
 
   const clock = new FakeClock(new Date("2026-09-14T07:00:00Z"));
-  let config: ApplicationConfig = {
+  const config: ApplicationConfig = {
     connectDatabase: () => postgres.connect(),
     masterKeyFile: join(keyDirectory, "master.key"),
     blobDirectory: join(keyDirectory, "blobs"),
@@ -76,7 +74,6 @@ export async function bootForTest(options: TestOptions = {}): Promise<TestInstan
     pluginDirectory,
     tessdataDirectory: join(keyDirectory, "tessdata"),
     bundledTessdataDirectory,
-    applicationVersion: "1.0.0",
     timeZone: "Europe/Berlin",
     clock,
     ...applicationOptions,
@@ -90,8 +87,7 @@ export async function bootForTest(options: TestOptions = {}): Promise<TestInstan
     pluginDirectory,
     tessdataDirectory: config.tessdataDirectory,
     query: (sql) => postgres.query(sql),
-    async restart(changes = {}) {
-      config = { ...config, ...changes };
+    async restart() {
       const stopped = instance.app;
       await stopped.close();
       // Already closed, should booting again fail.

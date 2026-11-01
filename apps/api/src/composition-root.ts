@@ -1,4 +1,3 @@
-import { readFileSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import {
@@ -76,10 +75,6 @@ import { SourceRegistry } from "./source-registry";
 
 const defaultWorkspacePackages = fileURLToPath(new URL("../../../packages", import.meta.url));
 
-const packageVersion = (
-  JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as { version: string }
-).version;
-
 /** Where the Instance keeps its data: a Postgres server, or a connection made some other way. */
 export type DatabaseConfig =
   | { databaseUrl: string }
@@ -103,8 +98,6 @@ export type ApplicationConfig = DatabaseConfig & {
   tessdataCatalog?: TessdataCatalog;
   /** Where the Source plugins shipped with Family Agenda are; by default the workspace's packages. */
   workspacePackages?: string;
-  /** The version of Family Agenda, which new Source Types are recorded with. */
-  applicationVersion?: string;
   /** The IANA time zone the Family lives in; by default the one of the process (`TZ`). */
   timeZone?: string;
   clock?: Clock;
@@ -224,16 +217,12 @@ export async function bootApplication(config: ApplicationConfig): Promise<Applic
   const tasks = createTaskAccess({ clock, items, sources: sourceRepository, agendas: agendaRepository });
 
   const sourceTypes = createSourceTypeAccess({
-    clock,
-    applicationVersion: config.applicationVersion ?? packageVersion,
     registry,
     sourceTypes: sourceTypeRepository,
     sources: sourceRepository,
   });
   const catalogueRepository = new PostgresCatalogueRepository(postgres.db);
   const catalogues = createCatalogueAccess({
-    clock,
-    applicationVersion: config.applicationVersion ?? packageVersion,
     registry,
     sourceTypes: sourceTypeRepository,
     catalogues: catalogueRepository,
