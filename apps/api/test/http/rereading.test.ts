@@ -49,7 +49,7 @@ describe("re-reading messages over HTTP", () => {
   });
 
   const waiting = async () =>
-    (await instance.query("SELECT count(*)::int AS count FROM raw_messages WHERE extracted_at IS NULL"))[0]?.count;
+    (await instance.query("SELECT count(*)::int AS count FROM source_record WHERE processed_at IS NULL"))[0]?.count;
 
   it("re-reads all messages from the LLM endpoint's page", async () => {
     expect(await (await instance.get("/admin/llm", { cookie })).text()).toContain('action="/admin/llm/reread"');

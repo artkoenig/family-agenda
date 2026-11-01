@@ -176,8 +176,8 @@ describe("Re-reading messages", () => {
   it("keeps what a message stated when its text is gone", async () => {
     extractor.script("Studientag", [studyDay]);
     await arrive(mail("m1", "2026-09-14T06:12:00Z", autumn));
-    const [message] = await instance.query("SELECT text_blob FROM raw_messages");
-    await blobs.remove(message!.text_blob as never);
+    const [message] = await instance.query("UPDATE source_record SET body = NULL RETURNING raw_blob");
+    await blobs.remove(message!.raw_blob as never);
 
     await instance.app.extraction.reread();
     await instance.app.extraction.extractPending();
@@ -190,7 +190,7 @@ describe("Re-reading messages", () => {
     const other = await instance.app.sources.add({ sourceTypeId: "mailbox", plain: { url: "imap.other.example.org" }, secrets: {} });
     if (!other.ok) throw new Error(`adding failed: ${other.problem}`);
     await arrive(mail("m1", "2026-09-14T06:12:00Z", autumn), mail("m2", "2026-09-14T06:13:00Z", "Mensa"));
-    await instance.query("UPDATE origins SET withdrawn_at = now() WHERE external_id = 'm2'");
+    await instance.query("UPDATE source_record SET withdrawn_at = now() WHERE external_id = 'm2'");
 
     expect(await instance.app.extraction.reread({ sourceId: other.id })).toBe(0);
     expect(await instance.app.extraction.reread({ sourceId: mailbox })).toBe(1);

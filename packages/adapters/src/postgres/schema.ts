@@ -280,28 +280,83 @@ export const sourceMembers = pgTable(
   ],
 );
 
-/** Appearances of Items in Sources (ADR-0009). */
-export const origins = pgTable(
-  "origins",
+/**
+ * What a Source delivered under one external id (ADR-0016): a message, with its text here and its
+ * raw file and attachments behind the BlobStore (ADR-0006), or an entry carrying Revisions, such
+ * as a calendar entry, with no file.
+ */
+export const sourceRecords = pgTable(
+  "source_record",
   {
-    id: uuid("id").primaryKey(),
+    id: uuid("id").primaryKey().defaultRandom(),
     sourceId: uuid("source_id")
       .notNull()
       .references(() => sources.id, { onDelete: "cascade" }),
-    /** The Origin's id within its Source, such as a calendar entry's UID. */
+    /** Its id within its Source, such as a mail's Message-ID or a calendar entry's UID. */
     externalId: text("external_id").notNull(),
-    attributes: jsonb("attributes").$type<Record<string, string>>().notNull(),
-    link: text("link"),
-    /** The Part of the Source it came from, such as a mail's folder; null if it has none. */
-    part: text("part"),
-    firstSeenAt: timestamptz("first_seen_at").notNull(),
+    /** When the Source received it, as its plugin tells. */
+    occurredAt: timestamptz("occurred_at").notNull(),
+    sender: text("sender"),
+    subject: text("subject"),
+    body: text("body"),
+    /** The BlobStore file of the message as the Source delivered it; null for no message, or once withdrawn. */
+    rawBlob: text("raw_blob"),
+    rawSha256: text("raw_sha256"),
+    rawSize: integer("raw_size"),
+    /** When its message was extracted successfully, which happens once (ADR-0009); null while it waits. */
+    processedAt: timestamptz("processed_at"),
     /**
-     * When the Source said the Origin was deleted, such as a redacted message: its raw message is
-     * gone and its Revisions are rejected, and it never comes back.
+     * When the Source said it no longer has it, such as a redacted message: its Revisions are
+     * rejected and its message's content and files are gone. Arriving again clears it.
      */
     withdrawnAt: timestamptz("withdrawn_at"),
+    createdAt: timestamptz("created_at").notNull().defaultNow(),
+    /** What the plugin tells about where it came from, shown with its message; goes with Source Attributes. */
+    attributes: jsonb("attributes").$type<Record<string, string>>().notNull().default({}),
+    /** Where the Family can look at the original, if anywhere. */
+    link: text("link"),
+    /** The Part of the Source it came from, such as a mail's folder; null if it has none. Goes with Source Attributes. */
+    part: text("part"),
+    /** The conversation within the Source a message belongs to, such as a mail thread, for Re-reading (ADR-0015). */
+    thread: text("thread"),
   },
-  (table) => [unique("origins_source_external_id_unique").on(table.sourceId, table.externalId)],
+  (table) => [
+    unique("source_record_external_id_unique").on(table.sourceId, table.externalId),
+    index("source_record_pending_idx")
+      .on(table.createdAt)
+      .where(sql`${table.processedAt} IS NULL AND ${table.rawBlob} IS NOT NULL AND ${table.withdrawnAt} IS NULL`),
+    index("source_record_thread_idx").on(table.sourceId, table.thread),
+    check(
+      "source_record_raw_complete",
+      sql`(${table.rawBlob} IS NULL) = (${table.rawSha256} IS NULL) AND (${table.rawBlob} IS NULL) = (${table.rawSize} IS NULL)`,
+    ),
+    check("source_record_raw_size_not_negative", sql`${table.rawSize} >= 0`),
+  ],
+);
+
+/** The attachments of a message; their bytes are files behind the BlobStore (ADR-0006). */
+export const sourceRecordAttachments = pgTable(
+  "source_record_attachment",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    recordId: uuid("record_id")
+      .notNull()
+      .references(() => sourceRecords.id, { onDelete: "cascade" }),
+    /** Its place among the message's attachments. */
+    position: integer("position").notNull(),
+    filename: text("filename").notNull(),
+    mediaType: text("media_type").notNull(),
+    blob: text("blob").notNull(),
+    sha256: text("sha256").notNull(),
+    size: integer("size").notNull(),
+    /** Why it could not be turned into text when its message was extracted; null if it could, or was not read. */
+    conversionProblem: text("conversion_problem"),
+  },
+  (table) => [
+    unique("source_record_attachment_position_unique").on(table.recordId, table.position),
+    check("source_record_attachment_position_not_negative", sql`${table.position} >= 0`),
+    check("source_record_attachment_size_not_negative", sql`${table.size} >= 0`),
+  ],
 );
 
 /**
@@ -367,8 +422,8 @@ export const revisions = pgTable(
       .references(() => items.id, { onDelete: "cascade" }),
     /** Who stated it: an Origin, or an Agenda or an Admin ticking a Task (ADR-0009). */
     author: text("author").notNull().default("origin"),
-    /** The Origin that stated it, for an Origin's Revision only. */
-    originId: uuid("origin_id").references(() => origins.id, { onDelete: "cascade" }),
+    /** The Source Record that stated it, for an Origin's Revision only. */
+    originId: uuid("origin_id").references(() => sourceRecords.id, { onDelete: "cascade" }),
     /** The Agenda it was made in; null for another author, or once the Agenda is removed, which keeps the Revision. */
     agendaId: uuid("view_id").references(() => agendas.id, { onDelete: "set null" }),
     /** The Admin who made it; null for another author, or once the Admin is removed. */
@@ -394,57 +449,6 @@ export const revisions = pgTable(
     check("revisions_view_only_of_view", sql`${table.agendaId} IS NULL OR ${table.author} = 'view'`),
     check("revisions_admin_only_of_admin", sql`${table.adminId} IS NULL OR ${table.author} = 'admin'`),
     check("revisions_rejection_only_when_rejected", sql`${table.rejection} IS NULL OR NOT ${table.accepted}`),
-  ],
-);
-
-/**
- * Messages to extract Items from, at most one per Origin, which also identifies it. Their text and
- * attachments are files in the BlobStore; Postgres keeps only where they are and a hash of them
- * (ADR-0006).
- */
-export const rawMessages = pgTable(
-  "raw_messages",
-  {
-    originId: uuid("origin_id")
-      .primaryKey()
-      .references(() => origins.id, { onDelete: "cascade" }),
-    /** The conversation within the Source, such as a mail thread. */
-    thread: text("thread"),
-    sentAt: timestamptz("sent_at").notNull(),
-    textBlob: text("text_blob").notNull(),
-    textSha256: text("text_sha256").notNull(),
-    textSize: integer("text_size").notNull(),
-    receivedAt: timestamptz("received_at").notNull(),
-    /** When it was extracted successfully, which happens once (ADR-0009); null while it waits. */
-    extractedAt: timestamptz("extracted_at"),
-  },
-  (table) => [
-    index("raw_messages_pending_idx").on(table.receivedAt).where(sql`${table.extractedAt} IS NULL`),
-    index("raw_messages_thread_idx").on(table.thread),
-    check("raw_messages_text_size_not_negative", sql`${table.textSize} >= 0`),
-  ],
-);
-
-export const messageAttachments = pgTable(
-  "message_attachments",
-  {
-    rawMessageId: uuid("raw_message_id")
-      .notNull()
-      .references(() => rawMessages.originId, { onDelete: "cascade" }),
-    /** Its place among the message's attachments. */
-    position: integer("position").notNull(),
-    filename: text("filename").notNull(),
-    contentType: text("content_type").notNull(),
-    blob: text("blob").notNull(),
-    sha256: text("sha256").notNull(),
-    size: integer("size").notNull(),
-    /** Why it could not be turned into text when its message was extracted; null if it could, or was not read. */
-    conversionProblem: text("conversion_problem"),
-  },
-  (table) => [
-    primaryKey({ columns: [table.rawMessageId, table.position] }),
-    check("message_attachments_position_not_negative", sql`${table.position} >= 0`),
-    check("message_attachments_size_not_negative", sql`${table.size} >= 0`),
   ],
 );
 

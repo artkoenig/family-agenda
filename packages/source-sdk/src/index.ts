@@ -224,6 +224,7 @@ export type TaskFields = { title?: string; deadline?: string | null; bring?: str
 export type Origin = {
   /** Identifies the Origin within its Source, such as a message id. */
   externalId: string;
+  /** When the Source received it, such as the time a mailbox or a homeserver got a message. */
   occurredAt: Date;
   /** What the plugin tells about where it came from, such as its sender or calendar, shown with its message; whom it concerns is decided by its Source alone. */
   attributes: Record<string, string>;
@@ -237,7 +238,7 @@ export type Origin = {
   part?: string;
   content:
     | {
-        /** A message to extract Items from, such as a mail; its time is the send time. */
+        /** A message to extract Items from, such as a mail. */
         kind: "raw-message";
         text: string;
         attachments: Attachment[];

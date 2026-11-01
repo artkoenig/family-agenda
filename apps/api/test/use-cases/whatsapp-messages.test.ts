@@ -114,7 +114,7 @@ describe("WhatsApp chats read through the Matrix bridge", () => {
     await run();
 
     expect(await titles()).toEqual([]);
-    expect(await instance.query("SELECT count(*)::int AS n FROM origins")).toEqual([{ n: 0 }]);
+    expect(await instance.query("SELECT count(*)::int AS n FROM source_record")).toEqual([{ n: 0 }]);
   });
 
   it("takes the Item away once its message is deleted for everyone", async () => {

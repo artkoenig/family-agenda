@@ -205,8 +205,8 @@ describe("Events extracted from mail", () => {
       await fresh.app.llmEndpoint.save({ baseUrl: "http://localhost:11434/v1", model: "qwen3.5:9b", apiKey: "" });
       testPluginControls.emit("inbox", [mail("m1", "2026-09-14T06:12:00Z", invitation)]);
       await fresh.app.polling.pollDue();
-      const [text] = await fresh.query("SELECT text_blob FROM raw_messages");
-      await blobs.remove(text!.text_blob as never);
+      const [text] = await fresh.query("UPDATE source_record SET body = NULL RETURNING raw_blob");
+      await blobs.remove(text!.raw_blob as never);
       const before = extractor.requests.length;
 
       expect((await fresh.app.extraction.extractPending()).extracted).toHaveLength(1);

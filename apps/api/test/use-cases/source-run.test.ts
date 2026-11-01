@@ -59,7 +59,7 @@ describe("A Source's run", () => {
     for (const statement of statements) await instance.query(statement);
   };
   const cursor = async () => (await instance.query("SELECT sync_cursor FROM source_run"))[0]?.sync_cursor;
-  const origins = async () => (await instance.query("SELECT count(*)::int AS count FROM origins"))[0]?.count;
+  const origins = async () => (await instance.query("SELECT count(*)::int AS count FROM source_record"))[0]?.count;
 
   it("keeps the sync cursor apart from what an Admin configures", async () => {
     await tick();
@@ -73,14 +73,14 @@ describe("A Source's run", () => {
 
   it("does not advance the sync cursor when its Origins are not recorded", async () => {
     await tick();
-    await execute(failing("origins", "INSERT"));
+    await execute(failing("source_record", "INSERT"));
     testPluginControls.emit("school-portal", [notice("evening")]);
 
     await tick();
 
     expect(await origins()).toBe(0);
     expect(await cursor()).toBe("1");
-    await execute(healed("origins"));
+    await execute(healed("source_record"));
     await tick();
     expect(testPluginControls.runs("school-portal").at(-1)?.syncCursor).toBe("1");
   });

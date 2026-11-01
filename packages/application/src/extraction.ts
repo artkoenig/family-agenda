@@ -20,6 +20,7 @@ import {
 } from "@family-agenda/domain";
 import type { ActivityLog } from "./activity";
 import { llmEndpointOf } from "./llm-endpoint";
+import { textOfMessage } from "./messages";
 import type {
   AttachmentProblem,
   BlobStore,
@@ -163,8 +164,8 @@ export function createExtraction(deps: ExtractionDeps) {
 
   /** Extracts one message; the failure, if it failed. */
   async function extractMessage(message: PendingMessage, endpoint: LlmEndpoint): Promise<ExtractionReport["failed"][number] | null> {
-    const bytes = await blobs.get(message.text);
-    if (!bytes) {
+    const text = await textOfMessage(message, blobs);
+    if (text === null) {
       // Its text was deleted before it was read, so it states nothing new, and keeps what it said before.
       await items.recordExtraction(
         {
@@ -179,7 +180,7 @@ export function createExtraction(deps: ExtractionDeps) {
       );
       return null;
     }
-    const full = await fullTextOf(message, new TextDecoder().decode(bytes));
+    const full = await fullTextOf(message, text);
     const result = await extractOne(message, full.text, full.problems, endpoint);
     return result.ok ? null : { messageId: message.id, problem: result.problem, message: result.message };
   }

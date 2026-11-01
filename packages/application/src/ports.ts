@@ -430,9 +430,13 @@ export type NewRevision = {
 /** A file of a raw message, kept in the BlobStore with a hash of its contents (ADR-0006). */
 export type StoredFile = { blob: BlobRef; sha256: string; size: number };
 
-/** A raw message as it is recorded, its text and attachments already in the BlobStore. */
+/** A message as it is recorded: its text, and its raw file and attachments already in the BlobStore. */
 export type StoredMessage = {
-  text: StoredFile;
+  sender: string | null;
+  subject: string | null;
+  body: string;
+  /** The message as the Source delivered it. */
+  raw: StoredFile;
   attachments: (StoredFile & { filename: string; contentType: string })[];
   thread: string | null;
 };
@@ -447,7 +451,7 @@ export type SourceRun = {
   withdrawn: string[];
   origins: {
     externalId: string;
-    /** When it was sent, for a message. */
+    /** When the Source received it. */
     occurredAt: Date;
     attributes: Record<string, string>;
     link: string | null;
@@ -466,7 +470,9 @@ export type PendingMessage = {
   externalId: string;
   sentAt: Date;
   thread: string | null;
-  text: BlobRef;
+  /** Its text; null for a message recorded before Source Records, whose text is only in its raw file. */
+  body: string | null;
+  raw: BlobRef;
   /** In the order the message has them. */
   attachments: PendingAttachment[];
 };
@@ -480,7 +486,9 @@ export type RawMessage = {
   sourceId: SourceId;
   sentAt: Date;
   attributes: Record<string, string>;
-  text: BlobRef;
+  /** Its text; null for a message recorded before Source Records, whose text is only in its raw file. */
+  body: string | null;
+  raw: BlobRef;
   attachments: {
     position: number;
     filename: string;
@@ -548,8 +556,9 @@ export interface ItemRepository {
    * Records a run in one transaction: the Origins, their Revisions unless the same Revision is
    * already recorded, and the Source's sync cursor. An Item is found by the Source and the Revision's
    * Item key, or created; every Item a new Revision reached is recomputed with `recompute` from all
-   * its Revisions. A withdrawn Origin's Revisions are rejected, its raw message is removed, and it
-   * is never recorded again.
+   * its Revisions. A withdrawn Origin's Revisions are rejected and its message's content and files
+   * are removed. Arriving again, it is no longer withdrawn: its Revisions count again when the
+   * Source states them again, but its message is not recorded again.
    * Returns the external ids of messages recorded before or withdrawn, whose new files the
    * caller removes, and the files of the withdrawn messages, for the caller to remove.
    */

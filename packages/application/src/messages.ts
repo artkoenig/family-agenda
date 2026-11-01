@@ -1,5 +1,15 @@
-import type { RawMessageId } from "@family-agenda/domain";
+import type { BlobRef, RawMessageId } from "@family-agenda/domain";
 import type { BlobStore, ItemRepository } from "./ports";
+
+/**
+ * The text of a message: its body, or for one recorded before Source Records had a body, its raw
+ * file. Null once it is gone.
+ */
+export async function textOfMessage(message: { body: string | null; raw: BlobRef }, blobs: BlobStore): Promise<string | null> {
+  if (message.body !== null) return message.body;
+  const bytes = await blobs.get(message.raw);
+  return bytes ? new TextDecoder().decode(bytes) : null;
+}
 
 export type MessageDetails = {
   id: RawMessageId;
@@ -19,12 +29,11 @@ export function createMessageAccess(deps: { items: ItemRepository; blobs: BlobSt
     async open(id: RawMessageId): Promise<MessageDetails | null> {
       const message = await items.findMessage(id);
       if (!message) return null;
-      const bytes = await blobs.get(message.text);
       return {
         id: message.id,
         sentAt: message.sentAt,
         attributes: message.attributes,
-        text: bytes ? new TextDecoder().decode(bytes) : null,
+        text: await textOfMessage(message, blobs),
         attachments: message.attachments.map(({ position, filename, contentType, size, conversionProblem }) => ({
           position,
           filename,

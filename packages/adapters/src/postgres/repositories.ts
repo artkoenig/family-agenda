@@ -68,11 +68,10 @@ import {
   itemKeys,
   items,
   llmEndpoints,
-  messageAttachments,
-  origins,
-  rawMessages,
   revisions,
   signInFailures,
+  sourceRecordAttachments,
+  sourceRecords,
   sourceRuns,
   sourceMembers,
   sources,
@@ -539,23 +538,23 @@ export class PostgresSourceRepository implements SourceRepository {
   async remove(id: SourceId, recompute: Recompute): Promise<BlobRef[]> {
     if (!uuidPattern.test(id)) return [];
     return this.db.transaction(async (tx) => {
-      const originsOfSource = tx.select({ id: origins.id }).from(origins).where(eq(origins.sourceId, id));
-      const texts = await tx
-        .select({ blob: rawMessages.textBlob })
-        .from(rawMessages)
-        .where(inArray(rawMessages.originId, originsOfSource));
+      const recordsOfSource = tx.select({ id: sourceRecords.id }).from(sourceRecords).where(eq(sourceRecords.sourceId, id));
+      const raws = await tx
+        .select({ blob: sourceRecords.rawBlob })
+        .from(sourceRecords)
+        .where(and(eq(sourceRecords.sourceId, id), isNotNull(sourceRecords.rawBlob)));
       const attachments = await tx
-        .select({ blob: messageAttachments.blob })
-        .from(messageAttachments)
-        .where(inArray(messageAttachments.rawMessageId, originsOfSource));
+        .select({ blob: sourceRecordAttachments.blob })
+        .from(sourceRecordAttachments)
+        .where(inArray(sourceRecordAttachments.recordId, recordsOfSource));
       // The Items the Source names or stated something about; other Sources may name them too.
       const named = tx.select({ id: itemKeys.itemId }).from(itemKeys).where(eq(itemKeys.sourceId, id));
-      const stated = tx.select({ id: revisions.itemId }).from(revisions).where(inArray(revisions.originId, originsOfSource));
+      const stated = tx.select({ id: revisions.itemId }).from(revisions).where(inArray(revisions.originId, recordsOfSource));
       const reached = await tx
         .select({ id: items.id, kind: items.kind })
         .from(items)
         .where(or(inArray(items.id, named), inArray(items.id, stated)));
-      // Removes its Origins with their messages and Revisions, and its Item keys, by cascade.
+      // Removes its Source Records with their attachments and Revisions, and its Item keys, by cascade.
       await tx.delete(sources).where(eq(sources.id, id));
       if (reached.length > 0) {
         const unnamed = await tx
@@ -574,7 +573,7 @@ export class PostgresSourceRepository implements SourceRepository {
         const kept = reached.filter((item) => !gone.has(item.id));
         await recomputeAll(tx, new Map(kept.map((item) => [item.id as ItemId, item.kind as ItemKind])), recompute);
       }
-      return [...texts, ...attachments].map((row) => row.blob as BlobRef);
+      return [...raws, ...attachments].map((row) => row.blob as BlobRef);
     });
   }
 
@@ -658,67 +657,60 @@ export class PostgresItemRepository implements ItemRepository {
       const reached = new Map<ItemId, ItemKind>();
       const knownMessages: string[] = [];
       for (const origin of run.origins) {
+        const { message } = origin;
         const [row] = await tx
-          .insert(origins)
+          .insert(sourceRecords)
           .values({
-            id: randomUUID(),
             sourceId: run.sourceId,
             externalId: origin.externalId,
+            occurredAt: origin.occurredAt,
+            sender: message?.sender ?? null,
+            subject: message?.subject ?? null,
+            body: message?.body ?? null,
+            rawBlob: message?.raw.blob ?? null,
+            rawSha256: message?.raw.sha256 ?? null,
+            rawSize: message?.raw.size ?? null,
+            createdAt: run.at,
             attributes: origin.attributes,
             link: origin.link,
             part: origin.part,
-            firstSeenAt: run.at,
+            thread: message?.thread ?? null,
           })
           .onConflictDoUpdate({
-            target: [origins.sourceId, origins.externalId],
-            // A later appearance without a link, such as a cancellation, keeps the link.
-            set: { attributes: origin.attributes, link: sql`coalesce(excluded.link, ${origins.link})` },
-            // A withdrawn Origin never comes back.
-            setWhere: isNull(origins.withdrawnAt),
+            target: [sourceRecords.sourceId, sourceRecords.externalId],
+            // A later appearance without a link, such as a cancellation, keeps the link. A message
+            // keeps what it was first recorded with; a withdrawn one arriving again stays without it.
+            set: {
+              attributes: origin.attributes,
+              link: sql`coalesce(excluded.link, ${sourceRecords.link})`,
+              withdrawnAt: null,
+            },
           })
-          .returning({ id: origins.id });
-        if (!row) {
-          if (origin.message) knownMessages.push(origin.externalId);
-          continue;
-        }
-        const { message } = origin;
-        if (message) {
-          const inserted = await tx
-            .insert(rawMessages)
-            .values({
-              originId: row.id,
-              thread: message.thread,
-              sentAt: origin.occurredAt,
-              textBlob: message.text.blob,
-              textSha256: message.text.sha256,
-              textSize: message.text.size,
-              receivedAt: run.at,
-            })
-            .onConflictDoNothing({ target: rawMessages.originId })
-            .returning({ originId: rawMessages.originId });
-          if (inserted.length === 0) knownMessages.push(origin.externalId);
-          else if (message.attachments.length > 0) {
-            await tx.insert(messageAttachments).values(
-              message.attachments.map((attachment, position) => ({
-                rawMessageId: row.id,
-                position,
-                filename: attachment.filename,
-                contentType: attachment.contentType,
-                blob: attachment.blob,
-                sha256: attachment.sha256,
-                size: attachment.size,
-              })),
-            );
-          }
+          // A row the insert wrote has no previous version, so its xmax is 0.
+          .returning({ id: sourceRecords.id, inserted: sql<boolean>`(xmax = 0)` });
+        if (!row) throw new Error("recording a Source Record returned no row");
+        if (message && !row.inserted) knownMessages.push(origin.externalId);
+        else if (message && message.attachments.length > 0) {
+          await tx.insert(sourceRecordAttachments).values(
+            message.attachments.map((attachment, position) => ({
+              recordId: row.id,
+              position,
+              filename: attachment.filename,
+              mediaType: attachment.contentType,
+              blob: attachment.blob,
+              sha256: attachment.sha256,
+              size: attachment.size,
+            })),
+          );
         }
         await this.append(tx, { sourceId: run.sourceId, originId: row.id, at: run.at }, origin.revisions, reached);
       }
       const withdrawnFiles = await this.withdraw(tx, run, reached);
       await recomputeAll(tx, reached, recompute);
       const lastNewOrigin = tx
-        .select({ at: sql`max(${origins.firstSeenAt})` })
-        .from(origins)
-        .where(eq(origins.sourceId, run.sourceId));
+        .select({ at: sql`max(${sourceRecords.createdAt})` })
+        .from(sourceRecords)
+        .where(eq(sourceRecords.sourceId, run.sourceId));
       await tx
         .update(sourceRuns)
         .set({
@@ -734,70 +726,71 @@ export class PostgresItemRepository implements ItemRepository {
   }
 
   /**
-   * Marks the Origins the Source deleted as withdrawn, rejects their Revisions and removes their
-   * raw messages; notes the Items they reach. Returns the files of the removed messages.
+   * Marks the Source Records the Source deleted as withdrawn, rejects their Revisions and removes
+   * their messages' content and attachments; notes the Items they reach. Returns the files of the
+   * removed messages.
    */
   private async withdraw(tx: Transaction, run: SourceRun, reached: Map<ItemId, ItemKind>): Promise<BlobRef[]> {
     if (run.withdrawn.length === 0) return [];
+    const withdrawing = and(
+      eq(sourceRecords.sourceId, run.sourceId),
+      inArray(sourceRecords.externalId, run.withdrawn),
+      isNull(sourceRecords.withdrawnAt),
+    );
+    const files = await tx
+      .select({ raw: sourceRecords.rawBlob, attachment: sourceRecordAttachments.blob })
+      .from(sourceRecords)
+      .leftJoin(sourceRecordAttachments, eq(sourceRecordAttachments.recordId, sourceRecords.id))
+      .where(withdrawing);
     const withdrawn = await tx
-      .update(origins)
-      .set({ withdrawnAt: run.at })
-      .where(and(eq(origins.sourceId, run.sourceId), inArray(origins.externalId, run.withdrawn), isNull(origins.withdrawnAt)))
-      .returning({ id: origins.id });
+      .update(sourceRecords)
+      .set({ withdrawnAt: run.at, sender: null, subject: null, body: null, rawBlob: null, rawSha256: null, rawSize: null })
+      .where(withdrawing)
+      .returning({ id: sourceRecords.id });
     if (withdrawn.length === 0) return [];
     const ids = withdrawn.map((row) => row.id);
+    await tx.delete(sourceRecordAttachments).where(inArray(sourceRecordAttachments.recordId, ids));
     const rejected = await tx
       .update(revisions)
       .set({ accepted: false, rejection: "origin-withdrawn" })
       .where(and(inArray(revisions.originId, ids), eq(revisions.accepted, true)))
       .returning({ itemId: revisions.itemId });
-    if (rejected.length > 0) {
-      const kinds = await tx
-        .select({ id: items.id, kind: items.kind })
-        .from(items)
-        .where(inArray(items.id, [...new Set(rejected.map((row) => row.itemId))]));
-      for (const item of kinds) reached.set(item.id as ItemId, item.kind as ItemKind);
-    }
-    const attachments = await tx
-      .select({ blob: messageAttachments.blob })
-      .from(messageAttachments)
-      .where(inArray(messageAttachments.rawMessageId, ids));
-    // Removes their attachments by cascade.
-    const texts = await tx.delete(rawMessages).where(inArray(rawMessages.originId, ids)).returning({ blob: rawMessages.textBlob });
-    return [...texts, ...attachments].map((row) => row.blob as BlobRef);
+    await noteReached(tx, rejected.map((row) => row.itemId as ItemId), reached);
+    const blobs = new Set(files.flatMap(({ raw, attachment }) => [raw, attachment].filter((blob) => blob !== null)));
+    return [...blobs].map((blob) => blob as BlobRef);
   }
 
   async pendingMessages(limit: number): Promise<PendingMessage[]> {
     const rows = await this.db
       .select({
-        id: rawMessages.originId,
-        sourceId: origins.sourceId,
-        externalId: origins.externalId,
-        sentAt: rawMessages.sentAt,
-        thread: rawMessages.thread,
-        text: rawMessages.textBlob,
+        id: sourceRecords.id,
+        sourceId: sourceRecords.sourceId,
+        externalId: sourceRecords.externalId,
+        sentAt: sourceRecords.occurredAt,
+        thread: sourceRecords.thread,
+        body: sourceRecords.body,
+        raw: sourceRecords.rawBlob,
       })
-      .from(rawMessages)
-      .innerJoin(origins, eq(origins.id, rawMessages.originId))
-      .where(isNull(rawMessages.extractedAt))
-      .orderBy(asc(rawMessages.receivedAt), asc(rawMessages.sentAt))
+      .from(sourceRecords)
+      .where(pendingMessage)
+      .orderBy(asc(sourceRecords.createdAt), asc(sourceRecords.occurredAt))
       .limit(limit);
     const attachments =
       rows.length === 0
         ? []
         : await this.db
             .select()
-            .from(messageAttachments)
-            .where(inArray(messageAttachments.rawMessageId, rows.map((row) => row.id)))
-            .orderBy(asc(messageAttachments.position));
+            .from(sourceRecordAttachments)
+            .where(inArray(sourceRecordAttachments.recordId, rows.map((row) => row.id)))
+            .orderBy(asc(sourceRecordAttachments.position));
     return rows.map((row) => ({
       ...row,
       id: row.id as RawMessageId,
       sourceId: row.sourceId as SourceId,
-      text: row.text as BlobRef,
+      raw: row.raw as BlobRef,
       attachments: attachments.flatMap((attachment) =>
-        attachment.rawMessageId === row.id
-          ? [{ position: attachment.position, filename: attachment.filename, contentType: attachment.contentType, blob: attachment.blob as BlobRef }]
+        attachment.recordId === row.id
+          ? [{ position: attachment.position, filename: attachment.filename, contentType: attachment.mediaType, blob: attachment.blob as BlobRef }]
           : [],
       ),
     }));
@@ -811,26 +804,26 @@ export class PostgresItemRepository implements ItemRepository {
   ): Promise<ThreadItem[]> {
     const rows = await this.db
       .selectDistinct({ id: items.id, itemKey: itemKeys.itemKey, kind: items.kind, createdAt: items.createdAt })
-      .from(rawMessages)
-      .innerJoin(revisions, eq(revisions.originId, rawMessages.originId))
+      .from(sourceRecords)
+      .innerJoin(revisions, eq(revisions.originId, sourceRecords.id))
       .innerJoin(items, eq(items.id, revisions.itemId))
-      .innerJoin(origins, eq(origins.id, rawMessages.originId))
-      .innerJoin(itemKeys, and(eq(itemKeys.itemId, items.id), eq(itemKeys.sourceId, origins.sourceId)))
+      .innerJoin(itemKeys, and(eq(itemKeys.itemId, items.id), eq(itemKeys.sourceId, sourceRecords.sourceId)))
       .where(
         and(
-          eq(origins.sourceId, sourceId),
-          eq(rawMessages.thread, thread),
-          ne(rawMessages.originId, before.messageId),
-          lt(rawMessages.sentAt, before.sentAt),
+          eq(sourceRecords.sourceId, sourceId),
+          eq(sourceRecords.thread, thread),
+          ne(sourceRecords.id, before.messageId),
+          lt(sourceRecords.occurredAt, before.sentAt),
           notSuperseded,
         ),
       )
       .orderBy(asc(items.createdAt), asc(itemKeys.itemKey));
     if (rows.length === 0) return [];
     const stated = await this.db
-      .select({ ...foldable, itemId: revisions.itemId, originId: revisions.originId, sentAt: rawMessages.sentAt })
+      .select({ ...foldable, itemId: revisions.itemId, originId: revisions.originId, sentAt: sourceRecords.occurredAt })
       .from(revisions)
-      .leftJoin(rawMessages, eq(rawMessages.originId, revisions.originId))
+      // Only a message's time decides whether it came before; other Revisions always count.
+      .leftJoin(sourceRecords, and(eq(sourceRecords.id, revisions.originId), isNotNull(sourceRecords.rawBlob)))
       .where(and(inArray(revisions.itemId, rows.map((row) => row.id)), notSuperseded));
     // What the message itself and later ones stated is left out, as if they had not arrived yet.
     const earlier = stated.filter(({ originId, sentAt }) => !sentAt || (originId !== before.messageId && sentAt < before.sentAt));
@@ -843,26 +836,25 @@ export class PostgresItemRepository implements ItemRepository {
 
   async requestRereading(scope: { sourceId?: SourceId }): Promise<number> {
     const requested = await this.db
-      .update(rawMessages)
-      .set({ extractedAt: null })
+      .update(sourceRecords)
+      .set({ processedAt: null })
       .where(
         and(
-          isNotNull(rawMessages.extractedAt),
-          sql`${rawMessages.originId} IN (SELECT ${origins.id} FROM ${origins} WHERE ${origins.withdrawnAt} IS NULL${
-            scope.sourceId ? sql` AND ${origins.sourceId} = ${scope.sourceId}` : sql``
-          })`,
+          isNotNull(sourceRecords.processedAt),
+          isNotNull(sourceRecords.rawBlob),
+          isNull(sourceRecords.withdrawnAt),
+          scope.sourceId ? eq(sourceRecords.sourceId, scope.sourceId) : undefined,
         ),
       )
-      .returning({ originId: rawMessages.originId });
+      .returning({ id: sourceRecords.id });
     return requested.length;
   }
 
   async pendingMessageCount(scope: { sourceId?: SourceId }): Promise<number> {
     const [row] = await this.db
       .select({ count: sql<number>`count(*)::int` })
-      .from(rawMessages)
-      .innerJoin(origins, eq(origins.id, rawMessages.originId))
-      .where(and(isNull(rawMessages.extractedAt), scope.sourceId ? eq(origins.sourceId, scope.sourceId) : undefined));
+      .from(sourceRecords)
+      .where(and(pendingMessage, scope.sourceId ? eq(sourceRecords.sourceId, scope.sourceId) : undefined));
     return row?.count ?? 0;
   }
 
@@ -870,16 +862,16 @@ export class PostgresItemRepository implements ItemRepository {
     await this.db.transaction(async (tx) => {
       // Only the first successful extraction counts, should two runs overlap.
       const [message] = await tx
-        .update(rawMessages)
-        .set({ extractedAt: extraction.at })
-        .where(and(eq(rawMessages.originId, extraction.messageId), isNull(rawMessages.extractedAt)))
-        .returning({ originId: rawMessages.originId });
+        .update(sourceRecords)
+        .set({ processedAt: extraction.at })
+        .where(and(eq(sourceRecords.id, extraction.messageId), isNull(sourceRecords.processedAt)))
+        .returning({ originId: sourceRecords.id });
       if (!message) return;
       for (const { position, problem } of extraction.attachmentProblems) {
         await tx
-          .update(messageAttachments)
+          .update(sourceRecordAttachments)
           .set({ conversionProblem: problem })
-          .where(and(eq(messageAttachments.rawMessageId, extraction.messageId), eq(messageAttachments.position, position)));
+          .where(and(eq(sourceRecordAttachments.recordId, extraction.messageId), eq(sourceRecordAttachments.position, position)));
       }
       const reached = new Map<ItemId, ItemKind>();
       const { sourceId, at } = extraction;
@@ -900,26 +892,26 @@ export class PostgresItemRepository implements ItemRepository {
   async findMessage(id: RawMessageId): Promise<RawMessage | null> {
     if (!uuidPattern.test(id)) return null;
     const [row] = await this.db
-      .select({ message: rawMessages, sourceId: origins.sourceId, attributes: origins.attributes })
-      .from(rawMessages)
-      .innerJoin(origins, eq(origins.id, rawMessages.originId))
-      .where(eq(rawMessages.originId, id));
+      .select()
+      .from(sourceRecords)
+      .where(and(eq(sourceRecords.id, id), isNotNull(sourceRecords.rawBlob)));
     if (!row) return null;
     const attachments = await this.db
       .select()
-      .from(messageAttachments)
-      .where(eq(messageAttachments.rawMessageId, id))
-      .orderBy(asc(messageAttachments.position));
+      .from(sourceRecordAttachments)
+      .where(eq(sourceRecordAttachments.recordId, id))
+      .orderBy(asc(sourceRecordAttachments.position));
     return {
       id,
       sourceId: row.sourceId as SourceId,
-      sentAt: row.message.sentAt,
+      sentAt: row.occurredAt,
       attributes: row.attributes,
-      text: row.message.textBlob as BlobRef,
-      attachments: attachments.map(({ position, filename, contentType, size, blob, conversionProblem }) => ({
+      body: row.body,
+      raw: row.rawBlob as BlobRef,
+      attachments: attachments.map(({ position, filename, mediaType, size, blob, conversionProblem }) => ({
         position,
         filename,
-        contentType,
+        contentType: mediaType,
         size,
         blob: blob as BlobRef,
         conversionProblem,
@@ -1004,36 +996,35 @@ export class PostgresItemRepository implements ItemRepository {
     const links = await this.db
       .selectDistinct({
         itemId: revisions.itemId,
-        link: origins.link,
+        link: sourceRecords.link,
         sourceTypeId: sources.sourceTypeId,
         sourceName: sources.name,
-        firstSeenAt: origins.firstSeenAt,
+        createdAt: sourceRecords.createdAt,
       })
       .from(revisions)
-      .innerJoin(origins, eq(origins.id, revisions.originId))
-      .innerJoin(sources, eq(sources.id, origins.sourceId))
-      .where(and(inArray(revisions.itemId, ids), isNotNull(origins.link)))
-      .orderBy(asc(origins.firstSeenAt));
+      .innerJoin(sourceRecords, eq(sourceRecords.id, revisions.originId))
+      .innerJoin(sources, eq(sources.id, sourceRecords.sourceId))
+      .where(and(inArray(revisions.itemId, ids), isNotNull(sourceRecords.link)))
+      .orderBy(asc(sourceRecords.createdAt));
     const messages = await this.db
       .selectDistinct({
         itemId: revisions.itemId,
-        id: rawMessages.originId,
+        id: sourceRecords.id,
         sourceTypeId: sources.sourceTypeId,
         sourceName: sources.name,
-        sentAt: rawMessages.sentAt,
+        sentAt: sourceRecords.occurredAt,
       })
       .from(revisions)
-      .innerJoin(rawMessages, eq(rawMessages.originId, revisions.originId))
-      .innerJoin(origins, eq(origins.id, revisions.originId))
-      .innerJoin(sources, eq(sources.id, origins.sourceId))
+      .innerJoin(sourceRecords, eq(sourceRecords.id, revisions.originId))
+      .innerJoin(sources, eq(sources.id, sourceRecords.sourceId))
       // A message whose Revisions were all rejected said nothing that shows.
-      .where(and(inArray(revisions.itemId, ids), eq(revisions.accepted, true)))
-      .orderBy(asc(rawMessages.sentAt));
+      .where(and(inArray(revisions.itemId, ids), eq(revisions.accepted, true), isNotNull(sourceRecords.rawBlob)))
+      .orderBy(asc(sourceRecords.occurredAt));
     // Only the Sources, and their Parts, of Origins whose statements count say whom the Item concerns.
     const sourcesOfItems = await this.db
-      .selectDistinct({ itemId: revisions.itemId, sourceId: origins.sourceId, part: origins.part })
+      .selectDistinct({ itemId: revisions.itemId, sourceId: sourceRecords.sourceId, part: sourceRecords.part })
       .from(revisions)
-      .innerJoin(origins, eq(origins.id, revisions.originId))
+      .innerJoin(sourceRecords, eq(sourceRecords.id, revisions.originId))
       .where(and(inArray(revisions.itemId, ids), eq(revisions.accepted, true)));
     return rows.flatMap((row) =>
       row.folded
@@ -1079,11 +1070,12 @@ export class PostgresItemRepository implements ItemRepository {
           evidence: revision.evidence,
           fingerprint: fingerprintOf(revision),
         })
-        // A Revision a re-read superseded comes back when the message states it again.
+        // A Revision a re-read superseded comes back when the message states it again, and one of
+        // a withdrawn Source Record when it arrives again stating it.
         .onConflictDoUpdate({
           target: [revisions.originId, revisions.fingerprint],
           set: { accepted: revision.accepted, rejection: revision.rejection, evidence: revision.evidence },
-          setWhere: eq(revisions.rejection, "superseded"),
+          setWhere: inArray(revisions.rejection, ["superseded", "origin-withdrawn"]),
         })
         .returning({ id: revisions.id });
       if (appended.length > 0) reached.set(item.id, item.kind);
@@ -1108,6 +1100,9 @@ export class PostgresItemRepository implements ItemRepository {
     return { id, kind: revision.itemKind };
   }
 }
+
+/** A message waiting for its one successful extraction: its file is kept and it is not withdrawn. */
+const pendingMessage = and(isNull(sourceRecords.processedAt), isNotNull(sourceRecords.rawBlob), isNull(sourceRecords.withdrawnAt));
 
 /** What `fold` needs of a Revision. */
 const foldable = {

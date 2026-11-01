@@ -109,6 +109,22 @@ describe("the IMAP plugin", () => {
     ]);
   });
 
+  it("dates a mail by when the mailbox received it, not by the date its sender wrote into it", async () => {
+    const backdated = `From: berger@schule.example.org
+Subject: Nachtrag
+Date: Thu, 10 Sep 2026 08:00:00 +0200
+Message-ID: <nachtrag@schule.example.org>
+Content-Type: text/plain
+
+Bitte Turnbeutel mitbringen.
+`;
+    server.deliver("Nachtraege", backdated, new Date("2026-09-14T06:30:00Z"));
+
+    const { origins } = await poll({ config: config({ folders: ["Nachtraege"] }) });
+
+    expect(origins.map((origin) => origin.occurredAt)).toEqual([new Date("2026-09-14T06:30:00Z")]);
+  });
+
   it("reads later mails after the last UID it saw, and puts a reply into the thread it answers", async () => {
     const first = await poll();
     server.deliver("Schule", moved, new Date("2026-09-15T10:00:00Z"));
