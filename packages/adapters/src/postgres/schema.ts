@@ -303,7 +303,7 @@ export const sourceRecords = pgTable(
     rawBlob: text("raw_blob"),
     rawSha256: text("raw_sha256"),
     rawSize: integer("raw_size"),
-    /** When its message was extracted successfully, which happens once (ADR-0009); null while it waits. */
+    /** When its message was extracted successfully; null while it waits. */
     processedAt: timestamptz("processed_at"),
     /**
      * When the Source said it no longer has it, such as a redacted message: its Revisions are
@@ -317,7 +317,7 @@ export const sourceRecords = pgTable(
     link: text("link"),
     /** The Part of the Source it came from, such as a mail's folder; null if it has none. Goes with Source Attributes. */
     part: text("part"),
-    /** The conversation within the Source a message belongs to, such as a mail thread, for Re-reading (ADR-0015). */
+    /** The conversation within the Source a message belongs to, such as a mail thread, which extraction reads it in. */
     thread: text("thread"),
   },
   (table) => [
@@ -422,7 +422,7 @@ export const revisions = pgTable(
       .references(() => items.id, { onDelete: "cascade" }),
     /** Who stated it: an Origin, or an Agenda or an Admin ticking a Task (ADR-0009). */
     author: text("author").notNull().default("origin"),
-    /** The Source Record that stated it, for an Origin's Revision only. */
+    /** The Source Record that stated it, for a Revision of author `origin` only. */
     originId: uuid("origin_id").references(() => sourceRecords.id, { onDelete: "cascade" }),
     /** The Agenda it was made in; null for another author, or once the Agenda is removed, which keeps the Revision. */
     agendaId: uuid("view_id").references(() => agendas.id, { onDelete: "set null" }),

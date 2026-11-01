@@ -1,7 +1,8 @@
 -- Origins and raw messages become one source_record per (source_id, external_id), and message
 -- attachments its source_record_attachment rows (ADR-0016). The files stay in the BlobStore; the
--- raw file is the text file of the raw message. A record keeps its Origin's id, so that the
--- Revisions keep pointing at it. Records from before have no body: it is only in their raw file.
+-- raw file is the text file of the raw message. A Source Record keeps the id it had as an Origin,
+-- so that the Revisions keep pointing at it. Messages from before have no body: it is only in
+-- their raw file. A withdrawn one keeps no sender, as withdrawing clears it now.
 CREATE TABLE "source_record" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"source_id" uuid NOT NULL,
@@ -45,7 +46,7 @@ ALTER TABLE "source_record_attachment" ADD CONSTRAINT "source_record_attachment_
 CREATE INDEX "source_record_pending_idx" ON "source_record" USING btree ("created_at") WHERE "source_record"."processed_at" IS NULL AND "source_record"."raw_blob" IS NOT NULL AND "source_record"."withdrawn_at" IS NULL;--> statement-breakpoint
 CREATE INDEX "source_record_thread_idx" ON "source_record" USING btree ("source_id","thread");--> statement-breakpoint
 INSERT INTO "source_record" ("id", "source_id", "external_id", "occurred_at", "sender", "raw_blob", "raw_sha256", "raw_size", "processed_at", "withdrawn_at", "created_at", "attributes", "link", "part", "thread")
-SELECT o."id", o."source_id", o."external_id", coalesce(m."sent_at", o."first_seen_at"), nullif(o."attributes"->>'sender', ''),
+SELECT o."id", o."source_id", o."external_id", coalesce(m."sent_at", o."first_seen_at"), CASE WHEN m."origin_id" IS NOT NULL THEN nullif(o."attributes"->>'sender', '') END,
        m."text_blob", m."text_sha256", m."text_size", m."extracted_at", o."withdrawn_at", o."first_seen_at", o."attributes", o."link", o."part", m."thread"
 FROM "origins" o LEFT JOIN "raw_messages" m ON m."origin_id" = o."id";--> statement-breakpoint
 INSERT INTO "source_record_attachment" ("record_id", "position", "filename", "media_type", "blob", "sha256", "size", "conversion_problem")

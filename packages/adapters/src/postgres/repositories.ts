@@ -812,6 +812,8 @@ export class PostgresItemRepository implements ItemRepository {
         and(
           eq(sourceRecords.sourceId, sourceId),
           eq(sourceRecords.thread, thread),
+          // A withdrawn message no longer says anything to the messages after it.
+          isNull(sourceRecords.withdrawnAt),
           ne(sourceRecords.id, before.messageId),
           lt(sourceRecords.occurredAt, before.sentAt),
           notSuperseded,
@@ -865,7 +867,7 @@ export class PostgresItemRepository implements ItemRepository {
         .update(sourceRecords)
         .set({ processedAt: extraction.at })
         .where(and(eq(sourceRecords.id, extraction.messageId), isNull(sourceRecords.processedAt)))
-        .returning({ originId: sourceRecords.id });
+        .returning({ recordId: sourceRecords.id });
       if (!message) return;
       for (const { position, problem } of extraction.attachmentProblems) {
         await tx
@@ -880,11 +882,11 @@ export class PostgresItemRepository implements ItemRepository {
         const superseded = await tx
           .update(revisions)
           .set({ accepted: false, rejection: "superseded" })
-          .where(and(eq(revisions.originId, message.originId), notSuperseded))
+          .where(and(eq(revisions.originId, message.recordId), notSuperseded))
           .returning({ itemId: revisions.itemId });
         await noteReached(tx, superseded.map((row) => row.itemId as ItemId), reached);
       }
-      await this.append(tx, { sourceId, originId: message.originId, at }, extraction.revisions, reached);
+      await this.append(tx, { sourceId, originId: message.recordId, at }, extraction.revisions, reached);
       await recomputeAll(tx, reached, recompute);
     });
   }

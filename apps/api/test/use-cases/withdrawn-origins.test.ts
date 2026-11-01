@@ -10,21 +10,22 @@ import { openTimeline } from "../support/timeline";
 
 const minutes = 60 * 1000;
 
-const message = (id: string, text: string): Origin => ({
+const message = (id: string, text: string, thread?: string): Origin => ({
   externalId: id,
   occurredAt: new Date("2026-09-14T06:12:00Z"),
   attributes: { sender: "Frau Berger" },
-  content: { kind: "raw-message", text, attachments: [] },
+  content: { kind: "raw-message", text, attachments: [], ...(thread ? { thread } : {}) },
 });
 
 const trip = "Am Freitag, 18.09., ist der Wandertag der 5b.";
 
 describe("Origins a Source withdraws, such as deleted chat messages", () => {
   let instance: TestInstance;
+  let extractor: ScriptedExtractor;
   let blobs: InMemoryBlobStore;
   let agenda: AgendaId;
   beforeEach(async () => {
-    const extractor = new ScriptedExtractor();
+    extractor = new ScriptedExtractor();
     extractor.script("Wandertag", [
       extracted({ title: "Wandertag 5b", date: { day: 18, month: 9, weekday: "friday" }, evidence: "Freitag, 18.09., ist der Wandertag" }),
     ]);
@@ -89,6 +90,18 @@ describe("Origins a Source withdraws, such as deleted chat messages", () => {
       await instance.query("SELECT withdrawn_at, raw_blob, body, processed_at FROM source_record WHERE external_id = '$m1'"),
     ).toEqual([{ withdrawn_at: null, raw_blob: null, body: null, processed_at: null }]);
     expect(blobs.size).toBe(0);
+  });
+
+  it("leaves a withdrawn message out of what later messages of its thread are read with", async () => {
+    testPluginControls.emit("chat", [message("$m1", trip, "$m1")]);
+    await run();
+    testPluginControls.withdraw("chat", ["$m1"]);
+    await run();
+
+    testPluginControls.emit("chat", [{ ...message("$m2", "Bitte an Regenjacken denken.", "$m1"), occurredAt: new Date("2026-09-14T06:20:00Z") }]);
+    await run();
+
+    expect(extractor.requests.at(-1)?.knownEvents).toEqual([]);
   });
 
   it("ignores withdrawing an Origin it never recorded", async () => {

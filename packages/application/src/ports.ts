@@ -556,8 +556,8 @@ export interface ItemRepository {
    * Records a run in one transaction: the Origins, their Revisions unless the same Revision is
    * already recorded, and the Source's sync cursor. An Item is found by the Source and the Revision's
    * Item key, or created; every Item a new Revision reached is recomputed with `recompute` from all
-   * its Revisions. A withdrawn Origin's Revisions are rejected and its message's content and files
-   * are removed. Arriving again, it is no longer withdrawn: its Revisions count again when the
+   * its Revisions. A withdrawn Source Record's Revisions are rejected and its message's content and
+   * files are removed. Arriving again, it is no longer withdrawn: its Revisions count again when the
    * Source states them again, but its message is not recorded again.
    * Returns the external ids of messages recorded before or withdrawn, whose new files the
    * caller removes, and the files of the withdrawn messages, for the caller to remove.
