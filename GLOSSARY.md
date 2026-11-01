@@ -53,7 +53,7 @@ A subdivision of a Source that the Source itself reports, such as a mailbox fold
 _Avoid_: Part, folder (for the domain concept), channel, sub-source, label
 
 **Source Assignment**:
-The Family Members an Admin assigns a Source Attribute to. An Item concerns everyone its Origin's Source Attributes are assigned to, or the whole Family if one of them is assigned to no one. Nothing else counts, such as a sender, or whom the content mentions.
+The Family Members an Admin assigns a Source Attribute to, and so the only thing that decides whom an Item concerns, never a sender or whom the content mentions. An Item concerns everyone its Origin's Source Attributes are assigned to, or the whole Family if one of them is assigned to no one.
 _Avoid_: Attribution Rule, mapping, routing rule, filter
 
 **Source Status**:
@@ -76,7 +76,7 @@ _Avoid_: Option list, sub-type
 
 **Origin**:
 One thing a Source delivered that Items come from: a message, such as a mail or a WhatsApp message, or an entry the Source states itself, such as a calendar entry or a Lesson of a timetable. Each Item has exactly one Origin.
-_Avoid_: Source message, record, provenance
+_Avoid_: Source message, provenance
 
 **Withdrawn**:
 Said of an Origin its Source no longer has, such as a deleted message or calendar entry; its Items are gone. A calendar entry or Lesson that comes back brings its Item back, a message does not.

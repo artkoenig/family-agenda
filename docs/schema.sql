@@ -40,7 +40,7 @@ INSERT INTO family DEFAULT VALUES;
 
 CREATE TABLE admin (
   id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  email          TEXT NOT NULL UNIQUE,
+  email          TEXT NOT NULL CONSTRAINT admin_email_unique UNIQUE,
   password_hash  TEXT NOT NULL,
   created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -199,7 +199,7 @@ CREATE TABLE source_attribute (
   external_id  TEXT NOT NULL,
   name         TEXT NOT NULL,
   archived_at  TIMESTAMPTZ,
-  UNIQUE (source_id, external_id)
+  CONSTRAINT source_attribute_external_id_unique UNIQUE (source_id, external_id)
 );
 
 -- Source Assignment: the only place where Family Members are assigned. A Source Attribute with
@@ -231,7 +231,8 @@ CREATE INDEX source_attribute_member_family_member_id_idx
 -- overwrites its Item, keeping only whether a Task was ticked done.
 --
 -- withdrawn_at: the Source no longer has it (deleted message, deleted calendar entry, unplanned
--- Lesson, or an empty Source Attribute list). Its Items are deleted (trigger below). Arriving
+-- Lesson, or an empty Source Attribute list). Its Items are deleted (trigger below), and after
+-- commit a message's files are removed from the BlobStore and its row purged. Arriving
 -- again clears it: a stated Origin then writes its Item as new; a message is not read again and
 -- its Items do not come back.
 --
@@ -258,13 +259,13 @@ CREATE TABLE source_record (
   withdrawn_at  TIMESTAMPTZ,
   purged_at     TIMESTAMPTZ,
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-  UNIQUE (source_id, external_id),
+  CONSTRAINT source_record_external_id_unique UNIQUE (source_id, external_id),
   CONSTRAINT source_record_stated_kind_known
     CHECK (stated IS NULL OR stated->>'kind' IN ('event', 'lesson')),
   -- A stated Origin carries nothing of a message.
   CONSTRAINT source_record_stated_is_no_message
     CHECK (stated IS NULL OR (raw_blob IS NULL AND sender IS NULL AND subject IS NULL
-                              AND body IS NULL AND purged_at IS NULL)),
+                              AND body IS NULL AND purged_at IS NULL AND occurred_at IS NULL)),
   -- A message has its file exactly until it is purged.
   CONSTRAINT source_record_message_has_file
     CHECK (stated IS NOT NULL OR (raw_blob IS NULL) = (purged_at IS NOT NULL)),
@@ -278,7 +279,7 @@ CREATE TABLE source_record (
 );
 -- Messages waiting for extraction.
 CREATE INDEX source_record_pending_idx ON source_record (occurred_at)
-  WHERE processed_at IS NULL AND stated IS NULL AND withdrawn_at IS NULL;
+  WHERE processed_at IS NULL AND stated IS NULL AND withdrawn_at IS NULL AND purged_at IS NULL;
 -- Retention runs over messages by age.
 CREATE INDEX source_record_message_occurred_at_idx ON source_record (occurred_at)
   WHERE stated IS NULL;
@@ -328,7 +329,7 @@ CREATE TABLE item (
   kind        TEXT NOT NULL,
   record_id   UUID NOT NULL REFERENCES source_record(id) ON DELETE CASCADE,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-  UNIQUE (id, kind),                         -- target of the detail tables' foreign keys
+  CONSTRAINT item_id_kind_unique UNIQUE (id, kind),  -- target of the detail tables' FKs
   CONSTRAINT item_kind_known CHECK (kind IN ('event', 'task', 'lesson'))
 );
 CREATE INDEX item_record_id_idx ON item (record_id);
@@ -498,3 +499,19 @@ END $$;
 CREATE CONSTRAINT TRIGGER item_has_detail AFTER INSERT ON item
   DEFERRABLE INITIALLY DEFERRED
   FOR EACH ROW EXECUTE FUNCTION item_has_detail();
+
+-- ... and keeps it: a detail row goes only together with its Item.
+CREATE FUNCTION item_detail_deleted() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM item WHERE id = OLD.item_id) THEN
+    RAISE EXCEPTION 'item % lost its % row', OLD.item_id, OLD.kind
+      USING ERRCODE = 'check_violation';
+  END IF;
+  RETURN NULL;
+END $$;
+CREATE CONSTRAINT TRIGGER event_deleted AFTER DELETE ON event
+  DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION item_detail_deleted();
+CREATE CONSTRAINT TRIGGER task_deleted AFTER DELETE ON task
+  DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION item_detail_deleted();
+CREATE CONSTRAINT TRIGGER lesson_deleted AFTER DELETE ON lesson
+  DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION item_detail_deleted();
