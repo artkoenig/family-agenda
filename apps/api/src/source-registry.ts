@@ -1,3 +1,4 @@
+import { realpathSync } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
 import { registerHooks } from "node:module";
 import { join } from "node:path";
@@ -125,7 +126,17 @@ function shareSdkWith(directories: string[]): void {
       },
     });
   }
-  for (const directory of directories) sharingDirectories.add(pathToFileURL(join(directory, "/")).href);
+  for (const directory of directories) {
+    // Node reports a plugin parentURL with the real path (macOS resolves /var and /tmp to /private/...),
+    // so match that, or the hook below never fires and the plugin cannot resolve the SDK.
+    let resolved = directory;
+    try {
+      resolved = realpathSync(directory);
+    } catch {
+      // The directory does not exist yet; its unresolvable prefix matches nothing.
+    }
+    sharingDirectories.add(pathToFileURL(join(resolved, "/")).href);
+  }
 }
 
 function loadedSourceType(plugin: SourcePlugin): LoadedSourceType {
