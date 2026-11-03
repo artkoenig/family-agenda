@@ -400,6 +400,28 @@ describe("Tasks extracted from mail", () => {
     ]);
   });
 
+  it("renames a Task and moves its Deadline when a later mail of its thread says so", async () => {
+    extractor.script("Ausflug am Freitag", [], [tripPacking]);
+    await arrive(mail("m1", "2026-09-14T06:12:00Z", packingList));
+    extractor.script("verschoben", [], [
+      extractedTask({ updates: "T1", title: "Sachen für den Wandertag", deadline: { day: 19, month: 9 }, evidence: "auf den 19.09. verschoben" }),
+    ]);
+
+    await arrive(mail("m2", "2026-09-15T10:00:00Z", "Der Ausflug wird auf den 19.09. verschoben.", "m1"));
+
+    expect(await tasks()).toMatchObject([{ title: "Sachen für den Wandertag", deadline: "2026-09-19", bring: ["Regenjacke", "Brotdose", "Trinkflasche"] }]);
+  });
+
+  it("adds nothing for a later mail whose Task update states nothing", async () => {
+    extractor.script("Ausflug am Freitag", [], [tripPacking]);
+    await arrive(mail("m1", "2026-09-14T06:12:00Z", packingList));
+    extractor.script("Dank", [], [extractedTask({ updates: "T1", evidence: "Danke für die Rückmeldungen" })]);
+
+    await arrive(mail("m2", "2026-09-15T10:00:00Z", "Danke für die Rückmeldungen. Dank an alle.", "m1"));
+
+    expect(await tasks()).toMatchObject([{ title: "Sachen für den Ausflug", messages: 1 }]);
+  });
+
   it("strikes a Task through when a later mail of its thread calls it off", async () => {
     extractor.script("Ausflug am Freitag", [], [tripPacking]);
     await arrive(mail("m1", "2026-09-14T06:12:00Z", packingList));

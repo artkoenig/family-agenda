@@ -48,22 +48,30 @@ export async function secretsOf(layout: MatrixLayout): Promise<MatrixSecrets> {
   await mkdir(layout.dataDirectory, { recursive: true });
   const stored = await readJson<Partial<MatrixSecrets>>(file);
   const secrets: MatrixSecrets = {
-    databasePassword: stored?.databasePassword ?? secret(),
-    registrationSharedSecret: stored?.registrationSharedSecret ?? secret(),
-    macaroonSecretKey: stored?.macaroonSecretKey ?? secret(),
-    formSecret: stored?.formSecret ?? secret(),
-    bridges: {
-      ...stored?.bridges,
-      whatsapp: stored?.bridges?.whatsapp ?? {
-        asToken: secret(),
-        hsToken: secret(),
-        senderLocalpart: `bridge-${randomBytes(8).toString("hex")}`,
-        provisioningSecret: secret(),
-      },
-    },
+    databasePassword: secretOr(stored?.databasePassword),
+    registrationSharedSecret: secretOr(stored?.registrationSharedSecret),
+    macaroonSecretKey: secretOr(stored?.macaroonSecretKey),
+    formSecret: secretOr(stored?.formSecret),
+    bridges: bridgesOf(stored?.bridges),
   };
   await write(file, `${JSON.stringify(secrets, null, 2)}\n`);
   return secrets;
+}
+
+function secretOr(stored: string | undefined): string {
+  return stored ?? secret();
+}
+
+function bridgesOf(stored: MatrixSecrets["bridges"] | undefined): MatrixSecrets["bridges"] {
+  return {
+    ...stored,
+    whatsapp: stored?.whatsapp ?? {
+      asToken: secret(),
+      hsToken: secret(),
+      senderLocalpart: `bridge-${randomBytes(8).toString("hex")}`,
+      provisioningSecret: secret(),
+    },
+  };
 }
 
 /**
@@ -101,7 +109,7 @@ export async function writeConfiguration(layout: MatrixLayout, secrets: MatrixSe
 function signingSeed(): string {
   const { privateKey } = generateKeyPairSync("ed25519");
   const der = privateKey.export({ format: "der", type: "pkcs8" });
-  return der.subarray(der.length - 32).toString("base64").replace(/=+$/, "");
+  return der.subarray(der.length - 32).toString("base64").replace(/=+$/, ""); // eslint-disable-line sonarjs/super-linear-regex -- single-char quantifier anchored at end is O(n)
 }
 
 /** A YAML scalar; JSON strings are valid YAML. */

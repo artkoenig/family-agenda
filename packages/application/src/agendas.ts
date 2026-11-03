@@ -30,9 +30,11 @@ import {
   type TimeSpan,
   type TimetableChange,
   type TimetableChangeKind,
+  type Agenda,
   type AgendaId,
   type AgendaKind,
   isAgendaKind,
+  type FamilyMember,
 } from "@family-agenda/domain";
 import type { ActivityLog, CurrentActivity } from "./activity";
 import { concernsOf } from "./assignment";
@@ -43,6 +45,7 @@ import type {
   FamilyRepository,
   InstalledSourceType,
   ItemRepository,
+  ProjectedItem,
   SourceRepository,
   SourceTypeRegistry,
   AgendaAccessPolicy,
@@ -325,21 +328,42 @@ export function createAgendaAccess(deps: AgendasDeps) {
       const concerns = attribution === "whole-family" ? attribution : order.filter((id) => attribution.includes(id));
       const links = item.links.map((link) => ({ url: link.url, source: sourceName(link, installed) }));
       const messages = item.messages.map((message) => ({ id: message.id, source: sourceName(message, installed) }));
-      if (item.kind === "event") {
-        const event = eventOf(item.folded);
-        if (event) found.events.push({ id: item.id, event, links, messages, concerns });
-      } else if (item.kind === "task") {
-        const task = taskOf(item.folded);
-        if (task) found.tasks.push({ id: item.id, task, links, messages, concerns });
-      } else if (item.kind === "lesson") {
-        const lesson = lessonOf(item.folded);
-        if (lesson) found.lessons.push({ id: item.id, lesson, concerns });
-      } else if (item.kind === "timetable-change") {
-        const change = timetableChangeOf(item.folded);
-        if (change && !change.cancelled) found.changes.push({ id: item.id, change, concerns });
-      }
+      classifyItem(item, found, links, messages, concerns);
     }
     return found;
+  }
+
+  function classifyItem(
+    item: ProjectedItem,
+    found: Around,
+    links: TimelineEvent["links"],
+    messages: TimelineEvent["messages"],
+    concerns: Attribution,
+  ): void {
+    if (item.kind === "event") classifyEvent(item, found, links, messages, concerns);
+    else if (item.kind === "task") classifyTask(item, found, links, messages, concerns);
+    else if (item.kind === "lesson") classifyLesson(item, found, concerns);
+    else if (item.kind === "timetable-change") classifyChange(item, found, concerns);
+  }
+
+  function classifyEvent(item: ProjectedItem, found: Around, links: TimelineEvent["links"], messages: TimelineEvent["messages"], concerns: Attribution): void {
+    const event = eventOf(item.folded);
+    if (event) found.events.push({ id: item.id, event, links, messages, concerns });
+  }
+
+  function classifyTask(item: ProjectedItem, found: Around, links: TimelineEvent["links"], messages: TimelineEvent["messages"], concerns: Attribution): void {
+    const task = taskOf(item.folded);
+    if (task) found.tasks.push({ id: item.id, task, links, messages, concerns });
+  }
+
+  function classifyLesson(item: ProjectedItem, found: Around, concerns: Attribution): void {
+    const lesson = lessonOf(item.folded);
+    if (lesson) found.lessons.push({ id: item.id, lesson, concerns });
+  }
+
+  function classifyChange(item: ProjectedItem, found: Around, concerns: Attribution): void {
+    const change = timetableChangeOf(item.folded);
+    if (change && !change.cancelled) found.changes.push({ id: item.id, change, concerns });
   }
 
   function taskRow(found: Around["tasks"][number], today: LocalDate): TimelineTask {
@@ -401,7 +425,7 @@ export function createAgendaAccess(deps: AgendasDeps) {
       .sort(byFrom);
     for (const change of changes) days.get(concernsKey(change.concerns))?.changes.push(change);
     const schoolDays = [...days.entries()].flatMap(([key, day]) => {
-      const lessons = day.lessons.sort((a, b) => a.lesson.span.start.getTime() - b.lesson.span.start.getTime());
+      const lessons = day.lessons.toSorted((a, b) => a.lesson.span.start.getTime() - b.lesson.span.start.getTime());
       const takingPlace = lessons.filter(({ lesson }) => !lesson.cancelled);
       const spanned = takingPlace.length > 0 ? takingPlace : lessons;
       const first = spanned[0];
@@ -516,6 +540,33 @@ export function createAgendaAccess(deps: AgendasDeps) {
     return { ok: true, settings: { kind, preselected, horizonDays: settings.horizonDays } };
   }
 
+  function resolveShowing(show: Showing | undefined, choices: { id: FamilyMemberId }[], preselected: FamilyMemberId[]): Showing {
+    const resolved = show ?? "all";
+    const chosen = resolved === "all" ? [] : choices.map((member) => member.id).filter((memberId) => resolved.includes(memberId));
+    return chosen.length > 0 ? chosen : preselected.length > 0 ? choices.map((member) => member.id) : "all";
+  }
+
+  async function barOf(agenda: Agenda, family: FamilyMember[], choices: FamilyMember[], showing: Showing, instant: Date): Promise<AgendaBarPage> {
+    const now = localDateTime(instant, timeZone);
+    return {
+      id: agenda.id,
+      language: (await families.languages()).language,
+      now,
+      members: family.map(summariseFamilyMember),
+      choices: choices.map(summariseFamilyMember),
+      showing,
+      activity: await activity.current(),
+      mayBeOutOfDate: await sourceHealth.anyFailing(),
+    };
+  }
+
+  function timelineDates(days: TimelineDays | undefined, today: LocalDate, horizonDays: number): LocalDate[] {
+    const { first, last } = days ?? { first: today, last: addDays(today, horizonDays - 1) };
+    return Array.from({ length: daysBetween(first, last) + 1 }, (_, day) => addDays(first, day));
+  }
+
+
+
   return {
     async list(): Promise<AgendaSummary[]> {
       const all = await agendas.list();
@@ -571,25 +622,12 @@ export function createAgendaAccess(deps: AgendasDeps) {
       if (!agenda || !(await input.access.mayOpen(agenda.id))) return null;
       const family = await members.list();
       const choices = agenda.preselected.length > 0 ? family.filter((member) => agenda.preselected.includes(member.id)) : family;
-      const show = input.show ?? "all";
-      const chosen = show === "all" ? [] : choices.map((member) => member.id).filter((memberId) => show.includes(memberId));
-      const showing: Showing =
-        chosen.length > 0 ? chosen : agenda.preselected.length > 0 ? choices.map((member) => member.id) : "all";
+      const showing = resolveShowing(input.show, choices, agenda.preselected);
       const instant = clock.now();
+      const bar = await barOf(agenda, family, choices, showing, instant);
       const now = localDateTime(instant, timeZone);
-      const bar: AgendaBarPage = {
-        id: agenda.id,
-        language: (await families.languages()).language,
-        now,
-        members: family.map(summariseFamilyMember),
-        choices: choices.map(summariseFamilyMember),
-        showing,
-        activity: await activity.current(),
-        mayBeOutOfDate: await sourceHealth.anyFailing(),
-      };
       if (agenda.kind === "tasks") return { ...bar, kind: "tasks", ...(await taskListOf(now.date, showing)) };
-      const { first, last } = input.days ?? { first: now.date, last: addDays(now.date, agenda.horizonDays - 1) };
-      const dates = Array.from({ length: daysBetween(first, last) + 1 }, (_, day) => addDays(first, day));
+      const dates = timelineDates(input.days, now.date, agenda.horizonDays);
       return { ...bar, kind: "timeline", horizonDays: agenda.horizonDays, ...(await timelineOf(dates, showing, instant)) };
     },
 
@@ -643,9 +681,9 @@ export function createAgendaAccess(deps: AgendasDeps) {
         if (deadline === null || deadline < firstDay || task.doneAt) return [];
         return [{ itemId, title, deadline, bring, overdue: taskStatus(task, today) === "overdue", cancelled }];
       });
-      tasks.sort((a, b) => a.deadline.localeCompare(b.deadline) || a.title.localeCompare(b.title));
+      const sortedTasks = tasks.toSorted((a, b) => a.deadline.localeCompare(b.deadline) || a.title.localeCompare(b.title));
       const { language } = await families.languages();
-      return { id: agenda.id, language, generatedAt, events: events.sort(byStart), schoolDays, tasks };
+      return { id: agenda.id, language, generatedAt, events: events.toSorted(byStart), schoolDays, tasks: sortedTasks };
     },
   };
 }

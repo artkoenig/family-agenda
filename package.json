@@ -12,15 +12,19 @@
     "depcruise": "depcruise packages apps",
     "test": "vitest run",
     "check": "pnpm lint && pnpm typecheck && pnpm depcruise && pnpm test",
-    "mutation": "stryker run"
+    "mutation": "stryker run",
+    "crap": "vitest run --coverage --coverage.provider=v8 --coverage.reporter=json && crap-typescript --exclude .stryker-tmp/** --format text --threshold 8"
   },
   "devDependencies": {
+    "@barney-media/crap-typescript": "2.0.0",
     "@eslint/js": "^10.0.1",
     "@stryker-mutator/core": "10.1.1",
     "@stryker-mutator/vitest-runner": "10.1.1",
     "@types/node": "^22.20.5",
+    "@vitest/coverage-v8": "5.0.5",
     "dependency-cruiser": "^18.7.0",
     "eslint": "^10.13.0",
+    "eslint-plugin-sonarjs": "^4.2.2",
     "typescript": "~6.0.3",
     "typescript-eslint": "^8.72.0",
     "vitest": "^5.0.5"

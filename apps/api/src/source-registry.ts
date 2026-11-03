@@ -20,8 +20,10 @@ import {
   SourceError,
   type IngestResult,
   type JsonObject,
+  type SetupProgress,
   type SourcePlugin,
   type SourcePluginManifest,
+  type ManifestResult,
 } from "@family-agenda/source-sdk";
 
 type Discovered = {
@@ -81,25 +83,32 @@ export class SourceRegistry implements SourceTypeRegistry {
   private async import(id: string): Promise<LoadedSourceType | null> {
     const found = this.discovered.get(id);
     if (!found?.module || found.installed.notLoadable !== null) return null;
-    let problems: string[];
-    let plugin: SourcePlugin | undefined;
-    try {
-      const imported = (await import(pathToFileURL(found.module).href)) as { default?: SourcePlugin };
-      plugin = imported.default;
-      problems = !plugin
-        ? ["the entry module has no default export"]
-        : plugin.identity.sourceTypeId !== id
-          ? [`the code is for Source Type "${plugin.identity.sourceTypeId}", the manifest for "${id}"`]
-          : problemsWith(plugin);
-    } catch (error) {
-      problems = [`loading the code failed: ${error instanceof Error ? error.message : String(error)}`];
-    }
-    if (!plugin || problems.length > 0) {
-      this.loadFailures.set(id, problems.join("; "));
+    const loaded = await loadPlugin(found.module, id);
+    if ("problems" in loaded) {
+      this.loadFailures.set(id, loaded.problems.join("; "));
       return null;
     }
-    return loadedSourceType(plugin);
+    return loadedSourceType(loaded.plugin);
   }
+}
+
+/** The plugin an entry module exports, or what keeps it from being one. */
+async function loadPlugin(module: string, id: string): Promise<{ plugin: SourcePlugin } | { problems: string[] }> {
+  try {
+    const imported = (await import(pathToFileURL(module).href)) as { default?: SourcePlugin };
+    const plugin = imported.default;
+    if (!plugin) return { problems: ["the entry module has no default export"] };
+    const problems = plugin.identity.sourceTypeId !== id
+      ? [`the code is for Source Type "${plugin.identity.sourceTypeId}", the manifest for "${id}"`]
+      : problemsWith(plugin);
+    return problems.length > 0 ? { problems } : { plugin };
+  } catch (error) {
+    return { problems: [`loading the code failed: ${messageOf(error)}`] };
+  }
+}
+
+function messageOf(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 const sdkSpecifier = "@family-agenda/source-sdk";
@@ -192,12 +201,9 @@ function loadedSourceType(plugin: SourcePlugin): LoadedSourceType {
       try {
         const progress = step?.progress ? await step.progress(runContextOf(context)) : null;
         if (!progress) return { status: "failed", message: `The setup step "${stepId}" is not driven live.` };
-        if (progress.status === "waiting") {
-          return { status: "waiting", qrCode: progress.qrCode ?? null, message: progress.message ?? null };
-        }
-        return progress.status === "done" ? { status: "done", message: progress.message ?? null } : progress;
+        return normalizedProgress(progress);
       } catch (error) {
-        return { status: "failed", message: error instanceof Error ? error.message : String(error) };
+        return { status: "failed", message: messageOf(error) };
       }
     },
     async sourceAdded({ plain, secrets, now, timeZone }) {
@@ -206,7 +212,7 @@ function loadedSourceType(plugin: SourcePlugin): LoadedSourceType {
         const prepared = await plugin.sourceAdded({ config: { plain: plain as JsonObject, secrets }, now, timeZone });
         return { ok: true, plain: prepared.plain, secrets: prepared.secrets };
       } catch (error) {
-        return { ok: false, message: error instanceof Error ? error.message : String(error) };
+        return { ok: false, message: messageOf(error) };
       }
     },
     async sourceRemoved(context) {
@@ -250,7 +256,7 @@ async function run(ingest: () => Promise<IngestResult>): Promise<SourceRunResult
   } catch (error) {
     if (error instanceof SourceError) return { ok: false, kind: error.kind, message: error.message };
     // An error the plugin did not expect may well be gone next time.
-    return { ok: false, kind: "temporary", message: error instanceof Error ? error.message : String(error) };
+    return { ok: false, kind: "temporary", message: messageOf(error) };
   }
   const problems = result.origins.flatMap(problemsWithOrigin);
   if (problems.length > 0) {
@@ -283,6 +289,12 @@ async function run(ingest: () => Promise<IngestResult>): Promise<SourceRunResult
   };
 }
 
+function normalizedProgress(progress: SetupProgress): Awaited<ReturnType<LoadedSourceType["setupProgress"]>> {
+  if (progress.status === "waiting") return { status: "waiting", qrCode: progress.qrCode ?? null, message: progress.message ?? null };
+  if (progress.status === "done") return { status: "done", message: progress.message ?? null };
+  return progress;
+}
+
 async function packageDirectoriesIn(directory: string): Promise<string[]> {
   try {
     const entries = await readdir(directory, { withFileTypes: true });
@@ -304,26 +316,28 @@ async function discoverPackage(packageDirectory: string): Promise<Discovered | n
     return null;
   }
   const result = parseManifest(packageJson);
-  if (!result.ok) {
-    if (result.problem === "no-manifest") return null;
-    if (!result.sourceTypeId) {
-      console.warn(`Ignoring ${packageDirectory}: its Source plugin manifest has no Source Type id.`);
-      return null;
-    }
-    const id = result.sourceTypeId as SourceTypeId;
-    return {
-      installed: {
-        id,
-        displayName: id,
-        description: "",
-        version: "",
-        needsLlm: false,
-        riskNotice: null,
-        notLoadable: `the manifest is invalid: ${result.details.join("; ")}`,
-      },
-    };
-  }
+  if (!result.ok) return manifestProblem(packageDirectory, result);
   return { installed: installedOf(result.manifest), module: join(packageDirectory, result.manifest.entry) };
+}
+
+function manifestProblem(packageDirectory: string, result: Extract<ManifestResult, { ok: false }>): Discovered | null {
+  if (result.problem === "no-manifest") return null;
+  if (!result.sourceTypeId) {
+    console.warn(`Ignoring ${packageDirectory}: its Source plugin manifest has no Source Type id.`);
+    return null;
+  }
+  const id = result.sourceTypeId as SourceTypeId;
+  return {
+    installed: {
+      id,
+      displayName: id,
+      description: "",
+      version: "",
+      needsLlm: false,
+      riskNotice: null,
+      notLoadable: `the manifest is invalid: ${result.details.join("; ")}`,
+    },
+  };
 }
 
 function installedOf(manifest: SourcePluginManifest): InstalledSourceType {

@@ -64,27 +64,21 @@ export function createLlmEndpointAccess(deps: LlmEndpointDeps) {
      * of third parties' messages, such as teachers' mails, so saving it needs an acknowledgement.
      */
     async save(input: LlmEndpointInput): Promise<SaveLlmEndpointResult> {
-      const url = endpointUrl(input.baseUrl);
-      if (!url) return { ok: false, problem: "invalid-endpoint-url" };
-      const model = input.model.trim();
-      if (model === "" || model.length > maximumModelLength) return { ok: false, problem: "invalid-model" };
+      const validated = validateEndpoint(input);
+      if ("problem" in validated) return validated;
+      const { url } = validated;
       const local = isLocalHost(url.hostname);
-      if (!local && input.thirdPartiesAcknowledged !== true) {
-        return { ok: false, problem: "third-parties-not-acknowledged" };
-      }
-
       const stored = await endpoints.find();
-      const replacing = input.removeApiKey === true || input.apiKey.trim() !== "";
-      let apiKey: SecretRef | null = stored?.apiKey ?? null;
-      if (replacing) apiKey = input.apiKey.trim() !== "" ? await secrets.put(input.apiKey.trim()) : null;
+      const apiKey = await resolveApiKey(input, stored, secrets);
       const now = clock.now();
       await endpoints.save({
-        baseUrl: url.href.replace(/\/+$/, ""),
-        model,
+        baseUrl: url.href.replace(/\/+$/, ""), // eslint-disable-line sonarjs/super-linear-regex -- single-char quantifier anchored at end is O(n)
+        model: input.model.trim(),
         apiKey,
         acknowledgedAt: local ? null : now,
         savedAt: now,
       });
+      const replacing = input.removeApiKey === true || input.apiKey.trim() !== "";
       if (replacing && stored?.apiKey) await secrets.remove(stored.apiKey);
       return { ok: true };
     },
@@ -108,4 +102,26 @@ function endpointUrl(text: string): URL | null {
   if (url.protocol !== "http:" && url.protocol !== "https:") return null;
   if (url.username !== "" || url.password !== "" || url.search !== "" || url.hash !== "") return null;
   return url;
+}
+
+function validateEndpoint(input: LlmEndpointInput): { url: URL } | Extract<SaveLlmEndpointResult, { ok: false }> {
+  const url = endpointUrl(input.baseUrl);
+  if (!url) return { ok: false, problem: "invalid-endpoint-url" };
+  const model = input.model.trim();
+  if (model === "" || model.length > maximumModelLength) return { ok: false, problem: "invalid-model" };
+  const local = isLocalHost(url.hostname);
+  if (!local && input.thirdPartiesAcknowledged !== true) {
+    return { ok: false, problem: "third-parties-not-acknowledged" };
+  }
+  return { url };
+}
+
+async function resolveApiKey(
+  input: LlmEndpointInput,
+  stored: { apiKey: SecretRef | null } | null,
+  secrets: SecretStore,
+): Promise<SecretRef | null> {
+  const replacing = input.removeApiKey === true || input.apiKey.trim() !== "";
+  if (!replacing) return stored?.apiKey ?? null;
+  return input.apiKey.trim() !== "" ? await secrets.put(input.apiKey.trim()) : null;
 }

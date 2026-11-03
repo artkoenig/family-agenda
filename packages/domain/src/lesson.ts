@@ -60,13 +60,35 @@ export function problemsWithTimetableChangeRevision(act: Act, fields: Record<str
 
 function problemsWith(act: Act, fields: Record<string, unknown>, known: readonly string[], created: string[]): string[] {
   const problems: string[] = [];
-  const required = act === "create" ? created : act === "move" ? ["span"] : [];
-  for (const key of required) if (!(key in fields)) problems.push(`${key} is missing`);
+  for (const key of requiredFor(act, created)) if (!(key in fields)) problems.push(`${key} is missing`);
+  problems.push(...fieldTextProblems(fields));
+  problems.push(...unknownFieldProblems(fields, known));
+  return problems;
+}
+
+function requiredFor(act: Act, created: string[]): string[] {
+  if (act === "create") return created;
+  if (act === "move") return ["span"];
+  return [];
+}
+
+function fieldTextProblems(fields: Record<string, unknown>): string[] {
+  const problems: string[] = [];
   if ("subject" in fields && parseText(fields.subject) === null) problems.push("subject is not a non-empty text");
   if ("span" in fields && parseSpan(fields.span) === null) problems.push("span is not a valid time span of a Lesson");
+  return [...problems, ...optionalTextProblems(fields)];
+}
+
+function optionalTextProblems(fields: Record<string, unknown>): string[] {
+  const problems: string[] = [];
   for (const key of optionalTexts) {
     if (key in fields && fields[key] !== null && parseText(fields[key]) === null) problems.push(`${key} is not a non-empty text or null`);
   }
+  return problems;
+}
+
+function unknownFieldProblems(fields: Record<string, unknown>, known: readonly string[]): string[] {
+  const problems: string[] = [];
   for (const key of Object.keys(fields)) if (!known.includes(key)) problems.push(`${key} is not a field of this Item kind`);
   return problems;
 }
@@ -110,8 +132,12 @@ function parseSpan(value: unknown): LessonSpan | null {
   if (typeof value !== "object" || value === null) return null;
   const span = value as Record<string, unknown>;
   if (span.allDay !== false || typeof span.start !== "string" || typeof span.end !== "string") return null;
-  const start = new Date(span.start);
-  const end = new Date(span.end);
+  return validSpan(span.start, span.end);
+}
+
+function validSpan(startText: string, endText: string): LessonSpan | null {
+  const start = new Date(startText);
+  const end = new Date(endText);
   if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end <= start) return null;
   return { start, end };
 }

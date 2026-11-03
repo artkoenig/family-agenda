@@ -36,17 +36,19 @@ export class TessdataDirectory implements OcrModelStore {
   async linkBundled(): Promise<void> {
     const { bundledDirectory, directory } = this.options;
     if (!bundledDirectory) return;
-    for (const file of await readdir(bundledDirectory).catch(() => [] as string[])) {
-      if (!file.endsWith(extension)) continue;
-      const target = join(directory, file);
-      if (await resolves(target)) continue;
-      // A link left dangling by an image that kept its models elsewhere is replaced.
-      await unlink(target).catch(() => undefined);
-      await symlink(join(bundledDirectory, file), target).catch((error: unknown) => {
-        // The api and the worker start together; whichever links it first wins.
-        if ((error as { code?: unknown }).code !== "EEXIST") throw error;
-      });
-    }
+    const files = (await readdir(bundledDirectory).catch(() => [] as string[])).filter((file) => file.endsWith(extension));
+    for (const file of files) await this.linkFile(file, directory, bundledDirectory);
+  }
+
+  private async linkFile(file: string, directory: string, bundledDirectory: string): Promise<void> {
+    const target = join(directory, file);
+    if (await resolves(target)) return;
+    // A link left dangling by an image that kept its models elsewhere is replaced.
+    await unlink(target).catch(() => undefined);
+    await symlink(join(bundledDirectory, file), target).catch((error: unknown) => {
+      // The api and the worker start together; whichever links it first wins.
+      if ((error as { code?: unknown }).code !== "EEXIST") throw error;
+    });
   }
 
   downloadable(): OcrLanguage[] {
@@ -72,7 +74,7 @@ export class TessdataDirectory implements OcrModelStore {
     try {
       bytes = await this.options.catalog.download(language);
     } catch (error) {
-      return { ok: false, message: error instanceof Error ? error.message : "It could not be downloaded." };
+      return { ok: false, message: messageOf(error, "It could not be downloaded.") };
     }
     if (createHash("sha256").update(bytes).digest("hex") !== expected) {
       return { ok: false, message: "The downloaded file does not match its checksum, so it was not kept." };
@@ -85,7 +87,7 @@ export class TessdataDirectory implements OcrModelStore {
       return { ok: true, value: null };
     } catch (error) {
       await rm(partial, { force: true });
-      return { ok: false, message: error instanceof Error ? error.message : "It could not be saved." };
+      return { ok: false, message: messageOf(error, "It could not be saved.") };
     }
   }
 
@@ -104,4 +106,8 @@ async function resolves(path: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+function messageOf(error: unknown, fallback: string): string {
+  return error instanceof Error ? error.message : fallback;
 }

@@ -150,3 +150,92 @@ describe("the OpenAI-compatible Extractor", () => {
     expect(await extractor.extract(request())).toMatchObject({ ok: false, problem: "invalid-output" });
   });
 });
+
+describe("the OpenAI-compatible Extractor's health check", () => {
+  let server: Server;
+  let baseUrl: string;
+  let received: { path: string; headers: IncomingMessage["headers"] }[];
+  let nextStatus: number;
+
+  async function start(): Promise<void> {
+    received = [];
+    nextStatus = 200;
+    server = createServer((request, response) => {
+      received.push({ path: request.url ?? "", headers: request.headers });
+      response.writeHead(nextStatus, { "content-type": "application/json" });
+      response.end(JSON.stringify({ data: [] }));
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const { port } = server.address() as AddressInfo;
+    baseUrl = `http://127.0.0.1:${port}/v1`;
+  }
+
+  async function stop(): Promise<void> {
+    await new Promise<void>((resolve) => {
+      server.close(() => {
+        resolve();
+      });
+      server.closeAllConnections();
+    });
+  }
+
+  beforeEach(async () => {
+    await start();
+  });
+  afterEach(async () => {
+    await stop();
+  });
+
+  const endpoint = (apiKey: string | null = "sk-test") => ({
+    baseUrl,
+    model: "qwen3.5:9b",
+    apiKey,
+  });
+
+  it("reports healthy when the endpoint answers 200", async () => {
+    expect(await new OpenAiCompatibleExtractor().health(endpoint())).toEqual({ ok: true });
+    expect(received[0]?.path).toBe("/v1/models");
+  });
+
+  it("reports a refused key when the endpoint answers 401", async () => {
+    nextStatus = 401;
+    expect(await new OpenAiCompatibleExtractor().health(endpoint())).toEqual({
+      ok: false,
+      message: "The LLM endpoint refused the API key (HTTP 401).",
+    });
+  });
+
+  it("reports a refused key when the endpoint answers 403", async () => {
+    nextStatus = 403;
+    expect(await new OpenAiCompatibleExtractor().health(endpoint())).toEqual({
+      ok: false,
+      message: "The LLM endpoint refused the API key (HTTP 403).",
+    });
+  });
+
+  it("reports an error status for other non-ok answers", async () => {
+    nextStatus = 500;
+    expect(await new OpenAiCompatibleExtractor().health(endpoint())).toEqual({
+      ok: false,
+      message: "The LLM endpoint answered with HTTP 500.",
+    });
+  });
+
+  it("reports unreachable when the endpoint cannot be reached", async () => {
+    await stop();
+    baseUrl = "http://127.0.0.1:1/v1";
+    const health = await new OpenAiCompatibleExtractor().health(endpoint(null));
+    expect(health).toMatchObject({ ok: false });
+    expect(JSON.stringify(health)).toContain("could not be reached");
+  });
+
+  it("sends the API key in the Authorization header", async () => {
+    await new OpenAiCompatibleExtractor().health(endpoint("sk-secret"));
+    expect(received[0]?.headers.authorization).toBe("Bearer sk-secret");
+  });
+
+  it("sends no Authorization header when there is no API key", async () => {
+    await new OpenAiCompatibleExtractor().health(endpoint(null));
+    expect(received[0]?.headers.authorization).toBeUndefined();
+  });
+});

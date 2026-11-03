@@ -38,9 +38,18 @@ const taskFields = ["title", "deadline", "bring"] as const;
 
 /** Why a Task Revision from a Source cannot be applied; none if it can. */
 export function problemsWithTaskRevision(act: Act, fields: Record<string, unknown>): string[] {
+  return [...missingProblems(act, fields), ...fieldProblems(fields), ...unknownFieldProblems(fields, taskFields)];
+}
+
+function missingProblems(act: Act, fields: Record<string, unknown>): string[] {
   const problems: string[] = [];
   if (act === "create" && !("title" in fields)) problems.push("title is missing");
   if (act === "move" && !("deadline" in fields)) problems.push("deadline is missing");
+  return problems;
+}
+
+function fieldProblems(fields: Record<string, unknown>): string[] {
+  const problems: string[] = [];
   if ("title" in fields && parseText(fields.title) === null) problems.push("title is not a non-empty text");
   if ("deadline" in fields && fields.deadline !== null && parseDeadline(fields.deadline) === null) {
     problems.push("deadline is not a date or null");
@@ -48,10 +57,13 @@ export function problemsWithTaskRevision(act: Act, fields: Record<string, unknow
   if ("bring" in fields && parseBring(fields.bring) === null) {
     problems.push(`bring is not a list of at most ${maximumThingsToBring} non-empty texts`);
   }
-  for (const key of Object.keys(fields)) {
-    if (!(taskFields as readonly string[]).includes(key)) problems.push(`${key} is not a field of a Task`);
-  }
   return problems;
+}
+
+function unknownFieldProblems(fields: Record<string, unknown>, known: readonly string[]): string[] {
+  return Object.keys(fields)
+    .filter((key) => !known.includes(key))
+    .map((key) => `${key} is not a field of a Task`);
 }
 
 /** The fields of a Revision that ticks a Task done at `at`, or takes the tick back. */

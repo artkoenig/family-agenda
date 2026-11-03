@@ -138,6 +138,55 @@ describe("Events extracted from mail", () => {
     expect(page?.days[3]?.items[0]?.messages).toHaveLength(2);
   });
 
+  it("ends an Event at the stated end time, and keeps its duration when a later mail moves only the start", async () => {
+    extractor.script("Elternabend der Klasse", [{ ...parentsEvening, endTime: "20:30" }]);
+    await arrive(mail("m1", "2026-09-14T06:12:00Z", invitation));
+    extractor.script("früher", [extracted({ updates: "E1", startTime: "18:00", evidence: "beginnt eine Stunde früher" })]);
+    expect(await timeline()).toEqual({ "2026-09-17": ["19:30-20:30 Elternabend Klasse 5b"] });
+
+    await arrive(mail("m2", "2026-09-15T10:00:00Z", "Der Elternabend beginnt eine Stunde früher.", "m1"));
+
+    expect(await timeline()).toEqual({ "2026-09-17": ["18:00-19:00 Elternabend Klasse 5b"] });
+  });
+
+  it("ends an Event stated to end before it starts on the next day", async () => {
+    const sleepover = "Die Übernachtung der Klasse 5b ist am Freitag, 18.09., von 20 Uhr bis 8 Uhr.";
+    extractor.script("Übernachtung", [
+      extracted({ title: "Übernachtung", date: { day: 18, month: 9 }, startTime: "20:00", endTime: "08:00", evidence: "am Freitag, 18.09., von 20 Uhr bis 8 Uhr" }),
+    ]);
+
+    await arrive(mail("m1", "2026-09-14T06:12:00Z", sleepover));
+
+    const page = await openTimeline(instance.app, agenda, { access: openAgendaAccess });
+    expect(page?.days[4]?.items[0]).toMatchObject({ title: "Übernachtung", from: "20:00" });
+  });
+
+  it("changes the title and place of an Event without moving it", async () => {
+    extractor.script("Elternabend der Klasse", [parentsEvening]);
+    await arrive(mail("m1", "2026-09-14T06:12:00Z", invitation));
+    extractor.script("Aula", [extracted({ updates: "E1", title: "Elternabend Jahrgang 5", place: "Aula", evidence: "findet in der Aula statt" })]);
+
+    await arrive(mail("m2", "2026-09-15T10:00:00Z", "Der Elternabend findet in der Aula statt.", "m1"));
+
+    expect(await timeline()).toEqual({ "2026-09-17": ["19:30-19:30 Elternabend Jahrgang 5"] });
+    const page = await openTimeline(instance.app, agenda, { access: openAgendaAccess });
+    expect(page?.days[3]?.items[0]).toMatchObject({ place: "Aula" });
+  });
+
+  it("moves an all-day Event to another day, and to a time of day", async () => {
+    extractor.script("Wandertag", [extracted({ title: "Wandertag", date: { day: 16, month: 9 }, evidence: "Wandertag am 16.09." })]);
+    await arrive(mail("m1", "2026-09-14T06:12:00Z", "Der Wandertag am 16.09. findet statt."));
+    extractor.script("verschoben", [extracted({ updates: "E1", date: { day: 17, month: 9 }, evidence: "auf den 17.09. verschoben" })]);
+    expect(Object.keys(await timeline())).toEqual(["2026-09-16"]);
+
+    await arrive(mail("m2", "2026-09-15T10:00:00Z", "Der Wandertag wird auf den 17.09. verschoben.", "m1"));
+    expect(Object.keys(await timeline())).toEqual(["2026-09-17"]);
+
+    extractor.script("Treffpunkt", [extracted({ updates: "E1", startTime: "08:00", evidence: "Treffpunkt ist um 8 Uhr" })]);
+    await arrive(mail("m3", "2026-09-15T11:00:00Z", "Treffpunkt ist um 8 Uhr.", "m1"));
+    expect(await timeline()).toEqual({ "2026-09-17": ["08:00-08:00 Wandertag"] });
+  });
+
   it("cancels the Event when a later mail of the thread calls it off", async () => {
     extractor.script("Elternabend der Klasse", [parentsEvening]);
     await arrive(mail("m1", "2026-09-14T06:12:00Z", invitation));

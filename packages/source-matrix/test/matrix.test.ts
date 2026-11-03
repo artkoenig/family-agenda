@@ -223,6 +223,32 @@ describe("linking the account by QR code", () => {
     await expect(poll(config)).resolves.toMatchObject({ origins: [] });
   });
 
+  it("waits while the bridge does not answer, and fails when it refuses the login", async () => {
+    const config = await addSource();
+    const progressOf = (of: SourcePlugin) => of.setupSteps[0]!.progress!({ config, syncCursor: null, now, timeZone: "Europe/Berlin" });
+    homeserver.bridgeRunning = false;
+    try {
+      expect(await progressOf(plugin())).toMatchObject({ status: "waiting" });
+    } finally {
+      homeserver.bridgeRunning = true;
+    }
+
+    const wrongSecret = { ...homeserver.instance(), bridges: { whatsapp: { url: homeserver.url, provisioningSecret: "wrong" } } };
+    const refused = await progressOf(createMatrixPlugin({ instance: wrongSecret, timeoutMs: 5000, programs: installedPrograms }));
+
+    expect(refused).toMatchObject({ status: "failed", message: expect.stringContaining("bridge could not start the login") as unknown });
+  });
+
+  it("fails for a Source without a known Messenger", async () => {
+    const config = { plain: { messenger: "icq", userId: "@x:y" }, secrets: { accessToken: "t" } };
+
+    expect(await plugin().setupSteps[0]!.progress!({ config, syncCursor: null, now, timeZone: "Europe/Berlin" })).toMatchObject({ status: "failed" });
+  });
+
+  it("can be stopped without services ever having been started", async () => {
+    await expect(plugin().services!.stop()).resolves.toBeUndefined();
+  });
+
   it("says it is done for an account already linked", async () => {
     const of = plugin();
     const config = await addSource(of);
@@ -288,6 +314,40 @@ describe("chats", () => {
     expect(origins.map((origin) => [textOf(origin), origin.content.kind === "raw-message" ? origin.content.thread : null])).toEqual([
       ["Elternabend um 19 Uhr", original],
       ["Elternabend um 19:30 Uhr", original],
+    ]);
+  });
+
+  it("keep the files of file messages, with their captions", async () => {
+    const first = await poll(allowListing(config, room));
+    const bytes = new TextEncoder().encode("%PDF-1.4\n");
+    const url = homeserver.upload(bytes);
+    homeserver.send(room, sender, { msgtype: "m.file", body: "Bitte bis Mittwoch.", filename: "zettel.pdf", url, info: { mimetype: "application/pdf", size: bytes.length } }, now);
+    homeserver.send(room, sender, { msgtype: "m.image", body: "plan.png", url: homeserver.upload(bytes) }, now);
+    homeserver.send(room, sender, { msgtype: "m.file", body: "", url: homeserver.upload(bytes), info: { size: "big" } }, now);
+
+    const { origins } = await poll(allowListing(config, room), first.syncCursor);
+
+    expect(origins.map((origin) => origin.content)).toMatchObject([
+      { text: "Bitte bis Mittwoch.", attachments: [{ filename: "zettel.pdf", contentType: "application/pdf", bytes }] },
+      { text: "", attachments: [{ filename: "plan.png", contentType: "application/octet-stream", bytes }] },
+      { text: "", attachments: [{ filename: "attachment", contentType: "application/octet-stream", bytes }] },
+    ]);
+  });
+
+  it("skip files that are too large, unknown or without an address, and messages of other kinds", async () => {
+    const first = await poll(allowListing(config, room));
+    const bytes = new TextEncoder().encode("x");
+    homeserver.send(room, sender, { msgtype: "m.file", body: "Video", filename: "video.mp4", url: homeserver.upload(bytes), info: { size: 26 * 1024 * 1024 } }, now);
+    homeserver.send(room, sender, { msgtype: "m.file", body: "Weg", filename: "weg.pdf", url: "mxc://family-agenda.local/missing" }, now);
+    homeserver.send(room, sender, { msgtype: "m.file", body: "Ohne Adresse", filename: "x.pdf" }, now);
+    homeserver.send(room, sender, { msgtype: "m.location", body: "geo:52,13" }, now);
+
+    const { origins } = await poll(allowListing(config, room), first.syncCursor);
+
+    expect(origins.map((origin) => origin.content)).toMatchObject([
+      { text: "Video", attachments: [] },
+      { text: "Weg", attachments: [] },
+      { text: "Ohne Adresse", attachments: [] },
     ]);
   });
 

@@ -89,6 +89,23 @@ export function createAdminAccess(deps: AdminAccessDeps) {
     return { ok: true };
   }
 
+  const rateLimited = async (accountKey: string, clientKey: string, windowStart: Date): Promise<boolean> => {
+    const [accountFailures, clientFailures] = await Promise.all([
+      signInFailures.countAfter(accountKey, windowStart),
+      signInFailures.countAfter(clientKey, windowStart),
+    ]);
+    return accountFailures > signInLimits.perAccount || clientFailures > signInLimits.perClient;
+  };
+
+  /** The Admin when the password matches; an unknown account is verified against a dummy hash all the same. */
+  const authenticated = async (admin: Admin | null, password: string): Promise<Admin | null> => {
+    const passwordMatches = await passwordHasher.verify(
+      admin?.passwordHash ?? (await unknownAccountHash),
+      password,
+    );
+    return passwordMatches ? admin : null;
+  };
+
   return {
     async needsFirstAdmin(): Promise<boolean> {
       return !(await admins.exists());
@@ -122,25 +139,20 @@ export function createAdminAccess(deps: AdminAccessDeps) {
 
       // Recorded before checking, so that attempts arriving at the same time count each other.
       const attempt = await signInFailures.record([accountKey, clientKey], now);
-      const [accountFailures, clientFailures] = await Promise.all([
-        signInFailures.countAfter(accountKey, windowStart),
-        signInFailures.countAfter(clientKey, windowStart),
-      ]);
-      if (accountFailures > signInLimits.perAccount || clientFailures > signInLimits.perClient) {
+      if (await rateLimited(accountKey, clientKey, windowStart)) {
         await signInFailures.forget(attempt);
         return { ok: false, problem: "rate-limited" };
       }
 
       const admin = email ? await admins.findByEmail(email) : null;
-      const passwordMatches = await passwordHasher.verify(
-        admin?.passwordHash ?? (await unknownAccountHash),
-        input.password,
-      );
-      if (!admin || !passwordMatches) return { ok: false, problem: "invalid-credentials" };
+      const verified = await authenticated(admin, input.password);
+      if (!verified) {
+        return { ok: false, problem: "invalid-credentials" };
+      }
 
       await signInFailures.forget(attempt);
       await signInFailures.clear(accountKey);
-      return { ok: true, sessionToken: await startSession(admin.id) };
+      return { ok: true, sessionToken: await startSession(verified.id) };
     },
 
     async signOut(sessionToken: string): Promise<void> {

@@ -44,6 +44,18 @@ export function createFamilyMemberAccess(deps: FamilyMembersDeps) {
     return { ok: true, photo: { blob: await blobs.put(file), contentType } };
   }
 
+  /** Resolves the photo: null removes it, a file replaces it, and leaving it out keeps it. */
+  async function resolvePhoto(
+    current: Photo | null,
+    input: Uint8Array | null | undefined,
+  ): Promise<{ ok: true; photo: Photo | null } | { ok: false; problem: FamilyMemberProblem }> {
+    if (input === null) return { ok: true, photo: null };
+    if (!input) return { ok: true, photo: current };
+    const stored = await storePhoto(input);
+    if (!stored.ok) return { ok: false, problem: stored.problem };
+    return { ok: true, photo: stored.photo };
+  }
+
   return {
     async list(): Promise<FamilyMemberSummary[]> {
       const all = await members.list();
@@ -77,13 +89,9 @@ export function createFamilyMemberAccess(deps: FamilyMembersDeps) {
       if (!member) return { ok: false, problem: "unknown-member" };
       const name = parseName(input.name);
       if (!name) return { ok: false, problem: "invalid-name" };
-      let photo = member.photo;
-      if (input.photo === null) photo = null;
-      else if (input.photo) {
-        const stored = await storePhoto(input.photo);
-        if (!stored.ok) return stored;
-        photo = stored.photo;
-      }
+      const resolved = await resolvePhoto(member.photo, input.photo);
+      if (!resolved.ok) return resolved;
+      const photo = resolved.photo;
       await members.update({ ...member, name, photo });
       if (member.photo && member.photo.blob !== photo?.blob) await blobs.remove(member.photo.blob);
       return { ok: true };

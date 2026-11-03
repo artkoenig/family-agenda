@@ -141,22 +141,23 @@ export function createExtraction(deps: ExtractionDeps) {
       knownEvents: known.map(({ ref, title, when, place }) => ({ ref, title, when, place })),
       knownTasks: knownTasks.map(({ ref, title, deadline, bring }) => ({ ref, title, deadline, bring })),
     });
-    if (!result.ok) return result;
-    const reading: Reading = { message, text, sentOn: sent.date, timeZone, known, knownTasks };
-    const revisions = [
-      ...result.events.map((event, index) => revisionOf(event, index, reading)),
-      ...result.tasks.map((task, index) => taskRevisionOf(task, index, reading)),
-    ].flatMap((revision) => (revision ? [revision] : []));
-    await items.recordExtraction(
-      {
-        messageId: message.id,
-        sourceId: message.sourceId,
-        at: clock.now(),
-        revisions,
-        attachmentProblems: problems,
-      },
-      project,
-    );
+    if (result.ok) {
+      const reading: Reading = { message, text, sentOn: sent.date, timeZone, known, knownTasks };
+      const revisions = [
+        ...result.events.map((event, index) => revisionOf(event, index, reading)),
+        ...result.tasks.map((task, index) => taskRevisionOf(task, index, reading)),
+      ].flatMap((revision) => (revision ? [revision] : []));
+      await items.recordExtraction(
+        {
+          messageId: message.id,
+          sourceId: message.sourceId,
+          at: clock.now(),
+          revisions,
+          attachmentProblems: problems,
+        },
+        project,
+      );
+    }
     return result;
   }
 
@@ -268,41 +269,60 @@ function taskRevisionOf(extracted: ExtractedTask, index: number, reading: Readin
   const { message, text, sentOn } = reading;
   const target = extracted.updates ? reading.knownTasks.find((known) => known.ref === extracted.updates) : undefined;
   if (!target && extracted.cancelled) return null;
+  const { rejection, deadline, mentioned } = taskRejection(extracted, text, sentOn);
+  const result = taskActAndFields(extracted, target, deadline, mentioned, rejection);
+  if (!result) return null;
+  return buildTaskRevision(result, target, message, index, rejection, extracted);
+}
 
-  let rejection: Rejection | null = quoteFoundIn(extracted.evidence, text) ? null : "evidence-not-found";
-  const mentioned = Object.values(extracted.deadline).some((part) => part !== null);
-  const resolved = mentioned ? resolveDeadline(extracted.deadline, sentOn) : null;
-  if (resolved && !resolved.ok) rejection ??= resolved.problem;
-  // A rejected Revision keeps the Deadline the message states, for an Admin who restores it.
-  const deadline = resolved && "date" in resolved ? resolved.date : null;
-
-  const fields: Record<string, unknown> = {};
-  let act: Act;
-  if (!target) {
-    act = "create";
-    fields.title = extracted.title;
-    fields.deadline = deadline;
-    fields.bring = extracted.bring;
-  } else if (extracted.cancelled) {
-    act = "cancel";
-  } else {
-    if (extracted.title !== null) fields.title = extracted.title;
-    if (extracted.bring.length > 0) fields.bring = extracted.bring;
-    if (mentioned) fields.deadline = deadline;
-    act = mentioned ? "move" : "change";
-    if (Object.keys(fields).length === 0 && rejection === null) return null;
-  }
-  if (rejection === null && problemsWithTaskRevision(act, fields).length > 0) rejection = "invalid-fields";
+function buildTaskRevision(result: { act: Act; fields: Record<string, unknown> }, target: KnownTaskItem | undefined, message: Reading["message"], index: number, rejection: Rejection | null, extracted: ExtractedTask): NewRevision {
+  const { act, fields } = result;
+  const finalRejection = rejection === null && problemsWithTaskRevision(act, fields).length > 0 ? "invalid-fields" : rejection;
   return {
     itemKind: "task",
     itemKey: target?.itemKey ?? `${message.externalId}#task-${index + 1}`,
     act,
     fields,
     sourceTime: message.sentAt,
-    accepted: rejection === null,
-    rejection,
+    accepted: finalRejection === null,
+    rejection: finalRejection,
     evidence: extracted.evidence,
   };
+}
+
+/** The rejection and resolved Deadline of an extracted Task. */
+function taskRejection(extracted: ExtractedTask, text: string, sentOn: LocalDate): { rejection: Rejection | null; deadline: LocalDate | null; mentioned: boolean } {
+  const rejection = quoteFoundIn(extracted.evidence, text) ? null : "evidence-not-found";
+  const mentioned = Object.values(extracted.deadline).some((part) => part !== null);
+  if (!mentioned) return { rejection, deadline: null, mentioned };
+  const resolved = resolveDeadline(extracted.deadline, sentOn);
+  // A rejected Revision keeps the Deadline the message states, for an Admin who restores it.
+  const deadline = "date" in resolved ? resolved.date : null;
+  return { rejection: resolved.ok ? rejection : (rejection ?? resolved.problem), deadline, mentioned };
+}
+
+/** The act and fields of a Task Revision; null when it changes nothing and is not rejected. */
+function taskActAndFields(
+  extracted: ExtractedTask,
+  target: KnownTaskItem | undefined,
+  deadline: LocalDate | null,
+  mentioned: boolean,
+  rejection: Rejection | null,
+): { act: Act; fields: Record<string, unknown> } | null {
+  if (!target) {
+    return { act: "create", fields: { title: extracted.title, deadline, bring: extracted.bring } };
+  }
+  if (extracted.cancelled) return { act: "cancel", fields: {} };
+  const fields: Record<string, unknown> = {};
+  if (extracted.title !== null) fields.title = extracted.title;
+  if (extracted.bring.length > 0) fields.bring = extracted.bring;
+  if (mentioned) fields.deadline = deadline;
+  return changeUnlessEmpty(mentioned ? "move" : "change", fields, rejection);
+}
+
+/** A change that states nothing is no Revision, unless it is rejected, so that an Admin sees why. */
+function changeUnlessEmpty(act: Act, fields: Record<string, unknown>, rejection: Rejection | null): { act: Act; fields: Record<string, unknown> } | null {
+  return Object.keys(fields).length === 0 && rejection === null ? null : { act, fields };
 }
 
 /** The Events earlier messages of the thread stated, numbered for the model as E1, E2, … */
@@ -323,12 +343,18 @@ function knownEventsOf(thread: ThreadItem[], timeZone: string): Known[] {
 
 /** A span as the model is told it, on the Family's clocks, such as `2026-09-17 19:30–20:30`. */
 function whenOf(span: TimeSpan, timeZone: string): string {
-  if (span.allDay) {
-    const days = span.firstDay === span.lastDay ? span.firstDay : `${span.firstDay} to ${span.lastDay}`;
-    return `${days}, all day`;
-  }
+  if (span.allDay) return allDayOf(span);
   const start = localDateTime(span.start, timeZone);
   const end = localDateTime(span.end, timeZone);
+  return timedOf(start, end);
+}
+
+function allDayOf(span: Extract<TimeSpan, { allDay: true }>): string {
+  const days = span.firstDay === span.lastDay ? span.firstDay : `${span.firstDay} to ${span.lastDay}`;
+  return `${days}, all day`;
+}
+
+function timedOf(start: { date: string; time: string }, end: { date: string; time: string }): string {
   return `${start.date} ${start.time}–${end.date === start.date ? "" : `${end.date} `}${end.time}`;
 }
 
@@ -341,45 +367,66 @@ function revisionOf(extracted: ExtractedEvent, index: number, reading: Reading):
   const target = extracted.updates ? reading.known.find((known) => known.ref === extracted.updates) : undefined;
   // A new Event that is cancelled at once is only information.
   if (!target && extracted.cancelled) return null;
-
-  let rejection: Rejection | null = quoteFoundIn(extracted.evidence, text) ? null : "evidence-not-found";
-  const mention = extracted.date;
-  const mentioned = Object.values(mention).some((part) => part !== null);
-  const resolved = mentioned ? resolveDate(mention, sentOn) : null;
-  if (resolved && !resolved.ok) rejection ??= resolved.problem;
-  if (!target && !mentioned) rejection ??= "no-date";
-
-  // A rejected Revision keeps the date the message states, for an Admin who restores it.
-  const date = resolved && "date" in resolved ? resolved.date : null;
+  const { rejection, date } = eventRejection(extracted, text, sentOn, target);
   const span = spanOf({ date, start: extracted.startTime, end: extracted.endTime, known: target?.event ?? null, timeZone });
-  const fields: Record<string, unknown> = {};
-  let act: Act;
-  if (!target) {
-    act = "create";
-    fields.title = extracted.title;
-    fields.span = span;
-    fields.place = extracted.place;
-  } else if (extracted.cancelled) {
-    act = "cancel";
-  } else {
-    if (extracted.title !== null) fields.title = extracted.title;
-    if (extracted.place !== null) fields.place = extracted.place;
-    const moved = date !== null || extracted.startTime !== null;
-    if (moved) fields.span = span;
-    act = moved ? "move" : "change";
-    if (Object.keys(fields).length === 0 && rejection === null) return null;
-  }
-  if (rejection === null && problemsWithEventRevision(act, fields).length > 0) rejection = "invalid-fields";
+  const result = eventActAndFields(extracted, target, date, span, rejection);
+  if (!result) return null;
+  return buildEventRevision(result, target, message, index, rejection, extracted);
+}
+
+function buildEventRevision(result: { act: Act; fields: Record<string, unknown> }, target: Known | undefined, message: Reading["message"], index: number, rejection: Rejection | null, extracted: ExtractedEvent): NewRevision {
+  const { act, fields } = result;
+  const finalRejection = rejection === null && problemsWithEventRevision(act, fields).length > 0 ? "invalid-fields" : rejection;
   return {
     itemKind: "event",
     itemKey: target?.itemKey ?? `${message.externalId}#${index + 1}`,
     act,
     fields,
     sourceTime: message.sentAt,
-    accepted: rejection === null,
-    rejection,
+    accepted: finalRejection === null,
+    rejection: finalRejection,
     evidence: extracted.evidence,
   };
+}
+
+/** The rejection and resolved date of an extracted Event. */
+function eventRejection(
+  extracted: ExtractedEvent,
+  text: string,
+  sentOn: LocalDate,
+  target: Known | undefined,
+): { rejection: Rejection | null; date: LocalDate | null } {
+  let rejection: Rejection | null = quoteFoundIn(extracted.evidence, text) ? null : "evidence-not-found";
+  const mention = extracted.date;
+  const mentioned = Object.values(mention).some((part) => part !== null);
+  if (!mentioned) {
+    if (!target) rejection ??= "no-date";
+    return { rejection, date: null };
+  }
+  const resolved = resolveDate(mention, sentOn);
+  if (!resolved.ok) rejection ??= resolved.problem;
+  // A rejected Revision keeps the date the message states, for an Admin who restores it.
+  return { rejection, date: "date" in resolved ? resolved.date : null };
+}
+
+/** The act and fields of an Event Revision; null when it changes nothing and is not rejected. */
+function eventActAndFields(
+  extracted: ExtractedEvent,
+  target: Known | undefined,
+  date: LocalDate | null,
+  span: Record<string, unknown> | null,
+  rejection: Rejection | null,
+): { act: Act; fields: Record<string, unknown> } | null {
+  if (!target) {
+    return { act: "create", fields: { title: extracted.title, span, place: extracted.place } };
+  }
+  if (extracted.cancelled) return { act: "cancel", fields: {} };
+  const fields: Record<string, unknown> = {};
+  if (extracted.title !== null) fields.title = extracted.title;
+  if (extracted.place !== null) fields.place = extracted.place;
+  const moved = date !== null || extracted.startTime !== null;
+  if (moved) fields.span = span;
+  return changeUnlessEmpty(moved ? "move" : "change", fields, rejection);
 }
 
 /**
@@ -396,25 +443,41 @@ function spanOf(input: {
 }): Record<string, unknown> | null {
   const { known, timeZone } = input;
   const knownSpan: TimeSpan | null = known?.span ?? null;
-  const day = input.date ?? (knownSpan ? (knownSpan.allDay ? knownSpan.firstDay : localDateTime(knownSpan.start, timeZone).date) : null);
+  const day = resolveDay(input.date, knownSpan, timeZone);
   if (!day) return null;
-  const startTime = input.start ?? (knownSpan && !knownSpan.allDay ? localDateTime(knownSpan.start, timeZone).time : null);
-  if (startTime === null) {
-    const length = knownSpan?.allDay ? daysBetween(knownSpan.firstDay, knownSpan.lastDay) : 0;
-    return { allDay: true, firstDay: day, lastDay: addDays(day, length) };
-  }
+  const startTime = resolveStartTime(input.start, knownSpan, timeZone);
+  if (startTime === null) return allDaySpan(day, knownSpan);
+  return timedSpan(day, startTime, input.end, knownSpan, timeZone);
+}
+
+function resolveDay(date: LocalDate | null, knownSpan: TimeSpan | null, timeZone: string): LocalDate | null {
+  return date ?? (knownSpan ? (knownSpan.allDay ? knownSpan.firstDay : localDateTime(knownSpan.start, timeZone).date) : null);
+}
+
+function resolveStartTime(start: string | null, knownSpan: TimeSpan | null, timeZone: string): string | null {
+  return start ?? (knownSpan && !knownSpan.allDay ? localDateTime(knownSpan.start, timeZone).time : null);
+}
+
+function allDaySpan(day: LocalDate, knownSpan: TimeSpan | null): Record<string, unknown> {
+  const length = knownSpan?.allDay ? daysBetween(knownSpan.firstDay, knownSpan.lastDay) : 0;
+  return { allDay: true, firstDay: day, lastDay: addDays(day, length) };
+}
+
+function timedSpan(day: LocalDate, startTime: string, endTime: string | null, knownSpan: TimeSpan | null, timeZone: string): Record<string, unknown> | null {
   const start = instantAt(day, startTime, timeZone);
-  if (!start) return null;
-  let end: Date | null = start;
-  if (input.end !== null) {
-    end = instantAt(day, input.end, timeZone);
-    // An end before the start is on the next day, as for a sleepover.
-    if (end && end < start) end = instantAt(addDays(day, 1), input.end, timeZone);
-  } else if (knownSpan && !knownSpan.allDay) {
-    end = new Date(start.getTime() + (knownSpan.end.getTime() - knownSpan.start.getTime()));
-  }
-  if (!end) return null;
+  const end = start && endInstantOf(day, start, endTime, knownSpan, timeZone);
+  if (!start || !end) return null;
   return { allDay: false, start: start.toISOString(), end: end.toISOString() };
+}
+
+function endInstantOf(day: LocalDate, start: Date, endTime: string | null, knownSpan: TimeSpan | null, timeZone: string): Date | null {
+  if (endTime !== null) {
+    const end = instantAt(day, endTime, timeZone);
+    // An end before the start is on the next day, as for a sleepover.
+    return end && end < start ? instantAt(addDays(day, 1), endTime, timeZone) : end;
+  }
+  if (knownSpan && !knownSpan.allDay) return new Date(start.getTime() + (knownSpan.end.getTime() - knownSpan.start.getTime()));
+  return start;
 }
 
 function daysBetween(first: LocalDate, last: LocalDate): number {

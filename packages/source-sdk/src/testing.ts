@@ -3,8 +3,11 @@ import {
   parseManifest,
   problemsWith,
   problemsWithOrigin,
+  type Catalogue,
+  type ConfigField,
   type PluginText,
   type RunContext,
+  type SetupStep,
   type SourcePlugin,
 } from "./index";
 
@@ -22,27 +25,45 @@ export type ContractOptions = {
 /** Every text a plugin shows, by where it comes from. */
 async function textsOf(plugin: SourcePlugin, packageJson: unknown): Promise<[string, PluginText][]> {
   const texts: [string, PluginText][] = [["identity.displayName", plugin.identity.displayName]];
-  for (const field of plugin.configuration.fields) {
+  texts.push(...fieldTexts(plugin.configuration.fields));
+  texts.push(...stepTexts(plugin.setupSteps));
+  if (plugin.catalogue) texts.push(...(await catalogueTexts(plugin.catalogue)));
+  if (packageJson !== undefined) texts.push(...manifestTexts(packageJson));
+  return texts;
+}
+
+function fieldTexts(fields: ConfigField[]): [string, PluginText][] {
+  const texts: [string, PluginText][] = [];
+  for (const field of fields) {
     texts.push([`configuration field ${field.key}'s label`, field.label]);
     if (field.description !== undefined) texts.push([`configuration field ${field.key}'s description`, field.description]);
   }
-  for (const step of plugin.setupSteps) {
+  return texts;
+}
+
+function stepTexts(steps: SetupStep[]): [string, PluginText][] {
+  const texts: [string, PluginText][] = [];
+  for (const step of steps) {
     texts.push([`setup step ${step.id}'s title`, step.title], [`setup step ${step.id}'s description`, step.description]);
   }
-  if (plugin.catalogue) {
-    texts.push(["the catalogue's title", plugin.catalogue.title]);
-    for (const entry of await plugin.catalogue.entries()) {
-      texts.push([`catalogue entry ${entry.id}'s name`, entry.displayName], [`catalogue entry ${entry.id}'s description`, entry.description]);
-      if (entry.riskNotice !== undefined) texts.push([`catalogue entry ${entry.id}'s risk notice`, entry.riskNotice]);
-    }
+  return texts;
+}
+
+async function catalogueTexts(catalogue: Catalogue): Promise<[string, PluginText][]> {
+  const texts: [string, PluginText][] = [["the catalogue's title", catalogue.title]];
+  for (const entry of await catalogue.entries()) {
+    texts.push([`catalogue entry ${entry.id}'s name`, entry.displayName], [`catalogue entry ${entry.id}'s description`, entry.description]);
+    if (entry.riskNotice !== undefined) texts.push([`catalogue entry ${entry.id}'s risk notice`, entry.riskNotice]);
   }
-  if (packageJson !== undefined) {
-    const result = parseManifest(packageJson);
-    if (!result.ok) throw new Error(`the manifest is invalid: ${result.problem}`);
-    const { manifest } = result;
-    texts.push(["the manifest's displayName", manifest.identity.displayName], ["the manifest's description", manifest.description]);
-    if (manifest.riskNotice !== undefined) texts.push(["the manifest's riskNotice", manifest.riskNotice]);
-  }
+  return texts;
+}
+
+function manifestTexts(packageJson: unknown): [string, PluginText][] {
+  const result = parseManifest(packageJson);
+  if (!result.ok) throw new Error(`the manifest is invalid: ${result.problem}`);
+  const { manifest } = result;
+  const texts: [string, PluginText][] = [["the manifest's displayName", manifest.identity.displayName], ["the manifest's description", manifest.description]];
+  if (manifest.riskNotice !== undefined) texts.push(["the manifest's riskNotice", manifest.riskNotice]);
   return texts;
 }
 

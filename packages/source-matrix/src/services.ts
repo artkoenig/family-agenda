@@ -64,20 +64,7 @@ export async function readProblem(instanceFile: string): Promise<string | null> 
  * processes of the worker. Synapse gets a database of its own on the Instance's Postgres server,
  * created on its first start. A process that ends is started again, ever more slowly.
  */
-export function matrixServices(options: MatrixServicesOptions): Services {
-  const log = options.log ?? ((line: string) => {
-    console.log(line);
-  });
-  const createDatabase =
-    options.ensureDatabase ?? ((database, password) => ensureDatabase(options.databaseUrl, database, password));
-  const paths = pathsOf(options);
-  const synapse = new Program({
-    name: "synapse",
-    command: options.programs.synapse,
-    args: ["-m", "synapse.app.homeserver", "--config-path", paths.synapse.config],
-    cwd: paths.synapse.directory,
-    log,
-  });
+function bridgesOf(options: MatrixServicesOptions, log: (line: string) => void): Map<string, Program> {
   const bridges = new Map<string, Program>();
   for (const messenger of messengers) {
     const command = options.programs.bridges[messenger.id];
@@ -95,6 +82,24 @@ export function matrixServices(options: MatrixServicesOptions): Services {
       }),
     );
   }
+  return bridges;
+}
+
+export function matrixServices(options: MatrixServicesOptions): Services {
+  const log = options.log ?? ((line: string) => {
+    console.log(line);
+  });
+  const createDatabase =
+    options.ensureDatabase ?? ((database, password) => ensureDatabase(options.databaseUrl, database, password));
+  const paths = pathsOf(options);
+  const synapse = new Program({
+    name: "synapse",
+    command: options.programs.synapse,
+    args: ["-m", "synapse.app.homeserver", "--config-path", paths.synapse.config],
+    cwd: paths.synapse.directory,
+    log,
+  });
+  const bridges = bridgesOf(options, log);
   let prepared = false;
   let problem: string | null | undefined;
 
@@ -112,6 +117,35 @@ export function matrixServices(options: MatrixServicesOptions): Services {
     if (problem) await report(null);
   }
 
+  async function prepareIfNeeded(): Promise<void> {
+    if (prepared) return;
+    try {
+      const secrets = await secretsOf(options);
+      await createDatabase(options.database, secrets.databasePassword);
+      await writeConfiguration(options, secrets);
+    } catch (error) {
+      const message = `Matrix could not be set up: ${error instanceof Error ? error.message : String(error)}`;
+      await report(message);
+      throw new Error(message, { cause: error });
+    }
+    prepared = true;
+  }
+
+  async function startBridges(wanted: Messenger[]): Promise<void> {
+    synapse.start();
+    // The bridges start once Synapse answers, which takes a while the first time.
+    if (!(await answers(`http://127.0.0.1:${options.ports.synapse}/health`))) {
+      if (synapse.keepsFailing()) await report("Synapse keeps stopping; the worker's log says why.");
+      return;
+    }
+    for (const [id, bridge] of bridges) {
+      if (wanted.some((messenger) => messenger.id === id)) bridge.start();
+      else await bridge.stop();
+    }
+    const failing = [...bridges.entries()].find(([, bridge]) => bridge.keepsFailing());
+    await report(failing ? `The ${failing[0]} bridge keeps stopping; the worker's log says why.` : null);
+  }
+
   return {
     async reconcile({ enabled, entries }) {
       const wanted: Messenger[] = [];
@@ -122,30 +156,8 @@ export function matrixServices(options: MatrixServicesOptions): Services {
         await stopAll();
         return;
       }
-      if (!prepared) {
-        try {
-          const secrets = await secretsOf(options);
-          await createDatabase(options.database, secrets.databasePassword);
-          await writeConfiguration(options, secrets);
-        } catch (error) {
-          const message = `Matrix could not be set up: ${error instanceof Error ? error.message : String(error)}`;
-          await report(message);
-          throw new Error(message, { cause: error });
-        }
-        prepared = true;
-      }
-      synapse.start();
-      // The bridges start once Synapse answers, which takes a while the first time.
-      if (!(await answers(`http://127.0.0.1:${options.ports.synapse}/health`))) {
-        if (synapse.keepsFailing()) await report("Synapse keeps stopping; the worker's log says why.");
-        return;
-      }
-      for (const [id, bridge] of bridges) {
-        if (wanted.some((messenger) => messenger.id === id)) bridge.start();
-        else await bridge.stop();
-      }
-      const failing = [...bridges.entries()].find(([, bridge]) => bridge.keepsFailing());
-      await report(failing ? `The ${failing[0]} bridge keeps stopping; the worker's log says why.` : null);
+      await prepareIfNeeded();
+      await startBridges(wanted);
     },
 
     stop: stopAll,

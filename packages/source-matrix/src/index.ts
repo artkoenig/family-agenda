@@ -20,7 +20,9 @@ import {
   type BridgeClient,
   type HomeserverClient,
   type Invites,
+  type JoinedRoom,
   type MatrixEvent,
+  type SyncResponse,
 } from "./homeserver";
 import { defaultInstanceFile, instanceReader, type MatrixInstance } from "./instance";
 import { messengerOf, messengers, type Messenger } from "./messengers";
@@ -83,6 +85,65 @@ const loggedOutStates = new Set(["LOGGED_OUT", "BAD_CREDENTIALS"]);
 
 /** A QR code login going on for a Matrix user, kept while the Admin area polls it. */
 type LoginSession = { qrCode: string | null; outcome: "waiting" | "done" | { failed: string } };
+
+
+/** The fields of the sync cursor carried over, each spread so the run mutates its own copy. */
+function previousFields(previous: (Omit<State, "invites"> & { invites: Record<string, string> | null }) | null) {
+  return {
+    rooms: { ...previous?.rooms },
+    groups: { ...previous?.groups },
+    invites: { ...previous?.invites },
+    names: { ...previous?.names },
+    edits: { ...previous?.edits },
+  };
+}
+
+/** Removes rooms and groups the user left, returning the set of left room ids. */
+function pruneLeft(state: State, sync: SyncResponse): Set<string> {
+  const left = new Set(Object.keys(sync.rooms?.leave ?? {}));
+  state.rooms = Object.fromEntries(Object.entries(state.rooms).filter(([roomId]) => !left.has(roomId)));
+  state.groups = Object.fromEntries(Object.entries(state.groups).filter(([roomId]) => !left.has(roomId)));
+  return left;
+}
+
+/** A sync cursor from before invitations were kept does not know those /sync named back then. */
+async function fetchInvitations(
+  previous: (Omit<State, "invites"> & { invites: Record<string, string> | null }) | null,
+  homeserver: HomeserverClient,
+  token: string,
+): Promise<Invites> {
+  return previous && previous.invites === null ? await homeserver.invites(token) : {};
+}
+
+/** Merges new invitations into state and accepts those not in a left room. */
+async function syncInvitations(
+  state: State,
+  homeserver: HomeserverClient,
+  token: string,
+  bridge: { userId: string; messenger: Messenger; serverName: string },
+  sync: SyncResponse,
+  left: Set<string>,
+  previous: (Omit<State, "invites"> & { invites: Record<string, string> | null }) | null,
+): Promise<void> {
+  const fetched = await fetchInvitations(previous, homeserver, token);
+  Object.assign(state.invites, invitationsOf(fetched, bridge), invitationsOf(sync.rooms?.invite ?? {}, bridge));
+  const pending = Object.entries(state.invites).filter(([roomId]) => !left.has(roomId));
+  state.invites = {};
+  // A chat joined now can be allow-listed at once, though its messages come with the next run.
+  await acceptInvitations(state, homeserver, token, pending);
+}
+
+/** Learns names and group status from the state events of each room joined since the last run. */
+function syncJoined(state: State, sync: SyncResponse): void {
+  for (const [roomId, room] of Object.entries(sync.rooms?.join ?? {})) {
+    learnRoom(state, roomId, room);
+  }
+}
+
+function learnRoom(state: State, roomId: string, room: JoinedRoom): void {
+  for (const event of room.state?.events ?? []) learn(state, roomId, event);
+  state.rooms[roomId] ??= roomId;
+}
 
 /**
  * Reads Messengers such as WhatsApp through bridges on the Instance's own homeserver (ADR-0011).
@@ -152,14 +213,16 @@ export function createMatrixPlugin(options: MatrixPluginOptions = {}): SourcePlu
       if (!(error instanceof HomeserverError)) throw await unavailable(messenger);
       throw SourceError.temporary(`The ${messenger.attributeValue} bridge could not be reached: ${messageOf(error)}`);
     }
+    loginStateProblem(logins, messenger.attributeValue);
+  }
+
+  function loginStateProblem(logins: { stateEvent: string; reason: string | null }[], name: string): void {
     if (logins.some((login) => workingStates.has(login.stateEvent))) return;
-    const name = messenger.attributeValue;
     if (logins.length === 0) throw SourceError.definite(`The ${name} account is not linked. Press Fix to scan the QR code.`);
-    if (logins.some((login) => loggedOutStates.has(login.stateEvent))) {
-      const reason = logins.map((login) => login.reason).find((found) => found !== null);
-      throw SourceError.definite(`The ${name} account was logged out${reason ? ` (${reason})` : ""}. Press Fix to scan the QR code again.`);
-    }
-    throw SourceError.temporary(`The ${name} bridge reports a problem with the account.`);
+    const loggedOut = logins.find((login) => loggedOutStates.has(login.stateEvent));
+    if (!loggedOut) throw SourceError.temporary(`The ${name} bridge reports a problem with the account.`);
+    const reason = logins.map((login) => login.reason).find((found) => found !== null);
+    throw SourceError.definite(`The ${name} account was logged out${reason ? ` (${reason})` : ""}. Press Fix to scan the QR code again.`);
   }
 
   async function poll(context: RunContext) {
@@ -171,88 +234,22 @@ export function createMatrixPlugin(options: MatrixPluginOptions = {}): SourcePlu
 
     try {
       const sync = await homeserver.sync(token, previous?.since ?? null);
-      const state: State = {
-        since: sync.next_batch,
-        rooms: { ...previous?.rooms },
-        groups: { ...previous?.groups },
-        invites: { ...previous?.invites },
-        names: { ...previous?.names },
-        read: [],
-        edits: { ...previous?.edits },
-      };
-      const left = new Set(Object.keys(sync.rooms?.leave ?? {}));
-      state.rooms = Object.fromEntries(Object.entries(state.rooms).filter(([roomId]) => !left.has(roomId)));
-      state.groups = Object.fromEntries(Object.entries(state.groups).filter(([roomId]) => !left.has(roomId)));
+      const state: State = { since: sync.next_batch, ...previousFields(previous), read: [] };
+      const left = pruneLeft(state, sync);
       const bridge = { userId, messenger, serverName: instance.homeserver.serverName };
-      // A sync cursor from before invitations were kept does not know those `/sync` named back then.
-      const invitations = previous && previous.invites === null ? await homeserver.invites(token) : {};
-      Object.assign(state.invites, invitationsOf(invitations, bridge), invitationsOf(sync.rooms?.invite ?? {}, bridge));
-      const pending = Object.entries(state.invites).filter(([roomId]) => !left.has(roomId));
-      state.invites = {};
-      // A chat joined now can be allow-listed at once, though its messages come with the next run.
-      for (const [roomId, name] of pending) {
-        try {
-          await homeserver.join(token, roomId);
-          state.rooms[roomId] = name;
-        } catch {
-          // An invitation that cannot be accepted now, such as past the homeserver's rate limit, is accepted on a later run.
-          state.invites[roomId] = name;
-        }
-      }
-
-      for (const [roomId, room] of Object.entries(sync.rooms?.join ?? {})) {
-        for (const event of room.state?.events ?? []) learn(state, roomId, event);
-        state.rooms[roomId] ??= roomId;
-      }
+      await syncInvitations(state, homeserver, token, bridge, sync, left, previous);
+      syncJoined(state, sync);
       await classify(state, homeserver, token);
       // Only group chats are read: a direct chat is never one to read, even when allow-listed before.
       const allowListed = new Set(chatsOf(context.config.plain.chats).filter((roomId) => state.groups[roomId] === true));
 
-      const withdrawn = new Set<string>();
-      const events = new Map<string, { roomId: string; event: MatrixEvent }>();
-      const take = (roomId: string, list: MatrixEvent[]) => {
-        for (const event of list) {
-          learn(state, roomId, event);
-          if (event.type === "m.room.redaction") {
-            const redacts = event.redacts ?? event.content.redacts;
-            if (typeof redacts === "string") withdrawn.add(redacts);
-          } else if (allowListed.has(roomId) && event.event_id) {
-            events.set(event.event_id, { roomId, event });
-          }
-        }
-      };
-
-      for (const [roomId, room] of Object.entries(sync.rooms?.join ?? {})) {
-        take(roomId, room.timeline?.events ?? []);
-        const isNew = previous !== null && !previous.read.includes(roomId);
-        // A timeline cut short leaves out messages since the last run, which are read back.
-        if (allowListed.has(roomId) && !isNew && room.timeline?.limited && room.timeline.prev_batch) {
-          take(roomId, await readBack(homeserver, token, roomId, room.timeline.prev_batch, previous?.since ?? null, backfillStart));
-        }
-      }
-      // A chat allow-listed since the last run is read back for some days.
-      for (const roomId of allowListed) {
-        if (!previous || previous.read.includes(roomId) || !(roomId in state.rooms)) continue;
-        take(roomId, await readBack(homeserver, token, roomId, sync.next_batch, null, backfillStart));
-      }
+      const { withdrawn, events } = await collectEvents(state, homeserver, token, sync, previous, allowListed, backfillStart);
 
       // Chats allow-listed but not joined yet are read back once they are.
       state.read = [...allowListed].filter((roomId) => roomId in state.rooms);
-      // An edit is a message of its own, which goes when the message it edits is redacted.
-      for (const { event } of events.values()) {
-        const edited = editedBy(event);
-        if (edited && event.event_id) state.edits[edited] = [...new Set([...(state.edits[edited] ?? []), event.event_id])];
-      }
-      for (const redacted of [...withdrawn]) for (const edit of state.edits[redacted] ?? []) withdrawn.add(edit);
-      state.edits = Object.fromEntries(Object.entries(state.edits).filter(([edited]) => !withdrawn.has(edited)));
+      pruneEdits(state, events, withdrawn);
 
-      const origins: Origin[] = [];
-      for (const { roomId, event } of events.values()) {
-        if (withdrawn.has(event.event_id ?? "")) continue;
-        const origin = await originOf(event, roomId, { state, userId, token, messenger, homeserver, serverName: instance.homeserver.serverName });
-        if (origin) origins.push(origin);
-      }
-      origins.sort((a, b) => a.occurredAt.getTime() - b.occurredAt.getTime());
+      const origins = await originsOf(events, withdrawn, { state, userId, token, messenger, homeserver, serverName: instance.homeserver.serverName });
       return { origins, syncCursor: JSON.stringify(state), withdrawn: [...withdrawn] };
     } catch (error) {
       throw homeserverError(error);
@@ -269,27 +266,39 @@ export function createMatrixPlugin(options: MatrixPluginOptions = {}): SourcePlu
     const { messenger, bridge } = connection;
     const { userId } = accountOf(context);
     const session = sessions.get(userId);
-    if (session && session.outcome !== "waiting") {
-      sessions.delete(userId);
-      if (session.outcome === "done") return { status: "done", message: linked(messenger) };
-      return { status: "failed", message: session.outcome.failed };
-    }
-    if (session) return waiting(messenger, session.qrCode);
+    if (session) return sessionProgress(userId, session, messenger);
+    return startLoginOrExplain(bridge, userId, messenger);
+  }
+
+  /** The first step of a login; why it could not start when the bridge does not answer or refuses. */
+  async function startLoginOrExplain(bridge: BridgeClient, userId: string, messenger: Messenger): Promise<SetupProgress> {
     try {
-      if ((await bridge.logins(userId)).some((login) => workingStates.has(login.stateEvent))) {
-        return { status: "done", message: linked(messenger) };
-      }
-      const step = await bridge.startLogin(userId, messenger.qrLoginFlow);
-      if (step.type === "complete") return { status: "done", message: linked(messenger) };
-      if (step.type !== "display_and_wait") return { status: "failed", message: step.instructions };
-      const started: LoginSession = { qrCode: step.qrCode, outcome: "waiting" };
-      sessions.set(userId, started);
-      void awaitScan(bridge, userId, step, started);
-      return waiting(messenger, started.qrCode);
+      return await startLogin(bridge, userId, messenger);
     } catch (error) {
       if (!(error instanceof HomeserverError)) return notYet(await unavailable(messenger), messenger);
       return { status: "failed", message: `The ${messenger.attributeValue} bridge could not start the login: ${messageOf(error)}` };
     }
+  }
+
+  /** How the login in progress stands; one that ended is reported once and forgotten. */
+  function sessionProgress(userId: string, session: LoginSession, messenger: Messenger): SetupProgress {
+    if (session.outcome === "waiting") return waiting(messenger, session.qrCode);
+    sessions.delete(userId);
+    if (session.outcome === "done") return { status: "done", message: linked(messenger) };
+    return { status: "failed", message: session.outcome.failed };
+  }
+
+  async function startLogin(bridge: BridgeClient, userId: string, messenger: Messenger): Promise<SetupProgress> {
+    if ((await bridge.logins(userId)).some((login) => workingStates.has(login.stateEvent))) {
+      return { status: "done", message: linked(messenger) };
+    }
+    const step = await bridge.startLogin(userId, messenger.qrLoginFlow);
+    if (step.type === "complete") return { status: "done", message: linked(messenger) };
+    if (step.type !== "display_and_wait") return { status: "failed", message: step.instructions };
+    const started: LoginSession = { qrCode: step.qrCode, outcome: "waiting" };
+    sessions.set(userId, started);
+    void awaitScan(bridge, userId, step, started);
+    return waiting(messenger, started.qrCode);
   }
 
   /** While the Messenger starts, the step waits; otherwise it failed. */
@@ -365,7 +374,9 @@ export function createMatrixPlugin(options: MatrixPluginOptions = {}): SourcePlu
         services ??= matrixServices(servicesFromEnvironment(programs, typeof instanceSource === "string" ? instanceSource : defaultInstanceFile));
         return services.reconcile(enabled);
       },
-      stop: () => services?.stop() ?? Promise.resolve(),
+      async stop() {
+        await services?.stop();
+      },
     },
     async sourceAdded(context) {
       // An Admin may add a Source right after enabling a Messenger, while the worker starts Synapse.
@@ -376,13 +387,8 @@ export function createMatrixPlugin(options: MatrixPluginOptions = {}): SourcePlu
           const account = await homeserver.register(`family-agenda-${randomBytes(6).toString("hex")}`, instance.homeserver.registrationSharedSecret);
           return { plain: { userId: account.userId }, secrets: { accessToken: account.accessToken } };
         } catch (error) {
-          const unreachable = !(error instanceof SourceError || error instanceof HomeserverError);
-          if ((unreachable || (error instanceof SourceError && error.kind === "temporary")) && Date.now() < deadline) {
-            await sleep(1000);
-            continue;
-          }
-          if (error instanceof SourceError) throw error;
-          throw SourceError.temporary(`The homeserver could not create a Matrix user: ${messageOf(error)}`);
+          if (!mayPass(error) || Date.now() >= deadline) throw registrationFailure(error);
+          await sleep(1000);
         }
       }
     },
@@ -408,7 +414,7 @@ function programsFromEnvironment(): MatrixPrograms {
 }
 
 /** Where the worker keeps Synapse and the bridges, as the environment of the image says. */
-function servicesFromEnvironment(programs: MatrixPrograms, instanceFile: string) {
+export function servicesFromEnvironment(programs: MatrixPrograms, instanceFile: string) {
   const databaseUrl = process.env.DATABASE_URL;
   if (!databaseUrl) throw new Error("DATABASE_URL is not set, so Synapse has no database.");
   const database = new URL(databaseUrl);
@@ -475,15 +481,24 @@ function linked(messenger: Messenger): PluginText {
 function invitationsOf(invites: Invites, bridge: { userId: string; messenger: Messenger; serverName: string }): Record<string, string> {
   const invited: Record<string, string> = {};
   for (const [roomId, room] of Object.entries(invites)) {
-    const events = room.invite_state?.events ?? [];
-    const invitation = events.find(
-      (event) => event.type === "m.room.member" && event.state_key === bridge.userId && event.content.membership === "invite",
-    );
-    if (!invitation || !isOfBridge(invitation.sender, bridge.messenger, bridge.serverName)) continue;
-    const name = events.find((event) => event.type === "m.room.name")?.content.name;
-    invited[roomId] = typeof name === "string" && name.trim() !== "" ? name.trim() : roomId;
+    const name = invitationNameOf(roomId, room, bridge);
+    if (name !== null) invited[roomId] = name;
   }
   return invited;
+}
+
+function invitationNameOf(roomId: string, room: Invites[string], bridge: { userId: string; messenger: Messenger; serverName: string }): string | null {
+  const events = room.invite_state?.events ?? [];
+  const invitation = findBridgeInvitation(events, bridge);
+  if (!invitation) return null;
+  const name = events.find((event) => event.type === "m.room.name")?.content.name;
+  return typeof name === "string" && name.trim() !== "" ? name.trim() : roomId;
+}
+
+function findBridgeInvitation(events: MatrixEvent[], bridge: { userId: string; messenger: Messenger; serverName: string }): MatrixEvent | undefined {
+  return events.find(
+    (event) => event.type === "m.room.member" && event.state_key === bridge.userId && event.content.membership === "invite" && isOfBridge(event.sender, bridge.messenger, bridge.serverName),
+  );
 }
 
 /** Whether a Matrix user is the Messenger's bridge bot or one of its ghosts on this homeserver. */
@@ -541,20 +556,192 @@ async function readBack(
   let next: string | undefined = from;
   while (next && events.length < maximumBackfillEvents) {
     const page = await homeserver.messages(token, roomId, next, to, 100);
-    if (page.chunk.length === 0) break;
-    for (const event of page.state ?? []) events.push(event);
-    let reachedSince = false;
-    for (const event of page.chunk) {
-      if (since !== null && (event.origin_server_ts ?? 0) < since) {
-        reachedSince = true;
-        break;
-      }
-      events.push(event);
-    }
-    if (reachedSince || page.end === next) break;
+    if (shouldStop(page, since, events, next)) break;
     next = page.end;
   }
   return events.reverse();
+}
+
+function shouldStop(page: { chunk: MatrixEvent[]; state?: MatrixEvent[]; end?: string }, since: number | null, events: MatrixEvent[], next: string): boolean {
+  if (page.chunk.length === 0) return true;
+  for (const event of page.state ?? []) events.push(event);
+  return readChunk(page.chunk, since, events) || page.end === next;
+}
+
+function readChunk(chunk: MatrixEvent[], since: number | null, events: MatrixEvent[]): boolean {
+  for (const event of chunk) {
+    if (since !== null && (event.origin_server_ts ?? 0) < since) return true;
+    events.push(event);
+  }
+  return false;
+}
+
+/** Accepts the pending invitations, keeping those that fail for a later run. */
+async function acceptInvitations(state: State, homeserver: HomeserverClient, token: string, pending: [string, string][]): Promise<void> {
+  for (const [roomId, name] of pending) {
+    try {
+      await homeserver.join(token, roomId);
+      state.rooms[roomId] = name;
+    } catch {
+      // An invitation that cannot be accepted now, such as past the homeserver's rate limit, is accepted on a later run.
+      state.invites[roomId] = name;
+    }
+  }
+}
+
+/** The events of one room a run reads: learns them, withdraws the redacted, and keeps the allow-listed. */
+function takeEvents(
+  state: State,
+  roomId: string,
+  list: MatrixEvent[],
+  allowListed: Set<string>,
+  withdrawn: Set<string>,
+  events: Map<string, { roomId: string; event: MatrixEvent }>,
+): void {
+  for (const event of list) {
+    learn(state, roomId, event);
+    if (event.type === "m.room.redaction") {
+      const redacts = event.redacts ?? event.content.redacts;
+      if (typeof redacts === "string") withdrawn.add(redacts);
+    } else if (allowListed.has(roomId) && event.event_id) {
+      events.set(event.event_id, { roomId, event });
+    }
+  }
+}
+
+/** The events of the allow-listed rooms a run reads, and the redactions that withdraw them. */
+async function collectEvents(
+  state: State,
+  homeserver: HomeserverClient,
+  token: string,
+  sync: SyncResponse,
+  previous: (Omit<State, "invites"> & { invites: Record<string, string> | null }) | null,
+  allowListed: Set<string>,
+  backfillStart: number,
+): Promise<{ withdrawn: Set<string>; events: Map<string, { roomId: string; event: MatrixEvent }> }> {
+  const withdrawn = new Set<string>();
+  const events = new Map<string, { roomId: string; event: MatrixEvent }>();
+  const take = (roomId: string, list: MatrixEvent[]) => {
+    takeEvents(state, roomId, list, allowListed, withdrawn, events);
+  };
+
+  await collectJoinedEvents(state, homeserver, token, sync, previous, allowListed, backfillStart, take);
+  await collectNewlyAllowListed(state, homeserver, token, sync, previous, allowListed, backfillStart, take);
+  return { withdrawn, events };
+}
+
+function backfillToken(
+  roomId: string,
+  isNew: boolean,
+  room: JoinedRoom,
+  allowListed: Set<string>,
+): string | null {
+  if (!allowListed.has(roomId) || isNew || !room.timeline?.limited || !room.timeline.prev_batch) return null;
+  return room.timeline.prev_batch;
+}
+
+async function collectJoinedEvents(
+  state: State,
+  homeserver: HomeserverClient,
+  token: string,
+  sync: SyncResponse,
+  previous: (Omit<State, "invites"> & { invites: Record<string, string> | null }) | null,
+  allowListed: Set<string>,
+  backfillStart: number,
+  take: (roomId: string, list: MatrixEvent[]) => void,
+): Promise<void> {
+  for (const [roomId, room] of Object.entries(sync.rooms?.join ?? {})) {
+    await collectRoomEvents(homeserver, token, roomId, room, previous, allowListed, backfillStart, take);
+  }
+}
+
+async function collectRoomEvents(
+  homeserver: HomeserverClient,
+  token: string,
+  roomId: string,
+  room: JoinedRoom,
+  previous: (Omit<State, "invites"> & { invites: Record<string, string> | null }) | null,
+  allowListed: Set<string>,
+  backfillStart: number,
+  take: (roomId: string, list: MatrixEvent[]) => void,
+): Promise<void> {
+  take(roomId, room.timeline?.events ?? []);
+  const isNew = previous !== null && !previous.read.includes(roomId);
+  const prevBatch = backfillToken(roomId, isNew, room, allowListed);
+  if (prevBatch) {
+    take(roomId, await readBack(homeserver, token, roomId, prevBatch, previous?.since ?? null, backfillStart));
+  }
+}
+
+async function collectNewlyAllowListed(
+  state: State,
+  homeserver: HomeserverClient,
+  token: string,
+  sync: SyncResponse,
+  previous: (Omit<State, "invites"> & { invites: Record<string, string> | null }) | null,
+  allowListed: Set<string>,
+  backfillStart: number,
+  take: (roomId: string, list: MatrixEvent[]) => void,
+): Promise<void> {
+  // A chat allow-listed since the last run is read back for some days.
+  for (const roomId of allowListed) {
+    if (!previous || previous.read.includes(roomId) || !(roomId in state.rooms)) continue;
+    take(roomId, await readBack(homeserver, token, roomId, sync.next_batch, null, backfillStart));
+  }
+}
+
+/** The edits that stay, dropping those whose message is redacted. */
+function pruneEdits(
+  state: State,
+  events: Map<string, { roomId: string; event: MatrixEvent }>,
+  withdrawn: Set<string>,
+): void {
+  // An edit is a message of its own, which goes when the message it edits is redacted.
+  for (const { event } of events.values()) {
+    const edited = editedBy(event);
+    if (edited && event.event_id) state.edits[edited] = [...new Set([...(state.edits[edited] ?? []), event.event_id])];
+  }
+  for (const redacted of [...withdrawn]) for (const edit of state.edits[redacted] ?? []) withdrawn.add(edit);
+  state.edits = Object.fromEntries(Object.entries(state.edits).filter(([edited]) => !withdrawn.has(edited)));
+}
+
+/** The Origins of the events read, in the order they occurred. */
+async function originsOf(
+  events: Map<string, { roomId: string; event: MatrixEvent }>,
+  withdrawn: Set<string>,
+  context: { state: State; userId: string; token: string; messenger: Messenger; homeserver: HomeserverClient; serverName: string },
+): Promise<Origin[]> {
+  const origins: Origin[] = [];
+  for (const { roomId, event } of events.values()) {
+    if (withdrawn.has(event.event_id ?? "")) continue;
+    const origin = await originOf(event, roomId, context);
+    if (origin) origins.push(origin);
+  }
+  origins.sort((a, b) => a.occurredAt.getTime() - b.occurredAt.getTime());
+  return origins;
+}
+
+/** The caption and the attachments of a file message; the caption is its body when that differs from the name. */
+async function attachmentsOf(
+  content: Record<string, unknown>,
+  body: string,
+  context: { token: string; homeserver: HomeserverClient },
+): Promise<{ text: string; attachments: Attachment[] }> {
+  const filename = stringOr(content.filename, body || "attachment");
+  // A file's body is its caption when it differs from its name.
+  const text = body !== filename ? body : "";
+  const { size, contentType } = fileInfoOf(content);
+  if (typeof content.url !== "string" || size > maximumAttachmentBytes) return { text, attachments: [] };
+  const bytes = await context.homeserver.download(context.token, content.url, maximumAttachmentBytes);
+  return { text, attachments: bytes ? [{ filename, contentType, bytes }] : [] };
+}
+
+const stringOr = (value: unknown, fallback: string): string => (typeof value === "string" && value !== "" ? value : fallback);
+
+/** The size and media type a file message states; 0 and a generic type when it states none. */
+function fileInfoOf(content: Record<string, unknown>): { size: number; contentType: string } {
+  const info = isObject(content.info) ? content.info : {};
+  return { size: typeof info.size === "number" ? info.size : 0, contentType: stringOr(info.mimetype, "application/octet-stream") };
 }
 
 /** A message of an allow-listed room as an Origin; null for anything that is not one to read. */
@@ -563,44 +750,78 @@ async function originOf(
   roomId: string,
   context: { state: State; userId: string; token: string; messenger: Messenger; homeserver: HomeserverClient; serverName: string },
 ): Promise<Origin | null> {
-  const { state, messenger } = context;
-  if (event.type !== "m.room.message" || !event.event_id || event.unsigned?.redacted_because !== undefined) return null;
-  if (event.sender === context.userId || event.sender === `@${messenger.botLocalpart}:${context.serverName}`) return null;
+  const eventId = event.event_id;
+  if (!eventId || !isReadable(event, context)) return null;
   const relation = event.content["m.relates_to"] as { rel_type?: string; event_id?: string; "m.in_reply_to"?: { event_id?: string } } | undefined;
+  const { content, body } = contentOf(event, relation);
+  const { text, attachments } = await originContent(content, body, context);
+  if (text === "" && attachments.length === 0) return null;
+  const thread = originThread(relation, eventId);
+  return {
+    externalId: eventId,
+    occurredAt: new Date(event.origin_server_ts ?? Date.now()),
+    attributes: attributesOf(event, roomId, context),
+    content: { kind: "raw-message", text, attachments, ...(thread ? { thread } : {}) },
+  };
+}
+
+function attributesOf(
+  event: MatrixEvent,
+  roomId: string,
+  context: { state: State; messenger: Messenger },
+): Record<string, string> {
+  const { state, messenger } = context;
+  return {
+    messenger: messenger.attributeValue,
+    chat: state.rooms[roomId] ?? roomId,
+    sender: state.names[event.sender] ?? event.sender,
+  };
+}
+
+function isReadable(
+  event: MatrixEvent,
+  context: { userId: string; messenger: Messenger; serverName: string },
+): boolean {
+  if (event.type !== "m.room.message" || !event.event_id || event.unsigned?.redacted_because !== undefined) return false;
+  if (event.sender === context.userId || event.sender === `@${context.messenger.botLocalpart}:${context.serverName}`) return false;
+  return true;
+}
+
+function contentOf(
+  event: MatrixEvent,
+  relation: { rel_type?: string; event_id?: string; "m.in_reply_to"?: { event_id?: string } } | undefined,
+): { content: Record<string, unknown>; body: string } {
   // An edit stands for the message it changes, with its new text.
   const content = relation?.rel_type === "m.replace" && isObject(event.content["m.new_content"]) ? event.content["m.new_content"] : event.content;
-  const msgtype = content.msgtype;
   const body = typeof content.body === "string" ? content.body.trim() : "";
+  return { content, body };
+}
+
+/** The text and attachments of a Matrix message, by its msgtype. */
+async function originContent(
+  content: Record<string, unknown>,
+  body: string,
+  context: { token: string; homeserver: HomeserverClient },
+): Promise<{ text: string; attachments: Attachment[] }> {
+  const msgtype = content.msgtype;
   let text = "";
   const attachments: Attachment[] = [];
   if (typeof msgtype === "string" && textTypes.has(msgtype)) text = body;
   if (typeof msgtype === "string" && fileTypes.has(msgtype)) {
-    const filename = typeof content.filename === "string" && content.filename !== "" ? content.filename : body || "attachment";
-    // A file's body is its caption when it differs from its name.
-    if (body !== "" && body !== filename) text = body;
-    const info = isObject(content.info) ? content.info : {};
-    const size = typeof info.size === "number" ? info.size : 0;
-    if (typeof content.url === "string" && size <= maximumAttachmentBytes) {
-      const bytes = await context.homeserver.download(context.token, content.url, maximumAttachmentBytes);
-      const contentType = typeof info.mimetype === "string" ? info.mimetype : "application/octet-stream";
-      if (bytes) attachments.push({ filename, contentType, bytes });
-    }
+    const file = await attachmentsOf(content, body, { token: context.token, homeserver: context.homeserver });
+    text = file.text;
+    attachments.push(...file.attachments);
   }
-  if (text === "" && attachments.length === 0) return null;
-  const thread =
-    relation?.rel_type === "m.replace" || relation?.rel_type === "m.thread"
-      ? relation.event_id
-      : (relation?.["m.in_reply_to"]?.event_id ?? event.event_id);
-  return {
-    externalId: event.event_id,
-    occurredAt: new Date(event.origin_server_ts ?? Date.now()),
-    attributes: {
-      messenger: messenger.attributeValue,
-      chat: state.rooms[roomId] ?? roomId,
-      sender: state.names[event.sender] ?? event.sender,
-    },
-    content: { kind: "raw-message", text, attachments, ...(thread ? { thread } : {}) },
-  };
+  return { text, attachments };
+}
+
+/** The thread a message belongs to: the event it edits or replies to, or itself. */
+function originThread(
+  relation: { rel_type?: string; event_id?: string; "m.in_reply_to"?: { event_id?: string } } | undefined,
+  eventId: string,
+): string | undefined {
+  if (relation?.rel_type === "m.replace" || relation?.rel_type === "m.thread") return relation.event_id;
+  return relation?.["m.in_reply_to"]?.event_id ?? eventId;
 }
 
 /** The message an edit changes; none for any other event. */
@@ -623,6 +844,11 @@ function chatsOf(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((chat): chat is string => typeof chat === "string") : [];
 }
 
+/** The record a stored value is, or an empty one. */
+function recordOf<T>(value: Record<string, T> | undefined): Record<string, T> {
+  return isObject(value) ? value : {};
+}
+
 /** A sync cursor as read; `invites` is null in one written before invitations were kept. */
 function parseState(state: string | null): (Omit<State, "invites"> & { invites: Record<string, string> | null }) | null {
   if (!state) return null;
@@ -631,16 +857,27 @@ function parseState(state: string | null): (Omit<State, "invites"> & { invites: 
     if (typeof parsed.since !== "string") return null;
     return {
       since: parsed.since,
-      rooms: isObject(parsed.rooms) ? parsed.rooms : {},
-      groups: isObject(parsed.groups) ? parsed.groups : {},
+      rooms: recordOf(parsed.rooms),
+      groups: recordOf(parsed.groups),
       invites: isObject(parsed.invites) ? parsed.invites : null,
-      names: isObject(parsed.names) ? parsed.names : {},
-      read: Array.isArray(parsed.read) ? parsed.read.filter((room): room is string => typeof room === "string") : [],
-      edits: isObject(parsed.edits) ? parsed.edits : {},
+      names: recordOf(parsed.names),
+      read: chatsOf(parsed.read),
+      edits: recordOf(parsed.edits),
     };
   } catch {
     return null;
   }
+}
+
+/** Whether registering may work later, as when the homeserver is not up yet. */
+function mayPass(error: unknown): boolean {
+  if (error instanceof SourceError) return error.kind === "temporary";
+  return !(error instanceof HomeserverError);
+}
+
+function registrationFailure(error: unknown): SourceError {
+  if (error instanceof SourceError) return error;
+  return SourceError.temporary(`The homeserver could not create a Matrix user: ${messageOf(error)}`);
 }
 
 /** A user that no longer exists, or a token it lost, needs an Admin; anything else may pass. */

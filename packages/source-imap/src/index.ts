@@ -41,26 +41,30 @@ const defaultPort = 993;
 export function createImapPlugin(options: ImapPluginOptions = {}): SourcePlugin {
   const timeoutMs = options.timeoutMs ?? 60_000;
 
-  /** Runs `use` on a connection logged in with the Source's account. */
-  async function withMailbox<T>(context: RunContext, use: (client: ImapFlow) => Promise<T>): Promise<T> {
-    const { plain, secrets } = context.config;
-    const host = typeof plain.host === "string" ? plain.host : "";
-    const port = plain.port === undefined || plain.port === null || plain.port === "" ? defaultPort : Number(plain.port);
-    if (host === "" || !Number.isInteger(port) || port < 1 || port > 65_535) {
+  /** Creates a logged-in IMAP client from the Source's config, validating the address. */
+  function mailboxClient(plain: Record<string, unknown>, secrets: Record<string, string | undefined>): ImapFlow {
+    const host = stringOf(plain.host);
+    const port = portOf(plain.port);
+    if (host === "" || !isPort(port)) {
       throw SourceError.definite("The mail server's address or port is not valid.");
     }
-    const client = new ImapFlow({
+    return new ImapFlow({
       host,
       port,
       secure: port === defaultPort,
       doSTARTTLS: port === defaultPort ? undefined : !options.allowPlaintext,
-      auth: { user: typeof plain.username === "string" ? plain.username : "", pass: secrets.password ?? "" },
+      auth: { user: stringOf(plain.username), pass: secrets.password ?? "" },
       logger: false,
       disableAutoIdle: true,
       connectionTimeout: timeoutMs,
       greetingTimeout: timeoutMs,
       socketTimeout: timeoutMs,
     });
+  }
+
+  /** Runs `use` on a connection logged in with the Source's account. */
+  async function withMailbox<T>(context: RunContext, use: (client: ImapFlow) => Promise<T>): Promise<T> {
+    const client = mailboxClient(context.config.plain, context.config.secrets);
     // A connection that drops is reported by the command waiting on it.
     client.on("error", () => undefined);
     try {
@@ -166,6 +170,19 @@ export function createImapPlugin(options: ImapPluginOptions = {}): SourcePlugin 
 
 export default createImapPlugin();
 
+function stringOf(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}
+
+/** The port an Admin configured, or the default one when left empty. */
+function portOf(value: unknown): number {
+  return value === undefined || value === null || value === "" ? defaultPort : Number(value);
+}
+
+function isPort(port: number): boolean {
+  return Number.isInteger(port) && port >= 1 && port <= 65_535;
+}
+
 /** The folders an Admin configured, in their order. */
 function foldersOf(plain: Record<string, unknown>): string[] {
   return Array.isArray(plain.folders) ? plain.folders.filter((folder): folder is string => typeof folder === "string" && folder !== "") : [];
@@ -178,13 +195,7 @@ async function readFolder(
   previous: FolderState | null,
   now: Date,
 ): Promise<{ mails: Origin[]; state: FolderState }> {
-  let uidValidity: string;
-  try {
-    uidValidity = (await client.mailboxOpen(folder, { readOnly: true })).uidValidity.toString();
-  } catch (error) {
-    if (isNoResponse(error)) throw SourceError.definite(`The folder "${folder}" does not exist in the mailbox.`);
-    throw temporary(error);
-  }
+  const uidValidity = await openFolder(client, folder);
   const resuming = previous !== null && previous.uidValidity === uidValidity;
   let range: string;
   if (resuming) {
@@ -192,9 +203,7 @@ async function readFolder(
   } else {
     const since = new Date(now.getTime() - firstRunDays * 24 * 60 * 60 * 1000);
     const uids = (await client.search({ since }, { uid: true })) || [];
-    const uidNext = client.mailbox ? client.mailbox.uidNext : NaN;
-    const highest = Number.isInteger(uidNext) ? uidNext - 1 : 0;
-    if (uids.length === 0) return { mails: [], state: { uidValidity, lastUid: highest } };
+    if (uids.length === 0) return { mails: [], state: { uidValidity, lastUid: highestUid(client) } };
     range = uids.join(",");
   }
   const fetched = await client.fetchAll(range, { uid: true, source: true, internalDate: true }, { uid: true });
@@ -206,38 +215,73 @@ async function readFolder(
   return { mails, state: { uidValidity, lastUid } };
 }
 
+/** Opens the folder read-only and returns its UID validity. */
+async function openFolder(client: ImapFlow, folder: string): Promise<string> {
+  try {
+    return (await client.mailboxOpen(folder, { readOnly: true })).uidValidity.toString();
+  } catch (error) {
+    if (isNoResponse(error)) throw SourceError.definite(`The folder "${folder}" does not exist in the mailbox.`);
+    throw temporary(error);
+  }
+}
+
+/** The highest UID in use in the open folder, 0 if that is unknown. */
+function highestUid(client: ImapFlow): number {
+  const uidNext = client.mailbox ? client.mailbox.uidNext : NaN;
+  return Number.isInteger(uidNext) ? uidNext - 1 : 0;
+}
+
 async function originOf(mail: FetchMessageObject, uidValidity: string, now: Date): Promise<Origin> {
   const parsed = await simpleParser(mail.source ?? Buffer.alloc(0));
-  const messageId = parsed.messageId?.trim();
   const sender = senderOf(parsed);
+  const thread = threadOf(parsed);
+  return {
+    externalId: parsed.messageId?.trim() || `uid:${uidValidity}:${mail.uid}`,
+    occurredAt: receivedAt(mail, parsed, now),
+    attributes: sender ? { sender } : {},
+    content: {
+      kind: "raw-message",
+      text: textOf(parsed),
+      attachments: attachmentsOf(parsed),
+      ...(thread ? { thread } : {}),
+    },
+  };
+}
+
+/** When the mailbox received a mail; the Date header is whatever the sender's program wrote. */
+function receivedAt(mail: FetchMessageObject, parsed: ParsedMail, now: Date): Date {
+  return mail.internalDate ? new Date(mail.internalDate) : (parsed.date ?? now);
+}
+
+/** The body of a mail, led by its subject. */
+function textOf(parsed: ParsedMail): string {
   const body = (parsed.text ?? "").replace(/\r\n/g, "\n").trim();
   const subject = parsed.subject?.trim();
-  const thread = threadOf(parsed);
-  const attachments: Attachment[] = parsed.attachments
+  return subject ? `Subject: ${subject}\n\n${body}` : body;
+}
+
+/** The attachments of a mail, without the images its HTML shows inline. */
+function attachmentsOf(parsed: ParsedMail): Attachment[] {
+  return parsed.attachments
     .filter((attachment) => !attachment.related)
     .map((attachment) => ({
       filename: attachment.filename ?? "attachment",
       contentType: attachment.contentType,
       bytes: new Uint8Array(attachment.content),
     }));
-  return {
-    externalId: messageId || `uid:${uidValidity}:${mail.uid}`,
-    // When the mailbox received it; the Date header is whatever the sender's program wrote.
-    occurredAt: (mail.internalDate ? new Date(mail.internalDate) : null) ?? parsed.date ?? now,
-    attributes: sender ? { sender } : {},
-    content: {
-      kind: "raw-message",
-      text: subject ? `Subject: ${subject}\n\n${body}` : body,
-      attachments,
-      ...(thread ? { thread } : {}),
-    },
-  };
 }
 
 /** The first mail of the conversation, by `References` or `In-Reply-To`, or the mail itself. */
 function threadOf(parsed: ParsedMail): string | undefined {
   const references = typeof parsed.references === "string" ? [parsed.references] : (parsed.references ?? []);
-  return references[0]?.trim() || parsed.inReplyTo?.trim() || parsed.messageId?.trim() || undefined;
+  return firstOf(references[0]?.trim(), parsed.inReplyTo?.trim(), parsed.messageId?.trim());
+}
+
+function firstOf(...values: (string | undefined)[]): string | undefined {
+  for (const value of values) {
+    if (value) return value;
+  }
+  return undefined;
 }
 
 function senderOf(parsed: ParsedMail): string | null {

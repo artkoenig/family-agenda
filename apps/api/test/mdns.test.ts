@@ -29,6 +29,34 @@ describe("multicast DNS", () => {
     expect(asksFor(Buffer.from([1, 2, 3]), "family-agenda.local")).toBe(false);
   });
 
+  it("follows compression pointers in a question name", () => {
+    // The second question's name points back at the first one's, at offset 12.
+    const header = Buffer.alloc(12);
+    header.writeUInt16BE(2, 4);
+    const first = query("printer.local").subarray(12);
+    const second = Buffer.concat([Buffer.from([0xc0, 12]), Buffer.from([0, 1, 0, 1])]);
+    expect(asksFor(Buffer.concat([header, first, second]), "printer.local")).toBe(true);
+  });
+
+  it("ignores a query with a malformed name", () => {
+    const hostname = "family-agenda.local";
+    const withName = (name: number[], tail = [0, 1, 0, 1]) => {
+      const header = Buffer.alloc(12);
+      header.writeUInt16BE(1, 4);
+      return Buffer.concat([header, Buffer.from([...name, ...tail])]);
+    };
+    // A label running past the end of the message.
+    expect(asksFor(withName([9, 97]), hostname)).toBe(false);
+    // A label longer than 63 octets.
+    expect(asksFor(withName([64, ...new Array<number>(64).fill(97), 0]), hostname)).toBe(false);
+    // A pointer without its second octet.
+    expect(asksFor(withName([0xc0], []), hostname)).toBe(false);
+    // A pointer that points at itself, which never ends.
+    expect(asksFor(withName([0xc0, 12]), hostname)).toBe(false);
+    // A name without its type and class.
+    expect(asksFor(withName([1, 97, 0], []), hostname)).toBe(false);
+  });
+
   it("answers with an A record per address", () => {
     const answer = answerWith("family-agenda.local", ["192.168.1.10"]);
     expect(answer.readUInt16BE(2)).toBe(0x8400);

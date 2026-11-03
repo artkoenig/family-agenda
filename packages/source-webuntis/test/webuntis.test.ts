@@ -298,6 +298,24 @@ describe("the WebUntis plugin", () => {
     await expect(poll(plugin)).rejects.toMatchObject({ kind: "temporary", message: expect.stringContaining("ETIMEDOUT") as unknown });
   });
 
+  it("reads the account's own Timetable when it is a student's", async () => {
+    const untis = server();
+    const userData = fixture("user-data.json");
+    Object.assign((userData.result as Json).userData as Json, { children: [], elemType: "STUDENT", elemId: 1201, displayName: "Mia" });
+    untis.answers.userData = userData;
+
+    const { origins } = await poll(createWebUntisPlugin({ fetch: untis.fetch }));
+
+    expect(new Set(origins.map((origin) => origin.externalId.split("/")[0]))).toEqual(new Set(["1201"]));
+  });
+
+  it("fails temporarily when WebUntis answers without the account's data", async () => {
+    const untis = server();
+    untis.answers.userData = { jsonrpc: "2.0", id: "family-agenda", result: {} };
+
+    await expect(poll(createWebUntisPlugin({ fetch: untis.fetch }))).rejects.toMatchObject({ kind: "temporary" });
+  });
+
   it("fails definitely when the account lists no children", async () => {
     const untis = server();
     const userData = fixture("user-data.json");

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { parseName, textIn, type FamilyMemberId, type MultilingualText, type SourceId, type SourceTypeId } from "@family-agenda/domain";
+import { parseName, textIn, type BlobRef, type FamilyMemberId, type MultilingualText, type SourceId, type SourceTypeId } from "@family-agenda/domain";
 import type {
   BlobStore,
   CatalogueRepository,
@@ -122,6 +122,12 @@ export function createSourceAccess(deps: SourcesDeps) {
 
   const contextOf = (source: Source) => runContextOf(source, { secrets, now: clock.now(), timeZone });
 
+  async function cleanup(source: Source, sourceType: LoadedSourceType | null, context: SourceRunContext, files: BlobRef[]): Promise<void> {
+    await sourceType?.sourceRemoved(context);
+    for (const ref of Object.values(source.secrets)) await secrets.remove(ref);
+    for (const file of files) await blobs.remove(file);
+  }
+
   /**
    * Why the input does not fit the plugin's configuration; `stored` secrets count as given. A new
    * Source's catalogue entry has to be one of the `usable` ones.
@@ -134,35 +140,71 @@ export function createSourceAccess(deps: SourcesDeps) {
   ): SourceProblem | null {
     if (!isPollInterval(input.pollIntervalSeconds)) return { ok: false, problem: "invalid-interval" };
     const invalid = new Set<string>();
+    for (const key of fieldProblems(sourceType, input, stored)) invalid.add(key);
+    const entry = catalogueEntry(sourceType, input, usable);
+    if (entry) invalid.add(entry);
+    for (const key of unknownKeys(sourceType, input)) invalid.add(key);
+    return invalid.size > 0 ? { ok: false, problem: "invalid-config", fields: [...invalid].sort() } : null;
+  }
+
+  /** The catalogue entry key is invalid when it names an entry the catalogue does not offer. */
+  function catalogueEntry(
+    sourceType: LoadedSourceType,
+    input: SourceInput,
+    usable: string[] | null,
+  ): string | null {
+    const key = sourceType.catalogue?.configKey;
+    if (key === undefined || usable === null) return null;
+    const entry = input.plain[key];
+    return typeof entry === "string" && usable.includes(entry) ? null : key;
+  }
+
+  function unknownKeys(sourceType: LoadedSourceType, input: SourceInput): string[] {
+    const declared = new Set(sourceType.configuration.fields.map((field) => field.key));
+    const keys: string[] = [];
+    for (const key of [...Object.keys(input.plain), ...Object.keys(input.secrets)]) {
+      if (!declared.has(key)) keys.push(key);
+    }
+    return keys;
+  }
+
+  /** The keys a Source input gets wrong, by the Source Type's field declarations. */
+  function* fieldProblems(sourceType: LoadedSourceType, input: SourceInput, stored: string[]): Generator<string> {
     const given = (key: string, secret: boolean) => {
       const value = secret ? input.secrets[key] : input.plain[key];
       return value !== undefined && value !== null && value !== "";
     };
     for (const field of sourceType.configuration.fields) {
-      if (field.setByPlugin) {
-        if (given(field.key, field.secret) || given(field.key, !field.secret)) invalid.add(field.key);
-        continue;
-      }
-      const present = given(field.key, field.secret) || (field.secret && stored.includes(field.key));
-      if (field.required && !present) invalid.add(field.key);
-      if (given(field.key, !field.secret)) invalid.add(field.key);
-      const value = input.plain[field.key];
-      if (field.choice && value !== undefined && !(Array.isArray(value) && value.every((v) => typeof v === "string"))) {
-        invalid.add(field.key);
-      }
-      if (field.parts && value !== undefined && !isPartNames(value)) invalid.add(field.key);
-      if (!field.choice && !field.parts && Array.isArray(value)) invalid.add(field.key);
+      yield* problemsFor(field, given, input.plain[field.key], stored);
     }
-    const entryKey = sourceType.catalogue?.configKey;
-    const entry = entryKey !== undefined ? input.plain[entryKey] : undefined;
-    if (entryKey !== undefined && usable !== null && !(typeof entry === "string" && usable.includes(entry))) {
-      invalid.add(entryKey);
+  }
+
+  function* problemsFor(
+    field: ConfigFieldSpec,
+    given: (key: string, secret: boolean) => boolean,
+    value: unknown,
+    stored: string[],
+  ): Generator<string> {
+    if (field.setByPlugin) {
+      yield* pluginProblems(field, given);
+      return;
     }
-    const declared = new Set(sourceType.configuration.fields.map((field) => field.key));
-    for (const key of [...Object.keys(input.plain), ...Object.keys(input.secrets)]) {
-      if (!declared.has(key)) invalid.add(key);
-    }
-    return invalid.size > 0 ? { ok: false, problem: "invalid-config", fields: [...invalid].sort() } : null;
+    yield* presenceProblems(field, given, stored);
+    yield* typeProblems(field, value);
+  }
+
+  function* pluginProblems(field: ConfigFieldSpec, given: (key: string, secret: boolean) => boolean): Generator<string> {
+    if (given(field.key, field.secret) || given(field.key, !field.secret)) yield field.key;
+  }
+
+  function* presenceProblems(field: ConfigFieldSpec, given: (key: string, secret: boolean) => boolean, stored: string[]): Generator<string> {
+    const present = given(field.key, field.secret) || (field.secret && stored.includes(field.key));
+    if (field.required && !present) yield field.key;
+    if (given(field.key, !field.secret)) yield field.key;
+  }
+
+  function* typeProblems(field: ConfigFieldSpec, value: unknown): Generator<string> {
+    if (!typeFits(field, value)) yield field.key;
   }
 
   /** Stores the Part assignments an input gives, for the Parts the saved configuration names. */
@@ -184,6 +226,27 @@ export function createSourceAccess(deps: SourcesDeps) {
     return Object.fromEntries(Object.entries(input.plain).filter(([, value]) => value !== "" && value != null));
   }
 
+  /** What the plugin set, and the catalogue entry the Source was added with, stay. */
+  function keptPlainOf(source: Source, sourceType: LoadedSourceType): PlainConfig {
+    const kept = sourceType.configuration.fields
+      .filter((field) => !field.secret && (field.setByPlugin || field.key === sourceType.catalogue?.configKey))
+      .map((field) => field.key);
+    return Object.fromEntries(kept.flatMap((key) => (source.plain[key] !== undefined ? [[key, source.plain[key]]] : [])));
+  }
+
+  async function updateSecrets(current: Record<string, SecretRef>, input: Record<string, string>): Promise<{ refs: Record<string, SecretRef>; replaced: SecretRef[] }> {
+    const refs = { ...current };
+    const replaced: SecretRef[] = [];
+    for (const [key, value] of Object.entries(input)) {
+      if (value === "") continue;
+      const old = refs[key];
+      if (old) replaced.push(old);
+      refs[key] = await secrets.put(value);
+    }
+    return { refs, replaced };
+  }
+
+
   /** The values each choice field of a Source offers; none while its Source Type is not enabled. */
   async function choicesOf(source: Source): Promise<Record<string, KnownValue[]>> {
     const sourceType = await enabled(source.sourceTypeId);
@@ -194,6 +257,28 @@ export function createSourceAccess(deps: SourcesDeps) {
     for (const field of fields) choices[field.key] = await sourceType.choices(field.key, context);
     return choices;
   }
+
+  async function applyEdit(source: Source, sourceType: LoadedSourceType, input: SourceInput): Promise<EditSourceResult> {
+    const keptPlain = keptPlainOf(source, sourceType);
+    const entryKey = sourceType.catalogue?.configKey;
+    const checked = entryKey !== undefined ? { ...input, plain: { ...input.plain, [entryKey]: source.plain[entryKey] } } : input;
+    const problem = check(sourceType, checked, Object.keys(source.secrets));
+    if (problem) return problem;
+
+    const { refs, replaced } = await updateSecrets(source.secrets, input.secrets);
+    await sources.update({
+      ...source,
+      plain: { ...plainOf(input), ...keptPlain },
+      configVersion: sourceType.configuration.version,
+      secrets: refs,
+      pollIntervalSeconds: input.pollIntervalSeconds ?? null,
+      lastRunAt: null,
+    });
+    await assignParts(source.id, sourceType, plainOf(input), input);
+    for (const ref of replaced) await secrets.remove(ref);
+    return { ok: true };
+  }
+
 
   return {
     async list(): Promise<SourceSummary[]> {
@@ -307,36 +392,10 @@ export function createSourceAccess(deps: SourcesDeps) {
       if (!source) return { ok: false, problem: "unknown-source" };
       const sourceType = await enabled(source.sourceTypeId);
       if (!sourceType) return { ok: false, problem: "source-type-not-enabled" };
-      // What the plugin set, and the catalogue entry the Source was added with, stay.
-      const kept = sourceType.configuration.fields
-        .filter((field) => !field.secret && (field.setByPlugin || field.key === sourceType.catalogue?.configKey))
-        .map((field) => field.key);
-      const keptPlain = Object.fromEntries(kept.flatMap((key) => (source.plain[key] !== undefined ? [[key, source.plain[key]]] : [])));
-      const entryKey = sourceType.catalogue?.configKey;
-      const checked = entryKey !== undefined ? { ...input, plain: { ...input.plain, [entryKey]: source.plain[entryKey] } } : input;
-      const problem = check(sourceType, checked, Object.keys(source.secrets));
-      if (problem) return problem;
-
-      const refs = { ...source.secrets };
-      const replaced: SecretRef[] = [];
-      for (const [key, value] of Object.entries(input.secrets)) {
-        if (value === "") continue;
-        const old = refs[key];
-        if (old) replaced.push(old);
-        refs[key] = await secrets.put(value);
-      }
-      await sources.update({
-        ...source,
-        plain: { ...plainOf(input), ...keptPlain },
-        configVersion: sourceType.configuration.version,
-        secrets: refs,
-        pollIntervalSeconds: input.pollIntervalSeconds ?? null,
-        lastRunAt: null,
-      });
-      await assignParts(id, sourceType, plainOf(input), input);
-      for (const ref of replaced) await secrets.remove(ref);
-      return { ok: true };
+      return applyEdit(source, sourceType, input);
     },
+
+
 
     /**
      * Shows or hides the Source's Items on the timeline and in the feeds. A hidden Source is still
@@ -387,9 +446,7 @@ export function createSourceAccess(deps: SourcesDeps) {
       const sourceType = await enabled(source.sourceTypeId);
       const context = await contextOf(source);
       const files = await sources.remove(id, project);
-      await sourceType?.sourceRemoved(context);
-      for (const ref of Object.values(source.secrets)) await secrets.remove(ref);
-      for (const file of files) await blobs.remove(file);
+      await cleanup(source, sourceType, context, files);
     },
   };
 }
@@ -407,4 +464,15 @@ export async function runContextOf(
     if (value !== null) secretValues[key] = value;
   }
   return { plain: source.plain, secrets: secretValues, syncCursor: source.syncCursor, now: context.now, timeZone: context.timeZone };
+}
+
+/** Whether a value has the shape its field takes: names for a choice or Parts, a single value otherwise. */
+function typeFits(field: ConfigFieldSpec, value: unknown): boolean {
+  if (field.choice) return value === undefined || isStrings(value);
+  if (field.parts) return value === undefined || isPartNames(value);
+  return !Array.isArray(value);
+}
+
+function isStrings(value: unknown): boolean {
+  return Array.isArray(value) && value.every((item) => typeof item === "string");
 }

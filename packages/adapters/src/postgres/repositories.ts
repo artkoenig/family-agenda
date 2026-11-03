@@ -597,7 +597,12 @@ export class PostgresSourceRepository implements SourceRepository {
       assigned.filter((row) => row.sourceId === id && row.part === "").map((row) => row.familyMemberId as FamilyMemberId);
     const partConcernsOf = (id: string) => {
       const parts: Record<string, FamilyMemberId[]> = {};
-      for (const row of assigned) if (row.sourceId === id && row.part !== "") (parts[row.part] ??= []).push(row.familyMemberId as FamilyMemberId);
+      for (const row of assigned) {
+        if (row.sourceId !== id || row.part === "") continue;
+        const existing = parts[row.part];
+        if (existing) existing.push(row.familyMemberId as FamilyMemberId);
+        else parts[row.part] = [row.familyMemberId as FamilyMemberId];
+      }
       return parts;
     };
     return rows.map(({ source, run, syncCursor }) => ({

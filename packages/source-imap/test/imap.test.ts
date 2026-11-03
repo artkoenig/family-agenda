@@ -187,6 +187,17 @@ Bitte Turnbeutel mitbringen.
     expect(server.commands.filter((command) => /^(SELECT|STORE|UID STORE|COPY|UID COPY|MOVE|UID MOVE|EXPUNGE|UID EXPUNGE|APPEND|DELETE|RENAME|CREATE)\b/.test(command))).toEqual([]);
   });
 
+  it("reads on after the last UID in use when a folder holds nothing recent at first", async () => {
+    server.deliver("Archiv", old, new Date("2026-08-01T08:00:00Z"));
+    const first = await poll({ config: config({ folders: ["Archiv"] }) });
+    expect(first.origins).toEqual([]);
+    server.deliver("Archiv", moved, new Date("2026-09-15T10:00:00Z"));
+
+    const { origins } = await poll({ config: config({ folders: ["Archiv"] }), syncCursor: first.syncCursor, now: new Date(now.getTime() + days) });
+
+    expect(origins.map((origin) => origin.externalId)).toEqual(["<elternabend-2@schule.example.org>"]);
+  });
+
   it("starts over when the folder's UIDVALIDITY changes", async () => {
     const { syncCursor } = await poll();
     const mailbox = server.folders.get("Schule")!;

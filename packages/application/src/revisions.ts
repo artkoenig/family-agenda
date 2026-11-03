@@ -12,6 +12,7 @@ import {
   taskOf,
   type Act,
   type FoldableRevision,
+  type FoldedItem,
   type ItemKind,
   type LocalDate,
 } from "@family-agenda/domain";
@@ -38,23 +39,35 @@ export function checked(revision: IngestedRevision, sourceTime: Date): NewRevisi
 /** What an Item's Revisions add up to, and the time it can be found by. */
 export function project(kind: ItemKind, revisions: FoldableRevision[]): ItemProjection {
   const folded = fold(revisions);
-  if (kind === "event") {
-    const event = eventOf(folded);
-    return { folded, window: event ? spanBounds(event.span) : null, outstanding: false };
-  }
-  if (kind === "task") {
-    const arrivedAt = revisions.filter((revision) => revision.accepted).reduce<Date | null>(
-      (earliest, { sourceTime }) => (earliest && earliest <= sourceTime ? earliest : sourceTime),
-      null,
-    );
-    const stated = folded && arrivedAt ? { ...folded, arrivedAt: arrivedAt.toISOString() } : folded;
-    const task = taskOf(stated);
-    // Without a Deadline, a done Task shows on the day it arrived, whatever the time zone.
-    const day = task?.deadline ?? (task && instantOfTask(task))?.toISOString().slice(0, 10);
-    const window = day ? spanBounds({ allDay: true, firstDay: day as LocalDate, lastDay: day as LocalDate }) : null;
-    return { folded: stated, window, outstanding: task ? isOutstanding(task) : false };
-  }
+  if (kind === "event") return projectEvent(folded);
+  if (kind === "task") return projectTask(revisions, folded);
+  return projectLesson(folded);
+}
+
+function projectEvent(folded: FoldedItem | null): ItemProjection {
+  const event = eventOf(folded);
+  return { folded, window: event ? spanBounds(event.span) : null, outstanding: false };
+}
+
+function projectTask(revisions: FoldableRevision[], folded: FoldedItem | null): ItemProjection {
+  const stated = withArrivedAt(revisions, folded);
+  const task = taskOf(stated);
+  // Without a Deadline, a done Task shows on the day it arrived, whatever the time zone.
+  const day = task?.deadline ?? (task && instantOfTask(task))?.toISOString().slice(0, 10);
+  const window = day ? spanBounds({ allDay: true, firstDay: day as LocalDate, lastDay: day as LocalDate }) : null;
+  return { folded: stated, window, outstanding: task ? isOutstanding(task) : false };
+}
+
+function withArrivedAt(revisions: FoldableRevision[], folded: FoldedItem | null): FoldedItem | null {
+  const arrivedAt = revisions.filter((revision) => revision.accepted).reduce<Date | null>(
+    (earliest, { sourceTime }) => (earliest && earliest <= sourceTime ? earliest : sourceTime),
+    null,
+  );
+  return folded && arrivedAt ? { ...folded, arrivedAt: arrivedAt.toISOString() } : folded;
+}
+
+function projectLesson(folded: FoldedItem | null): ItemProjection {
   // A Timetable Change has the fields of the Lesson it changes, its span among them.
-  const lesson = kind === "lesson" || kind === "timetable-change" ? lessonOf(folded) : null;
+  const lesson = lessonOf(folded);
   return { folded, window: lesson ? { from: lesson.span.start, to: lesson.span.end } : null, outstanding: false };
 }
