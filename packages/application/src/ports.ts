@@ -525,7 +525,7 @@ export type ProjectedItem = {
   /** Where its Origins can be looked at, each with the Source Type and name of the Origin's Source. */
   links: { url: string; sourceTypeId: SourceTypeId; sourceName: string | null }[];
   /** The raw messages it was extracted from, oldest first, each with the Source Type and name of its Source. */
-  messages: { id: RawMessageId; sourceTypeId: SourceTypeId; sourceName: string | null }[];
+  messages: { id: RawMessageId; sourceTypeId: SourceTypeId; sourceName: string | null; sentAt: Date }[];
   /** The Sources, with their Parts, of the Origins whose accepted Revisions it adds up to, which decide whom it concerns. */
   sources: { sourceId: SourceId; part: string | null }[];
 };

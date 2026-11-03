@@ -641,7 +641,7 @@ function EventRow(props: { row: TimelineEvent; day: LocalDate; members: FamilyMe
 
 /** Where an Event or a Task comes from: its links, and the messages it was read from, which only Admins open. */
 function Sources(props: { row: Pick<TimelineEvent, "links" | "messages"> }) {
-  const { t, text } = useTranslation();
+  const { t, text, locale } = useTranslation();
   return (
     <>
       {props.row.links.map((link) => (
@@ -653,7 +653,7 @@ function Sources(props: { row: Pick<TimelineEvent, "links" | "messages"> }) {
       ))}
       {props.row.messages.map((message) => (
         <span class="fam-item__meta">
-          {text(message.source)} · <a href={`/admin/messages/${message.id}`}>{t.agenda.openMessage}</a>
+          {text(message.source)} · {new Intl.DateTimeFormat(locale, { day: "numeric", month: "short" }).format(message.sentAt)} · <a href={`/admin/messages/${message.id}`}>{t.agenda.openMessage}</a>
         </span>
       ))}
     </>
