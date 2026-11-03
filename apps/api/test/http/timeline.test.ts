@@ -37,7 +37,7 @@ describe("Events in an Agenda over HTTP", () => {
 
   /** The row of the Event with the given title, from `<div class="fam-item` to `</div>`. */
   const rowOf = (page: string, title: string) =>
-    new RegExp(`<div class="fam-item[^"]*">(?:(?!</div>).)*${title}(?:(?!</div>).)*</div>`, "s").exec(page)?.[0] ?? "";
+    new RegExp(`<div class="fam-item[^"]*"[^>]*>(?:(?!</div>).)*${title}(?:(?!</div>).)*</div>`, "s").exec(page)?.[0] ?? "";
 
   it("shows Events as rows like Tasks, without what their day already says", async () => {
     await arrive(
@@ -101,10 +101,21 @@ describe("Events in an Agenda over HTTP", () => {
     expect(rowOf(page, "School breakfast")).toContain('class="fam-item fam-item--earlier"');
     expect(rowOf(page, "Dentist")).toContain('class="fam-item fam-item--cancelled"');
     expect(rowOf(page, "Dentist")).toContain("<s>Dentist</s>");
-    // The "now" line comes after what is over.
-    expect(page.indexOf("School breakfast")).toBeLessThan(page.indexOf("Now 09:10"));
-    expect(page.indexOf("Now 09:10")).toBeLessThan(page.indexOf("Dentist"));
     expect(page).toContain("Nothing planned.");
+  });
+
+  it("marks the Event of today that is running", async () => {
+    await arrive(
+      event("breakfast", { title: "School breakfast", span: { allDay: false, start: "2026-09-14T05:30:00Z", end: "2026-09-14T06:30:00Z" } }),
+      event("assembly", { title: "Assembly", span: { allDay: false, start: "2026-09-14T06:10:00Z", end: "2026-09-14T08:30:00Z" } }),
+      event("dentist", { title: "Dentist", span: { allDay: false, start: "2026-09-14T13:00:00Z", end: "2026-09-14T13:30:00Z" } }),
+      event("trip", { title: "Class trip", span: { allDay: true, firstDay: "2026-09-14", lastDay: "2026-09-14" } }),
+    );
+
+    const page = await (await instance.get(path)).text();
+
+    expect(rowOf(page, "Assembly")).toContain('class="fam-item fam-item--now" aria-current="time"');
+    for (const title of ["School breakfast", "Dentist", "Class trip"]) expect(rowOf(page, title)).not.toContain("fam-item--now");
   });
 
   it("scrolls into the past and the future, one horizon at a time", async () => {
@@ -131,7 +142,6 @@ describe("Events in an Agenda over HTTP", () => {
     expect(earlier).toContain('data-date="2026-09-13"');
     expect(earlier).toContain("Yesterday");
     expect(earlier).toContain(`from=2026-09-08&amp;until=2026-09-10&amp;then=earlier`);
-    expect(earlier).not.toContain("Now ");
     expect(earlier).toContain('<input type="hidden" id="shown-from" name="from" value="2026-09-11" hx-swap-oob="true"/>');
     const further = await (await instance.get(`${path}/days?show=all&from=2026-09-08&until=2026-09-10&then=earlier`)).text();
     expect(rowOf(further, "Swimming")).toContain('class="fam-item fam-item--earlier"');
@@ -142,7 +152,6 @@ describe("Events in an Agenda over HTTP", () => {
     expect(refreshed).toContain('data-date="2026-09-11"');
     expect(refreshed).toContain('data-date="2026-09-19"');
     expect(refreshed.indexOf("Today")).toBeGreaterThan(refreshed.indexOf('data-date="2026-09-13"'));
-    expect(refreshed).toContain("Now 09:00");
 
     for (const query of ["from=2026-09-11", "from=2026-02-30&until=2026-03-01", "from=2026-09-19&until=2026-09-11", "from=2026-01-01&until=2027-12-31"]) {
       expect((await instance.get(`${path}?${query}`)).status).toBe(400);

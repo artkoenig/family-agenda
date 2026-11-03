@@ -395,7 +395,6 @@ export const en = {
     loadingLaterDays: "Loading later days…",
     /** How days near today are called, by how many days they lie after it. */
     relativeDays: { "-1": "Yesterday", "0": "Today", "1": "Tomorrow" } as Record<string, string>,
-    now: (time: string) => `Now ${time}`,
     nothingPlanned: "Nothing planned.",
     cancelled: "Cancelled",
     where: "Where",
@@ -411,6 +410,7 @@ export const en = {
     school: "School",
     schoolUntil: (time: string) => `School until ${time}`,
     lessons: "Lessons",
+    running: "Now",
     timetableChange: "Timetable change",
     teacher: "Teacher",
     note: "Note",

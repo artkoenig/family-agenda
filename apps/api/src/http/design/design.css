@@ -233,13 +233,6 @@ html[data-theme-mode="dark"] .fam-theme__icon--dark { display: block; }
 .fam-day--today .fam-day__header { color: var(--hearth-strong); }
 .fam-day--today .fam-day__header::before { background: var(--hearth); }
 .fam-day--today .fam-day__date { color: var(--ink); }
-.fam-now {
-  display: flex; align-items: center; gap: var(--space-2); margin: var(--space-1) 0;
-  color: var(--hearth-strong); font-size: 13px; line-height: 16px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase;
-  font-variant-numeric: tabular-nums;
-}
-.fam-now::before { content: ""; flex: none; width: 10px; height: 10px; border-radius: var(--radius-full); background: var(--now); }
-.fam-now::after { content: ""; flex: 1; height: 2px; border-radius: 1px; background: var(--now); }
 .fam-empty { color: var(--ink-muted); margin: 0; padding: var(--space-3); border-bottom: 1px solid var(--line); }
 .fam-event { border-bottom: 1px solid var(--line); }
 .fam-event > summary {
@@ -273,6 +266,15 @@ html[data-theme-mode="dark"] .fam-theme__icon--dark { display: block; }
 .fam-item__title { font-weight: 600; }
 .fam-item__meta { color: var(--ink-muted); font-size: 14px; line-height: 20px; }
 .fam-item--earlier .fam-item__title, .fam-item--cancelled .fam-item__title { color: var(--ink-muted); font-weight: 400; }
+/* What is running: the dot and "Now" above its time, its text in the accent colour; a school day shows its Lesson instead once open. */
+.fam-running {
+  display: flex; align-items: center; gap: var(--space-2);
+  color: var(--hearth-strong); font-size: 13px; line-height: 16px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase;
+}
+.fam-item--now :is(.fam-item__lead, .fam-item__title, .fam-item__meta) { color: var(--hearth-strong); }
+.fam-lesson.fam-lesson--now > * { color: var(--hearth-strong); }
+.fam-event--now:not(.fam-event--school[open]) > summary :is(.fam-event__time, .fam-event__title) { color: var(--hearth-strong); }
+.fam-event--school[open] .fam-event__time .fam-running { display: none; }
 .fam-item--cancelled .fam-item__title s { text-decoration: line-through; }
 /* The Lessons a school day lists on tap, their subjects in line with the row's title; cancelled ones struck through. */
 .fam-lessons {
@@ -678,7 +680,7 @@ html[data-theme-mode="dark"] .fam-theme__icon--dark { display: block; }
   /* A Lesson's room and teacher go below its subject. */
   .fam-lessons { grid-template-columns: minmax(var(--time-column), auto) 1fr; row-gap: 0; }
   .fam-lesson__subject { margin-top: var(--space-1); }
-  .fam-lesson__time { margin-top: var(--space-1); }
+  .fam-lesson__time { margin-top: var(--space-1); grid-row: span 2; }
   .fam-lesson__where { grid-column: 2; font-size: 14px; line-height: 20px; }
 }
 

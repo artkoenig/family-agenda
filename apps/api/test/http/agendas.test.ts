@@ -50,7 +50,6 @@ describe("Agendas over HTTP", () => {
     const page = await response.text();
     expect(page).toContain("Today");
     expect(page).toContain("Tomorrow");
-    expect(page).toContain("Now 09:00");
     expect(page).toContain("Nothing planned.");
     expect(filterLink(page, "Mia")).toContain('aria-current="true"');
     expect(filterLink(page, "Leo")).not.toContain("aria-current");
