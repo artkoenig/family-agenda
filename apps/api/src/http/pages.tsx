@@ -2304,23 +2304,46 @@ function ConnectionFields(props: {
         <input id="baseUrl" name="baseUrl" type="url" required value={shown?.baseUrl} />
         <small>{l.baseUrlHint}</small>
       </div>
+      <ModelField shown={shown} models={models} />
+      <ApiKeyFields endpoint={endpoint} />
+    </div>
+  );
+}
+
+function ModelField(props: { shown: { model: string } | null; models: string[] }) {
+  const { t } = useTranslation();
+  const { shown, models } = props;
+  return (
+    <div class="fam-field">
+      <label for="model">{t.llm.model}</label>
+      {models.length > 0 ? (
+        <select id="model" name="model" required>
+          {/* A model the endpoint no longer lists stays selectable, so saving does not change it. */}
+          {withChosen(models, shown?.model).map((model) => (
+            <option value={model} selected={model === shown?.model}>
+              {model}
+            </option>
+          ))}
+        </select>
+      ) : (
+        <input id="model" name="model" required value={shown?.model} />
+      )}
+    </div>
+  );
+}
+
+/** The models offered, with the chosen one even where the endpoint no longer lists it. */
+function withChosen(models: string[], chosen: string | undefined): string[] {
+  return chosen && !models.includes(chosen) ? [chosen, ...models] : models;
+}
+
+function ApiKeyFields(props: { endpoint: LlmEndpointSummary | null }) {
+  const { t } = useTranslation();
+  const { endpoint } = props;
+  return (
+    <>
       <div class="fam-field">
-        <label for="model">{l.model}</label>
-        {models.length > 0 ? (
-          <select id="model" name="model" required>
-            {/* A model the endpoint no longer lists stays selectable, so saving does not change it. */}
-            {(shown?.model && !models.includes(shown.model) ? [shown.model, ...models] : models).map((model) => (
-              <option value={model} selected={model === shown?.model}>
-                {model}
-              </option>
-            ))}
-          </select>
-        ) : (
-          <input id="model" name="model" required value={shown?.model} />
-        )}
-      </div>
-      <div class="fam-field">
-        <label for="apiKey">{l.apiKey}</label>
+        <label for="apiKey">{t.llm.apiKey}</label>
         <input
           id="apiKey"
           name="apiKey"
@@ -2331,10 +2354,10 @@ function ConnectionFields(props: {
       </div>
       {endpoint?.hasApiKey ? (
         <label>
-          <input type="checkbox" name="removeApiKey" value="yes" /> {l.removeApiKey}
+          <input type="checkbox" name="removeApiKey" value="yes" /> {t.llm.removeApiKey}
         </label>
       ) : null}
-    </div>
+    </>
   );
 }
 

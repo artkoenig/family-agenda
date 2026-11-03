@@ -35,22 +35,5 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm lint
-      - run: pnpm typecheck
-      - run: pnpm depcruise
-      - run: pnpm test
-
-  mutation:
-    # Mutation testing of the pure-logic `domain` package (see stryker.config.json).
-    # No database or OCR tools are needed: the domain tests are deterministic and dependency-free.
-    # The job fails when the mutation score drops below `thresholds.break` in stryker.config.json.
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v5
-        with:
-          node-version-file: .nvmrc
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm mutation
+      # Lint, typecheck, dependency rules, tests with the CRAP score, and mutation testing of `domain`.
+      - run: pnpm check
