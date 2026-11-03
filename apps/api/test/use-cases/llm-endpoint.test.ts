@@ -23,6 +23,15 @@ describe("the LLM endpoint", () => {
     expect(await instance.app.llmEndpoint.current()).toBeNull();
   });
 
+  it("offers the models of the saved endpoint, none before it is saved", async () => {
+    extractor.offerModels("gemma3", "qwen3.5:9b");
+    expect(await instance.app.llmEndpoint.models()).toEqual([]);
+
+    await instance.app.llmEndpoint.save({ baseUrl: "http://ollama:11434/v1", model: "qwen3.5:9b", apiKey: "" });
+
+    expect(await instance.app.llmEndpoint.models()).toEqual(["gemma3", "qwen3.5:9b"]);
+  });
+
   it("saves a local server without an API key or acknowledgement", async () => {
     const saved = await instance.app.llmEndpoint.save({ baseUrl: "http://ollama:11434/v1/", model: "qwen3.5:9b", apiKey: "" });
 

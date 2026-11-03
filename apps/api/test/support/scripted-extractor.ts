@@ -44,6 +44,7 @@ export class ScriptedExtractor implements Extractor {
   readonly requests: ExtractionRequest[] = [];
   private readonly scripts: { contains: string; result: ExtractionResult }[] = [];
   private healthResult: EndpointHealth = { ok: true };
+  private offeredModels: string[] = [];
 
   /** The Events and Tasks a message containing `contains` yields. */
   script(contains: string, events: ExtractedEvent[], tasks: ExtractedTask[] = []): void {
@@ -65,6 +66,11 @@ export class ScriptedExtractor implements Extractor {
     this.healthResult = { ok: false, message };
   }
 
+  /** The models the endpoint offers. */
+  offerModels(...models: string[]): void {
+    this.offeredModels = models;
+  }
+
   recoverHealth(): void {
     this.healthResult = { ok: true };
   }
@@ -77,5 +83,9 @@ export class ScriptedExtractor implements Extractor {
 
   health(): Promise<EndpointHealth> {
     return Promise.resolve(this.healthResult);
+  }
+
+  models(): Promise<string[]> {
+    return Promise.resolve(this.offeredModels);
   }
 }

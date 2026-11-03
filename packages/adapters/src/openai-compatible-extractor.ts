@@ -141,6 +141,17 @@ export class OpenAiCompatibleExtractor implements Extractor {
   }
 
   async health(endpoint: LlmEndpoint): Promise<EndpointHealth> {
+    const listed = await this.listModels(endpoint);
+    return listed.ok ? { ok: true } : listed;
+  }
+
+  async models(endpoint: LlmEndpoint): Promise<string[]> {
+    const listed = await this.listModels(endpoint);
+    return listed.ok ? listed.models : [];
+  }
+
+  /** What `GET /models` answers: the ids of the models, or why it could not be asked. */
+  private async listModels(endpoint: LlmEndpoint): Promise<{ ok: true; models: string[] } | { ok: false; message: string }> {
     try {
       const response = await fetch(`${endpoint.baseUrl}/models`, {
         headers: endpoint.apiKey ? { authorization: `Bearer ${endpoint.apiKey}` } : {},
@@ -152,7 +163,7 @@ export class OpenAiCompatibleExtractor implements Extractor {
       if (!response.ok) {
         return { ok: false, message: `The LLM endpoint answered with HTTP ${response.status}.` };
       }
-      return { ok: true };
+      return { ok: true, models: modelIdsOf(await response.json().catch(() => null)) };
     } catch (error) {
       return { ok: false, message: `The LLM endpoint could not be reached: ${reason(error)}` };
     }
@@ -188,6 +199,17 @@ export class OpenAiCompatibleExtractor implements Extractor {
     }
     return contentOf(answer);
   }
+}
+
+/** The sorted ids in a `GET /models` answer, `{ data: [{ id }] }`; none if it looks otherwise. */
+function modelIdsOf(answer: unknown): string[] {
+  const data = (answer as { data?: unknown } | null)?.data;
+  if (!Array.isArray(data)) return [];
+  const ids = data.flatMap((entry: unknown) => {
+    const id = (entry as { id?: unknown } | null)?.id;
+    return typeof id === "string" && id !== "" ? [id] : [];
+  });
+  return [...new Set(ids)].sort((a, b) => a.localeCompare(b));
 }
 
 function promptOf(request: ExtractionRequest): string {

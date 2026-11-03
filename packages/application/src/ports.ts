@@ -691,6 +691,8 @@ export interface Extractor {
   extract(request: ExtractionRequest): Promise<ExtractionResult>;
   /** Whether the endpoint answers, and why not if it does not. */
   health(endpoint: LlmEndpoint): Promise<EndpointHealth>;
+  /** The ids of the models the endpoint offers; none if it cannot be asked. */
+  models(endpoint: LlmEndpoint): Promise<string[]>;
 }
 
 export type EndpointHealth = { ok: true } | { ok: false; message: string };

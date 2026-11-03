@@ -882,6 +882,7 @@ function shownStatus(status: 200 | 400 | 413 | undefined, problems: (string | un
         languages={await languages.current()}
         waiting={await extraction.waiting()}
         health={await llmEndpoint.health()}
+        models={await llmEndpoint.models()}
         {...(problem ? { problem } : {})}
       />
     );
@@ -943,6 +944,7 @@ function shownStatus(status: 200 | 400 | 413 | undefined, problems: (string | un
           languages={await languages.current()}
           waiting={await extraction.waiting()}
           health={await llmEndpoint.health()}
+          models={await llmEndpoint.models()}
           entered={entered}
           problem={problemIn(c, result.problem)}
         />
