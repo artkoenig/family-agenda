@@ -1031,8 +1031,8 @@ export class PostgresItemRepository implements ItemRepository {
               links: links.flatMap(({ itemId, link, sourceTypeId, sourceName }) =>
                 itemId === row.id && link ? [{ url: link, sourceTypeId: sourceTypeId as SourceTypeId, sourceName }] : [],
               ),
-              messages: messages.flatMap(({ itemId, id, sourceTypeId, sourceName }) =>
-                itemId === row.id ? [{ id: id as RawMessageId, sourceTypeId: sourceTypeId as SourceTypeId, sourceName }] : [],
+              messages: messages.flatMap(({ itemId, id, sourceTypeId, sourceName, sentAt }) =>
+                itemId === row.id ? [{ id: id as RawMessageId, sourceTypeId: sourceTypeId as SourceTypeId, sourceName, sentAt }] : [],
               ),
               sources: sourcesOfItems.flatMap(({ itemId, sourceId, part }) => (itemId === row.id ? [{ sourceId: sourceId as SourceId, part }] : [])),
             },

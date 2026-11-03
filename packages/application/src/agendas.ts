@@ -100,7 +100,7 @@ export type TimelineEvent = {
   /** Where the original can be looked at, each with its Source's name, else its Source Type's. */
   links: { url: string; source: MultilingualText }[];
   /** The raw messages it was extracted from, which Admins can open, each with its Source's name, else its Source Type's. */
-  messages: { id: RawMessageId; source: MultilingualText }[];
+  messages: { id: RawMessageId; source: MultilingualText; sentAt: Date }[];
   /** Whom it concerns, by the Family Members its Sources are assigned to, the Family Members in the Family's order. */
   concerns: Attribution;
 };
@@ -327,7 +327,7 @@ export function createAgendaAccess(deps: AgendasDeps) {
       if (showing !== "all" && !isShownTo(attribution, showing)) continue;
       const concerns = attribution === "whole-family" ? attribution : order.filter((id) => attribution.includes(id));
       const links = item.links.map((link) => ({ url: link.url, source: sourceName(link, installed) }));
-      const messages = item.messages.map((message) => ({ id: message.id, source: sourceName(message, installed) }));
+      const messages = item.messages.map((message) => ({ id: message.id, source: sourceName(message, installed), sentAt: message.sentAt }));
       classifyItem(item, found, links, messages, concerns);
     }
     return found;
