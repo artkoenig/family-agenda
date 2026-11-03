@@ -62,18 +62,25 @@ export function createWebUntisPlugin(options: WebUntisPluginOptions = {}): Sourc
     } catch (error) {
       throw SourceError.temporary(`WebUntis could not be reached: ${messageOf(error)}`);
     }
-    if (!response.ok) {
-      const message = `WebUntis answered with HTTP ${response.status}.`;
-      throw response.status === 404 ? SourceError.definite(message) : SourceError.temporary(message);
-    }
-    let answer: Json;
+    if (!response.ok) throw httpError(response);
+    return parseAnswer(await readJson(response), method);
+  }
+
+  function httpError(response: Response): SourceError {
+    const message = `WebUntis answered with HTTP ${response.status}.`;
+    return response.status === 404 ? SourceError.definite(message) : SourceError.temporary(message);
+  }
+
+  async function readJson(response: Response): Promise<Json> {
     try {
-      answer = (await response.json()) as Json;
+      return (await response.json()) as Json;
     } catch {
       throw SourceError.temporary("WebUntis answered with no JSON.");
     }
+  }
+
+  function parseAnswer(answer: Json, method: string): Json {
     const error = answer.error as Json | undefined;
-    // A refused login, such as a wrong key, user or school, needs an Admin.
     if (error) throw SourceError.definite(`WebUntis refused ${method}: ${String(error.message ?? error.code)}`);
     if (!isObject(answer.result)) throw SourceError.temporary(`WebUntis answered ${method} without a result.`);
     return answer.result;
@@ -83,15 +90,12 @@ export function createWebUntisPlugin(options: WebUntisPluginOptions = {}): Sourc
   async function childrenOf(context: RunContext): Promise<Child[]> {
     const userData = (await call(context, "getUserData2017", {})).userData;
     if (!isObject(userData)) throw SourceError.temporary("WebUntis answered without the account's data.");
-    const children = (Array.isArray(userData.children) ? userData.children : []).filter(isObject).flatMap((child) => {
-      const name = [child.firstName, child.lastName].filter((part) => typeof part === "string" && part !== "").join(" ");
-      return typeof child.id === "number" ? [{ id: child.id, name: name || (text(child.displayName) ?? String(child.id)) }] : [];
-    });
-    if (children.length === 0 && userData.elemType === "STUDENT" && typeof userData.elemId === "number") {
+    const children = (Array.isArray(userData.children) ? userData.children : []).filter(isObject).flatMap(childOf);
+    if (children.length > 0) return children;
+    if (userData.elemType === "STUDENT" && typeof userData.elemId === "number") {
       return [{ id: userData.elemId, name: text(userData.displayName) ?? String(userData.elemId) }];
     }
-    if (children.length === 0) throw SourceError.definite("The WebUntis account lists no children.");
-    return children;
+    throw SourceError.definite("The WebUntis account lists no children.");
   }
 
   async function poll(context: RunContext) {
@@ -126,10 +130,13 @@ export function createWebUntisPlugin(options: WebUntisPluginOptions = {}): Sourc
     // A Lesson of the days read that has gone from the Timetable, or whose child is no longer
     // read, is withdrawn with its Timetable Change: the school no longer plans it, which is not a
     // cancellation. One of a day that has passed is forgotten and stays as it was.
-    for (const [key, seen] of Object.entries(previous.lessons)) {
-      if (key in lessons || seen.day < today) continue;
+    const isWithdrawn = (key: string, seen: SeenLesson): boolean => {
+      if (key in lessons || seen.day < today) return false;
       const childRead = read.some((child) => key.startsWith(`${child.id}/`));
-      if (!childRead || seen.day <= lastDay) withdrawn.push(key);
+      return !childRead || seen.day <= lastDay;
+    };
+    for (const [key, seen] of Object.entries(previous.lessons)) {
+      if (isWithdrawn(key, seen)) withdrawn.push(key);
     }
     const state: State = { children: children.map((child) => ({ value: String(child.id), label: child.name })), lessons };
     return { origins, syncCursor: JSON.stringify(state), withdrawn };
@@ -206,7 +213,7 @@ function connectionOf(context: RunContext): { server: string; school: string; us
     return typeof value === "string" ? value.trim() : "";
   };
   // An Admin may paste the address the browser shows rather than the server's name.
-  const server = text("server").replace(/^https?:\/\//i, "").replace(/\/.*$/, "");
+  const server = text("server").replace(/^https?:\/\//i, "").replace(/\/.*$/, ""); // eslint-disable-line sonarjs/super-linear-regex -- anchored star at end is O(n)
   const school = text("school");
   const user = text("user");
   if (!/^[a-z0-9.-]+$/i.test(server)) throw SourceError.definite("The WebUntis server is no host name, such as park.webuntis.com.");
@@ -238,13 +245,7 @@ function seenIn(result: Json, timeZone: string): [string, SeenLesson][] {
     const elements = (Array.isArray(period.elements) ? period.elements : []).filter(isObject);
     const element = (type: string) => elements.find((candidate) => candidate.type === type);
     /** The element's name now, and before if it was substituted; Untis keeps the original's id as `orgId`. */
-    const nameOf = (type: string, names: Map<number, string>) => {
-      const found = element(type);
-      const id = typeof found?.id === "number" ? found.id : null;
-      const original = typeof found?.orgId === "number" && found.orgId !== 0 ? found.orgId : id;
-      const name = id === null ? null : (names.get(id) ?? null);
-      return { name, previous: original !== id && original !== null ? (names.get(original) ?? null) : null };
-    };
+    const nameOf = (type: string, names: Map<number, string>) => namesOf(element(type), names);
     const subject = nameOf("SUBJECT", subjects);
     if (typeof period.id !== "number" || !start || !end || end <= start || !subject.name) return [];
     const room = nameOf("ROOM", rooms);
@@ -278,6 +279,24 @@ function seenIn(result: Json, timeZone: string): [string, SeenLesson][] {
   });
 }
 
+/** The element's name now, and before if it was substituted; Untis keeps the original's id as `orgId`. */
+function namesOf(found: Json | undefined, names: Map<number, string>): { name: string | null; previous: string | null } {
+  const id = numberOf(found?.id);
+  // An `orgId` of 0 means the element was not substituted.
+  const orgId = numberOf(found?.orgId) || id;
+  const nameFor = (key: number | null) => (key === null ? null : (names.get(key) ?? null));
+  return { name: nameFor(id), previous: orgId === id ? null : nameFor(orgId) };
+}
+
+const numberOf = (value: unknown): number | null => (typeof value === "number" ? value : null);
+
+/** A child of the account, if it has an id. */
+function childOf(child: Json): Child[] {
+  if (typeof child.id !== "number") return [];
+  const name = [child.firstName, child.lastName].filter((part) => typeof part === "string" && part !== "").join(" ");
+  return [{ id: child.id, name: name || (text(child.displayName) ?? String(child.id)) }];
+}
+
 /** What Untis says a Lesson is, such as `CANCELLED` or `IRREGULAR`, as a list or as flags. */
 function flagsOf(value: unknown): string[] {
   if (Array.isArray(value)) return value.filter((flag): flag is string => typeof flag === "string").map((flag) => flag.toUpperCase());
@@ -294,12 +313,20 @@ function revisionsFor(key: string, before: SeenLesson | undefined, now: SeenLess
     revisions.push(...changed("lesson", key, before.lesson, now.lesson));
   }
   if (now.cancelled && !before?.cancelled) revisions.push(revision("lesson", key, "cancel", {}));
-
-  const changeKey = `${key}/change`;
-  if (now.change && !before?.change) revisions.push(revision("timetable-change", changeKey, "create", now.change));
-  else if (now.change && before?.change) revisions.push(...changed("timetable-change", changeKey, before.change, now.change));
-  else if (!now.change && before?.change) revisions.push(revision("timetable-change", changeKey, "cancel", {}));
+  revisions.push(...changeRevisions(key, before, now));
   return revisions;
+}
+
+/** Revisions for the timetable change attached to a lesson. */
+function changeRevisions(key: string, before: SeenLesson | undefined, now: SeenLesson): PluginRevision[] {
+  return changeRevisionsOf(`${key}/change`, before?.change ?? undefined, now.change ?? undefined);
+}
+
+function changeRevisionsOf(changeKey: string, before: Json | undefined, now: Json | undefined): PluginRevision[] {
+  if (now && !before) return [revision("timetable-change", changeKey, "create", now)];
+  if (now && before) return changed("timetable-change", changeKey, before, now);
+  if (!now && before) return [revision("timetable-change", changeKey, "cancel", {})];
+  return [];
 }
 
 /** A change or move stating the fields that differ, if any do. */

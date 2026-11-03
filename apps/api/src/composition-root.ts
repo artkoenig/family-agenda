@@ -140,19 +140,53 @@ export type Application = {
   close(): Promise<void>;
 };
 
-/** Wires the use cases to their adapters. Shared by `api`, `worker` and the CLI. */
-export async function bootApplication(config: ApplicationConfig): Promise<Application> {
-  const postgres = "connectDatabase" in config ? config.connectDatabase() : connectPostgres(config.databaseUrl);
-  let masterKey: Buffer;
+function resolveDefaults(config: ApplicationConfig): {
+  clock: Clock;
+  timeZone: string;
+  workspacePackages: string;
+  extractor: Extractor;
+  textExtractor: TextExtractor;
+} {
+  return {
+    clock: config.clock ?? new SystemClock(),
+    timeZone: config.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
+    workspacePackages: config.workspacePackages ?? defaultWorkspacePackages,
+    extractor: config.extractor ?? new OpenAiCompatibleExtractor(),
+    textExtractor: config.textExtractor ?? new CommandLineTextExtractor({ tessdataDirectory: config.tessdataDirectory }),
+  };
+}
+
+function resolveStores(
+  config: ApplicationConfig,
+  postgres: PostgresConnection,
+  masterKey: Buffer,
+): { secrets: SecretStore; blobs: BlobStore; tessdataCatalog: TessdataCatalog } {
+  return {
+    secrets: config.secretStore ?? new EnvelopeSecretStore(postgres.db, masterKey),
+    blobs: config.blobStore ?? new FileBlobStore(config.blobDirectory),
+    tessdataCatalog: config.tessdataCatalog ?? tessdataFastCatalog(),
+  };
+}
+
+async function withDatabase<T>(postgres: PostgresConnection, fn: () => Promise<T>): Promise<T> {
   try {
-    await runMigrations(postgres);
-    masterKey = await loadMasterKey(postgres, config.masterKeyFile);
+    return await fn();
   } catch (error) {
     await postgres.close();
     throw error;
   }
+}
 
-  const clock = config.clock ?? new SystemClock();
+/** Wires the use cases to their adapters. Shared by `api`, `worker` and the CLI. */
+export async function bootApplication(config: ApplicationConfig): Promise<Application> {
+  const postgres = "connectDatabase" in config ? config.connectDatabase() : connectPostgres(config.databaseUrl);
+  const masterKey = await withDatabase(postgres, async () => {
+    await runMigrations(postgres);
+    return await loadMasterKey(postgres, config.masterKeyFile);
+  });
+
+  const { clock, timeZone, workspacePackages, extractor, textExtractor } = resolveDefaults(config);
+  const { secrets, blobs, tessdataCatalog } = resolveStores(config, postgres, masterKey);
   const families = new PostgresFamilyRepository(postgres.db);
 
   const admins = createAdminAccess({
@@ -164,33 +198,26 @@ export async function bootApplication(config: ApplicationConfig): Promise<Applic
     signInFailures: new PostgresSignInFailureLog(postgres.db, signInLimits.windowMs),
   });
 
-  const secrets = config.secretStore ?? new EnvelopeSecretStore(postgres.db, masterKey);
-
   const recoveryKit = createRecoveryKitAccess({ clock, families, masterKey });
 
-  const blobs = config.blobStore ?? new FileBlobStore(config.blobDirectory);
   const members = new PostgresFamilyMemberRepository(postgres.db);
   const familyMembers = createFamilyMemberAccess({ clock, members, blobs });
 
   const ocrModels = new TessdataDirectory({
     directory: config.tessdataDirectory,
     bundledDirectory: config.bundledTessdataDirectory,
-    catalog: config.tessdataCatalog ?? tessdataFastCatalog(),
+    catalog: tessdataCatalog,
   });
-  try {
+  await withDatabase(postgres, async () => {
     await mkdir(config.tessdataDirectory, { recursive: true });
     await ocrModels.linkBundled();
-  } catch (error) {
-    await postgres.close();
-    throw error;
-  }
+  });
   const languages = createLanguageAccess({ families, ocrModels });
 
-  const timeZone = config.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
   const items = new PostgresItemRepository(postgres.db);
   const activity = createActivityLog({ clock, activities: new PostgresActivityRepository(postgres.db) });
   const registry = await SourceRegistry.discover([
-    config.workspacePackages ?? defaultWorkspacePackages,
+    workspacePackages,
     config.pluginDirectory,
   ]);
   const sourceTypeRepository = new PostgresSourceTypeRepository(postgres.db);
@@ -252,7 +279,6 @@ export async function bootApplication(config: ApplicationConfig): Promise<Applic
   });
   const services = createServiceSupervision({ registry, sourceTypes: sourceTypeRepository, catalogues: catalogueRepository });
   const endpoints = new PostgresLlmEndpointRepository(postgres.db);
-  const extractor = config.extractor ?? new OpenAiCompatibleExtractor();
   const llmEndpoint = createLlmEndpointAccess({ clock, endpoints, secrets, extractor });
   const secretSweep = createSecretSweep({ clock, secrets, sources: sourceRepository, endpoints });
   const extraction = createExtraction({
@@ -264,18 +290,15 @@ export async function bootApplication(config: ApplicationConfig): Promise<Applic
     items,
     blobs,
     extractor,
-    textExtractor: config.textExtractor ?? new CommandLineTextExtractor({ tessdataDirectory: config.tessdataDirectory }),
+    textExtractor,
     ocrModels,
     activity,
   });
   const messages = createMessageAccess({ items, blobs });
-  try {
+  await withDatabase(postgres, async () => {
     await sourceTypes.start();
     await catalogues.start();
-  } catch (error) {
-    await postgres.close();
-    throw error;
-  }
+  });
 
   return {
     timeZone,

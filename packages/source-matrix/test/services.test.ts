@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Services } from "@family-agenda/source-sdk";
 import { ensureDatabase, matrixServices, type MatrixServicesOptions } from "../src/services";
 
@@ -128,6 +128,46 @@ describe("Synapse and the bridges, run by the worker", () => {
     const status = JSON.parse(await readFile(join(root, "instance", "status.json"), "utf8")) as { problem: string };
     expect(status.problem).toBe('Matrix could not be set up: password authentication failed for user "family_agenda"');
     await broken.stop();
+  });
+});
+
+describe("Synapse's database, on a scripted Postgres client", () => {
+  const database = { host: "postgres", port: 5432, name: "synapse", user: "synapse_user" };
+
+  /** Runs ensureDatabase against a client that answers `existing` role/database lookups; returns what it ran. */
+  async function run(existing: { role: boolean; database: boolean }): Promise<string[]> {
+    const ran: string[] = [];
+    const client = {
+      connect: () => Promise.resolve(),
+      end: () => Promise.resolve(),
+      escapeIdentifier: (name: string) => `"${name}"`,
+      escapeLiteral: (value: string) => `'${value}'`,
+      query: (sql: string) => {
+        ran.push(sql);
+        const lookup = sql.startsWith("SELECT 1 FROM pg_roles") ? existing.role : sql.startsWith("SELECT 1 FROM pg_database") ? existing.database : false;
+        return Promise.resolve({ rowCount: lookup ? 1 : 0 });
+      },
+    };
+    const spy = vi.spyOn(pg, "Client").mockImplementation(function () {
+      return client as unknown as pg.Client;
+    });
+    try {
+      await ensureDatabase("postgres://scripted", database, "pw");
+    } finally {
+      spy.mockRestore();
+    }
+    return ran.filter((sql) => !sql.startsWith("SELECT"));
+  }
+
+  it("creates the role and the database when neither exists", async () => {
+    expect(await run({ role: false, database: false })).toEqual([
+      `CREATE ROLE "synapse_user" LOGIN PASSWORD 'pw'`,
+      `CREATE DATABASE "synapse" OWNER "synapse_user" ENCODING 'UTF8' LC_COLLATE 'C' LC_CTYPE 'C' TEMPLATE template0`,
+    ]);
+  });
+
+  it("only gives an existing role its password again, and keeps an existing database", async () => {
+    expect(await run({ role: true, database: true })).toEqual([`ALTER ROLE "synapse_user" LOGIN PASSWORD 'pw'`]);
   });
 });
 

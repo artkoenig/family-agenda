@@ -239,10 +239,13 @@ function stepOf(raw: RawStep, loginId = ""): LoginStep {
   const id = raw.login_id ?? loginId;
   if (raw.type === "complete") return { type: "complete", loginId: id };
   if (raw.type === "display_and_wait") {
-    const qr = raw.display_and_wait?.type === "qr" ? (raw.display_and_wait.data ?? null) : null;
-    return { type: "display_and_wait", loginId: id, stepId: raw.step_id, qrCode: qr };
+    return { type: "display_and_wait", loginId: id, stepId: raw.step_id, qrCode: qrOf(raw.display_and_wait) };
   }
   return { type: "other", loginId: id, instructions: raw.instructions ?? raw.type };
+}
+
+function qrOf(display: RawStep["display_and_wait"]): string | null {
+  return display?.type === "qr" ? (display.data ?? null) : null;
 }
 
 async function errorOf(response: Response): Promise<HomeserverError> {

@@ -24,26 +24,42 @@ export function addressesFacing(sender: string, interfaces: Ipv4Interface[]): st
     .map(({ address }) => address);
 }
 
-/** Reads a name at `offset`, following compression pointers; `next` is where the message goes on. */
-function readName(message: Buffer, offset: number): { name: string; next: number } | null {
-  const labels: string[] = [];
-  let next = -1;
-  let jumps = 0;
-  for (;;) {
-    const length = message[offset];
-    if (length === undefined) return null;
-    if (length === 0) return { name: labels.join("."), next: next === -1 ? offset + 1 : next };
-    if ((length & 0xc0) === 0xc0) {
-      const low = message[offset + 1];
-      if (low === undefined || ++jumps > 8) return null;
-      if (next === -1) next = offset + 2;
-      offset = ((length & 0x3f) << 8) | low;
-      continue;
-    }
-    if (length > 63 || offset + 1 + length > message.length) return null;
-    labels.push(message.toString("utf8", offset + 1, offset + 1 + length));
-    offset += 1 + length;
+const maximumPointerJumps = 8;
+
+type NamePart = { kind: "end" } | { kind: "label"; text: string; after: number } | { kind: "pointer"; target: number };
+
+/** The part of a name at `offset`: its end, a label, or a compression pointer; null if it is malformed. */
+function namePartAt(message: Buffer, offset: number): NamePart | null {
+  const length = message[offset];
+  if (length === undefined) return null;
+  if (length === 0) return { kind: "end" };
+  if ((length & 0xc0) === 0xc0) {
+    const low = message[offset + 1];
+    return low === undefined ? null : { kind: "pointer", target: ((length & 0x3f) << 8) | low };
   }
+  if (length > 63 || offset + 1 + length > message.length) return null;
+  return { kind: "label", text: message.toString("utf8", offset + 1, offset + 1 + length), after: offset + 1 + length };
+}
+
+/** Reads a name at `offset`, following compression pointers; `next` is where the message goes on. */
+function readName(message: Buffer, start: number): { name: string; next: number } | null {
+  const labels: string[] = [];
+  let offset = start;
+  let next: number | null = null;
+  for (let jumps = 0; jumps <= maximumPointerJumps; ) {
+    const part = namePartAt(message, offset);
+    if (part === null) return null;
+    if (part.kind === "end") return { name: labels.join("."), next: next ?? offset + 1 };
+    if (part.kind === "label") {
+      labels.push(part.text);
+      offset = part.after;
+    } else {
+      next ??= offset + 2;
+      offset = part.target;
+      jumps++;
+    }
+  }
+  return null;
 }
 
 /** Whether a DNS message is a query that asks for the address of `hostname`. */
@@ -53,14 +69,16 @@ export function asksFor(message: Buffer, hostname: string): boolean {
   for (let left = message.readUInt16BE(4); left > 0; left--) {
     const question = readName(message, offset);
     if (!question || question.next + 4 > message.length) return false;
-    const type = message.readUInt16BE(question.next);
-    const questionClass = message.readUInt16BE(question.next + 2) & ~cacheFlush;
-    if (question.name.toLowerCase() === hostname && (type === typeA || type === typeAny) && questionClass === classIn) {
-      return true;
-    }
+    if (questionAsksFor(message, question, hostname)) return true;
     offset = question.next + 4;
   }
   return false;
+}
+
+function questionAsksFor(message: Buffer, question: { name: string; next: number }, hostname: string): boolean {
+  const type = message.readUInt16BE(question.next);
+  const questionClass = message.readUInt16BE(question.next + 2) & ~cacheFlush;
+  return question.name.toLowerCase() === hostname && (type === typeA || type === typeAny) && questionClass === classIn;
 }
 
 /** The response that tells `hostname` is at `addresses`. */

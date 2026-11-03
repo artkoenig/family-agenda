@@ -1,11 +1,14 @@
 import { createHash } from "node:crypto";
-import type { SourceId } from "@family-agenda/domain";
+import type { SourceId, SourceTypeId } from "@family-agenda/domain";
 import type { ActivityLog } from "./activity";
 import type {
   BlobStore,
   CatalogueRepository,
+  CatalogueSpec,
   Clock,
   IngestedMessage,
+  IngestedOrigin,
+  IngestedRevision,
   ItemRepository,
   PollingIngestion,
   SecretStore,
@@ -80,18 +83,7 @@ export function createSourcePolling(deps: PollingDeps) {
       await sources.recordFailedRun(source.id, now, { kind: result.kind, message: result.message });
       return { sourceId: source.id, kind: result.kind, message: result.message };
     }
-    const origins = [];
-    for (const origin of result.origins) {
-      origins.push({
-        externalId: origin.externalId,
-        occurredAt: origin.occurredAt,
-        attributes: origin.attributes,
-        link: origin.link,
-        part: origin.part,
-        revisions: origin.revisions.map((revision) => checked(revision, origin.occurredAt)),
-        message: origin.message ? await stored(origin.message, origin.attributes) : null,
-      });
-    }
+    const origins = await buildOrigins(result.origins);
     let known: string[];
     let withdrawnFiles;
     try {
@@ -100,13 +92,63 @@ export function createSourcePolling(deps: PollingDeps) {
         project,
       ));
     } catch (error) {
-      for (const origin of origins) if (origin.message) await removeBlobsOf(origin.message);
+      await removeOriginBlobs(origins);
       throw error;
     }
-    // A message seen before keeps the files it was recorded with; a withdrawn one keeps none.
     for (const origin of origins) if (origin.message && known.includes(origin.externalId)) await removeBlobsOf(origin.message);
     for (const file of withdrawnFiles) await blobs.remove(file);
     return null;
+  }
+
+  async function buildOrigins(rawOrigins: IngestedOrigin[]) {
+    const origins = [];
+    for (const origin of rawOrigins) {
+      origins.push({
+        externalId: origin.externalId,
+        occurredAt: origin.occurredAt,
+        attributes: origin.attributes,
+        link: origin.link,
+        part: origin.part,
+        revisions: origin.revisions.map((revision: IngestedRevision) => checked(revision, origin.occurredAt)),
+        message: origin.message ? await stored(origin.message, origin.attributes) : null,
+      });
+    }
+    return origins;
+  }
+
+  async function removeOriginBlobs(origins: { message: StoredMessage | null }[]): Promise<void> {
+    for (const origin of origins) if (origin.message) await removeBlobsOf(origin.message);
+  }
+
+function isDue(
+  source: Source,
+  ingestion: PollingIngestion,
+  catalogue: CatalogueSpec | null,
+  entryIntervals: Map<string, number | null>,
+  now: number,
+): boolean {
+  const own = catalogue ? (entryIntervals.get(String(source.plain[catalogue.configKey])) ?? null) : source.pollIntervalSeconds;
+  const interval = (own ?? ingestion.suggestedIntervalSeconds) * 1000;
+  return !(source.lastRunAt && now - source.lastRunAt.getTime() < interval);
+}
+
+    async function findDue(enabled: Set<SourceTypeId>, now: number): Promise<{ source: Source; ingestion: PollingIngestion }[]> {
+    const due: { source: Source; ingestion: PollingIngestion }[] = [];
+    for (const type of enabled) {
+      const loaded = await registry.load(type);
+      if (!loaded.ok) continue;
+      const { ingestion, catalogue } = loaded.sourceType;
+      if (ingestion.mode !== "polling") continue;
+      const entryIntervals = new Map(
+        catalogue ? (await catalogues.list(type)).map((record) => [record.entryId, record.pollIntervalSeconds]) : [],
+      );
+      for (const source of await sources.listOfType(type)) {
+        if (isDue(source, ingestion, catalogue, entryIntervals, now)) {
+          due.push({ source, ingestion });
+        }
+      }
+    }
+    return due;
   }
 
   return {
@@ -119,22 +161,7 @@ export function createSourcePolling(deps: PollingDeps) {
       const report: PollReport = { polled: [], failed: [] };
       const enabled = new Set((await sourceTypes.list()).filter((type) => type.enabled).map((type) => type.id));
       const now = clock.now().getTime();
-      const due: { source: Source; ingestion: PollingIngestion }[] = [];
-      for (const type of enabled) {
-        const loaded = await registry.load(type);
-        if (!loaded.ok) continue;
-        const { ingestion, catalogue } = loaded.sourceType;
-        if (ingestion.mode !== "polling") continue;
-        const entryIntervals = new Map(
-          catalogue ? (await catalogues.list(type)).map((record) => [record.entryId, record.pollIntervalSeconds]) : [],
-        );
-        for (const source of await sources.listOfType(type)) {
-          const own = catalogue ? (entryIntervals.get(String(source.plain[catalogue.configKey])) ?? null) : source.pollIntervalSeconds;
-          const interval = (own ?? ingestion.suggestedIntervalSeconds) * 1000;
-          if (source.lastRunAt && now - source.lastRunAt.getTime() < interval) continue;
-          due.push({ source, ingestion });
-        }
-      }
+      const due = await findDue(enabled, now);
       if (due.length === 0) return report;
       const progress = await activity.begin("polling", due.length);
       try {

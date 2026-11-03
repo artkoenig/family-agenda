@@ -66,6 +66,28 @@ describe("the Tesseract models in the tessdata volume", () => {
     expect((await readdir(volume)).sort()).toEqual(["deu.traineddata", "eng.traineddata", "osd.traineddata"]);
   });
 
+  it("offers no download for a language the catalog does not know", async () => {
+    expect(await store.install("xyz" as OcrLanguage)).toEqual({ ok: false, message: "No model for xyz can be downloaded." });
+  });
+
+  it("says why a download that is not an error failed, or a model could not be saved", async () => {
+    const rejecting = new TessdataDirectory({
+      directory: volume,
+      bundledDirectory: null,
+      // eslint-disable-next-line @typescript-eslint/prefer-promise-reject-errors
+      catalog: { checksums: new Map([["fra", "x"]]), download: () => Promise.reject("refused") },
+    });
+    expect(await rejecting.install(fra)).toEqual({ ok: false, message: "It could not be downloaded." });
+
+    const elsewhere = new TessdataDirectory({
+      directory: join(root, "missing"),
+      bundledDirectory: null,
+      catalog: { checksums: new Map([["fra", sha256(model("fra model"))]]), download: () => Promise.resolve(model("fra model")) },
+    });
+    const saved = await elsewhere.install(fra);
+    expect(saved.ok).toBe(false);
+  });
+
   it("removes a downloaded model, but never a bundled one", async () => {
     await store.install(fra);
 

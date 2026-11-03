@@ -41,11 +41,15 @@ export function instanceReader(source: MatrixInstance | string): () => Promise<M
 function parseInstance(value: unknown): MatrixInstance | null {
   const raw = value as Partial<MatrixInstance> | null;
   const homeserver = raw?.homeserver;
-  if (!homeserver || typeof homeserver.url !== "string" || typeof homeserver.serverName !== "string") return null;
-  if (typeof homeserver.registrationSharedSecret !== "string") return null;
-  const bridges: MatrixInstance["bridges"] = {};
-  for (const [id, bridge] of Object.entries(raw.bridges ?? {})) {
-    if (typeof bridge.url === "string" && typeof bridge.provisioningSecret === "string") bridges[id] = bridge;
-  }
-  return { homeserver, bridges };
+  if (!isHomeserver(homeserver)) return null;
+  const bridges = Object.entries(raw?.bridges ?? {}).filter(([, bridge]) => isBridge(bridge));
+  return { homeserver, bridges: Object.fromEntries(bridges) };
+}
+
+function isHomeserver(value: Partial<MatrixInstance["homeserver"]> | undefined): value is MatrixInstance["homeserver"] {
+  return typeof value?.url === "string" && typeof value.serverName === "string" && typeof value.registrationSharedSecret === "string";
+}
+
+function isBridge(value: Partial<MatrixInstance["bridges"][string]>): boolean {
+  return typeof value.url === "string" && typeof value.provisioningSecret === "string";
 }

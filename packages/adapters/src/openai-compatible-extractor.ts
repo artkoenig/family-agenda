@@ -178,27 +178,15 @@ export class OpenAiCompatibleExtractor implements Extractor {
     } catch (error) {
       return { ok: false, problem: "unreachable", message: `The LLM endpoint could not be reached: ${reason(error)}` };
     }
-    if (response.status === 401 || response.status === 403) {
-      return { ok: false, problem: "unauthorized", message: `The LLM endpoint refused the API key (HTTP ${response.status}).` };
-    }
-    if (!response.ok) {
-      // A request the endpoint cannot handle, such as an unknown model, fails every message alike.
-      return { ok: false, problem: "unreachable", message: `The LLM endpoint answered with HTTP ${response.status}.` };
-    }
+    const statusProblem = statusProblemOf(response);
+    if (statusProblem) return statusProblem;
     let answer: unknown;
     try {
       answer = await response.json();
     } catch (error) {
       return { ok: false, problem: "unreachable", message: `The LLM endpoint answered with no JSON: ${reason(error)}` };
     }
-    const choice = (answer as { choices?: { finish_reason?: string; message?: { content?: unknown } }[] }).choices?.[0];
-    if (typeof choice?.message?.content !== "string") {
-      return { ok: false, problem: "invalid-output", message: "The LLM endpoint answered without a message." };
-    }
-    if (choice.finish_reason === "length") {
-      return { ok: false, problem: "invalid-output", message: "The answer was cut off at the token limit." };
-    }
-    return { ok: true, content: choice.message.content };
+    return contentOf(answer);
   }
 }
 
@@ -238,33 +226,63 @@ function promptOf(request: ExtractionRequest): string {
   ].join("\n");
 }
 
+/** The problem a non-2xx HTTP status means, or null if the request was accepted. */
+function statusProblemOf(response: Response): EndpointFailure | null {
+  if (response.status === 401 || response.status === 403) {
+    return { ok: false, problem: "unauthorized", message: `The LLM endpoint refused the API key (HTTP ${response.status}).` };
+  }
+  if (!response.ok) {
+    // A request the endpoint cannot handle, such as an unknown model, fails every message alike.
+    return { ok: false, problem: "unreachable", message: `The LLM endpoint answered with HTTP ${response.status}.` };
+  }
+  return null;
+}
+
+/** The answer's content, or the problem if it does not fit the schema. */
+function contentOf(answer: unknown): { ok: true; content: string } | EndpointFailure {
+  const choice = (answer as { choices?: { finish_reason?: string; message?: { content?: unknown } }[] }).choices?.[0];
+  if (typeof choice?.message?.content !== "string") {
+    return { ok: false, problem: "invalid-output", message: "The LLM endpoint answered without a message." };
+  }
+  if (choice.finish_reason === "length") {
+    return { ok: false, problem: "invalid-output", message: "The answer was cut off at the token limit." };
+  }
+  return { ok: true, content: choice.message.content };
+}
+
 /** The events of an answer, or null if it does not fit the schema. */
 function eventsOf(output: unknown): ExtractedEvent[] | null {
   if (!isObject(output) || !Array.isArray(output.events)) return null;
   const events: ExtractedEvent[] = [];
   for (const raw of output.events) {
-    if (!isObject(raw) || !isObject(raw.date)) return null;
-    const date = dateOf(raw.date);
-    if (
-      !date ||
-      typeof raw.cancelled !== "boolean" ||
-      typeof raw.evidence !== "string" ||
-      ![raw.updates, raw.title, raw.startTime, raw.endTime, raw.place].every(isTextOrNull)
-    ) {
-      return null;
-    }
-    events.push({
-      updates: raw.updates as string | null,
-      cancelled: raw.cancelled,
-      title: raw.title as string | null,
-      date,
-      startTime: raw.startTime as string | null,
-      endTime: raw.endTime as string | null,
-      place: raw.place as string | null,
-      evidence: raw.evidence,
-    });
+    const event = eventOf(raw);
+    if (event === null) return null;
+    events.push(event);
   }
   return events;
+}
+
+function eventOf(raw: unknown): ExtractedEvent | null {
+  if (!isObject(raw) || !isObject(raw.date)) return null;
+  const date = dateOf(raw.date);
+  if (
+    !date ||
+    typeof raw.cancelled !== "boolean" ||
+    typeof raw.evidence !== "string" ||
+    ![raw.updates, raw.title, raw.startTime, raw.endTime, raw.place].every(isTextOrNull)
+  ) {
+    return null;
+  }
+  return {
+    updates: raw.updates as string | null,
+    cancelled: raw.cancelled,
+    title: raw.title as string | null,
+    date,
+    startTime: raw.startTime as string | null,
+    endTime: raw.endTime as string | null,
+    place: raw.place as string | null,
+    evidence: raw.evidence,
+  };
 }
 
 /** The tasks of an answer, or null if it does not fit the schema. */
@@ -272,48 +290,67 @@ function tasksOf(output: unknown): ExtractedTask[] | null {
   if (!isObject(output) || !Array.isArray(output.tasks)) return null;
   const tasks: ExtractedTask[] = [];
   for (const raw of output.tasks) {
-    if (!isObject(raw) || !isObject(raw.deadline) || !Array.isArray(raw.bring)) return null;
-    const deadline = dateOf(raw.deadline);
-    const bring: unknown[] = raw.bring;
-    if (
-      !deadline ||
-      typeof raw.cancelled !== "boolean" ||
-      typeof raw.evidence !== "string" ||
-      ![raw.updates, raw.title].every(isTextOrNull) ||
-      !bring.every((thing) => typeof thing === "string")
-    ) {
-      return null;
-    }
-    tasks.push({
-      updates: raw.updates as string | null,
-      cancelled: raw.cancelled,
-      title: raw.title as string | null,
-      deadline,
-      bring,
-      evidence: raw.evidence,
-    });
+    const task = taskOf(raw);
+    if (task === null) return null;
+    tasks.push(task);
   }
   return tasks;
 }
 
-function dateOf(raw: Record<string, unknown>): DateMention | null {
-  const whole = (value: unknown) => (value === null || value === undefined ? null : Number.isInteger(value) ? (value as number) : undefined);
-  const day = whole(raw.day);
-  const month = whole(raw.month);
-  const year = whole(raw.year);
-  const daysAfter = whole(raw.daysAfter);
-  const weeksAfter = whole(raw.weeksAfter);
-  const weekday = raw.weekday ?? null;
-  if ([day, month, year, daysAfter, weeksAfter].includes(undefined)) return null;
-  if (weekday !== null && !(weekdays as readonly unknown[]).includes(weekday)) return null;
+function taskOf(raw: unknown): ExtractedTask | null {
+  if (!isObject(raw) || !isObject(raw.deadline) || !Array.isArray(raw.bring)) return null;
+  const deadline = dateOf(raw.deadline);
+  const bring: unknown[] = raw.bring;
+  if (!validTaskFields(deadline, raw, bring)) return null;
   return {
-    day: day ?? null,
-    month: month ?? null,
-    year: year ?? null,
-    weekday: weekday as Weekday | null,
-    daysAfter: daysAfter ?? null,
-    weeksAfter: weeksAfter ?? null,
+    updates: raw.updates as string | null,
+    cancelled: raw.cancelled as boolean,
+    title: raw.title as string | null,
+    deadline: deadline as DateMention,
+    bring: bring as string[],
+    evidence: raw.evidence as string,
   };
+}
+
+function validTaskFields(
+  deadline: DateMention | null,
+  raw: Record<string, unknown>,
+  bring: unknown[],
+): boolean {
+  if (deadline === null) return false;
+  if (typeof raw.cancelled !== "boolean" || typeof raw.evidence !== "string") return false;
+  return [raw.updates, raw.title].every(isTextOrNull) && bring.every((thing) => typeof thing === "string");
+}
+
+function wholeOf(value: unknown): number | null | undefined {
+  return value === null || value === undefined ? null : Number.isInteger(value) ? (value as number) : undefined;
+}
+
+function dateOf(raw: Record<string, unknown>): DateMention | null {
+  const day = wholeOf(raw.day);
+  const month = wholeOf(raw.month);
+  const year = wholeOf(raw.year);
+  const daysAfter = wholeOf(raw.daysAfter);
+  const weeksAfter = wholeOf(raw.weeksAfter);
+  const weekday = raw.weekday ?? null;
+  if (![day, month, year, daysAfter, weeksAfter].every((value) => value !== undefined)) return null;
+  if (!validWeekday(weekday)) return null;
+  return {
+    day: nullIfUndefined(day),
+    month: nullIfUndefined(month),
+    year: nullIfUndefined(year),
+    weekday: weekday as Weekday | null,
+    daysAfter: nullIfUndefined(daysAfter),
+    weeksAfter: nullIfUndefined(weeksAfter),
+  };
+}
+
+function nullIfUndefined(value: number | null | undefined): number | null {
+  return value ?? null;
+}
+
+function validWeekday(weekday: unknown): boolean {
+  return weekday === null || (weekdays as readonly unknown[]).includes(weekday);
 }
 
 function isTextOrNull(value: unknown): boolean {

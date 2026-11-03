@@ -315,34 +315,62 @@ const sourceTypeIdPattern = /^[a-z][a-z0-9-]*$/;
 
 /** Problems that keep a plugin from being loaded, such as an incompatible SDK version. */
 export function problemsWith(plugin: SourcePlugin): string[] {
-  const { identity, configuration, ingestion } = plugin;
+  const { identity, configuration, ingestion, catalogue } = plugin;
   const problems = problemsWithIdentity(identity);
-  const keys = new Set<string>();
-  for (const field of configuration.fields) {
-    if (keys.has(field.key)) problems.push(`configuration field "${field.key}" is declared twice`);
-    keys.add(field.key);
-    if (field.choices && field.secret) problems.push(`configuration field "${field.key}" is a choice, so it cannot be secret`);
-    if (field.parts && (field.secret || field.choices || field.setByPlugin)) {
-      problems.push(`configuration field "${field.key}" is a list of Parts, so it is no secret, choice or field the plugin sets`);
-    }
-  }
-  const { catalogue } = plugin;
-  if (catalogue) {
-    const field = configuration.fields.find((candidate) => candidate.key === catalogue.configKey);
-    if (!field || field.secret || field.setByPlugin) {
-      problems.push(`the catalogue's field "${catalogue.configKey}" is no plain field an Admin sets`);
-    }
-  }
-  if (!Number.isInteger(configuration.version) || configuration.version < 1) {
-    problems.push("the configuration version must be a whole number from 1");
-  }
-  for (let from = 1; from < configuration.version; from++) {
-    if (!configuration.migrations?.[from]) problems.push(`no configuration migration from version ${from}`);
-  }
-  if (ingestion.mode === "polling" && !(ingestion.suggestedIntervalSeconds > 0)) {
+  problems.push(...fieldProblems(configuration.fields));
+  problems.push(...catalogueProblems(configuration.fields, catalogue));
+  problems.push(...versionProblems(configuration.version, configuration.migrations));
+  if (ingestion.mode === "polling" && ingestion.suggestedIntervalSeconds <= 0) {
     problems.push("the suggested polling interval must be positive");
   }
   return problems;
+}
+
+function versionProblems(version: number, migrations?: Record<number, (plain: JsonObject) => JsonObject>): string[] {
+  const problems: string[] = [];
+  if (!Number.isInteger(version) || version < 1) {
+    problems.push("the configuration version must be a whole number from 1");
+  }
+  for (let from = 1; from < version; from++) {
+    if (!migrations?.[from]) problems.push(`no configuration migration from version ${from}`);
+  }
+  return problems;
+}
+
+function fieldProblems(fields: ConfigField[]): string[] {
+  const problems: string[] = [];
+  const keys = new Set<string>();
+  for (const field of fields) {
+    problems.push(...fieldProblemsOf(field, keys));
+    keys.add(field.key);
+  }
+  return problems;
+}
+
+function partsConflict(field: ConfigField): string | null {
+  if (!field.parts) return null;
+  if (field.secret || field.choices || field.setByPlugin) {
+    return `configuration field "${field.key}" is a list of Parts, so it is no secret, choice or field the plugin sets`;
+  }
+  return null;
+}
+
+function fieldProblemsOf(field: ConfigField, keys: Set<string>): string[] {
+  const problems: string[] = [];
+  if (keys.has(field.key)) problems.push(`configuration field "${field.key}" is declared twice`);
+  if (field.choices && field.secret) problems.push(`configuration field "${field.key}" is a choice, so it cannot be secret`);
+  const partsProblem = partsConflict(field);
+  if (partsProblem) problems.push(partsProblem);
+  return problems;
+}
+
+function catalogueProblems(fields: ConfigField[], catalogue: Catalogue | undefined): string[] {
+  if (!catalogue) return [];
+  const field = fields.find((candidate) => candidate.key === catalogue.configKey);
+  if (!field || field.secret || field.setByPlugin) {
+    return [`the catalogue's field "${catalogue.configKey}" is no plain field an Admin sets`];
+  }
+  return [];
 }
 
 function problemsWithIdentity(identity: SourcePluginIdentity): string[] {
@@ -358,21 +386,27 @@ function problemsWithIdentity(identity: SourcePluginIdentity): string[] {
 }
 
 /** Problems with an Origin a plugin emitted. */
+function revisionProblems(revisions: PluginRevision[]): string[] {
+  const problems: string[] = [];
+  if (revisions.length === 0) problems.push("the Origin carries no Revisions");
+  for (const revision of revisions) {
+    if (!(itemKinds as readonly string[]).includes(revision.itemKind)) {
+      problems.push(`"${revision.itemKind}" is no Item kind`);
+    }
+    if (!(revisionActions as readonly string[]).includes(revision.action)) {
+      problems.push(`"${revision.action}" is no Revision action`);
+    }
+    if (revision.itemKey === "") problems.push("a Revision has no Item key");
+  }
+  return problems;
+}
+
 export function problemsWithOrigin(origin: Origin): string[] {
   const problems: string[] = [];
   if (origin.externalId === "") problems.push("the Origin has no external id");
   if (Number.isNaN(origin.occurredAt.getTime())) problems.push("the Origin has no valid time");
   if (origin.content.kind === "revisions") {
-    if (origin.content.revisions.length === 0) problems.push("the Origin carries no Revisions");
-    for (const revision of origin.content.revisions) {
-      if (!(itemKinds as readonly string[]).includes(revision.itemKind)) {
-        problems.push(`"${revision.itemKind}" is no Item kind`);
-      }
-      if (!(revisionActions as readonly string[]).includes(revision.action)) {
-        problems.push(`"${revision.action}" is no Revision action`);
-      }
-      if (revision.itemKey === "") problems.push("a Revision has no Item key");
-    }
+    problems.push(...revisionProblems(origin.content.revisions));
   }
   if (origin.part === "") problems.push("the Origin's Part is empty");
   if (origin.link !== undefined && !/^https?:\/\//i.test(origin.link)) {
@@ -418,10 +452,8 @@ export type ManifestResult =
   | { ok: false; problem: "invalid-manifest"; sourceTypeId?: string; details: string[] };
 
 export function parseManifest(packageJson: unknown): ManifestResult {
-  const pkg = isObject(packageJson) ? packageJson : {};
-  const familyAgenda = isObject(pkg.familyAgenda) ? pkg.familyAgenda : {};
-  const raw = familyAgenda.sourcePlugin;
-  if (!isObject(raw)) return { ok: false, problem: "no-manifest" };
+  const raw = manifestRaw(packageJson);
+  if (raw === null) return { ok: false, problem: "no-manifest" };
 
   const details: string[] = [];
   const text = (key: string, value: unknown): string => {
@@ -430,6 +462,7 @@ export function parseManifest(packageJson: unknown): ManifestResult {
     return "";
   };
   /** A text the Admin area shows: plain, or per language with English. */
+  // eslint-disable-next-line sonarjs/function-return-type -- intentionally returns different members of the PluginText union
   const shown = (key: string, value: unknown): PluginText => {
     if (!isObject(value)) return text(key, value);
     const valid =
@@ -443,22 +476,50 @@ export function parseManifest(packageJson: unknown): ManifestResult {
   const displayName = shown("displayName", raw.displayName);
   const sdk = text("sdkVersion", raw.sdkVersion);
   const description = shown("description", raw.description);
-  const version = typeof pkg.version === "string" ? pkg.version : "0.0.0";
-  if (raw.needsLlm !== undefined && typeof raw.needsLlm !== "boolean") details.push("needsLlm is not true or false");
+  const version = manifestVersion(packageJson);
+  needsLlmDetails(raw.needsLlm, details);
   const riskNotice = raw.riskNotice === undefined ? undefined : shown("riskNotice", raw.riskNotice);
   if (details.length > 0) {
     return { ok: false, problem: "invalid-manifest", ...(sourceTypeId ? { sourceTypeId } : {}), details };
   }
+  return { ok: true, manifest: buildManifest(packageJson, raw, entry, sourceTypeId, displayName, sdk, description, version, riskNotice) };
+}
+
+function manifestRaw(packageJson: unknown): Record<string, unknown> | null {
+  const pkg = isObject(packageJson) ? packageJson : {};
+  const familyAgenda = isObject(pkg.familyAgenda) ? pkg.familyAgenda : {};
+  const raw = familyAgenda.sourcePlugin;
+  return isObject(raw) ? raw : null;
+}
+
+function manifestVersion(packageJson: unknown): string {
+  const pkg = isObject(packageJson) ? packageJson : {};
+  return typeof pkg.version === "string" ? pkg.version : "0.0.0";
+}
+
+function needsLlmDetails(value: unknown, details: string[]): void {
+  if (value !== undefined && typeof value !== "boolean") details.push("needsLlm is not true or false");
+}
+
+function buildManifest(
+  packageJson: unknown,
+  raw: Record<string, unknown>,
+  entry: string,
+  sourceTypeId: string,
+  displayName: PluginText,
+  sdkVersion: string,
+  description: PluginText,
+  version: string,
+  riskNotice: PluginText | undefined,
+): SourcePluginManifest {
+  const pkg = isObject(packageJson) ? packageJson : {};
   return {
-    ok: true,
-    manifest: {
-      entry,
-      identity: { sourceTypeId, displayName, version, sdkVersion: sdk },
-      description,
-      needsLlm: raw.needsLlm === true,
-      esModule: pkg.type === "module" || /\.m[jt]s$/.test(entry),
-      ...(riskNotice !== undefined ? { riskNotice } : {}),
-    },
+    entry,
+    identity: { sourceTypeId, displayName, version, sdkVersion },
+    description,
+    needsLlm: raw.needsLlm === true,
+    esModule: pkg.type === "module" || /\.m[jt]s$/.test(entry),
+    ...(riskNotice !== undefined ? { riskNotice } : {}),
   };
 }
 

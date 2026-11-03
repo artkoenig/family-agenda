@@ -23,22 +23,32 @@ export function createServiceSupervision(deps: ServiceSupervisionDeps) {
     async reconcile(): Promise<ServiceReport> {
       const report: ServiceReport = { failed: [] };
       const enabledTypes = new Set((await sourceTypes.list()).filter((type) => type.enabled).map((type) => type.id));
-      for (const { id } of registry.installed()) {
+      const resolveServices = async (id: SourceTypeId): Promise<ServicesSpec | null> => {
         let services = running.get(id) ?? null;
-        const enabled = enabledTypes.has(id);
-        if (!services && enabled) {
+        if (!services && enabledTypes.has(id)) {
           const loaded = await registry.load(id);
           services = loaded.ok ? loaded.sourceType.services : null;
         }
-        if (!services) continue;
-        const entries = enabled ? (await catalogues.list(id)).filter((record) => record.enabled).map((record) => record.entryId) : [];
+        return services;
+      };
+      const enabledEntries = async (id: SourceTypeId): Promise<string[]> => {
+        if (!enabledTypes.has(id)) return [];
+        return (await catalogues.list(id)).filter((record) => record.enabled).map((record) => record.entryId);
+      };
+      const reconcileOne = async (id: SourceTypeId): Promise<void> => {
+        const services = await resolveServices(id);
+        if (!services) return;
+        const entries = await enabledEntries(id);
         try {
-          await services.reconcile({ enabled, entries });
+          await services.reconcile({ enabled: enabledTypes.has(id), entries });
         } catch (error) {
           report.failed.push({ sourceTypeId: id, message: error instanceof Error ? error.message : String(error) });
         }
-        if (enabled) running.set(id, services);
+        if (enabledTypes.has(id)) running.set(id, services);
         else running.delete(id);
+      };
+      for (const { id } of registry.installed()) {
+        await reconcileOne(id);
       }
       return report;
     },

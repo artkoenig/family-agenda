@@ -578,31 +578,28 @@ function TimetableChangeRow(props: { row: TimelineTimetableChange; members: Fami
         <dd>
           {row.subject}: {label}
         </dd>
-        {row.room ? (
-          <>
-            <dt>{v.where}</dt>
-            <dd>
-              {row.room}
-              {row.previousRoom && row.previousRoom !== row.room ? ` (${v.instead(row.previousRoom)})` : ""}
-            </dd>
-          </>
-        ) : null}
-        {row.teacher && row.previousTeacher && row.previousTeacher !== row.teacher ? (
-          <>
-            <dt>{v.teacher}</dt>
-            <dd>
-              {row.teacher} ({v.instead(row.previousTeacher)})
-            </dd>
-          </>
-        ) : null}
-        {row.note ? (
-          <>
-            <dt>{v.note}</dt>
-            <dd>{row.note}</dd>
-          </>
-        ) : null}
+        <ChangedValue label={v.where} value={row.room} previous={row.previousRoom} />
+        <ChangedValue label={v.teacher} value={row.teacher} previous={row.previousTeacher} onlyChanged />
+        <ChangedValue label={v.note} value={row.note} previous={null} />
       </dl>
     </details>
+  );
+}
+
+/** A detail of a Timetable Change, with what it was instead if that differs; nothing without a value. */
+function ChangedValue(props: { label: string; value: string | null; previous: string | null; onlyChanged?: boolean }) {
+  const { label, value, previous, onlyChanged } = props;
+  const { t } = useTranslation();
+  const instead = previous && previous !== value ? ` (${t.agenda.instead(previous)})` : "";
+  if (!value || (onlyChanged && !instead)) return null;
+  return (
+    <>
+      <dt>{label}</dt>
+      <dd>
+        {value}
+        {instead}
+      </dd>
+    </>
   );
 }
 
@@ -662,6 +659,17 @@ function Sources(props: { row: Pick<TimelineEvent, "links" | "messages"> }) {
     </>
   );
 }
+/**
+ * The status label of a Task in the timeline or Task List: done, overdue by its deadline, due
+ * with its deadline, or just its deadline or due.
+ */
+function taskStatusLabel(row: TimelineTask, v: Catalogue["agenda"], deadline: string | null): string {
+  if (row.status === "done") return v.done;
+  if (row.status === "overdue" && deadline) return v.overdueBy(deadline);
+  if (row.status === "due") return [v.due, deadline ? v.by(deadline) : null].filter(Boolean).join(" · ");
+  return deadline ? v.by(deadline) : v.due;
+}
+
 
 /**
  * A Task as one row with its tick, the design system's checkbox, which posts once it changes as
@@ -674,40 +682,14 @@ function TaskRow(props: { row: TimelineTask; page: AgendaPage | TaskListPage; on
   const { t, locale } = useTranslation();
   const v = t.agenda;
   const done = row.status === "done";
-  const action = `/agendas/${page.id}/tasks/${row.itemId}/${done ? "undone" : "done"}`;
   const classes = ["fam-item", "fam-task", `fam-task--${row.status}`, row.cancelled ? "fam-item--cancelled" : ""]
     .filter(Boolean)
     .join(" ");
   const deadline = row.deadline ? dateLabel(row.deadline, locale) : null;
-  const status =
-    row.status === "done"
-      ? v.done
-      : row.status === "overdue" && deadline
-        ? v.overdueBy(deadline)
-        : row.status === "due"
-          ? [v.due, deadline ? v.by(deadline) : null].filter(Boolean).join(" · ")
-          : deadline
-            ? v.by(deadline)
-            : v.due;
-  const tick = (
-    <form
-      method="post"
-      action={action}
-      hx-post={action}
-      hx-trigger="change"
-      hx-target="#agenda"
-      hx-swap="outerHTML"
-      hx-include={page.kind === "timeline" ? "#shown-from, #shown-until" : undefined}
-    >
-      <input type="hidden" name="show" value={page.showing === "all" ? "all" : page.showing.join(",")} />
-      <label class="fam-task__tick">
-        <input type="checkbox" checked={done} aria-label={done ? v.markNotDone(row.title) : v.markDone(row.title)} />
-      </label>
-    </form>
-  );
+  const status = taskStatusLabel(row, v, deadline);
   return (
     <li class={classes}>
-      {props.onDay ? <span class="fam-item__lead">{tick}</span> : tick}
+      {props.onDay ? <span class="fam-item__lead"><TickForm row={row} page={page} done={done} /></span> : <TickForm row={row} page={page} done={done} />}
       <span class="fam-item__text">
         <span class="fam-item__title">
           {row.cancelled ? (
@@ -728,6 +710,29 @@ function TaskRow(props: { row: TimelineTask; page: AgendaPage | TaskListPage; on
       </span>
       <Concerned concerns={row.concerns} members={page.members} />
     </li>
+  );
+}
+
+function TickForm(props: { row: TimelineTask; page: AgendaPage | TaskListPage; done: boolean }) {
+  const { row, page, done } = props;
+  const { t } = useTranslation();
+  const v = t.agenda;
+  const action = `/agendas/${page.id}/tasks/${row.itemId}/${done ? "undone" : "done"}`;
+  return (
+    <form
+      method="post"
+      action={action}
+      hx-post={action}
+      hx-trigger="change"
+      hx-target="#agenda"
+      hx-swap="outerHTML"
+      hx-include={page.kind === "timeline" ? "#shown-from, #shown-until" : undefined}
+    >
+      <input type="hidden" name="show" value={page.showing === "all" ? "all" : page.showing.join(",")} />
+      <label class="fam-task__tick">
+        <input type="checkbox" checked={done} aria-label={done ? v.markNotDone(row.title) : v.markDone(row.title)} />
+      </label>
+    </form>
   );
 }
 
@@ -808,6 +813,7 @@ function showsEveryChoice(page: AgendaPage | TaskListPage): boolean {
 }
 
 /** What the quick filter shows after tapping a Family Member: added, or taken out again. */
+// eslint-disable-next-line sonarjs/function-return-type -- the filter is either a member list or "all"
 function toggled(page: AgendaPage | TaskListPage, id: FamilyMemberId): Showing {
   if (showsEveryChoice(page) || page.showing === "all") return [id];
   const showing = page.showing;

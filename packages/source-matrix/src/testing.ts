@@ -1,7 +1,7 @@
 import { createHmac, randomBytes } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
-import type { MatrixEvent, SyncResponse } from "./homeserver";
+import type { JoinedRoom, MatrixEvent, SyncResponse } from "./homeserver";
 import type { MatrixInstance } from "./instance";
 import type { MatrixPrograms } from "./services";
 
@@ -202,6 +202,13 @@ export class FakeHomeserver {
     };
   }
 
+  private messagesChunk(roomId: string, from: number, to: number, limit: number) {
+    return this.events
+      .filter((stored) => stored.roomId === roomId && stored.position <= from && stored.position > to)
+      .reverse()
+      .slice(0, limit);
+  }
+
   /** The room's name, the bridge's description of it and its members, as state events. */
   private stateOf(roomId: string): MatrixEvent[] {
     const room = this.roomOf(roomId);
@@ -228,151 +235,210 @@ export class FakeHomeserver {
     const invite: NonNullable<SyncResponse["rooms"]>["invite"] = {};
     for (const [roomId, room] of this.rooms) {
       const member = room.members.get(userId);
-      // Like Synapse, an incremental `/sync` names an invitation only once, in the first one after it.
       if (member?.membership === "invite" && member.since > after) {
         invite[roomId] = { invite_state: { events: this.stateOf(roomId).filter((event) => event.type === "m.room.name" || event.state_key === userId) } };
       }
       if (member?.membership !== "join") continue;
-      const fresh = this.events.filter((stored) => stored.roomId === roomId && (since === null || stored.position > after));
-      const shown = fresh.slice(-limit);
-      const first = shown[0]?.position ?? this.position + 1;
-      join[roomId] = {
-        state: { events: this.stateOf(roomId) },
-        timeline: { events: shown.map((stored) => stored.event), limited: fresh.length > shown.length, prev_batch: `s${first - 1}` },
-      };
+      join[roomId] = this.roomSync(roomId, since, after, limit);
     }
     return { next_batch: `s${this.position}`, rooms: { join, invite, leave: {} } };
   }
 
+  /** Like Synapse, an incremental `/sync` names an invitation only once, in the first one after it. */
+  private roomSync(roomId: string, since: string | null, after: number, limit: number): JoinedRoom {
+    const fresh = this.events.filter((stored) => stored.roomId === roomId && (since === null || stored.position > after));
+    const shown = fresh.slice(-limit);
+    const first = shown[0]?.position ?? this.position + 1;
+    return {
+      state: { events: this.stateOf(roomId) },
+      timeline: { events: shown.map((stored) => stored.event), limited: fresh.length > shown.length, prev_batch: `s${first - 1}` },
+    };
+  }
+
   private async handle(request: IncomingMessage, response: ServerResponse): Promise<void> {
-    const url = new URL(request.url ?? "/", this.url);
-    const path = url.pathname;
-    const method = request.method ?? "GET";
+    const { url, path, method } = this.routeOf(request);
     this.requests.push(`${method} ${path}`);
     const body = method === "POST" ? await jsonOf(request) : {};
-
-    if (path.startsWith("/_matrix/mau/") || path.startsWith("/_matrix/provision/")) {
-      if (!this.bridgeRunning) {
-        request.socket.destroy();
-        return;
-      }
-      if (path === "/_matrix/mau/live") {
-        respond(response, 200, {});
-        return;
-      }
-      this.provision(request, response, url, method);
-      return;
-    }
-
-    if (path === "/_synapse/admin/v1/register") {
-      if (method === "GET") {
-        respond(response, 200, { nonce: randomBytes(8).toString("hex") });
-        return;
-      }
-      const { nonce, username, password, mac } = body as Record<string, string>;
-      const expected = createHmac("sha1", this.registrationSharedSecret)
-        .update([nonce, username, password, "notadmin"].join("\0"))
-        .digest("hex");
-      if (mac !== expected) {
-        respond(response, 403, { errcode: "M_FORBIDDEN", error: "HMAC incorrect" });
-        return;
-      }
-      const userId = `@${username}:${this.serverName}`;
-      const token = `syt_${randomBytes(12).toString("hex")}`;
-      this.userOf(userId).token = token;
-      respond(response, 200, { user_id: userId, access_token: token, home_server: this.serverName, device_id: "DEVICE" });
-      return;
-    }
-
+    if (this.handleBridge(path, request, response, url, method)) return;
+    if (this.handleRegisterCheck(path, response, method, body)) return;
     const userId = this.authenticate(request);
     if (!userId) {
       respond(response, 401, { errcode: "M_UNKNOWN_TOKEN", error: "Unknown access token" });
       return;
     }
-
-    if (method === "GET" && path === "/_matrix/client/v3/sync") {
-      const replayed = this.userOf(userId).replay.shift();
-      if (replayed) {
-        respond(response, 200, replayed);
-        return;
-      }
-      const filter = JSON.parse(url.searchParams.get("filter") ?? "{}") as { room?: { timeline?: { limit?: number } } };
-      respond(response, 200, this.sync(userId, url.searchParams.get("since"), filter.room?.timeline?.limit ?? 10));
-      return;
-    }
-    const join = /^\/_matrix\/client\/v3\/rooms\/([^/]+)\/join$/.exec(path);
-    if (method === "POST" && join) {
-      const roomId = decodeURIComponent(join[1] ?? "");
-      const member = this.rooms.get(roomId)?.members.get(userId);
-      if (this.limitedJoins > 0) {
-        this.limitedJoins -= 1;
-        respond(response, 429, { errcode: "M_LIMIT_EXCEEDED", error: "Too Many Requests", retry_after_ms: 10_000 });
-        return;
-      }
-      if (!member) {
-        respond(response, 403, { errcode: "M_FORBIDDEN", error: "You are not invited to this room." });
-        return;
-      }
-      member.membership = "join";
-      respond(response, 200, { room_id: roomId });
-      return;
-    }
-    const messages = /^\/_matrix\/client\/v3\/rooms\/([^/]+)\/messages$/.exec(path);
-    if (method === "GET" && messages) {
-      const roomId = decodeURIComponent(messages[1] ?? "");
-      // A room only replayed `/sync` responses name has no history here.
-      if (!this.rooms.has(roomId)) {
-        respond(response, 200, { chunk: [], start: url.searchParams.get("from") });
-        return;
-      }
-      if (!this.isMember(roomId, userId)) {
-        respond(response, 403, { errcode: "M_FORBIDDEN", error: "Not in the room." });
-        return;
-      }
-      const from = Number((url.searchParams.get("from") ?? "s0").slice(1));
-      const to = Number((url.searchParams.get("to") ?? "s0").slice(1));
-      const limit = Number(url.searchParams.get("limit") ?? 10);
-      const chunk = this.events
-        .filter((stored) => stored.roomId === roomId && stored.position <= from && stored.position > to)
-        .reverse()
-        .slice(0, limit);
-      const last = chunk.at(-1);
-      respond(response, 200, {
-        chunk: chunk.map((stored) => stored.event),
-        start: `s${from}`,
-        ...(last && chunk.length === limit ? { end: `s${last.position - 1}` } : {}),
-        state: this.stateOf(roomId).filter((event) => event.type === "m.room.member"),
-      });
-    }
-    const state = /^\/_matrix\/client\/v3\/rooms\/([^/]+)\/state$/.exec(path);
-    if (method === "GET" && state) {
-      const roomId = decodeURIComponent(state[1] ?? "");
-      if (!this.rooms.has(roomId) || !this.isMember(roomId, userId)) {
-        respond(response, 403, { errcode: "M_FORBIDDEN", error: "Not in the room." });
-        return;
-      }
-      respond(response, 200, this.stateOf(roomId));
-      return;
-    }
-    const download = /^\/_matrix\/client\/v1\/media\/download\/([^/]+)\/([^/]+)$/.exec(path);
-    if (method === "GET" && download) {
-      const bytes = this.media.get(decodeURIComponent(download[2] ?? ""));
-      if (!bytes) {
-        respond(response, 404, { errcode: "M_NOT_FOUND", error: "Not found" });
-        return;
-      }
-      response.writeHead(200, { "content-type": "application/octet-stream" });
-      response.end(Buffer.from(bytes));
-      return;
-    }
-    if (method === "POST" && path === "/_matrix/client/v3/logout") {
-      this.userOf(userId).token = null;
-      respond(response, 200, {});
-      return;
-    }
+    if (this.handleClientRoute(method, path, userId, response, url)) return;
     respond(response, 404, { errcode: "M_UNRECOGNIZED", error: `Unrecognized request ${method} ${path}` });
   }
 
+  private routeOf(request: IncomingMessage): { url: URL; path: string; method: string } {
+    const url = new URL(request.url ?? "/", this.url);
+    return { url, path: url.pathname, method: request.method ?? "GET" };
+  }
+
+  private handleBridge(path: string, request: IncomingMessage, response: ServerResponse, url: URL, method: string): boolean {
+    if (!path.startsWith("/_matrix/mau/") && !path.startsWith("/_matrix/provision/")) return false;
+    if (!this.bridgeRunning) {
+      request.socket.destroy();
+      return true;
+    }
+    if (path === "/_matrix/mau/live") {
+      respond(response, 200, {});
+      return true;
+    }
+    this.provision(request, response, url, method);
+    return true;
+  }
+
+  private handleRegisterCheck(path: string, response: ServerResponse, method: string, body: unknown): boolean {
+    if (path !== "/_synapse/admin/v1/register") return false;
+    this.handleRegister(response, method, body);
+    return true;
+  }
+
+  private handleClientRoute(method: string, path: string, userId: string, response: ServerResponse, url: URL): boolean {
+    if (method === "GET" && path === "/_matrix/client/v3/sync") {
+      this.handleSync(response, userId, url);
+      return true;
+    }
+    if (this.handleRoomRoute(method, path, userId, response, url)) return true;
+    if (method === "POST" && path === "/_matrix/client/v3/logout") {
+      this.userOf(userId).token = null;
+      respond(response, 200, {});
+      return true;
+    }
+    return false;
+  }
+
+  private handleRoomRoute(method: string, path: string, userId: string, response: ServerResponse, url: URL): boolean {
+    if (this.handleJoinRoute(method, path, userId, response)) return true;
+    if (this.handleMessagesRoute(method, path, userId, response, url)) return true;
+    if (this.handleStateRoute(method, path, userId, response)) return true;
+    if (this.handleDownloadRoute(method, path, response)) return true;
+    return false;
+  }
+
+  private handleJoinRoute(method: string, path: string, userId: string, response: ServerResponse): boolean {
+    if (method !== "POST") return false;
+    const join = /^\/_matrix\/client\/v3\/rooms\/([^/]+)\/join$/.exec(path);
+    if (!join) return false;
+    this.handleJoin(response, userId, decodeURIComponent(join[1] ?? ""));
+    return true;
+  }
+
+  private handleMessagesRoute(method: string, path: string, userId: string, response: ServerResponse, url: URL): boolean {
+    if (method !== "GET") return false;
+    const messages = /^\/_matrix\/client\/v3\/rooms\/([^/]+)\/messages$/.exec(path);
+    if (!messages) return false;
+    this.handleMessages(response, userId, decodeURIComponent(messages[1] ?? ""), url);
+    return true;
+  }
+
+  private handleStateRoute(method: string, path: string, userId: string, response: ServerResponse): boolean {
+    if (method !== "GET") return false;
+    const state = /^\/_matrix\/client\/v3\/rooms\/([^/]+)\/state$/.exec(path);
+    if (!state) return false;
+    this.handleState(response, userId, decodeURIComponent(state[1] ?? ""));
+    return true;
+  }
+
+  private handleDownloadRoute(method: string, path: string, response: ServerResponse): boolean {
+    if (method !== "GET") return false;
+    const download = /^\/_matrix\/client\/v1\/media\/download\/([^/]+)\/([^/]+)$/.exec(path);
+    if (!download) return false;
+    this.handleDownload(response, decodeURIComponent(download[2] ?? ""));
+    return true;
+  }
+
+  private handleRegister(response: ServerResponse, method: string, body: unknown): void {
+    if (method === "GET") {
+      respond(response, 200, { nonce: randomBytes(8).toString("hex") });
+      return;
+    }
+    const { nonce, username, password, mac } = body as Record<string, string>;
+    const expected = createHmac("sha1", this.registrationSharedSecret)
+      .update([nonce, username, password, "notadmin"].join("\0"))
+      .digest("hex");
+    if (mac !== expected) {
+      respond(response, 403, { errcode: "M_FORBIDDEN", error: "HMAC incorrect" });
+      return;
+    }
+    const userId = `@${username}:${this.serverName}`;
+    const token = `syt_${randomBytes(12).toString("hex")}`;
+    this.userOf(userId).token = token;
+    respond(response, 200, { user_id: userId, access_token: token, home_server: this.serverName, device_id: "DEVICE" });
+  }
+
+  private handleSync(response: ServerResponse, userId: string, url: URL): void {
+    const replayed = this.userOf(userId).replay.shift();
+    if (replayed) {
+      respond(response, 200, replayed);
+      return;
+    }
+    const filter = JSON.parse(url.searchParams.get("filter") ?? "{}") as { room?: { timeline?: { limit?: number } } };
+    respond(response, 200, this.sync(userId, url.searchParams.get("since"), filter.room?.timeline?.limit ?? 10));
+  }
+
+  private handleJoin(response: ServerResponse, userId: string, roomId: string): void {
+    const member = this.rooms.get(roomId)?.members.get(userId);
+    if (this.limitedJoins > 0) {
+      this.limitedJoins -= 1;
+      respond(response, 429, { errcode: "M_LIMIT_EXCEEDED", error: "Too Many Requests", retry_after_ms: 10_000 });
+      return;
+    }
+    if (!member) {
+      respond(response, 403, { errcode: "M_FORBIDDEN", error: "You are not invited to this room." });
+      return;
+    }
+    member.membership = "join";
+    respond(response, 200, { room_id: roomId });
+  }
+
+  private messagesParams(url: URL): { from: number; to: number; limit: number } {
+    return {
+      from: Number((url.searchParams.get("from") ?? "s0").slice(1)),
+      to: Number((url.searchParams.get("to") ?? "s0").slice(1)),
+      limit: Number(url.searchParams.get("limit") ?? 10),
+    };
+  }
+
+  private handleMessages(response: ServerResponse, userId: string, roomId: string, url: URL): void {
+    // A room only replayed `/sync` responses has no history here.
+    if (!this.rooms.has(roomId)) {
+      respond(response, 200, { chunk: [], start: url.searchParams.get("from") });
+      return;
+    }
+    if (!this.isMember(roomId, userId)) {
+      respond(response, 403, { errcode: "M_FORBIDDEN", error: "Not in the room." });
+      return;
+    }
+    const { from, to, limit } = this.messagesParams(url);
+    const chunk = this.messagesChunk(roomId, from, to, limit);
+    const last = chunk.at(-1);
+    respond(response, 200, {
+      chunk: chunk.map((stored) => stored.event),
+      start: `s${from}`,
+      ...(last && chunk.length === limit ? { end: `s${last.position - 1}` } : {}),
+      state: this.stateOf(roomId).filter((event) => event.type === "m.room.member"),
+    });
+  }
+
+  private handleState(response: ServerResponse, userId: string, roomId: string): void {
+    if (!this.rooms.has(roomId) || !this.isMember(roomId, userId)) {
+      respond(response, 403, { errcode: "M_FORBIDDEN", error: "Not in the room." });
+      return;
+    }
+    respond(response, 200, this.stateOf(roomId));
+  }
+
+  private handleDownload(response: ServerResponse, mediaId: string): void {
+    const bytes = this.media.get(mediaId);
+    if (!bytes) {
+      respond(response, 404, { errcode: "M_NOT_FOUND", error: "Not found" });
+      return;
+    }
+    response.writeHead(200, { "content-type": "application/octet-stream" });
+    response.end(Buffer.from(bytes));
+  }
   private provision(request: IncomingMessage, response: ServerResponse, url: URL, method: string): void {
     if (request.headers.authorization !== `Bearer ${this.provisioningSecret}`) {
       respond(response, 401, { errcode: "M_UNKNOWN_TOKEN", error: "Invalid auth token" });
@@ -380,37 +446,49 @@ export class FakeHomeserver {
     }
     const userId = url.searchParams.get("user_id") ?? "";
     const path = url.pathname.slice("/_matrix/provision/v3".length);
-    if (method === "GET" && path === "/whoami") {
-      const logins = (this.logins.get(userId) ?? []).map((login) => ({
-        id: login.id,
-        name: login.name,
-        state_event: login.stateEvent,
-        state: { state_event: login.stateEvent, timestamp: 1, ...(login.reason ? { reason: login.reason } : {}) },
-        profile: {},
-      }));
-      respond(response, 200, { network: { displayname: "WhatsApp" }, bridge_bot: this.bot, homeserver: this.serverName, logins });
-      return;
-    }
-    if (method === "POST" && path === "/login/start/qr") {
+    if (this.provisionWhoami(method, path, userId, response)) return;
+    if (this.provisionLogin(method, path, userId, response)) return;
+    if (this.provisionLogout(method, path, userId, response)) return;
+    respond(response, 404, { errcode: "M_UNRECOGNIZED", error: "Unrecognized provisioning request" });
+  }
+
+  private provisionWhoami(method: string, path: string, userId: string, response: ServerResponse): boolean {
+    if (method !== "GET" || path !== "/whoami") return false;
+    const logins = (this.logins.get(userId) ?? []).map((login) => ({
+      id: login.id,
+      name: login.name,
+      state_event: login.stateEvent,
+      state: { state_event: login.stateEvent, timestamp: 1, ...(login.reason ? { reason: login.reason } : {}) },
+      profile: {},
+    }));
+    respond(response, 200, { network: { displayname: "WhatsApp" }, bridge_bot: this.bot, homeserver: this.serverName, logins });
+    return true;
+  }
+
+  private provisionLogin(method: string, path: string, userId: string, response: ServerResponse): boolean {
+    if (method !== "POST") return false;
+    if (path === "/login/start/qr") {
       respond(response, 200, this.qrStep(`login-${randomBytes(4).toString("hex")}`));
-      return;
+      return true;
     }
     const step = /^\/login\/step\/([^/]+)\/([^/]+)\/display_and_wait$/.exec(path);
-    if (method === "POST" && step) {
+    if (step) {
       this.pendingSteps.set(userId, {
         loginId: decodeURIComponent(step[1] ?? ""),
         respond: (answer) => {
           respond(response, 200, answer);
         },
       });
-      return;
+      return true;
     }
-    if (method === "POST" && path === "/logout/all") {
-      this.logins.delete(userId);
-      respond(response, 200, {});
-      return;
-    }
-    respond(response, 404, { errcode: "M_UNRECOGNIZED", error: "Unrecognized provisioning request" });
+    return false;
+  }
+
+  private provisionLogout(method: string, path: string, userId: string, response: ServerResponse): boolean {
+    if (method !== "POST" || path !== "/logout/all") return false;
+    this.logins.delete(userId);
+    respond(response, 200, {});
+    return true;
   }
 
   private authenticate(request: IncomingMessage): string | null {

@@ -7,6 +7,7 @@ import { addressesFacing, answerWith, asksFor, type Ipv4Interface } from "./mdns
  * runs in the host's network namespace (see `compose.yaml`), where the interfaces are the host's own.
  */
 const hostname = (process.env.MDNS_NAME ?? "family-agenda.local").toLowerCase();
+// eslint-disable-next-line sonarjs/no-hardcoded-ip -- the standard mDNS multicast address (RFC 6762)
 const group = "224.0.0.251";
 const port = 5353;
 

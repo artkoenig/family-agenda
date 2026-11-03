@@ -3,6 +3,7 @@ import { createRequire } from "node:module";
 import {
   type SourceInput,
   type SourceSummary,
+  type SourceTypeSummary,
   type Showing,
   type TimelineDays,
   type AgendaAccessPolicy,
@@ -20,6 +21,7 @@ import {
   type RawMessageId,
   type SourceId,
   type AgendaId,
+  type MultilingualText,
 } from "@family-agenda/domain";
 import type { HealthResponse } from "@family-agenda/contracts";
 import type { HttpBindings } from "@hono/node-server";
@@ -448,7 +450,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
         {...(shown.editing ? { editing: shown.editing } : {})}
       />
     );
-    return render(c, page, shown.problem || shown.adding?.problem || shown.editing?.problem ? 400 : 200);
+    return render(c, page, shownStatus(undefined, [shown.problem, shown.adding?.problem, shown.editing?.problem]));
   };
 
   app.get("/admin/admins", (c) => adminsPage(c));
@@ -476,7 +478,11 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     return c.redirect("/admin/admins", 303);
   });
 
-  const familyMembersPage = async (
+function shownStatus(status: 200 | 400 | 413 | undefined, problems: (string | undefined)[]): 200 | 400 | 413 {
+  return status ?? (problems.some((p) => p !== undefined && p !== "") ? 400 : 200);
+}
+
+    const familyMembersPage = async (
     c: Context<Env>,
     shown: {
       problem?: string;
@@ -495,7 +501,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
         {...(editing ? { editing } : {})}
       />
     );
-    return render(c, page, shown.status ?? (problem || adding?.problem || editing?.problem ? 400 : 200));
+    return render(c, page, shownStatus(shown.status, [problem, adding?.problem, editing?.problem]));
   };
 
   // A photo and the rest of the form; larger uploads are refused before they are read.
@@ -558,7 +564,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
         {...(shown.editing ? { editing: shown.editing } : {})}
       />
     );
-    return render(c, page, shown.problem || shown.creating?.problem || shown.editing?.problem ? 400 : 200);
+    return render(c, page, shownStatus(undefined, [shown.problem, shown.creating?.problem, shown.editing?.problem]));
   };
 
   const agendaSettingsOf = async (c: Context<Env>) => {
@@ -621,7 +627,19 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     const ofType = (await sources.list()).filter((source) => source.sourceTypeId === id);
     const displayName = sourceType?.displayName ?? ofType[0]?.displayName;
     if (!displayName) return c.redirect("/admin/sources");
-    const page = (
+    const page = await sourceTypePageElement(c, id, sourceType, displayName, ofType, shown);
+    return render(c, page, refusedStatus(shown));
+  };
+
+  async function sourceTypePageElement(
+    c: Context<Env>,
+    id: string,
+    sourceType: SourceTypeSummary | null,
+    displayName: MultilingualText,
+    ofType: SourceSummary[],
+    shown: { problem?: string; adding?: SourceAdding; settingUp?: SourceSummary },
+  ) {
+    return (
       <SourceTypePage
         admin={c.get("admin")}
         sourceTypeId={id}
@@ -637,9 +655,10 @@ export function createHttpApp(application: Application, options: HttpOptions) {
         {...(shown.settingUp ? { settingUp: shown.settingUp, liveSteps: await liveStepsOf(shown.settingUp) } : {})}
       />
     );
-    const refused = shown.problem || shown.adding?.problem;
-    return render(c, page, refused ? 400 : 200);
-  };
+  }
+
+  const refusedStatus = (shown: { problem?: string; adding?: SourceAdding }) =>
+    shown.problem || shown.adding?.problem ? 400 : 200;
 
   app.get("/admin/source-types/:id", (c) => sourceTypePage(c, c.req.param("id")));
 
@@ -676,8 +695,9 @@ export function createHttpApp(application: Application, options: HttpOptions) {
   /** What the live setup steps of a Source show now, such as a QR code to scan. */
   const liveStepsOf = async (source: SourceSummary): Promise<LiveStep[]> => {
     const form = (await sources.forms()).find((candidate) => candidate.sourceTypeId === source.sourceTypeId);
+    const candidates = form ? form.setupSteps : [];
     const steps: LiveStep[] = [];
-    for (const step of form?.setupSteps.filter((candidate) => candidate.live) ?? []) {
+    for (const step of candidates.filter((candidate) => candidate.live)) {
       const live = await liveStepOf(source.id, step.id);
       if (live) steps.push(live);
     }
@@ -967,36 +987,65 @@ function sourceInputOf(form: Record<string, unknown>): SourceInput {
   const parts: Record<string, Map<number, { name: string; members: FamilyMemberId[] }>> = {};
   for (const [name, given] of Object.entries(form)) {
     const values = (Array.isArray(given) ? given : [given]).filter((value): value is string => typeof value === "string");
-    const part = /^part\.(.+)\.(\d+)\.(name|member)$/.exec(name);
-    if (part) {
-      const [, key = "", index = "0", what] = part;
-      const rows = (parts[key] ??= new Map());
-      const row = rows.get(Number(index)) ?? { name: "", members: [] };
-      if (what === "name") row.name = values.at(-1)?.trim() ?? "";
-      else row.members = values as FamilyMemberId[];
-      rows.set(Number(index), row);
-      continue;
-    }
-    if (name.startsWith("choice.")) {
-      plain[name.slice("choice.".length)] = values.map((value) => value.trim()).filter((value) => value !== "");
-      continue;
-    }
-    const value = values.at(-1);
-    if (value === undefined) continue;
-    if (name.startsWith("plain.")) plain[name.slice("plain.".length)] = value.trim();
-    if (name.startsWith("secret.")) secrets[name.slice("secret.".length)] = value.trim();
+    if (classifyField(name, values, plain, secrets, parts)) continue;
   }
   const minutes = field(form, "pollIntervalMinutes").trim();
   const input: SourceInput = { plain, secrets, pollIntervalSeconds: minutes === "" ? null : Number(minutes) * 60 };
   if (Object.keys(parts).length === 0) return input;
-  // A Part's row with no name is no Part, and the rows keep their order.
+  return { ...input, ...assembleParts(parts, plain) };
+}
+
+/**
+ * Fills `plain`, `secrets` or `parts` from one form field. Returns true when the field is a Part
+ * row (which the caller skips), false otherwise.
+ */
+function classifyField(
+  name: string,
+  values: string[],
+  plain: Record<string, string | string[]>,
+  secrets: Record<string, string>,
+  parts: Record<string, Map<number, { name: string; members: FamilyMemberId[] }>>,
+): boolean {
+  if (partField(name, values, parts)) return true;
+  if (name.startsWith("choice.")) {
+    plain[name.slice("choice.".length)] = values.map((value) => value.trim()).filter((value) => value !== "");
+    return false;
+  }
+  const value = values.at(-1);
+  if (value === undefined) return false;
+  if (name.startsWith("plain.")) plain[name.slice("plain.".length)] = value.trim();
+  if (name.startsWith("secret.")) secrets[name.slice("secret.".length)] = value.trim();
+  return false;
+}
+
+function partField(
+  name: string,
+  values: string[],
+  parts: Record<string, Map<number, { name: string; members: FamilyMemberId[] }>>,
+): boolean {
+  const part = /^part\.(.+)\.(\d+)\.(name|member)$/.exec(name);
+  if (!part) return false;
+  const [, key = "", index = "0", what] = part;
+  const rows = (parts[key] ??= new Map());
+  const row = rows.get(Number(index)) ?? { name: "", members: [] };
+  if (what === "name") row.name = values.at(-1)?.trim() ?? "";
+  else row.members = values as FamilyMemberId[];
+  rows.set(Number(index), row);
+  return true;
+}
+
+/** A Part's rows with no name are dropped; the named ones become plain entries and concerns. */
+function assembleParts(
+  parts: Record<string, Map<number, { name: string; members: FamilyMemberId[] }>>,
+  plain: Record<string, string | string[]>,
+): { plain: Record<string, string | string[]>; partConcerns: Record<string, FamilyMemberId[]> } {
   const partConcerns: Record<string, FamilyMemberId[]> = {};
   for (const [key, rows] of Object.entries(parts)) {
     const named = [...rows.entries()].sort(([a], [b]) => a - b).map(([, row]) => row).filter((row) => row.name !== "");
     plain[key] = named.map((row) => row.name);
     for (const row of named) partConcerns[row.name] = row.members;
   }
-  return { ...input, partConcerns };
+  return { plain, partConcerns };
 }
 
 /**
@@ -1024,6 +1073,7 @@ function showingOf(show: string | undefined): { show?: Showing } {
 }
 
 /** The days a timeline was scrolled to, none for the horizon from today, or "invalid". */
+// eslint-disable-next-line sonarjs/function-return-type -- the result is either a days object or "invalid"
 function timelineDaysOf(from: string | undefined, until: string | undefined): { days?: TimelineDays } | "invalid" {
   if (from === undefined && until === undefined) return {};
   if (from === undefined || until === undefined || !isLocalDate(from) || !isLocalDate(until)) return "invalid";

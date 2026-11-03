@@ -5,12 +5,26 @@
 export function isLocalHost(host: string): boolean {
   const name = host.toLowerCase().replace(/^\[(.*)\]$/, "$1").replace(/\.$/, "");
   const ipv4 = /^(\d{1,3})\.(\d{1,3})\.\d{1,3}\.\d{1,3}$/.exec(name);
-  if (ipv4) {
-    const a = Number(ipv4[1]);
-    const b = Number(ipv4[2]);
-    return a === 127 || a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 169 && b === 254);
-  }
-  if (name.includes(":")) return name === "::1" || /^f[cd][0-9a-f]{0,2}:/.test(name) || /^fe[89ab][0-9a-f]?:/.test(name);
+  if (ipv4) return isPrivateIpv4(Number(ipv4[1]), Number(ipv4[2]));
+  if (name.includes(":")) return isLocalIpv6(name);
   if (!name.includes(".")) return name !== "";
-  return ["localhost", "local", "lan", "internal", "home.arpa"].some((suffix) => name === suffix || name.endsWith(`.${suffix}`));
+  return isLocalName(name);
+}
+
+function isPrivateIpv4(a: number, b: number): boolean {
+  return a === 127 || a === 10 || isRfc1918(a, b);
+}
+
+function isRfc1918(a: number, b: number): boolean {
+  return (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 169 && b === 254);
+}
+
+function isLocalIpv6(name: string): boolean {
+  return name === "::1" || /^f[cd][0-9a-f]{0,2}:/.test(name) || /^fe[89ab][0-9a-f]?:/.test(name);
+}
+
+function isLocalName(name: string): boolean {
+  return ["localhost", "local", "lan", "internal", "home.arpa"].some(
+    (suffix) => name === suffix || name.endsWith(`.${suffix}`),
+  );
 }

@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import type { Conversion, TextExtractor } from "@family-agenda/application";
 import type { OcrLanguage } from "@family-agenda/domain";
+import { reason } from "./tool-failure";
 
 const run = promisify(execFile);
 
@@ -79,13 +80,4 @@ export class CommandLineTextExtractor implements TextExtractor {
       if (directory) await rm(directory, { recursive: true, force: true });
     }
   }
-}
-
-/** What a failed tool said, without the command line that names the temporary file. */
-function reason(error: unknown): string {
-  const failed = error as { stderr?: unknown; killed?: boolean; code?: unknown; message?: string };
-  if (failed.killed) return "Converting it took too long.";
-  if (failed.code === "ENOENT") return `A tool to convert it is not installed: ${failed.message ?? ""}`.trim();
-  const stderr = typeof failed.stderr === "string" ? failed.stderr.trim().split("\n")[0] : "";
-  return stderr || "It could not be converted.";
 }

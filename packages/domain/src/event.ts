@@ -22,18 +22,28 @@ const eventFields = ["title", "span", "place"] as const;
 
 /** Why an Event Revision cannot be applied; none if it can. */
 export function problemsWithEventRevision(act: Act, fields: Record<string, unknown>): string[] {
-  const problems: string[] = [];
+  return [...missingProblems(act, fields), ...fieldProblems(fields), ...unknownFieldProblems(fields, eventFields)];
+}
+
+function missingProblems(act: Act, fields: Record<string, unknown>): string[] {
   const required = act === "create" ? ["title", "span"] : act === "move" ? ["span"] : [];
-  for (const key of required) if (!(key in fields)) problems.push(`${key} is missing`);
+  return required.filter((key) => !(key in fields)).map((key) => `${key} is missing`);
+}
+
+function fieldProblems(fields: Record<string, unknown>): string[] {
+  const problems: string[] = [];
   if ("title" in fields && parseText(fields.title) === null) problems.push("title is not a non-empty text");
   if ("span" in fields && parseSpan(fields.span) === null) problems.push("span is not a valid time span");
   if ("place" in fields && fields.place !== null && parseText(fields.place) === null) {
     problems.push("place is not a non-empty text or null");
   }
-  for (const key of Object.keys(fields)) {
-    if (!(eventFields as readonly string[]).includes(key)) problems.push(`${key} is not a field of an Event`);
-  }
   return problems;
+}
+
+function unknownFieldProblems(fields: Record<string, unknown>, known: readonly string[]): string[] {
+  return Object.keys(fields)
+    .filter((key) => !known.includes(key))
+    .map((key) => `${key} is not a field of an Event`);
 }
 
 /** The Event its folded Revisions describe, or null while it has no title or span yet. */
@@ -92,11 +102,17 @@ function parseText(value: unknown): string | null {
 function parseSpan(value: unknown): TimeSpan | null {
   if (typeof value !== "object" || value === null) return null;
   const span = value as Record<string, unknown>;
-  if (span.allDay === true) {
-    const firstDay = parseDate(span.firstDay);
-    const lastDay = parseDate(span.lastDay);
-    return firstDay && lastDay && firstDay <= lastDay ? { allDay: true, firstDay, lastDay } : null;
-  }
+  if (span.allDay === true) return parseAllDaySpan(span);
+  return parseTimedSpan(span);
+}
+
+function parseAllDaySpan(span: Record<string, unknown>): TimeSpan | null {
+  const firstDay = parseDate(span.firstDay);
+  const lastDay = parseDate(span.lastDay);
+  return firstDay && lastDay && firstDay <= lastDay ? { allDay: true, firstDay, lastDay } : null;
+}
+
+function parseTimedSpan(span: Record<string, unknown>): TimeSpan | null {
   if (span.allDay !== false || typeof span.start !== "string" || typeof span.end !== "string") return null;
   const start = new Date(span.start);
   const end = new Date(span.end);

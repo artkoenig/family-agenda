@@ -11,6 +11,7 @@ export type Attribution = FamilyMemberId[] | "whole-family";
  * of them, a Source assigned to no one covering everyone. Nothing within a Source, such as a
  * sender, counts. Applying it on every read makes assigning a Source apply to its past Items.
  */
+// eslint-disable-next-line sonarjs/function-return-type -- intentionally returns different members of the Attribution union
 export function attributionOf(assignedPerSource: readonly (readonly FamilyMemberId[])[]): Attribution {
   if (assignedPerSource.length === 0 || assignedPerSource.some((assigned) => assigned.length === 0)) return "whole-family";
   return [...new Set(assignedPerSource.flat())];

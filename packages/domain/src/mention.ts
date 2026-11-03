@@ -36,29 +36,48 @@ const daysBackWithoutYear = 60;
  */
 export function resolveDate(mention: DateMention, sentOn: LocalDate): ResolvedDate {
   const { day, month, year, weekday, daysAfter, weeksAfter } = mention;
-  let date: LocalDate | null = null;
   // A day without its month could be any month's, whatever weekday it is said to be.
-  if (day !== null && month === null) return { ok: false, problem: "no-date" };
-  if (day !== null && month !== null) {
-    if (year !== null) date = dateOf(year < 100 ? 2000 + year : year, month, day);
-    else {
-      const thisYear = Number(sentOn.slice(0, 4));
-      const candidate = dateOf(thisYear, month, day);
-      date = candidate && candidate < addDays(sentOn, -daysBackWithoutYear) ? dateOf(thisYear + 1, month, day) : candidate;
-    }
-  } else if (daysAfter !== null && Number.isInteger(daysAfter)) {
-    date = addDays(sentOn, daysAfter);
-  } else if (weekday !== null) {
-    const wanted = weekdays.indexOf(weekday);
-    if (weeksAfter !== null && Number.isInteger(weeksAfter)) {
-      const monday = addDays(sentOn, -weekdayIndex(sentOn));
-      return { ok: true, date: addDays(monday, 7 * weeksAfter + wanted) };
-    }
-    return { ok: true, date: addDays(sentOn, ((wanted - weekdayIndex(sentOn) + 6) % 7) + 1) };
-  }
+  if (day !== null) return explicitMention(year, month, day, sentOn, weekday);
+  if (daysAfter !== null && Number.isInteger(daysAfter)) return checkWeekday(addDays(sentOn, daysAfter), weekday);
+  if (weekday !== null) return weekdayDate(weekday, weeksAfter, sentOn);
+  return { ok: false, problem: "no-date" };
+}
+
+function explicitMention(
+  year: number | null,
+  month: number | null,
+  day: number,
+  sentOn: LocalDate,
+  weekday: Weekday | null,
+): ResolvedDate {
+  if (month === null) return { ok: false, problem: "no-date" };
+  const date = explicitDate(year, month, day, sentOn);
   if (date === null) return { ok: false, problem: "no-date" };
+  return checkWeekday(date, weekday);
+}
+
+/** Whether a resolved date falls on the weekday the message stated, if any. */
+function checkWeekday(date: LocalDate, weekday: Weekday | null): ResolvedDate {
   if (weekday !== null && weekdayOf(date) !== weekday) return { ok: false, problem: "weekday-mismatch", date };
   return { ok: true, date };
+}
+
+/** The date a day and month state, resolving a missing or two-digit year against `sentOn`. */
+function explicitDate(year: number | null, month: number, day: number, sentOn: LocalDate): LocalDate | null {
+  if (year !== null) return dateOf(year < 100 ? 2000 + year : year, month, day);
+  const thisYear = Number(sentOn.slice(0, 4));
+  const candidate = dateOf(thisYear, month, day);
+  return candidate && candidate < addDays(sentOn, -daysBackWithoutYear) ? dateOf(thisYear + 1, month, day) : candidate;
+}
+
+/** The date a weekday alone states: next occurrence, or the one `weeksAfter` weeks ahead. */
+function weekdayDate(weekday: Weekday, weeksAfter: number | null, sentOn: LocalDate): ResolvedDate {
+  const wanted = weekdays.indexOf(weekday);
+  if (weeksAfter !== null && Number.isInteger(weeksAfter)) {
+    const monday = addDays(sentOn, -weekdayIndex(sentOn));
+    return { ok: true, date: addDays(monday, 7 * weeksAfter + wanted) };
+  }
+  return { ok: true, date: addDays(sentOn, ((wanted - weekdayIndex(sentOn) + 6) % 7) + 1) };
 }
 
 /**
@@ -68,17 +87,18 @@ export function resolveDate(mention: DateMention, sentOn: LocalDate): ResolvedDa
 export function resolveDeadline(mention: DateMention, sentOn: LocalDate): ResolvedDate {
   const { day, month, year, weekday, daysAfter } = mention;
   if (day !== null || month === null || weekday !== null || daysAfter !== null) return resolveDate(mention, sentOn);
-  // Day 0 of the next month is this month's last day.
+  const date = deadlineDate(month, year, sentOn);
+  return date === null ? { ok: false, problem: "no-date" } : { ok: true, date };
+}
+
+/** Day 0 of the next month is this month's last day. */
+function deadlineDate(month: number, year: number | null, sentOn: LocalDate): LocalDate | null {
   const lastDay = (inYear: number) =>
     month >= 1 && month <= 12 ? (new Date(Date.UTC(inYear, month, 0)).toISOString().slice(0, 10) as LocalDate) : null;
-  let date: LocalDate | null;
-  if (year !== null) date = lastDay(year < 100 ? 2000 + year : year);
-  else {
-    const thisYear = Number(sentOn.slice(0, 4));
-    const candidate = lastDay(thisYear);
-    date = candidate && candidate < addDays(sentOn, -daysBackWithoutYear) ? lastDay(thisYear + 1) : candidate;
-  }
-  return date === null ? { ok: false, problem: "no-date" } : { ok: true, date };
+  if (year !== null) return lastDay(year < 100 ? 2000 + year : year);
+  const thisYear = Number(sentOn.slice(0, 4));
+  const candidate = lastDay(thisYear);
+  return candidate && candidate < addDays(sentOn, -daysBackWithoutYear) ? lastDay(thisYear + 1) : candidate;
 }
 
 /** The instant a wall-clock time `HH:MM` shows on a date in the time zone, or null if it is no time. */
