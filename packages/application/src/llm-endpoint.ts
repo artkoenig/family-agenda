@@ -59,6 +59,12 @@ export function createLlmEndpointAccess(deps: LlmEndpointDeps) {
       return deps.extractor.health(endpoint);
     },
 
+    /** The models the saved endpoint offers, for the Admin to choose from; none if it cannot be asked. */
+    async models(): Promise<string[]> {
+      const endpoint = await llmEndpointOf({ endpoints, secrets });
+      return endpoint ? deps.extractor.models(endpoint) : [];
+    },
+
     /**
      * Saves the Family's one LLM endpoint. One that is not on the home network receives the text
      * of third parties' messages, such as teachers' mails, so saving it needs an acknowledgement.

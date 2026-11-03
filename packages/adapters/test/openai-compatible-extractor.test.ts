@@ -156,14 +156,16 @@ describe("the OpenAI-compatible Extractor's health check", () => {
   let baseUrl: string;
   let received: { path: string; headers: IncomingMessage["headers"] }[];
   let nextStatus: number;
+  let nextBody: unknown;
 
   async function start(): Promise<void> {
     received = [];
     nextStatus = 200;
+    nextBody = { data: [] };
     server = createServer((request, response) => {
       received.push({ path: request.url ?? "", headers: request.headers });
       response.writeHead(nextStatus, { "content-type": "application/json" });
-      response.end(JSON.stringify({ data: [] }));
+      response.end(JSON.stringify(nextBody));
     });
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
     const { port } = server.address() as AddressInfo;
@@ -237,5 +239,27 @@ describe("the OpenAI-compatible Extractor's health check", () => {
   it("sends no Authorization header when there is no API key", async () => {
     await new OpenAiCompatibleExtractor().health(endpoint(null));
     expect(received[0]?.headers.authorization).toBeUndefined();
+  });
+
+  it("lists the sorted, distinct ids of the models the endpoint offers", async () => {
+    nextBody = { data: [{ id: "qwen3.5:9b" }, { id: "gemma3" }, { id: "qwen3.5:9b" }, { id: "" }, { name: "no id" }] };
+
+    expect(await new OpenAiCompatibleExtractor().models(endpoint())).toEqual(["gemma3", "qwen3.5:9b"]);
+    expect(received[0]?.path).toBe("/v1/models");
+    expect(received[0]?.headers.authorization).toBe("Bearer sk-test");
+  });
+
+  it("lists no models when the answer does not look like a model list", async () => {
+    nextBody = { models: ["gemma3"] };
+    expect(await new OpenAiCompatibleExtractor().models(endpoint())).toEqual([]);
+  });
+
+  it("lists no models when the endpoint refuses or cannot be reached", async () => {
+    nextStatus = 401;
+    expect(await new OpenAiCompatibleExtractor().models(endpoint())).toEqual([]);
+
+    await stop();
+    baseUrl = "http://127.0.0.1:1/v1";
+    expect(await new OpenAiCompatibleExtractor().models(endpoint())).toEqual([]);
   });
 });

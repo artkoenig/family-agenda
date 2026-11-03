@@ -2234,6 +2234,8 @@ export function LlmEndpointPage(props: {
   problem?: string;
   /** The endpoint's connection health, null when no endpoint is configured. */
   health: LlmEndpointHealth | null;
+  /** The models the endpoint offers, none if it is not set up or cannot be asked. */
+  models: string[];
 }) {
   const { endpoint } = props;
   const shown = props.entered ?? endpoint;
@@ -2246,7 +2248,7 @@ export function LlmEndpointPage(props: {
       <form method="post" action="/admin/llm" class="fam-sheet fam-sheet__form">
         <Group title={l.connection} level={2}>
           <ConnectionBanner health={props.health} />
-          <ConnectionFields shown={shown} endpoint={endpoint} />
+          <ConnectionFields shown={shown} endpoint={endpoint} models={props.models} />
         </Group>
         <OptionsGroup />
       </form>
@@ -2290,10 +2292,11 @@ function ConnectionBanner(props: { health: LlmEndpointHealth | null }) {
 function ConnectionFields(props: {
   shown: { baseUrl: string; model: string } | null;
   endpoint: LlmEndpointSummary | null;
+  models: string[];
 }) {
   const { t } = useTranslation();
   const l = t.llm;
-  const { shown, endpoint } = props;
+  const { shown, endpoint, models } = props;
   return (
     <div class="fam-group__fields">
       <div class="fam-field">
@@ -2303,7 +2306,18 @@ function ConnectionFields(props: {
       </div>
       <div class="fam-field">
         <label for="model">{l.model}</label>
-        <input id="model" name="model" required value={shown?.model} />
+        {models.length > 0 ? (
+          <select id="model" name="model" required>
+            {/* A model the endpoint no longer lists stays selectable, so saving does not change it. */}
+            {(shown?.model && !models.includes(shown.model) ? [shown.model, ...models] : models).map((model) => (
+              <option value={model} selected={model === shown?.model}>
+                {model}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <input id="model" name="model" required value={shown?.model} />
+        )}
       </div>
       <div class="fam-field">
         <label for="apiKey">{l.apiKey}</label>
