@@ -446,13 +446,15 @@ function DayEntry(props: { page: AgendaPage; day: TimelineDay }) {
   const { t, locale } = useTranslation();
   const relative = t.agenda.relativeDays[String(daysBetween(page.now.date, day.date))];
   const rows = rowsOf(day);
+  // What is running is only told on today.
+  const now = day.date === page.now.date ? page.now.time : undefined;
   const show = (row: DayRow) =>
     row.kind === "event" ? (
-      <EventRow row={row.row} day={day.date} members={page.members} />
+      <EventRow row={row.row} day={day.date} members={page.members} now={now} />
     ) : row.kind === "school" ? (
-      <SchoolDayRow row={row.row} members={page.members} />
+      <SchoolDayRow row={row.row} members={page.members} now={now} />
     ) : (
-      <TimetableChangeRow row={row.row} members={page.members} />
+      <TimetableChangeRow row={row.row} members={page.members} now={now} />
     );
   return (
     <li class={day.date === page.now.date ? "fam-day fam-day--today" : "fam-day"} data-date={day.date}>
@@ -460,15 +462,7 @@ function DayEntry(props: { page: AgendaPage; day: TimelineDay }) {
         <span class="fam-day__name">{relative ?? weekdayLabel(day.date, locale)}</span>{" "}
         <span class="fam-day__date">{relative ? dateLabel(day.date, locale) : dayMonthLabel(day.date, locale)}</span>
       </h2>
-      {day.date === page.now.date ? (
-        <>
-          {rows.filter((row) => row.row.earlier).map(show)}
-          <div class="fam-now">{t.agenda.now(page.now.time)}</div>
-          {rows.filter((row) => !row.row.earlier).map(show)}
-        </>
-      ) : (
-        rows.map(show)
-      )}
+      {rows.map(show)}
       {day.tasks.length > 0 ? (
         <ul class="fam-tasks__list">
           {day.tasks.map((row) => (
@@ -501,6 +495,17 @@ function rowsOf(day: TimelineDay): DayRow[] {
   return rows.sort((a, b) => key(a).localeCompare(key(b)));
 }
 
+/** The dot and "Now" above the time of what is running. */
+function RunningMark() {
+  const { t } = useTranslation();
+  return <span class="fam-running">{t.agenda.running}</span>;
+}
+
+/** Whether something from `from` until `until` on today, either null if it goes on past the day, runs at `now`. */
+function runsAt(now: string | undefined, from: string | null, until: string | null): boolean {
+  return now !== undefined && (from === null || from <= now) && (until === null || now < until);
+}
+
 /** The avatars of the Family Members a row concerns, none if it concerns the whole Family. */
 function Concerned(props: { concerns: TimelineEvent["concerns"]; members: FamilyMemberSummary[] }) {
   const { concerns } = props;
@@ -516,18 +521,28 @@ function Concerned(props: { concerns: TimelineEvent["concerns"]; members: Family
   ) : null;
 }
 
-/** A school day as one row, "School until hh:mm", that lists its Lessons on tap. */
-function SchoolDayRow(props: { row: TimelineSchoolDay; members: FamilyMemberSummary[] }) {
-  const { row } = props;
+/** A school day as one row, "School until hh:mm", that lists its Lessons on tap; today's marks the Lesson running, and the whole row while it is closed. */
+function SchoolDayRow(props: { row: TimelineSchoolDay; members: FamilyMemberSummary[]; now: string | undefined }) {
+  const { row, now } = props;
   const { t } = useTranslation();
   const v = t.agenda;
-  const classes = ["fam-event", row.cancelled ? "fam-event--cancelled" : "", row.earlier ? "fam-event--earlier" : ""]
+  const running = !row.cancelled && runsAt(now, row.from, row.until);
+  const classes = [
+    "fam-event",
+    "fam-event--school",
+    row.cancelled ? "fam-event--cancelled" : "",
+    row.earlier ? "fam-event--earlier" : "",
+    running ? "fam-event--now" : "",
+  ]
     .filter(Boolean)
     .join(" ");
   return (
     <details class={classes}>
       <summary>
-        <span class="fam-event__time">{row.from}</span>
+        <span class="fam-event__time">
+          {running ? <RunningMark /> : null}
+          {row.from}
+        </span>
         <span class="fam-event__title">
           {row.cancelled ? (
             <>
@@ -540,31 +555,40 @@ function SchoolDayRow(props: { row: TimelineSchoolDay; members: FamilyMemberSumm
         <Concerned concerns={row.concerns} members={props.members} />
       </summary>
       <ol class="fam-lessons" aria-label={v.lessons}>
-        {row.lessons.map((lesson) => (
-          <li class={lesson.cancelled ? "fam-lesson fam-lesson--cancelled" : "fam-lesson"}>
-            <span class="fam-lesson__time">
-              {lesson.from} – {lesson.until}
-            </span>
-            <span class="fam-lesson__subject">{lesson.cancelled ? <s>{lesson.subject}</s> : lesson.subject}</span>
-            <span class="fam-lesson__where">{[lesson.room, lesson.teacher].filter(Boolean).join(" · ")}</span>
-          </li>
-        ))}
+        {row.lessons.map((lesson) => {
+          const running = !lesson.cancelled && runsAt(now, lesson.from, lesson.until);
+          const classes = ["fam-lesson", lesson.cancelled ? "fam-lesson--cancelled" : "", running ? "fam-lesson--now" : ""].filter(Boolean).join(" ");
+          return (
+            <li class={classes} aria-current={running ? "time" : undefined}>
+              <span class="fam-lesson__time">
+                {running ? <RunningMark /> : null}
+                {lesson.from} – {lesson.until}
+              </span>
+              <span class="fam-lesson__subject">{lesson.cancelled ? <s>{lesson.subject}</s> : lesson.subject}</span>
+              <span class="fam-lesson__where">{[lesson.room, lesson.teacher].filter(Boolean).join(" · ")}</span>
+            </li>
+          );
+        })}
       </ol>
     </details>
   );
 }
 
 /** A Timetable Change as its own highlighted row, such as "Physics: cancelled", with what changed on tap. */
-function TimetableChangeRow(props: { row: TimelineTimetableChange; members: FamilyMemberSummary[] }) {
+function TimetableChangeRow(props: { row: TimelineTimetableChange; members: FamilyMemberSummary[]; now: string | undefined }) {
   const { row } = props;
   const { t } = useTranslation();
   const v = t.agenda;
-  const classes = ["fam-event", "fam-event--change", row.earlier ? "fam-event--earlier" : ""].filter(Boolean).join(" ");
+  const running = row.change !== "cancellation" && runsAt(props.now, row.from, row.until);
+  const classes = ["fam-event", "fam-event--change", row.earlier ? "fam-event--earlier" : "", running ? "fam-event--now" : ""]
+    .filter(Boolean)
+    .join(" ");
   const label = changeLabel({ ...row, note: null }, t);
   return (
     <details class={classes}>
       <summary>
         <span class="fam-event__time">
+          {running ? <RunningMark /> : null}
           {row.from} – {row.until}
         </span>
         <span class="fam-event__title">
@@ -603,23 +627,35 @@ function ChangedValue(props: { label: string; value: string | null; previous: st
   );
 }
 
+/** Whether an Event that is not cancelled, nor all day, is on at `now`, today's time; no Event is on any other day. */
+function isRunning(row: TimelineEvent, now: string | undefined): boolean {
+  return !row.span.allDay && !row.cancelled && runsAt(now, row.from, row.until);
+}
+
+/** The modifier classes of an Event row that is cancelled or over. */
+function itemState(row: TimelineEvent): string {
+  return [row.cancelled ? "fam-item--cancelled" : "", row.earlier ? "fam-item--earlier" : ""].filter(Boolean).join(" ");
+}
+
 /**
  * One Event as a row like a Task's: its time, its title, the avatars of the Family Members it
  * concerns, none if it concerns the whole Family, and below the title its last day if that is
  * a later one, its place and its Sources. The day it is on says its date.
  */
-function EventRow(props: { row: TimelineEvent; day: LocalDate; members: FamilyMemberSummary[] }) {
+function EventRow(props: { row: TimelineEvent; day: LocalDate; members: FamilyMemberSummary[]; now: string | undefined }) {
   const { row } = props;
   const translation = useTranslation();
   const { t } = translation;
   const v = t.agenda;
-  const classes = ["fam-item", row.cancelled ? "fam-item--cancelled" : "", row.earlier ? "fam-item--earlier" : ""]
-    .filter(Boolean)
-    .join(" ");
+  const running = isRunning(row, props.now);
+  const classes = ["fam-item", itemState(row), running ? "fam-item--now" : ""].filter(Boolean).join(" ");
   const lastDay = lastDayLabel(row.span, props.day, translation);
   return (
-    <div class={classes}>
-      <span class="fam-item__lead">{timeLabel(row, t)}</span>
+    <div class={classes} aria-current={running ? "time" : undefined}>
+      <span class="fam-item__lead">
+        {running ? <RunningMark /> : null}
+        {timeLabel(row, t)}
+      </span>
       <span class="fam-item__text">
         <span class="fam-item__title">
           {row.cancelled ? (

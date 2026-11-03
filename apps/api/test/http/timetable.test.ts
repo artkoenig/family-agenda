@@ -62,6 +62,25 @@ describe("Timetables in an Agenda over HTTP", () => {
     expect(page).not.toMatch(/<summary>(?:(?!<\/summary>).)*Maths(?:(?!<\/summary>).)*<\/summary>/s);
   });
 
+  it("marks what runs today: the Lesson and the school day, and the Timetable Change that is no cancellation", async () => {
+    instance.clock.advance(24 * 60 * 60 * 1000);
+
+    const page = await (await instance.get(path)).text();
+
+    const school = rowOf(page, "School until 09:35");
+    expect(school).toMatch(/^<details class="fam-event fam-event--school fam-event--now"/);
+    expect(school.match(/fam-lesson--now/g)).toHaveLength(1);
+    expect(school).toMatch(/fam-lesson--now" aria-current="time">\s*<span class="fam-lesson__time">\s*<span class="fam-running">Now<\/span>\s*08:50 – 09:35/);
+    expect(rowOf(page, "English: substituted by Ms Weber")).toMatch(/^<details class="fam-event fam-event--change fam-event--now"/);
+    expect(rowOf(page, "Physics: cancelled")).not.toContain("fam-event--now");
+  });
+
+  it("marks nothing of a school day that is not on", async () => {
+    const page = await (await instance.get(path)).text();
+
+    expect(page).not.toContain("--now");
+  });
+
   it("shows each Timetable Change as its own highlighted row", async () => {
     const page = await (await instance.get(path)).text();
 

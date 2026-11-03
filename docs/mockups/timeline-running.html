@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Timeline: running row highlighted (mockup)</title>
+<!-- The real stylesheets of the app, so the highlight looks as it will. -->
+<link rel="stylesheet" href="../../apps/api/src/http/design/tokens.css">
+<link rel="stylesheet" href="../../apps/api/src/http/design/design.css">
+<style>
+  body { margin: 0; padding: 16px; background: var(--surface); color: var(--ink); font-family: "Atkinson Hyperlegible Next", system-ui, sans-serif; font-size: 16px; line-height: 24px; }
+  .controls { max-width: 760px; margin: 0 auto 16px; display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: center; color: var(--ink-muted); font-size: 14px; }
+  .controls input[type="range"] { width: 260px; }
+  .controls output { font-variant-numeric: tabular-nums; color: var(--ink); font-weight: 600; }
+  .controls button { font: inherit; padding: 4px 12px; border-radius: 999px; border: 1px solid var(--line-strong); background: var(--surface-raised); color: var(--ink); cursor: pointer; }
+  .fam-days { padding-bottom: 0; }
+</style>
+</head>
+<body>
+<div class="controls">
+  <label>Uhrzeit <input id="time" type="range" min="420" max="1260" step="5" value="779"> <output id="out">12:59</output></label>
+  <button id="theme" type="button">Hell / Dunkel</button>
+  <span>Schultag zu- und aufklappen zeigt beide Varianten.</span>
+</div>
+
+<ol class="fam-days">
+  <li class="fam-day fam-day--today" data-date="2026-11-03">
+    <h2 class="fam-day__header"><span class="fam-day__name">Heute</span> <span class="fam-day__date">Di., 3. Nov.</span></h2>
+
+    <div class="fam-item" data-from="07:30" data-until="07:50">
+      <span class="fam-item__lead">07:30</span>
+      <span class="fam-item__text"><span class="fam-item__title">Frühstück mit Oma</span></span>
+    </div>
+
+    <details class="fam-event fam-event--school" data-from="08:10" data-until="13:25">
+      <summary>
+        <span class="fam-event__time">08:10</span>
+        <span class="fam-event__title">Schule bis 13:25</span>
+        <span class="fam-event__who"><span class="fam-avatars"><span class="fam-avatar fam-avatar--sm fam-avatar--m1">V</span></span></span>
+      </summary>
+      <ol class="fam-lessons" aria-label="Stunden">
+        <li class="fam-lesson" data-from="08:10" data-until="08:55"><span class="fam-lesson__time">08:10 – 08:55</span><span class="fam-lesson__subject">FREI Day</span><span class="fam-lesson__where">1.02 · Stefan Schoo</span></li>
+        <li class="fam-lesson" data-from="09:00" data-until="09:45"><span class="fam-lesson__time">09:00 – 09:45</span><span class="fam-lesson__subject">FREI Day</span><span class="fam-lesson__where">1.02 · Stefan Schoo</span></li>
+        <li class="fam-lesson" data-from="09:45" data-until="10:30"><span class="fam-lesson__time">09:45 – 10:30</span><span class="fam-lesson__subject">FREI Day</span><span class="fam-lesson__where">1.02 · Sarin Nabiyar</span></li>
+        <li class="fam-lesson" data-from="10:55" data-until="11:40"><span class="fam-lesson__time">10:55 – 11:40</span><span class="fam-lesson__subject">Englisch</span><span class="fam-lesson__where">1.16 · Sarin Nabiyar</span></li>
+        <li class="fam-lesson" data-from="11:40" data-until="12:25"><span class="fam-lesson__time">11:40 – 12:25</span><span class="fam-lesson__subject">Englisch</span><span class="fam-lesson__where">1.16 · Sarin Nabiyar</span></li>
+        <li class="fam-lesson" data-from="12:40" data-until="13:25"><span class="fam-lesson__time">12:40 – 13:25</span><span class="fam-lesson__subject">Übungszeit</span><span class="fam-lesson__where">B-0.08 · Julia Witting</span></li>
+      </ol>
+    </details>
+
+    <details class="fam-event fam-event--change" data-from="12:40" data-until="13:25" data-change="substitution">
+      <summary>
+        <span class="fam-event__time">12:40 – 13:25</span>
+        <span class="fam-event__title"><span aria-hidden="true">⚠ </span>Übungszeit: vertreten durch Julia Witting</span>
+      </summary>
+    </details>
+
+    <div class="fam-item" data-from="14:30" data-until="15:30">
+      <span class="fam-item__lead">14:30 – 15:30</span>
+      <span class="fam-item__text"><span class="fam-item__title">Klavierunterricht</span><span class="fam-item__meta">Musikschule</span></span>
+      <span class="fam-item__who"><span class="fam-avatars"><span class="fam-avatar fam-avatar--sm fam-avatar--m2">M</span></span></span>
+    </div>
+
+    <div class="fam-item" data-from="16:00" data-until="17:00">
+      <span class="fam-item__lead">16:00 – 17:00</span>
+      <span class="fam-item__text"><span class="fam-item__title">Schwimmen</span><span class="fam-item__meta">Stadtbad</span></span>
+    </div>
+
+  </li>
+</ol>
+
+<script>
+  // Marks what runs at the chosen time, as the page does on the server: a row from <= now < until.
+  const out = document.getElementById("out");
+  const hhmm = (minutes) => String(Math.floor(minutes / 60)).padStart(2, "0") + ":" + String(minutes % 60).padStart(2, "0");
+  const apply = () => {
+    const now = hhmm(Number(document.getElementById("time").value));
+    out.textContent = now;
+    for (const el of document.querySelectorAll("[data-from]")) {
+      const running = el.dataset.from <= now && now < el.dataset.until;
+      const cls = el.classList.contains("fam-item") ? "fam-item--now" : el.classList.contains("fam-lesson") ? "fam-lesson--now" : "fam-event--now";
+      el.classList.toggle(cls, running);
+      if (running) el.setAttribute("aria-current", "time"); else el.removeAttribute("aria-current");
+      const time = el.querySelector(".fam-item__lead, .fam-lesson__time, .fam-event__time");
+      time.querySelector(".fam-running")?.remove();
+      if (running) time.insertAdjacentHTML("afterbegin", '<span class="fam-running">Jetzt</span>');
+    }
+  };
+  document.getElementById("time").addEventListener("input", apply);
+  document.getElementById("theme").addEventListener("click", () => {
+    const root = document.documentElement;
+    root.dataset.theme = root.dataset.theme === "dark" ? "light" : "dark";
+  });
+  apply();
+</script>
+</body>
+</html>
