@@ -25,6 +25,7 @@ const declaring = new Map<string, SourceAttributeDeclaration[]>();
 const archiving = new Map<string, string[]>();
 const undeclared = new Set<string>();
 const knownValues = new Map<string, { value: string; label: string }[]>();
+const choicesAsked = new Map<string, number>();
 const catalogueEntries = new Map<string, CatalogueEntry[]>();
 const setupProgress = new Map<string, SetupProgress>();
 const addingFails = new Set<string>();
@@ -91,6 +92,10 @@ export const testPluginControls = {
   knowValues(sourceTypeId: string, values: { value: string; label: string }[]): void {
     knownValues.set(sourceTypeId, values);
   },
+  /** How often the plugin's choice fields were asked for their values. */
+  choicesAsked(sourceTypeId: string): number {
+    return choicesAsked.get(sourceTypeId) ?? 0;
+  },
   /** What the plugin of a Source Type was run with so far, oldest first. */
   runs(sourceTypeId: string): RunContext[] {
     return runs.get(sourceTypeId) ?? [];
@@ -126,7 +131,15 @@ export function testSourcePlugin(options: TestPluginOptions): SourcePlugin {
     progress: () => Promise.resolve(setupProgress.get(sourceTypeId) ?? ({ status: "waiting" } as const)),
   }));
   const fields = plugin.configuration.fields.map((field) =>
-    field.choices ? { ...field, choices: () => Promise.resolve(knownValueList(sourceTypeId)) } : field,
+    field.choices
+      ? {
+          ...field,
+          choices: () => {
+            choicesAsked.set(sourceTypeId, (choicesAsked.get(sourceTypeId) ?? 0) + 1);
+            return Promise.resolve(knownValueList(sourceTypeId));
+          },
+        }
+      : field,
   );
   return {
     ...plugin,

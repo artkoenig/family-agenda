@@ -171,6 +171,14 @@ describe("a Source Type's catalogue and the Sources that use it", () => {
     expect(await instance.app.sources.list()).toEqual([]);
   });
 
+  it("counts its Sources and the failing ones without asking for any choice field's values", async () => {
+    await addWhatsApp();
+    const asked = testPluginControls.choicesAsked("bridged");
+
+    expect(await instance.app.sources.overview()).toEqual({ count: 1, failing: 0 });
+    expect(testPluginControls.choicesAsked("bridged")).toBe(asked);
+  });
+
   it("offers a choice field's values per Source and stores what was chosen as a list", async () => {
     const { id } = await addWhatsApp();
     testPluginControls.knowValues("bridged", [{ value: "!class:local", label: "Klasse 5b" }]);
