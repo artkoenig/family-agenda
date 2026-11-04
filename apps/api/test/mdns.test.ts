@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addressesFacing, answerWith, asksFor } from "../src/mdns";
+import { addressesFacing, answerWith, asksFor, asksForIpv6, denyIpv6 } from "../src/mdns";
 
 /** A DNS query for `name`, as a resolver sends it. */
 function query(name: string, type = 1, questionClass = 1): Buffer {
@@ -67,6 +67,28 @@ describe("multicast DNS", () => {
     const record = answer.length - 14;
     expect(answer.readUInt16BE(record + 2)).toBe(0x8001);
     expect(answer.readUInt32BE(record + 4)).toBe(120);
+  });
+
+  it("is asked for an IPv6 address of its name, which it has none of", () => {
+    expect(asksForIpv6(query("family-agenda.local", 28), "family-agenda.local")).toBe(true);
+    expect(asksForIpv6(query("Family-Agenda.LOCAL", 28, 0x8001), "family-agenda.local")).toBe(true);
+    expect(asksForIpv6(query("family-agenda.local", 1), "family-agenda.local")).toBe(false);
+    expect(asksForIpv6(query("printer.local", 28), "family-agenda.local")).toBe(false);
+  });
+
+  it("denies an IPv6 address with an NSEC record that lists only the A record (RFC 6762 section 6.1)", () => {
+    const denial = denyIpv6("family-agenda.local");
+    expect(denial.readUInt16BE(2)).toBe(0x8400);
+    expect(denial.readUInt16BE(6)).toBe(1);
+    const name = Buffer.from("\x0dfamily-agenda\x05local\x00", "latin1");
+    expect(denial.subarray(12, 12 + name.length)).toEqual(name);
+    const record = 12 + name.length;
+    expect(denial.readUInt16BE(record)).toBe(47);
+    expect(denial.readUInt16BE(record + 2)).toBe(0x8001);
+    expect(denial.readUInt32BE(record + 4)).toBe(120);
+    // The data is the next name, here the same one, then a bitmap of window 0, one octet long, with A set.
+    expect(denial.readUInt16BE(record + 8)).toBe(name.length + 3);
+    expect(denial.subarray(record + 10)).toEqual(Buffer.concat([name, Buffer.from([0, 1, 0x40])]));
   });
 
   it("offers only the addresses on the network of whoever asks", () => {
