@@ -102,7 +102,7 @@ describe("WhatsApp chats read through the Matrix bridge", () => {
     expect(await titles()).toEqual(["Wandertag 5b"]);
     const page = await openTimeline(instance.app, agenda, { access: openAgendaAccess });
     const message = await instance.app.messages.open(page!.days.flatMap((day) => day.items)[0]!.messages[0]!.id);
-    expect(message?.attributes).toEqual({ messenger: "WhatsApp", chat: "Klasse 5b Eltern", sender: "Frau Berger (WA)" });
+    expect(message).toMatchObject({ attributes: ["WhatsApp"], subject: "Klasse 5b Eltern", sender: "Frau Berger (WA)" });
   });
 
   it("ignores messages in chats that are not allow-listed", async () => {

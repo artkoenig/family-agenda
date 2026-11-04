@@ -17,7 +17,7 @@ const letter = new TextEncoder().encode("%PDF-1.7 Elternbrief");
 const mail: Origin = {
   externalId: "<m1@schule.example.org>",
   occurredAt: new Date("2026-09-14T06:12:00Z"),
-  attributes: { sender: "klasse5b@schule.example.org" },
+  sender: "klasse5b@schule.example.org", attributes: ["main"],
   content: {
     kind: "raw-message",
     text: "Liebe Eltern, im Anhang der Elternbrief.",
@@ -29,7 +29,7 @@ const mail: Origin = {
 /** A calendar entry, as a structured Source emits it. */
 const entry = (key: string): Origin => ({
   externalId: key,
-  attributes: { calendar: "Clubs" },
+  attributes: ["main"],
   content: { kind: "stated", stated: { kind: "event", title: "Piano lesson", span: { allDay: false, start: "2026-09-15T14:00:00Z", end: "2026-09-15T15:00:00Z" }, place: null, cancelled: false } },
 });
 

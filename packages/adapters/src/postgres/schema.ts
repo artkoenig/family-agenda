@@ -260,6 +260,14 @@ export const sourceRuns = pgTable(
     invalidRecords: text("invalid_records").array().notNull().default(sql`'{}'::text[]`),
     /** Since when `invalid_records` has had an id; null while it has none. */
     invalidRecordsSince: timestamptz("invalid_records_since"),
+    /**
+     * A warning beside the Source Status: the Source Attribute ids that Source Records named
+     * without their being declared or after their being archived, so that those were refused (a
+     * plugin bug). The ids leave when a run refuses nothing, or when a declare covers them.
+     */
+    unknownAttributes: text("unknown_attributes").array().notNull().default(sql`'{}'::text[]`),
+    /** Since when `unknown_attributes` has had an id; null while it has none. */
+    unknownAttributesSince: timestamptz("unknown_attributes_since"),
   },
   (table) => [
     check("source_run_failure_complete", allOrNone(table.failingSince, table.lastErrorKind, table.lastError)),
@@ -267,30 +275,52 @@ export const sourceRuns = pgTable(
       "source_run_invalid_records_complete",
       sql`(cardinality(${table.invalidRecords}) = 0) = (${table.invalidRecordsSince} IS NULL)`,
     ),
+    check(
+      "source_run_unknown_attributes_complete",
+      sql`(cardinality(${table.unknownAttributes}) = 0) = (${table.unknownAttributesSince} IS NULL)`,
+    ),
     oneOf("source_run_last_error_kind_known", table.lastErrorKind, ["definite", "temporary"] satisfies RunError["kind"][]),
   ],
 );
 
 /**
- * The Family Members a Source is assigned to, whom its Items concern; a Source with none here
- * concerns the whole Family. Removing the Source or the Family Member removes them here too. A
- * row with a `part` assigns that Part of the Source, such as a mail folder, on its own; the empty
- * `part` is the Source itself.
+ * A subdivision of a Source that its plugin reports (ADR-0016), such as a mail folder, a chat or a
+ * child of a school account. Written only through the plugin's port, never by the core on its own:
+ * `declare` inserts one, or renames a known one and revives it, keeping its assignment, and
+ * `archive` sets `archived_at`. Rows are archived, never deleted, except with their Source.
  */
-export const sourceMembers = pgTable(
-  "source_members",
+export const sourceAttributes = pgTable(
+  "source_attribute",
   {
+    id: uuid("id").primaryKey().defaultRandom(),
     sourceId: uuid("source_id")
       .notNull()
       .references(() => sources.id, { onDelete: "cascade" }),
-    part: text("part").notNull().default(""),
+    /** Its id within its Source, as its plugin names it. */
+    externalId: text("external_id").notNull(),
+    name: text("name").notNull(),
+    archivedAt: timestamptz("archived_at"),
+  },
+  (table) => [unique("source_attribute_external_id_unique").on(table.sourceId, table.externalId)],
+);
+
+/**
+ * The only place where Family Members are assigned. A Source Attribute with no rows is assigned to
+ * the whole Family. Removing the Source Attribute or the Family Member removes them here too.
+ */
+export const sourceAttributeMembers = pgTable(
+  "source_attribute_member",
+  {
+    attributeId: uuid("attribute_id")
+      .notNull()
+      .references(() => sourceAttributes.id, { onDelete: "cascade" }),
     familyMemberId: uuid("family_member_id")
       .notNull()
       .references(() => familyMembers.id, { onDelete: "cascade" }),
   },
   (table) => [
-    primaryKey({ columns: [table.sourceId, table.part, table.familyMemberId] }),
-    index("source_members_family_member_id_idx").on(table.familyMemberId),
+    primaryKey({ columns: [table.attributeId, table.familyMemberId] }),
+    index("source_attribute_member_family_member_id_idx").on(table.familyMemberId),
   ],
 );
 
@@ -325,12 +355,8 @@ export const sourceRecords = pgTable(
      */
     withdrawnAt: timestamptz("withdrawn_at"),
     createdAt: timestamptz("created_at").notNull().defaultNow(),
-    /** What the plugin tells about where it came from, shown with its message; goes with Source Attributes. */
-    attributes: jsonb("attributes").$type<Record<string, string>>().notNull().default({}),
     /** Where the Family can look at the original, if anywhere. */
     link: text("link"),
-    /** The Part of the Source it came from, such as a mail's folder; null if it has none. Goes with Source Attributes. */
-    part: text("part"),
     /** The conversation within the Source a message belongs to, such as a mail thread, which extraction reads it in. */
     thread: text("thread"),
   },
@@ -376,6 +402,24 @@ export const sourceRecordAttachments = pgTable(
     check("source_record_attachment_position_not_negative", sql`${table.position} >= 0`),
     check("source_record_attachment_size_not_negative", sql`${table.size} >= 0`),
   ],
+);
+
+/**
+ * The Source Attributes a Source Record carries (a mail under two allow-listed labels has two).
+ * Emitting a Source Record again with another list replaces its rows without reading it again; an
+ * empty list withdraws it. No cascade from the attribute: archiving must not unassign Items.
+ */
+export const sourceRecordAttributes = pgTable(
+  "source_record_attribute",
+  {
+    recordId: uuid("record_id")
+      .notNull()
+      .references(() => sourceRecords.id, { onDelete: "cascade" }),
+    attributeId: uuid("attribute_id")
+      .notNull()
+      .references(() => sourceAttributes.id),
+  },
+  (table) => [primaryKey({ columns: [table.recordId, table.attributeId] }), index("source_record_attribute_attribute_id_idx").on(table.attributeId)],
 );
 
 /**

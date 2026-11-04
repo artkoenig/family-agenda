@@ -14,7 +14,7 @@ const minutes = 60 * 1000;
 const mail = (id: string, sentAt: string, text: string, thread = id): Origin => ({
   externalId: id,
   occurredAt: new Date(sentAt),
-  attributes: { sender: "klasse5b@schule.example.org" },
+  sender: "klasse5b@schule.example.org", attributes: ["main"],
   content: { kind: "raw-message", text, attachments: [], thread },
 });
 
@@ -80,7 +80,7 @@ describe("Events extracted from mail", () => {
     expect(row).toMatchObject({ place: "Raum 104", links: [] });
     expect(row?.messages.map((message) => message.source)).toEqual(["mailbox"]);
     const message = await instance.app.messages.open(row!.messages[0]!.id);
-    expect(message).toMatchObject({ text: invitation, attributes: { sender: "klasse5b@schule.example.org" } });
+    expect(message).toMatchObject({ text: invitation, sender: "klasse5b@schule.example.org", attributes: ["main"] });
   });
 
   it("does not write an Event whose evidence quote the mail does not contain, after reading the mail once more", async () => {

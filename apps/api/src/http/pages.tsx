@@ -1031,7 +1031,6 @@ function addingDialog(
         <SourceFields
           form={adding.form}
           prefix={`new-${adding.form.sourceTypeId}`}
-          members={props.members}
           {...(adding.entered ? { entered: adding.entered } : {})}
           autofocus
         />
@@ -1220,22 +1219,31 @@ export function SourceTypePage(props: {
  * A Source's page: its name, settings and polling interval, whether it shows on the timeline, and
  * removing it. Fixing it opens in a dialog over it.
  */
-function SourceConcernsForm(props: { source: SourceSummary; members: FamilyMemberSummary[]; hasParts: boolean; href: string; t: Translation["t"]; s: Translation["t"]["sources"] }) {
-  const { source, members, hasParts, href, t, s } = props;
-  if (members.length === 0 || hasParts) return null;
+function SourceAttributesForm(props: { source: SourceSummary; members: FamilyMemberSummary[]; href: string; t: Translation["t"]; s: Translation["t"]["sources"] }) {
+  const { source, members, href, t, s } = props;
+  if (members.length === 0 || source.attributes.length === 0) return null;
   return (
-    <form method="post" action={`${href}/concerns`} class="fam-sheet__form">
-      <Group title={s.concerns} level={2} intro={s.concernsHint}>
-        <div class="fam-group__fields">
-          <div class="fam-choices fam-choices--members">
-            {members.map((member) => (
-              <label class="fam-pillswitch" title={member.name}>
-                <input type="checkbox" name="concerns" value={member.id} checked={source.concerns.includes(member.id)} />
-                <Avatar member={member} size="sm" />
-                <span class="fam-pillswitch__name">{member.name}</span>
-              </label>
-            ))}
-          </div>
+    <form method="post" action={`${href}/attributes`} class="fam-sheet__form">
+      <Group title={s.attributes} level={2} intro={s.attributesHint}>
+        <div class="fam-attributes">
+          {source.attributes.map((attribute) => (
+            <div class="fam-attribute">
+              <p class="fam-attribute__name">
+                {attribute.name}
+                {attribute.archived ? <span class="fam-chip fam-chip--small">{s.attributeArchived}</span> : null}
+              </p>
+              <div class="fam-attribute__members" role="group" aria-label={s.attributeMembers(attribute.name)}>
+                {members.map((member) => (
+                  <label class="fam-pillswitch" title={member.name}>
+                    <input type="checkbox" name={`member.${attribute.id}`} value={member.id} checked={attribute.concerns.includes(member.id)} />
+                    <Avatar member={member} size="sm" />
+                    <span class="fam-pillswitch__name">{member.name}</span>
+                  </label>
+                ))}
+              </div>
+              <p class="fam-attribute__all">{s.attributeWholeFamily}</p>
+            </div>
+          ))}
         </div>
         <div class="fam-group__actions">
           <button type="submit" class="fam-button fam-button--primary">
@@ -1312,10 +1320,6 @@ function editableOf(form: SourceForm | undefined, suggestedSeconds: number | nul
 }
 
 /** Whom its Items concern is then set Part by Part, with the fields. */
-function hasPartsOf(form: SourceForm | undefined): boolean {
-  return form?.fields.some((field) => field.parts) ?? false;
-}
-
 /** The catalogue entry it uses, such as its Messenger, which cannot change. */
 function entryOf(form: SourceForm | undefined, source: SourceSummary) {
   const entryKey = form?.catalogue?.configKey;
@@ -1346,7 +1350,7 @@ function SourcePageHeader(props: { name: string; health: SourceHealth; entry: { 
 }
 
 function SourcePageForm(props: { source: SourceSummary; form: SourceForm | undefined; members: FamilyMemberSummary[]; editable: boolean; href: string; derived: string; t: Translation["t"]; s: Translation["t"]["sources"] }) {
-  const { source, form, members, editable, href, derived, t, s } = props;
+  const { source, form, editable, href, derived, t, s } = props;
   return (
     <form method="post" action={editable ? href : `${href}/name`} class="fam-sheet__form">
       <Group title={s.settings} level={2}>
@@ -1356,7 +1360,7 @@ function SourcePageForm(props: { source: SourceSummary; form: SourceForm | undef
             <input id={`${source.id}-name`} name="name" maxlength={maximumNameLength} placeholder={derived} value={source.name ?? undefined} />
             <small>{s.nameHint(derived)}</small>
           </div>
-          {form && editable ? <SourceFields form={form} prefix={source.id} source={source} members={members} omitFixed /> : null}
+          {form && editable ? <SourceFields form={form} prefix={source.id} source={source} omitFixed /> : null}
         </div>
         <div class="fam-group__actions">
           <button type="submit" class="fam-button fam-button--primary">
@@ -1393,7 +1397,6 @@ export function SourcePage(props: {
   const { name, derived } = sourceLabel(source, form, translation);
   const suggestedSeconds = suggestedSecondsOf(form);
   const editable = editableOf(form, suggestedSeconds);
-  const hasParts = hasPartsOf(form);
   const entry = entryOf(form, source);
   const dialog =
     props.fixing && form ? <FixDialog source={source} form={form} closeHref={href} timeZone={props.timeZone} liveSteps={props.liveSteps ?? []} members={props.members} /> : undefined;
@@ -1409,7 +1412,7 @@ export function SourcePage(props: {
       <section class="fam-sheet">
         {!form ? <p class="fam-problem">{s.notRead}</p> : null}
         <SourcePageForm source={source} form={form} members={props.members} editable={editable} href={href} derived={derived} t={t} s={s} />
-        <SourceConcernsForm source={source} members={props.members} hasParts={hasParts} href={href} t={t} s={s} />
+        <SourceAttributesForm source={source} members={props.members} href={href} t={t} s={s} />
         <SourceTimelineSection source={source} href={href} s={s} waiting={props.waiting} />
         <SourceManagementSection href={href} s={s} />
       </section>
@@ -1470,7 +1473,7 @@ function SourceRow(props: { source: SourceSummary; form: SourceForm | undefined;
   const translation = useTranslation();
   const s = translation.t.sources;
   const { name, meta } = sourceLabel(source, form, translation);
-  const assigned = new Set([...source.concerns, ...Object.values(source.partConcerns).flat()]);
+  const assigned = new Set(source.attributes.flatMap((attribute) => attribute.concerns));
   const concerns = props.members.filter((member) => assigned.has(member.id)).map((member) => member.name);
   return (
     <li class="fam-row fam-row--link">
@@ -1674,7 +1677,7 @@ function FixDialog(props: {
       <form method="post" action={`/admin/sources/${source.id}`} class="fam-dialog__form">
         <HealthLine health={source.health} timeZone={props.timeZone} />
         <SetupSteps form={form} liveSteps={props.liveSteps} />
-        <SourceFields form={form} prefix={`fix-${source.id}`} source={source} members={props.members} autofocus />
+        <SourceFields form={form} prefix={`fix-${source.id}`} source={source} autofocus />
         <DialogFooter closeHref={props.closeHref} submit={s.saveAndRead} />
       </form>
     </Dialog>
@@ -1906,7 +1909,7 @@ function HealthStatus(props: { health: SourceHealth; chip?: boolean }) {
 
 /** Whether there is more to say of how a Source is doing than that it is OK. */
 function hasHealthDetails(health: SourceHealth): boolean {
-  return health.status !== "ok" || health.problem !== null || health.invalidRecords.length > 0;
+  return health.status !== "ok" || health.problem !== null || health.invalidRecords.length > 0 || health.unknownAttributes.length > 0;
 }
 
 /** When a Source was last read successfully, and its last error. */
@@ -1930,6 +1933,7 @@ function HealthDetails(props: { health: SourceHealth; timeZone: string }) {
       <span>{health.lastSuccessAt ? s.lastRead(when(health.lastSuccessAt)) : s.notReadYet}</span>
       {problemText !== null ? <span class="fam-problem">{problemText}</span> : null}
       {health.invalidRecords.length > 0 ? <span class="fam-problem">{s.invalidRecords(health.invalidRecords.length)}</span> : null}
+      {health.unknownAttributes.length > 0 ? <span class="fam-problem">{s.unknownAttributes(health.unknownAttributes.join(", "))}</span> : null}
     </>
   );
 }
@@ -2009,8 +2013,6 @@ function SourceFields(props: {
   autofocus?: boolean;
   /** Leaves out the catalogue entry of an existing Source, which cannot change, such as its Messenger. */
   omitFixed?: boolean;
-  /** The Family's Members, whom the Parts of a Source are assigned to. */
-  members?: FamilyMemberSummary[];
 }) {
   const { form, prefix, source, entered } = props;
   const { t, text } = useTranslation();
@@ -2035,7 +2037,6 @@ function SourceFields(props: {
           return <CatalogueField field={field} form={form} id={id(field.key)} chosen={plainValue(field.key)} existing={source !== undefined} autofocus={focus} />;
         }
         if (field.choice) return <ChoiceField field={field} id={id(field.key)} source={source} />;
-        if (field.parts) return <PartsField field={field} id={id(field.key)} source={source} members={props.members ?? []} />;
         return (
           <div class="fam-field">
             <label for={id(field.key)}>{field.required ? text(field.label) : t.common.optional(text(field.label))}</label>
@@ -2132,48 +2133,6 @@ function CatalogueField(props: {
       {label}
       <CatalogueSelect entries={entries} id={id} fieldKey={field.key} chosen={chosen} autofocus={autofocus} description={field.description} sourceTypeId={form.sourceTypeId} />
     </div>
-  );
-}
-
-/**
- * The Parts of a Source, such as the folders of a mailbox: one card each with its name and the
- * Family Members it concerns as switches to tap, none meaning the whole Family, and one empty card
- * to add another. A Part not assigned of its own concerns whom its Source is assigned to.
- */
-function PartsField(props: { field: SourceForm["fields"][number]; id: string; source: SourceSummary | undefined; members: FamilyMemberSummary[] }) {
-  const { field, source, members } = props;
-  const { t, text } = useTranslation();
-  const stored = source?.plain[field.key];
-  const names = Array.isArray(stored) ? stored.filter((value): value is string => typeof value === "string") : [];
-  const rows = [...names.map((name) => ({ name, chosen: source?.partConcerns[name] ?? source?.concerns ?? [] })), { name: "", chosen: [] }];
-  return (
-    <fieldset class="fam-field" id={props.id}>
-      <legend>{field.required ? text(field.label) : t.common.optional(text(field.label))}</legend>
-      {field.description ? <small>{text(field.description)}</small> : null}
-      <small>{t.sources.partsHint}</small>
-      <div class="fam-parts">
-        {rows.map((row, index) => (
-          <div class="fam-part">
-            <input
-              name={`part.${field.key}.${index}.name`}
-              aria-label={t.sources.partName}
-              placeholder={row.name === "" ? t.sources.partNew : undefined}
-              value={row.name === "" ? undefined : row.name}
-            />
-            <div class="fam-part__members" role="group" aria-label={t.sources.partMembers(row.name === "" ? t.sources.partNew : row.name)}>
-              {members.map((member) => (
-                <label class="fam-pillswitch" title={member.name}>
-                  <input type="checkbox" name={`part.${field.key}.${index}.member`} value={member.id} checked={row.chosen.includes(member.id)} />
-                  <Avatar member={member} size="sm" />
-                  <span class="fam-pillswitch__name">{member.name}</span>
-                </label>
-              ))}
-            </div>
-            {members.length > 0 ? <p class="fam-part__all">{t.sources.partWholeFamily}</p> : null}
-          </div>
-        ))}
-      </div>
-    </fieldset>
   );
 }
 
@@ -2571,12 +2530,24 @@ export function MessagePage(props: { admin: SignedInAdmin; message: MessageDetai
       <dl>
         <dt>{m.sent}</dt>
         <dd>{sentAt}</dd>
-        {Object.entries(message.attributes).map(([key, value]) => (
+        {message.sender !== null ? (
           <>
-            <dt>{key}</dt>
-            <dd>{value}</dd>
+            <dt>{m.sender}</dt>
+            <dd>{message.sender}</dd>
           </>
-        ))}
+        ) : null}
+        {message.subject !== null ? (
+          <>
+            <dt>{m.subject}</dt>
+            <dd>{message.subject}</dd>
+          </>
+        ) : null}
+        {message.attributes.length > 0 ? (
+          <>
+            <dt>{m.attributes}</dt>
+            <dd>{message.attributes.join(", ")}</dd>
+          </>
+        ) : null}
       </dl>
       <pre class="fam-message">{message.text}</pre>
       {message.attachments.length > 0 ? (

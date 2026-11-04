@@ -98,7 +98,7 @@ describe("the LLM endpoint and mail over HTTP", () => {
       extracted({ title: "Wandertag", date: { daysAfter: 1 }, startTime: "08:00", evidence: "Morgen ist Wandertag, Treffpunkt 8 Uhr" }),
     ]);
     testPluginControls.emit("school-mail", [
-      { externalId: "m1", occurredAt: new Date("2026-09-14T06:00:00Z"), attributes: {}, content: { kind: "raw-message", text: "Morgen ist Wandertag, Treffpunkt 8 Uhr.", attachments: [] } },
+      { externalId: "m1", occurredAt: new Date("2026-09-14T06:00:00Z"), attributes: ["main"], content: { kind: "raw-message", text: "Morgen ist Wandertag, Treffpunkt 8 Uhr.", attachments: [] } },
     ]);
     await instance.app.polling.pollDue();
     await instance.app.extraction.extractPending();
@@ -134,7 +134,7 @@ describe("the LLM endpoint and mail over HTTP", () => {
       {
         externalId: "m1",
         occurredAt: new Date("2026-09-14T06:00:00Z"),
-        attributes: { sender: "lehrerin@schule.example.org" },
+        sender: "lehrerin@schule.example.org", attributes: ["main"],
         content: { kind: "raw-message", text, attachments: [{ filename: "plan.pdf", contentType: "application/pdf", bytes: new Uint8Array([1, 2, 3]) }] },
       },
     ]);
@@ -167,7 +167,7 @@ describe("the LLM endpoint and mail over HTTP", () => {
       {
         externalId: "m1",
         occurredAt: new Date("2026-09-14T06:00:00Z"),
-        attributes: {},
+        attributes: ["main"],
         content: {
           kind: "raw-message",
           text: "Subject: Elternabend\n\nMorgen ist Elternabend.",
@@ -217,7 +217,7 @@ describe("the LLM endpoint and mail over HTTP", () => {
       {
         externalId: "m1",
         occurredAt: new Date("2026-09-14T06:00:00Z"),
-        attributes: {},
+        attributes: ["main"],
         content: { kind: "raw-message", text: "Subject: Naturauftrag\n\nBringt drei Blätter mit.", attachments: [] },
       },
     ]);

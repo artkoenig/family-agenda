@@ -236,12 +236,11 @@ export async function bootApplication(config: ApplicationConfig): Promise<Applic
     members,
     agendas: agendaRepository,
     items,
-    sources: sourceRepository,
     registry,
     activity,
     sourceHealth,
   });
-  const tasks = createTaskAccess({ clock, items, sources: sourceRepository, agendas: agendaRepository });
+  const tasks = createTaskAccess({ clock, items, agendas: agendaRepository });
 
   const sourceTypes = createSourceTypeAccess({
     registry,

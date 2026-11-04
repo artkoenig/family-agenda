@@ -4,8 +4,10 @@ import type { BlobStore, ItemRepository, ProjectedItem } from "./ports";
 export type MessageDetails = {
   id: RawMessageId;
   sentAt: Date;
-  /** The Origin attributes of the message, such as its sender. */
-  attributes: Record<string, string>;
+  sender: string | null;
+  subject: string | null;
+  /** The names of the Source Attributes it belongs to, such as a mail folder. */
+  attributes: string[];
   text: string;
   /** Each with its place among the attachments, and why it could not be turned into text for extraction, or null. */
   attachments: { position: number; filename: string; contentType: string; size: number; conversionProblem: string | null }[];
@@ -23,6 +25,8 @@ export function createMessageAccess(deps: { items: ItemRepository; blobs: BlobSt
       return {
         id: message.id,
         sentAt: message.sentAt,
+        sender: message.sender,
+        subject: message.subject,
         attributes: message.attributes,
         text: message.body,
         attachments: message.attachments.map(({ position, filename, contentType, size, conversionProblem }) => ({

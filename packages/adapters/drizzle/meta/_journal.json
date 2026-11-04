@@ -71,6 +71,13 @@
       "when": 1793780917327,
       "tag": "0009_stated_source_records",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1793789986089,
+      "tag": "0010_source_attributes",
+      "breakpoints": true
     }
   ]
 }

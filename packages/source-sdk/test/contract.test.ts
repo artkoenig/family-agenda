@@ -9,10 +9,19 @@ import {
   clipped,
   statedTextLimits,
   type Origin,
+  type SourceAttributes,
   type StatedEvent,
   type SourcePlugin,
 } from "../src";
-import { describeSourcePluginContract } from "../src/testing";
+import { describeSourcePluginContract, undeclaredAttributes } from "../src/testing";
+
+const wholeDayEvent: StatedEvent = {
+  kind: "event",
+  title: "Match",
+  span: { allDay: true, firstDay: "2026-09-19", lastDay: "2026-09-19" },
+  place: null,
+  cancelled: false,
+};
 
 const examplePlugin = (overrides: Partial<SourcePlugin> = {}): SourcePlugin => ({
   identity: { sourceTypeId: "example", displayName: "Example", version: "1.0.0", sdkVersion },
@@ -28,18 +37,24 @@ const examplePlugin = (overrides: Partial<SourcePlugin> = {}): SourcePlugin => (
   ingestion: {
     mode: "polling",
     suggestedIntervalSeconds: 900,
-    poll: ({ syncCursor }) =>
-      Promise.resolve({
-        origins: syncCursor !== null ? [] : [
-          {
-            externalId: "mail-1",
-            occurredAt: new Date("2026-09-14T07:00:00Z"),
-            attributes: { sender: "school@example.org" },
-            content: { kind: "raw-message", text: "Trip on Friday", attachments: [] },
-          },
-        ],
+    poll: async ({ syncCursor, attributes }) => {
+      await attributes.declare([{ externalId: "inbox", name: "Inbox" }]);
+      return {
+        origins:
+          syncCursor !== null
+            ? []
+            : [
+                {
+                  externalId: "mail-1",
+                  occurredAt: new Date("2026-09-14T07:00:00Z"),
+                  sender: "school@example.org",
+                  attributes: ["inbox"],
+                  content: { kind: "raw-message", text: "Trip on Friday", attachments: [] },
+                },
+              ],
         syncCursor: `${syncCursor ?? ""}+1`,
-      }),
+      };
+    },
   },
   health: { silentApplies: true },
   ...overrides,
@@ -47,6 +62,46 @@ const examplePlugin = (overrides: Partial<SourcePlugin> = {}): SourcePlugin => (
 
 describeSourcePluginContract(() => examplePlugin(), {
   config: { plain: { url: "https://example.org" }, secrets: { password: "secret" } },
+});
+
+describe("the contract's check that a plugin declares before it emits", () => {
+  const emitting = (declare: (attributes: SourceAttributes) => Promise<void>, attribute = "inbox"): SourcePlugin =>
+    examplePlugin({
+      ingestion: {
+        mode: "polling",
+        suggestedIntervalSeconds: 900,
+        poll: async ({ attributes }) => {
+          await declare(attributes);
+          return {
+            origins: [{ externalId: "e1", attributes: [attribute], content: { kind: "stated", stated: wholeDayEvent } }],
+            syncCursor: null,
+          };
+        },
+      },
+    });
+  const config = { plain: {}, secrets: {} };
+
+  it("passes a plugin that declares the Source Attributes its Origins name", async () => {
+    expect(await undeclaredAttributes(emitting((attributes) => attributes.declare([{ externalId: "inbox", name: "Inbox" }])), config)).toEqual([]);
+  });
+
+  it("names the ids a plugin emits without declaring them, or after archiving them", async () => {
+    expect(await undeclaredAttributes(emitting(() => Promise.resolve()), config)).toEqual(["inbox"]);
+    const archived = emitting(async (attributes) => {
+      await attributes.declare([{ externalId: "inbox", name: "Inbox" }]);
+      await attributes.archive("inbox");
+    });
+    expect(await undeclaredAttributes(archived, config)).toEqual(["inbox"]);
+  });
+
+  it("lets a plugin declare an archived one again", async () => {
+    const revived = emitting(async (attributes) => {
+      await attributes.declare([{ externalId: "inbox", name: "Inbox" }]);
+      await attributes.archive("inbox");
+      await attributes.declare([{ externalId: "inbox", name: "Inbox, renamed" }]);
+    });
+    expect(await undeclaredAttributes(revived, config)).toEqual([]);
+  });
 });
 
 describe("a plugin that is not loadable", () => {
@@ -137,17 +192,11 @@ describe("Origins", () => {
   const origin = (content: Origin["content"]): Origin => ({
     externalId: "1",
     occurredAt: new Date(),
-    attributes: {},
+    attributes: ["inbox"],
     content,
   });
 
-  const event: StatedEvent = {
-    kind: "event",
-    title: "Match",
-    span: { allDay: true, firstDay: "2026-09-19", lastDay: "2026-09-19" },
-    place: null,
-    cancelled: false,
-  };
+  const event = wholeDayEvent;
 
   it("carry a raw message or a stated Item", () => {
     expect(problemsWithOrigin(origin({ kind: "raw-message", text: "Hi", attachments: [] }))).toEqual([]);
@@ -155,11 +204,20 @@ describe("Origins", () => {
   });
 
   it("state an Item without a time, but a message needs one", () => {
-    const timeless = (content: Origin["content"]): Origin => ({ externalId: "1", attributes: {}, content });
+    const timeless = (content: Origin["content"]): Origin => ({ externalId: "1", attributes: ["inbox"], content });
     expect(problemsWithOrigin(timeless({ kind: "stated", stated: event }))).toEqual([]);
     const message = timeless({ kind: "raw-message", text: "Hi", attachments: [] });
     expect(problemsWithOrigin(message)).toEqual(["the Origin has no valid time"]);
     expect(problemsWithOrigin({ ...message, occurredAt: new Date("nonsense") })).toEqual(["the Origin has no valid time"]);
+  });
+
+  it("name Source Attribute ids, none empty and none twice; an empty list withdraws the Origin", () => {
+    const message = origin({ kind: "raw-message", text: "Hi", attachments: [] });
+    expect(problemsWithOrigin({ ...message, attributes: [] })).toEqual([]);
+    expect(problemsWithOrigin({ ...message, attributes: ["inbox", "", "inbox"] })).toEqual([
+      "the Origin names an empty Source Attribute id",
+      'the Origin names the Source Attribute "inbox" twice',
+    ]);
   });
 
   it("need an external id and a kind of Item a Source states", () => {
@@ -182,7 +240,7 @@ describe("clipped texts", () => {
 });
 
 describe("Origin links", () => {
-  const origin = (content: Origin["content"]): Origin => ({ externalId: "1", occurredAt: new Date(), attributes: {}, content });
+  const origin = (content: Origin["content"]): Origin => ({ externalId: "1", occurredAt: new Date(), attributes: ["inbox"], content });
 
   it("link only to http or https addresses", () => {
     const message = origin({ kind: "raw-message", text: "Hi", attachments: [] });

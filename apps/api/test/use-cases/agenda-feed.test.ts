@@ -13,7 +13,7 @@ const days = 24 * 60 * minutes;
 /** A calendar entry stating its Event whole, as a calendar Source emits it. */
 const entry = (key: string, fields: Partial<Omit<StatedEvent, "kind">>): Origin => ({
   externalId: key,
-  attributes: {},
+  attributes: ["main"],
   content: { kind: "stated", stated: { kind: "event", place: null, cancelled: false, ...fields } as StatedEvent },
 });
 

@@ -7,6 +7,7 @@ import type {
   BackgroundActivity,
   CatalogueRecord,
   CatalogueRepository,
+  DeclaredAttribute,
   FamilyMemberRepository,
   FamilyRepository,
   LlmEndpointRepository,
@@ -14,6 +15,7 @@ import type {
   SecretRef,
   SignInFailureLog,
   Source,
+  SourceAttribute,
   SourceRepository,
   SourceTypeRecord,
   SourceTypeRepository,
@@ -31,6 +33,7 @@ import type {
   OcrLanguage,
   PhotoType,
   RunError,
+  SourceAttributeId,
   SourceFailure,
   SourceId,
   SourceTypeId,
@@ -39,7 +42,7 @@ import type {
   AgendaKind,
 } from "@family-agenda/domain";
 import { defaultFamilyLanguage, isFamilyLanguage } from "@family-agenda/domain";
-import { and, asc, eq, gt, inArray, lt, lte, ne, sql, type SQL } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, lt, lte, sql, type SQL } from "drizzle-orm";
 import { uuidPattern } from "../uuid";
 import type { Database } from "./database";
 import {
@@ -51,10 +54,11 @@ import {
   familyMembers,
   llmEndpoints,
   signInFailures,
+  sourceAttributeMembers,
+  sourceAttributes,
   sourceRecordAttachments,
   sourceRecords,
   sourceRuns,
-  sourceMembers,
   sources,
   sourceTypes,
   agendaPreselections,
@@ -499,20 +503,48 @@ export class PostgresSourceRepository implements SourceRepository {
     await this.db.update(sources).set({ name }).where(eq(sources.id, id));
   }
 
-  async assign(id: SourceId, concerns: FamilyMemberId[]): Promise<void> {
-    if (!uuidPattern.test(id)) return;
+  async declareAttributes(id: SourceId, attributes: DeclaredAttribute[]): Promise<void> {
+    if (!uuidPattern.test(id) || attributes.length === 0) return;
+    const ids = [...new Set(attributes.map((attribute) => attribute.externalId))];
     await this.db.transaction(async (tx) => {
-      await tx.delete(sourceMembers).where(and(eq(sourceMembers.sourceId, id), eq(sourceMembers.part, "")));
-      if (concerns.length > 0) await tx.insert(sourceMembers).values(concerns.map((familyMemberId) => ({ sourceId: id, familyMemberId })));
+      // A later declaration of the same id in one call wins.
+      const named = new Map(attributes.map((attribute) => [attribute.externalId, attribute.name]));
+      await tx
+        .insert(sourceAttributes)
+        .values([...named].map(([externalId, name]) => ({ sourceId: id, externalId, name })))
+        .onConflictDoUpdate({
+          target: [sourceAttributes.sourceId, sourceAttributes.externalId],
+          set: { name: sql`excluded.name`, archivedAt: null },
+        });
+      // The ids that were refused as unknown no longer are.
+      const declared = sql`ARRAY[${sql.join(ids.map((externalId) => sql`${externalId}`), sql`, `)}]::text[]`;
+      const stillUnknown = sql`ARRAY(SELECT unnest(${sourceRuns.unknownAttributes}) EXCEPT SELECT unnest(${declared}))`;
+      await tx
+        .update(sourceRuns)
+        .set({
+          unknownAttributes: stillUnknown,
+          unknownAttributesSince: sql`CASE WHEN cardinality(${stillUnknown}) = 0 THEN NULL ELSE ${sourceRuns.unknownAttributesSince} END`,
+        })
+        .where(eq(sourceRuns.sourceId, id));
     });
   }
 
-  async assignParts(id: SourceId, parts: Record<string, FamilyMemberId[]>): Promise<void> {
+  async archiveAttribute(id: SourceId, externalId: string): Promise<void> {
     if (!uuidPattern.test(id)) return;
-    const rows = Object.entries(parts).flatMap(([part, assigned]) => assigned.map((familyMemberId) => ({ sourceId: id, part, familyMemberId })));
-    await this.db.transaction(async (tx) => {
-      await tx.delete(sourceMembers).where(and(eq(sourceMembers.sourceId, id), ne(sourceMembers.part, "")));
-      if (rows.length > 0) await tx.insert(sourceMembers).values(rows);
+    await this.db
+      .update(sourceAttributes)
+      .set({ archivedAt: sql`coalesce(${sourceAttributes.archivedAt}, now())` })
+      .where(and(eq(sourceAttributes.sourceId, id), eq(sourceAttributes.externalId, externalId)));
+  }
+
+  async assignAttribute(id: SourceAttributeId, concerns: FamilyMemberId[]): Promise<boolean> {
+    if (!uuidPattern.test(id)) return false;
+    return this.db.transaction(async (tx) => {
+      const [found] = await tx.select({ id: sourceAttributes.id }).from(sourceAttributes).where(eq(sourceAttributes.id, id));
+      if (!found) return false;
+      await tx.delete(sourceAttributeMembers).where(eq(sourceAttributeMembers.attributeId, id));
+      if (concerns.length > 0) await tx.insert(sourceAttributeMembers).values(concerns.map((familyMemberId) => ({ attributeId: id, familyMemberId })));
+      return true;
     });
   }
 
@@ -537,31 +569,7 @@ export class PostgresSourceRepository implements SourceRepository {
       .innerJoin(sourceRuns, eq(sourceRuns.sourceId, sources.id))
       .where(where)
       .orderBy(asc(sources.position));
-    const assigned = await this.db
-      .select({ sourceId: sourceMembers.sourceId, part: sourceMembers.part, familyMemberId: sourceMembers.familyMemberId })
-      .from(sourceMembers)
-      .innerJoin(familyMembers, eq(familyMembers.id, sourceMembers.familyMemberId))
-      .where(
-        rows.length > 0
-          ? inArray(
-              sourceMembers.sourceId,
-              rows.map((row) => row.source.id),
-            )
-          : sql`false`,
-      )
-      .orderBy(asc(familyMembers.position));
-    const concernsOf = (id: string) =>
-      assigned.filter((row) => row.sourceId === id && row.part === "").map((row) => row.familyMemberId as FamilyMemberId);
-    const partConcernsOf = (id: string) => {
-      const parts: Record<string, FamilyMemberId[]> = {};
-      for (const row of assigned) {
-        if (row.sourceId !== id || row.part === "") continue;
-        const existing = parts[row.part];
-        if (existing) existing.push(row.familyMemberId as FamilyMemberId);
-        else parts[row.part] = [row.familyMemberId as FamilyMemberId];
-      }
-      return parts;
-    };
+    const attributes = await this.attributesOf(rows.map((row) => row.source.id));
     return rows.map(({ source, run, syncCursor }) => ({
       id: source.id as SourceId,
       sourceTypeId: source.sourceTypeId as SourceTypeId,
@@ -572,8 +580,7 @@ export class PostgresSourceRepository implements SourceRepository {
       pollIntervalSeconds: source.pollIntervalSeconds,
       shown: source.shown,
       name: source.name,
-      concerns: concernsOf(source.id),
-      partConcerns: partConcernsOf(source.id),
+      attributes: attributes.get(source.id) ?? [],
       lastRunAt: run.lastRunAt,
       lastSuccessAt: run.lastSuccessAt,
       failure:
@@ -582,8 +589,33 @@ export class PostgresSourceRepository implements SourceRepository {
           : null,
       lastNewOriginAt: run.lastNewOriginAt,
       invalidRecords: run.invalidRecords,
+      unknownAttributes: run.unknownAttributes,
       createdAt: source.createdAt,
     }));
+  }
+
+  /** The Source Attributes of the Sources, by name, each with the Family Members assigned to it in the Family's order. */
+  private async attributesOf(sourceIds: string[]): Promise<Map<string, SourceAttribute[]>> {
+    const found = new Map<string, SourceAttribute[]>();
+    if (sourceIds.length === 0) return found;
+    const rows = await this.db
+      .select({ attribute: sourceAttributes, familyMemberId: sourceAttributeMembers.familyMemberId })
+      .from(sourceAttributes)
+      .leftJoin(sourceAttributeMembers, eq(sourceAttributeMembers.attributeId, sourceAttributes.id))
+      .leftJoin(familyMembers, eq(familyMembers.id, sourceAttributeMembers.familyMemberId))
+      .where(inArray(sourceAttributes.sourceId, sourceIds))
+      .orderBy(asc(sourceAttributes.name), asc(sourceAttributes.id), asc(familyMembers.position));
+    const byId = new Map<string, SourceAttribute>();
+    for (const { attribute, familyMemberId } of rows) {
+      let entry = byId.get(attribute.id);
+      if (!entry) {
+        entry = { id: attribute.id as SourceAttributeId, externalId: attribute.externalId, name: attribute.name, archived: attribute.archivedAt !== null, concerns: [] };
+        byId.set(attribute.id, entry);
+        found.set(attribute.sourceId, [...(found.get(attribute.sourceId) ?? []), entry]);
+      }
+      if (familyMemberId) entry.concerns.push(familyMemberId as FamilyMemberId);
+    }
+    return found;
   }
 }
 

@@ -67,7 +67,7 @@ describe("the pages in the Family Language", () => {
     testPluginControls.emit("family-cal", [
       {
         externalId: "trip",
-        attributes: {},
+        attributes: ["main"],
         content: {
           kind: "stated",
           stated: { kind: "event", title: "Class trip", span: { allDay: true, firstDay: "2026-09-15", lastDay: "2026-09-15" }, place: null, cancelled: false },
