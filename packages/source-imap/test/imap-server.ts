@@ -1,9 +1,16 @@
 import { createServer, type Server, type Socket } from "node:net";
 import type { AddressInfo } from "node:net";
 
-export type FixtureMessage = { uid: number; internalDate: Date; raw: string };
+export type FixtureMessage = { uid: number; internalDate: Date; raw: string; labels?: string[] };
 
-export type FixtureMailbox = { uidValidity: number; messages: FixtureMessage[] };
+export type FixtureMailbox = {
+  uidValidity: number;
+  messages: FixtureMessage[];
+  /** Its RFC 8474 id, sent when the server has the `OBJECTID` capability. */
+  mailboxId?: string;
+  /** Its special use, such as `\\All` for Gmail's All Mail. */
+  specialUse?: string;
+};
 
 /**
  * A small IMAP server for the plugin's contract tests: one account, folders of fixed messages, and
@@ -14,6 +21,8 @@ export class ImapServerFixture {
   /** Every command received, without its tag, passwords masked. */
   readonly commands: string[] = [];
   readonly folders = new Map<string, FixtureMailbox>();
+  /** What the server offers besides IMAP4rev1, such as `OBJECTID` or Gmail's `X-GM-EXT-1`. */
+  capabilities: string[] = [];
   private server: Server | null = null;
   private readonly sockets = new Set<Socket>();
 
@@ -52,12 +61,33 @@ export class ImapServerFixture {
     return uid;
   }
 
+  /** Adds a message to a folder with the next UID, under Gmail labels. */
+  deliverLabelled(folder: string, labels: string[], raw: string, internalDate: Date): number {
+    const uid = this.deliver(folder, raw, internalDate);
+    this.folders.get(folder)!.messages.find((message) => message.uid === uid)!.labels = labels;
+    return uid;
+  }
+
+  /** Removes a message from a folder, as a move out of it or a deletion does. */
+  expunge(folder: string, uid: number): void {
+    const mailbox = this.folders.get(folder)!;
+    mailbox.messages = mailbox.messages.filter((message) => message.uid !== uid);
+  }
+
+  /** Moves a message to another folder, where it gets the next UID. */
+  move(from: string, uid: number, to: string): number {
+    const message = this.folders.get(from)!.messages.find((candidate) => candidate.uid === uid)!;
+    this.expunge(from, uid);
+    return this.deliver(to, message.raw, message.internalDate);
+  }
+
   private serve(socket: Socket): void {
     let buffer = "";
     let selected: FixtureMailbox | null = null;
     let authenticated = false;
     const send = (line: string) => socket.write(`${line}\r\n`);
-    send("* OK [CAPABILITY IMAP4rev1] Fixture ready");
+    const capability = () => ["IMAP4rev1", ...this.capabilities].join(" ");
+    send(`* OK [CAPABILITY ${capability()}] Fixture ready`);
 
     socket.on("data", (chunk: Buffer) => {
       buffer += chunk.toString("utf8");
@@ -80,7 +110,7 @@ export class ImapServerFixture {
 
         switch (command) {
           case "CAPABILITY":
-            send("* CAPABILITY IMAP4rev1");
+            send(`* CAPABILITY ${capability()}`);
             ok();
             break;
           case "NOOP":
@@ -89,15 +119,16 @@ export class ImapServerFixture {
           case "LOGIN": {
             const [user, password] = atoms(rest);
             authenticated = user === this.account.user && password === this.account.password;
-            if (authenticated) ok("[CAPABILITY IMAP4rev1] LOGIN completed");
+            if (authenticated) ok(`[CAPABILITY ${capability()}] LOGIN completed`);
             else send(`${tag} NO [AUTHENTICATIONFAILED] Invalid credentials`);
             break;
           }
           case "LIST": {
             const [, pattern = ""] = atoms(rest);
             if (pattern === "") send('* LIST (\\Noselect) "/" ""');
-            for (const name of this.folders.keys()) {
-              if (pattern === "*" || pattern === name) send(`* LIST (\\HasNoChildren) "/" "${name}"`);
+            for (const [name, mailbox] of this.folders) {
+              const flags = ["\\HasNoChildren", ...(mailbox.specialUse ? [mailbox.specialUse] : [])].join(" ");
+              if (pattern === "*" || pattern === name) send(`* LIST (${flags}) "/" "${name}"`);
             }
             ok();
             break;
@@ -116,6 +147,7 @@ export class ImapServerFixture {
             send("* 0 RECENT");
             send(`* OK [UIDVALIDITY ${mailbox.uidValidity}] UIDs valid`);
             send(`* OK [UIDNEXT ${(mailbox.messages.at(-1)?.uid ?? 0) + 1}] Predicted next UID`);
+            if (mailbox.mailboxId && this.capabilities.includes("OBJECTID")) send(`* OK [MAILBOXID (${mailbox.mailboxId})] Ok`);
             ok(command === "EXAMINE" ? "[READ-ONLY] EXAMINE completed" : "[READ-WRITE] SELECT completed");
             break;
           }
@@ -144,6 +176,7 @@ export class ImapServerFixture {
               if (!matching.includes(message.uid)) return;
               const parts = [`UID ${message.uid}`];
               if (wanted.includes("INTERNALDATE")) parts.push(`INTERNALDATE "${internalDateOf(message.internalDate)}"`);
+              if (wanted.includes("X-GM-LABELS")) parts.push(`X-GM-LABELS (${(message.labels ?? []).map((label) => `"${label.replace(/\\/g, "\\\\")}"`).join(" ")})`);
               let literal = "";
               if (wanted.includes("BODY.PEEK[HEADER.FIELDS (FROM)]")) {
                 const header = (/^From:.*$/im.exec(message.raw)?.[0] ?? "") + "\r\n\r\n";
