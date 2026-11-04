@@ -1,6 +1,6 @@
 import { createSocket } from "node:dgram";
 import { networkInterfaces } from "node:os";
-import { addressesFacing, answerWith, asksFor, type Ipv4Interface } from "./mdns";
+import { addressesFacing, answerWith, asksFor, asksForIpv6, denyIpv6, type Ipv4Interface } from "./mdns";
 
 /**
  * Makes the Instance reachable by `MDNS_NAME` on the home network, like `homeassistant.local`. It
@@ -31,12 +31,13 @@ const join = () => {
 };
 
 socket.on("message", (message, sender) => {
-  if (!asksFor(message, hostname)) return;
+  const answers = asksFor(message, hostname);
+  if (!answers && !asksForIpv6(message, hostname)) return;
   const addresses = addressesFacing(sender.address, interfaces());
   const [first] = addresses;
   if (!first) return;
   socket.setMulticastInterface(first);
-  socket.send(answerWith(hostname, addresses), port, group);
+  socket.send(answers ? answerWith(hostname, addresses) : denyIpv6(hostname), port, group);
 });
 
 socket.on("error", (error) => {

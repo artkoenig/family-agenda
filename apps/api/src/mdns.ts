@@ -1,9 +1,12 @@
 /**
  * Just enough multicast DNS (RFC 6762) to make the Instance reachable by a name on the home
- * network, such as `family-agenda.local`: it answers A queries for one name and nothing else.
+ * network, such as `family-agenda.local`: it answers A queries for one name and nothing else. It has
+ * no IPv6 address, which it says outright, so that a client asking for one does not wait for a timeout.
  */
 
 const typeA = 1;
+const typeAaaa = 28;
+const typeNsec = 47;
 const typeAny = 255;
 const classIn = 1;
 /** Tells caches that this record replaces what they hold for the name. */
@@ -64,32 +67,55 @@ function readName(message: Buffer, start: number): { name: string; next: number 
 
 /** Whether a DNS message is a query that asks for the address of `hostname`. */
 export function asksFor(message: Buffer, hostname: string): boolean {
+  return asksAbout(message, hostname, [typeA, typeAny]);
+}
+
+/** Whether a DNS message is a query that asks for an IPv6 address of `hostname`. */
+export function asksForIpv6(message: Buffer, hostname: string): boolean {
+  return asksAbout(message, hostname, [typeAaaa]);
+}
+
+function asksAbout(message: Buffer, hostname: string, types: number[]): boolean {
   if (message.length < 12 || message.readUInt16BE(2) & 0x8000) return false;
   let offset = 12;
   for (let left = message.readUInt16BE(4); left > 0; left--) {
     const question = readName(message, offset);
     if (!question || question.next + 4 > message.length) return false;
-    if (questionAsksFor(message, question, hostname)) return true;
+    if (questionAsksFor(message, question, hostname, types)) return true;
     offset = question.next + 4;
   }
   return false;
 }
 
-function questionAsksFor(message: Buffer, question: { name: string; next: number }, hostname: string): boolean {
+function questionAsksFor(
+  message: Buffer,
+  question: { name: string; next: number },
+  hostname: string,
+  types: number[],
+): boolean {
   const type = message.readUInt16BE(question.next);
   const questionClass = message.readUInt16BE(question.next + 2) & ~cacheFlush;
-  return question.name.toLowerCase() === hostname && (type === typeA || type === typeAny) && questionClass === classIn;
+  return question.name.toLowerCase() === hostname && types.includes(type) && questionClass === classIn;
+}
+
+const encodedName = (hostname: string) =>
+  Buffer.concat([
+    ...hostname.split(".").map((label) => Buffer.concat([Buffer.from([label.length]), Buffer.from(label)])),
+    Buffer.from([0]),
+  ]);
+
+/** A response header with `answers` records; it is an authoritative one. */
+function responseHeader(answers: number): Buffer {
+  const header = Buffer.alloc(12);
+  header.writeUInt16BE(0x8400, 2);
+  header.writeUInt16BE(answers, 6);
+  return header;
 }
 
 /** The response that tells `hostname` is at `addresses`. */
 export function answerWith(hostname: string, addresses: string[]): Buffer {
-  const name = Buffer.concat([
-    ...hostname.split(".").map((label) => Buffer.concat([Buffer.from([label.length]), Buffer.from(label)])),
-    Buffer.from([0]),
-  ]);
-  const header = Buffer.alloc(12);
-  header.writeUInt16BE(0x8400, 2); // a response, and an authoritative one
-  header.writeUInt16BE(addresses.length, 6);
+  const name = encodedName(hostname);
+  const header = responseHeader(addresses.length);
   const records = addresses.map((address) => {
     const fixed = Buffer.alloc(10);
     fixed.writeUInt16BE(typeA, 0);
@@ -99,4 +125,18 @@ export function answerWith(hostname: string, addresses: string[]): Buffer {
     return Buffer.concat([name, fixed, Buffer.from(octetsOf(address))]);
   });
   return Buffer.concat([header, ...records]);
+}
+
+/** The window, length and bitmap of an NSEC record that lists only the A record (type 1). */
+const onlyTypeA = Buffer.from([0, 1, 0x40]);
+
+/** The response that tells `hostname` has no IPv6 address: an NSEC record that lists only A (RFC 6762 section 6.1). */
+export function denyIpv6(hostname: string): Buffer {
+  const name = encodedName(hostname);
+  const fixed = Buffer.alloc(10);
+  fixed.writeUInt16BE(typeNsec, 0);
+  fixed.writeUInt16BE(classIn | cacheFlush, 2);
+  fixed.writeUInt32BE(timeToLive, 4);
+  fixed.writeUInt16BE(name.length + onlyTypeA.length, 8);
+  return Buffer.concat([responseHeader(1), name, fixed, name, onlyTypeA]);
 }
