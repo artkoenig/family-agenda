@@ -4,6 +4,9 @@ import {
   sdkVersion,
   SourceError,
   type Attachment,
+  type Choice,
+  type IngestContext,
+  type IngestResult,
   type Origin,
   type RunContext,
   type SourcePlugin,
@@ -19,24 +22,37 @@ export type ImapPluginOptions = {
   timeoutMs?: number;
 };
 
-/** What was read of one folder: its UIDVALIDITY and the highest UID read, as the IMAP standard keys mails. */
-type FolderState = { uidValidity: string; lastUid: number };
+/** A mail the cursor remembers: where it is (its UID in the container), what it is, when it arrived, whom it names. */
+type Entry = { uid: number; id: string; at: number; attributes: string[] };
 
-/** The sync cursor: what was read of each folder, by its name. */
-type State = Record<string, FolderState>;
+/**
+ * What was read of one container, a folder or Gmail's All Mail: its UIDVALIDITY, the highest UID
+ * seen, and the mails still there that name Source Attributes, so that a move, a changed label or
+ * a deletion is noticed.
+ */
+type ContainerState = { uidValidity: string; lastUid: number; entries: Entry[] };
+
+/** The sync cursor: what was read of each container, and the Source Attributes this Source declared. */
+type Cursor = { v: 2; declared: string[]; containers: Record<string, ContainerState> };
 
 /** How far back the first run of a Source reads, so that adding a mailbox does not extract years of mail. */
 const firstRunDays = 14;
 
+/** How long a mail's place is remembered; the core ignores older mail on arrival anyway. */
+const trackedDays = 180;
+
+const dayMs = 24 * 60 * 60 * 1000;
+
 const defaultPort = 993;
 
 /**
- * Reads the mails in the folders of a mailbox, read-only: it opens each folder with `EXAMINE` and
- * fetches with `BODY.PEEK`, so it never sets a flag, and it never moves or deletes a mail. Each
- * run reads the mails after the highest UID the last run saw in each folder, and emits each as a
- * raw message for extraction, with its text body; attachments are kept, not read yet. The
- * folders are Parts of the Source, so an Admin can assign each to other Family Members; with none
- * configured, it reads INBOX as the Source itself.
+ * Reads the mails in the allow-listed folders of a mailbox, read-only: it opens each folder with
+ * `EXAMINE` and fetches with `BODY.PEEK`, so it never sets a flag, and it never moves or deletes a
+ * mail. Each allow-listed folder is a Source Attribute, by its `MAILBOXID` where the server has
+ * `OBJECTID` and by its name otherwise; on Gmail, which has labels instead, it reads All Mail once
+ * and each allow-listed label is one. A mail names the allow-listed folders or labels it is in, and
+ * is emitted again when they change; one that is in none any more is withdrawn. Everything not
+ * allow-listed is dropped here, without a record. With nothing allow-listed, it reads INBOX.
  */
 export function createImapPlugin(options: ImapPluginOptions = {}): SourcePlugin {
   const timeoutMs = options.timeoutMs ?? 60_000;
@@ -83,16 +99,34 @@ export function createImapPlugin(options: ImapPluginOptions = {}): SourcePlugin 
     }
   }
 
+  /** The folders, or on Gmail the labels, the mailbox offers to read. */
+  function listChoices(context: RunContext): Promise<Choice[]> {
+    return withMailbox(context, async (client) => {
+      const mailboxes = (await client.list()).filter((mailbox) => !mailbox.flags.has("\\Noselect"));
+      if (!isGmail(client)) return mailboxes.map((mailbox) => ({ value: mailbox.path, label: mailbox.path }));
+      const labels = mailboxes.flatMap((mailbox) => {
+        const name = gmailLabelChoice(mailbox);
+        return name === null ? [] : [name];
+      });
+      return [...new Set(labels)].sort(inboxFirst).map((name) => ({ value: name, label: name }));
+    });
+  }
+
   return {
     identity: { sourceTypeId: "imap", displayName: { en: "IMAP mailbox", de: "IMAP-Postfach" }, version: "0.1.0", sdkVersion },
     configuration: {
-      version: 3,
+      version: 4,
       migrations: {
         // The single folder became a list of folders.
         1: ({ folder, ...rest }) => (typeof folder === "string" && folder !== "" ? { ...rest, folders: [folder] } : rest),
         // The folders are typed as a list in one field, as Parts no longer exist.
         2: ({ folders, ...rest }) =>
           Array.isArray(folders) && folders.length > 0 ? { ...rest, folders: folders.filter((name) => typeof name === "string").join(", ") } : rest,
+        // The folders are chosen among those the server has, so they are a list again.
+        3: ({ folders, ...rest }) => {
+          const names = typeof folders === "string" ? commaSeparated(folders) : [];
+          return names.length > 0 ? { ...rest, folders: names } : rest;
+        },
       },
       fields: [
         {
@@ -135,9 +169,10 @@ export function createImapPlugin(options: ImapPluginOptions = {}): SourcePlugin 
           secret: false,
           required: false,
           description: {
-            en: "Optional, separated by commas; INBOX by default. Use folders your mail filters fill with school mail, or a mailbox only school mail is forwarded to: every mail in them is sent to the LLM endpoint.",
-            de: "Optional, durch Kommas getrennt; sonst INBOX. Nimm Ordner, die deine Mailfilter mit Schulmails füllen, oder ein Postfach, an das nur Schulmails weitergeleitet werden: Jede Mail darin geht an den LLM-Endpunkt.",
+            en: "Only the ticked folders (on Gmail: labels) are read; INBOX if none is ticked. Tick folders your mail filters fill with school mail, or a mailbox only school mail is forwarded to: every mail in them is sent to the LLM endpoint. The mail server offers them once the Source is set up.",
+            de: "Nur die angehakten Ordner (bei Gmail: Labels) werden gelesen; INBOX, wenn keiner angehakt ist. Hake Ordner an, die deine Mailfilter mit Schulmails füllen, oder ein Postfach, an das nur Schulmails weitergeleitet werden: Jede Mail darin geht an den LLM-Endpunkt. Der Mailserver bietet sie an, sobald die Quelle eingerichtet ist.",
           },
+          choices: (context) => listChoices(context),
         },
       ],
     },
@@ -145,27 +180,7 @@ export function createImapPlugin(options: ImapPluginOptions = {}): SourcePlugin 
     ingestion: {
       mode: "polling",
       suggestedIntervalSeconds: 5 * 60,
-      poll: (context) =>
-        withMailbox(context, async (client) => {
-          // One Source Attribute for the mailbox until its folders become Source Attributes of their own.
-          await context.attributes.declare([{ externalId: mailboxAttribute, name: stringOf(context.config.plain.username) || "Mailbox" }]);
-          const configured = foldersOf(context.config.plain);
-          // Without folders, INBOX is read as the Source itself.
-          const folders = configured.length > 0 ? configured : ["INBOX"];
-          const previous = parseState(context.syncCursor, folders[0]);
-          const origins = new Map<string, Origin>();
-          const state: State = {};
-          for (const folder of folders) {
-            const read = await readFolder(client, folder, previous[folder] ?? null, context.now);
-            state[folder] = read.state;
-            for (const mail of read.mails) {
-              // A mail in several folders, such as under several labels, counts once, in the first.
-              if (origins.has(mail.externalId)) continue;
-              origins.set(mail.externalId, mail);
-            }
-          }
-          return { origins: [...origins.values()], syncCursor: JSON.stringify(state) };
-        }),
+      poll: (context) => withMailbox(context, (client) => pollMailbox(client, context)),
     },
     // School mail pauses for weeks in the holidays.
     health: { silentApplies: false },
@@ -178,9 +193,6 @@ export default createImapPlugin();
 function shownWith(sender: string | null, subject: string | undefined): { sender?: string; subject?: string } {
   return { ...(sender ? { sender } : {}), ...(subject?.trim() ? { subject: subject.trim() } : {}) };
 }
-
-/** The one Source Attribute of a mailbox. */
-const mailboxAttribute = "mailbox";
 
 function stringOf(value: unknown): string {
   return typeof value === "string" ? value : "";
@@ -195,43 +207,237 @@ function isPort(port: number): boolean {
   return Number.isInteger(port) && port >= 1 && port <= 65_535;
 }
 
-/** The folders an Admin configured, separated by commas or lines, in their order. */
+/** The names in a comma- or line-separated text, once each, in their order. */
+function commaSeparated(text: string): string[] {
+  return [...new Set(text.split(/[,\n]/).map((name) => name.trim()).filter((name) => name !== ""))];
+}
+
+/** The folders, or on Gmail the labels, an Admin allow-listed, in their order; INBOX if none. */
 function foldersOf(plain: Record<string, unknown>): string[] {
-  if (typeof plain.folders !== "string") return [];
-  return [...new Set(plain.folders.split(/[,\n]/).map((folder) => folder.trim()).filter((folder) => folder !== ""))];
+  const configured = Array.isArray(plain.folders)
+    ? [...new Set(plain.folders.filter((name): name is string => typeof name === "string").map((name) => name.trim()).filter((name) => name !== ""))]
+    : commaSeparated(stringOf(plain.folders));
+  return configured.length > 0 ? configured : ["INBOX"];
 }
 
-/** Opens the folder and reads its mails after the highest UID seen, or the last days on the first read. */
-async function readFolder(
-  client: ImapFlow,
-  folder: string,
-  previous: FolderState | null,
-  now: Date,
-): Promise<{ mails: Origin[]; state: FolderState }> {
-  const uidValidity = await openFolder(client, folder);
-  const resuming = previous !== null && previous.uidValidity === uidValidity;
-  let range: string;
-  if (resuming) {
-    range = `${previous.lastUid + 1}:*`;
-  } else {
-    const since = new Date(now.getTime() - firstRunDays * 24 * 60 * 60 * 1000);
-    const uids = (await client.search({ since }, { uid: true })) || [];
-    if (uids.length === 0) return { mails: [], state: { uidValidity, lastUid: highestUid(client) } };
-    range = uids.join(",");
+/** Gmail has labels instead of folders, which it also lists as folders. */
+function isGmail(client: ImapFlow): boolean {
+  return client.capabilities.has("X-GM-EXT-1");
+}
+
+/** The readable names of Gmail's system labels; any other label is named as it is. */
+const systemLabels: Record<string, string> = {
+  "\\Inbox": "INBOX",
+  "\\Sent": "Sent",
+  "\\Starred": "Starred",
+  "\\Important": "Important",
+  "\\Draft": "Drafts",
+};
+
+/** The allow-listed labels a mail has, by readable name. */
+function allowedLabels(labels: Set<string> | undefined, allowed: Set<string>): string[] {
+  return [...new Set([...(labels ?? [])].map((label) => systemLabels[label] ?? label).filter((name) => allowed.has(name)))];
+}
+
+/** The label a Gmail folder listing stands for, if it is one an Admin may read: the Inbox, a user label or a mapped system label. */
+function gmailLabelChoice(mailbox: { path: string; specialUse?: string | undefined }): string | null {
+  if (mailbox.path === "INBOX") return "INBOX";
+  const mapped = { "\\Flagged": "Starred", "\\Important": "Important", "\\Sent": "Sent", "\\Drafts": "Drafts" }[mailbox.specialUse ?? ""];
+  if (mapped !== undefined) return mapped;
+  return mailbox.specialUse || mailbox.path.startsWith("[Gmail]") ? null : mailbox.path;
+}
+
+function inboxFirst(a: string, b: string): number {
+  return Number(b === "INBOX") - Number(a === "INBOX");
+}
+
+/** The folder holding every mail of a Gmail account. */
+async function allMailPath(client: ImapFlow): Promise<string> {
+  const allMail = (await client.list()).find((mailbox) => mailbox.specialUse === "\\All");
+  if (!allMail) throw SourceError.definite("The Gmail account has no All Mail folder to read.");
+  return allMail.path;
+}
+
+/** One container (a folder, or Gmail's All Mail) as this run read it. */
+type Read = {
+  /** Its Source Attribute id for a folder, its name for All Mail. */
+  key: string;
+  path: string;
+  state: ContainerState;
+  /** What the last run remembered of it, if this run could continue from that. */
+  before: Entry[];
+  /** The mails read this run, by their external ids. */
+  fresh: Map<string, Origin>;
+};
+
+type ReadOptions = { gmail: boolean; labels: Set<string>; previous: Cursor | null; now: Date };
+
+async function pollMailbox(client: ImapFlow, context: IngestContext): Promise<IngestResult> {
+  const allowed = foldersOf(context.config.plain);
+  const gmail = isGmail(client);
+  const options: ReadOptions = { gmail, labels: new Set(allowed), previous: parseCursor(context.syncCursor), now: context.now };
+  const reads: Read[] = [];
+  for (const path of gmail ? [await allMailPath(client)] : allowed) reads.push(await readContainer(client, path, options));
+
+  const declared = gmail ? allowed.map((name) => ({ externalId: name, name })) : reads.map((read) => ({ externalId: read.key, name: read.path }));
+  const current = new Set(declared.map((attribute) => attribute.externalId));
+  await context.attributes.declare(declared);
+  // A Source from before folders were Source Attributes declared one for the whole mailbox.
+  for (const id of options.previous ? options.previous.declared : [legacyAttribute]) if (!current.has(id)) await context.attributes.archive(id);
+
+  const before = membership(reads.flatMap((read) => read.before), current);
+  const after = membership(reads.flatMap((read) => read.state.entries), current);
+  const withdrawn = [...before.keys()].filter((id) => !after.has(id));
+  const cursor: Cursor = { v: 2, declared: [...current].sort(), containers: Object.fromEntries(reads.map((read) => [read.key, read.state])) };
+  return {
+    origins: await changedOrigins(client, reads, before, after, context.now),
+    ...(withdrawn.length > 0 ? { withdrawn } : {}),
+    syncCursor: JSON.stringify(cursor),
+  };
+}
+
+/** The mails whose Source Attributes are new or changed, each naming the ones it has now. */
+async function changedOrigins(client: ImapFlow, reads: Read[], before: Map<string, string[]>, after: Map<string, string[]>, now: Date): Promise<Origin[]> {
+  const origins: Origin[] = [];
+  for (const [id, attributes] of after) {
+    if (before.get(id)?.join("\n") === attributes.join("\n")) continue;
+    const origin = await originNaming(client, reads, id, now);
+    if (origin) origins.push({ ...origin, attributes });
   }
-  const fetched = await client.fetchAll(range, { uid: true, source: true, internalDate: true }, { uid: true });
-  // `n:*` names the last mail even when its UID is below n.
-  const fresh = fetched.filter((mail) => !resuming || mail.uid > previous.lastUid);
-  const mails: Origin[] = [];
-  for (const mail of fresh) mails.push(await originOf(mail, uidValidity, now));
-  const lastUid = Math.max(resuming ? previous.lastUid : 0, ...fetched.map((mail) => mail.uid));
-  return { mails, state: { uidValidity, lastUid } };
+  return origins;
 }
 
-/** Opens the folder read-only and returns its UID validity. */
-async function openFolder(client: ImapFlow, folder: string): Promise<string> {
+/** The Source Attribute ids of each mail, from the entries of the containers still allow-listed. */
+function membership(entries: Entry[], current: Set<string>): Map<string, string[]> {
+  const byId = new Map<string, Set<string>>();
+  for (const entry of entries) {
+    const attributes = entry.attributes.filter((id) => current.has(id));
+    if (attributes.length === 0) continue;
+    const named = byId.get(entry.id) ?? new Set<string>();
+    for (const id of attributes) named.add(id);
+    byId.set(entry.id, named);
+  }
+  return new Map([...byId].map(([id, named]) => [id, [...named].sort()]));
+}
+
+/** The mail as it was read this run, or read again from where it is now. */
+async function originNaming(client: ImapFlow, reads: Read[], id: string, now: Date): Promise<Origin | undefined> {
+  for (const read of reads) {
+    const fresh = read.fresh.get(id);
+    if (fresh) return fresh;
+  }
+  for (const read of reads) {
+    const entry = read.state.entries.find((candidate) => candidate.id === id);
+    if (!entry) continue;
+    await openFolder(client, read.path);
+    const [mail] = await client.fetchAll(String(entry.uid), { uid: true, source: true, internalDate: true }, { uid: true });
+    return mail ? await originOf(mail, read.state.uidValidity, now) : undefined;
+  }
+  return undefined;
+}
+
+/**
+ * Reads what is new in a container since the last run, and notes which of the mails it remembered
+ * are still there and which Source Attributes they name. Only mails naming one are kept: a folder
+ * names itself, a Gmail mail names its allow-listed labels.
+ */
+async function readContainer(client: ImapFlow, path: string, options: ReadOptions): Promise<Read> {
+  const { gmail, labels, previous, now } = options;
+  const { uidValidity, mailboxId } = await openFolder(client, path);
+  const key = containerKey(client, path, gmail, mailboxId);
+  const stored = previous?.containers[key];
+  const last = stored?.uidValidity === uidValidity ? stored : undefined;
+  const windowStart = now.getTime() - firstRunDays * dayMs;
+  const known = last ? last.entries.filter((entry) => entry.at >= now.getTime() - trackedDays * dayMs) : [];
+  const floor = await firstUidToList(client, known, last, gmail, windowStart);
+  if (!Number.isFinite(floor)) return { key, path, state: { uidValidity, lastUid: highestUid(client), entries: [] }, before: [], fresh: new Map() };
+
+  const listed = await listMails(client, floor, gmail);
+  const named = (mail: FetchMessageObject) => (gmail ? allowedLabels(mail.labels, labels) : [key]);
+  const sorted = sortListed(listed, new Map(known.map((entry) => [entry.uid, entry])), named, (mail) => isNewMail(mail, last, windowStart));
+  const fresh = await readMails(client, sorted.unread, uidValidity, now);
+  const lastUid = Math.max(last?.lastUid ?? 0, ...listed.map((mail) => mail.uid));
+  return { key, path, state: { uidValidity, lastUid, entries: [...sorted.entries, ...fresh.entries] }, before: known, fresh: fresh.origins };
+}
+
+/** A container is known by its Source Attribute id: its `MAILBOXID` where the server has them, else its name; All Mail by its name. */
+function containerKey(client: ImapFlow, path: string, gmail: boolean, mailboxId: string | undefined): string {
+  return !gmail && mailboxId && client.capabilities.has("OBJECTID") ? mailboxId : path;
+}
+
+/**
+ * The lowest UID to list: of the mails remembered, after the last one seen, and, on a first read or
+ * on Gmail, where a label can be added to a mail of the last days, those of the days a first run reads.
+ * Infinity if there is none.
+ */
+async function firstUidToList(client: ImapFlow, known: Entry[], last: ContainerState | undefined, gmail: boolean, windowStart: number): Promise<number> {
+  const recent = !last || gmail ? await uidsSince(client, windowStart) : [];
+  return Math.min(...known.map((entry) => entry.uid), ...(last ? [last.lastUid + 1] : []), ...recent);
+}
+
+/** The UID, arrival and, on Gmail, labels of every mail from this UID on. */
+async function listMails(client: ImapFlow, floor: number, gmail: boolean): Promise<FetchMessageObject[]> {
+  const mails = await client.fetchAll(`${floor}:*`, { uid: true, internalDate: true, ...(gmail ? { labels: true } : {}) }, { uid: true });
+  // `n:*` names the last mail even when its UID is below n.
+  return mails.filter((mail) => mail.uid >= floor);
+}
+
+/** Splits the listed mails into those remembered and still naming a Source Attribute, and those new ones that do. */
+function sortListed(
+  listed: FetchMessageObject[],
+  tracked: Map<number, Entry>,
+  named: (mail: FetchMessageObject) => string[],
+  isNew: (mail: FetchMessageObject) => boolean,
+): { entries: Entry[]; unread: Map<number, string[]> } {
+  const entries: Entry[] = [];
+  const unread = new Map<number, string[]>();
+  for (const mail of listed) {
+    const attributes = named(mail);
+    const entry = tracked.get(mail.uid);
+    if (attributes.length === 0) continue;
+    if (entry) entries.push({ ...entry, attributes });
+    else if (isNew(mail)) unread.set(mail.uid, attributes);
+  }
+  return { entries, unread };
+}
+
+/** Whether a mail was not seen before: it came after the last UID, or in the days a first run reads. */
+function isNewMail(mail: FetchMessageObject, last: ContainerState | undefined, windowStart: number): boolean {
+  return (last !== undefined && mail.uid > last.lastUid) || receivedMs(mail) >= windowStart;
+}
+
+/** Fetches the mails with these UIDs, and notes each as an entry naming the Source Attributes given. */
+async function readMails(
+  client: ImapFlow,
+  unread: Map<number, string[]>,
+  uidValidity: string,
+  now: Date,
+): Promise<{ origins: Map<string, Origin>; entries: Entry[] }> {
+  const origins = new Map<string, Origin>();
+  const entries: Entry[] = [];
+  if (unread.size === 0) return { origins, entries };
+  const sources = await client.fetchAll([...unread.keys()].join(","), { uid: true, source: true, internalDate: true }, { uid: true });
+  for (const mail of sources) {
+    const origin = await originOf(mail, uidValidity, now);
+    origins.set(origin.externalId, origin);
+    entries.push({ uid: mail.uid, id: origin.externalId, at: receivedMs(mail), attributes: unread.get(mail.uid) ?? [] });
+  }
+  return { origins, entries };
+}
+
+function receivedMs(mail: FetchMessageObject): number {
+  return mail.internalDate ? new Date(mail.internalDate).getTime() : 0;
+}
+
+async function uidsSince(client: ImapFlow, since: number): Promise<number[]> {
+  return (await client.search({ since: new Date(since) }, { uid: true })) || [];
+}
+
+/** Opens the folder read-only and returns its UID validity and, if the server has them, its mailbox id. */
+async function openFolder(client: ImapFlow, folder: string): Promise<{ uidValidity: string; mailboxId: string | undefined }> {
   try {
-    return (await client.mailboxOpen(folder, { readOnly: true })).uidValidity.toString();
+    const mailbox = await client.mailboxOpen(folder, { readOnly: true });
+    return { uidValidity: mailbox.uidValidity.toString(), mailboxId: mailbox.mailboxId };
   } catch (error) {
     if (isNoResponse(error)) throw SourceError.definite(`The folder "${folder}" does not exist in the mailbox.`);
     throw temporary(error);
@@ -251,7 +457,7 @@ async function originOf(mail: FetchMessageObject, uidValidity: string, now: Date
   return {
     externalId: parsed.messageId?.trim() || `uid:${uidValidity}:${mail.uid}`,
     occurredAt: receivedAt(mail, parsed, now),
-    attributes: [mailboxAttribute],
+    attributes: [],
     ...shownWith(sender, parsed.subject),
     content: {
       kind: "raw-message",
@@ -303,24 +509,18 @@ function senderOf(parsed: ParsedMail): string | null {
   return from?.value[0]?.address?.toLowerCase() ?? null;
 }
 
-/**
- * What was read of each folder. A sync cursor from before a Source had several folders is that of its
- * only folder, which is `first` now.
- */
-function parseState(state: string | null, first: string | undefined): State {
-  if (!state) return {};
-  try {
-    const parsed = JSON.parse(state) as Record<string, unknown>;
-    if (isFolderState(parsed)) return first === undefined ? {} : { [first]: parsed };
-    return Object.fromEntries(Object.entries(parsed).filter((entry): entry is [string, FolderState] => isFolderState(entry[1])));
-  } catch {
-    return {};
-  }
-}
+/** The Source Attribute the whole mailbox was one before its folders became Source Attributes. */
+const legacyAttribute = "mailbox";
 
-function isFolderState(value: unknown): value is FolderState {
-  const candidate = value as Partial<FolderState> | null;
-  return typeof candidate?.uidValidity === "string" && typeof candidate.lastUid === "number";
+/** What the last run remembered, or null if this is the first run or the cursor is from before folders were Source Attributes. */
+function parseCursor(cursor: string | null): Cursor | null {
+  if (!cursor) return null;
+  try {
+    const parsed = JSON.parse(cursor) as Partial<Cursor>;
+    return parsed.v === 2 && Array.isArray(parsed.declared) && parsed.containers ? (parsed as Cursor) : null;
+  } catch {
+    return null;
+  }
 }
 
 /** A wrong password or a server without the TLS it needs need an Admin; anything else may pass. */
