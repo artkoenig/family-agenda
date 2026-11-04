@@ -1,5 +1,5 @@
 import { isLocalDate, localDateTime, type LocalDate } from "./calendar";
-import type { Act, FoldedItem } from "./item";
+import type { Act, ItemFields } from "./item";
 
 /**
  * Something to do or bring, by its Deadline if it has one. It is done from the instant someone
@@ -30,9 +30,9 @@ export const maximumTaskTextLength = 500;
 export const maximumThingsToBring = 50;
 
 /**
- * The fields of a Task Revision, as a Source states them in JSON: `title` (text), `deadline`
- * (`YYYY-MM-DD` or null) and `bring` (a list of texts). `done` (an ISO instant, or null) is
- * stated only by ticking the Task, never by a Source.
+ * The fields of a Task, as a Source or extraction states them in JSON: `title` (text), `deadline`
+ * (`YYYY-MM-DD` or null) and `bring` (a list of texts). Whether it is done is only ever set by
+ * ticking it.
  */
 const taskFields = ["title", "deadline", "bring"] as const;
 
@@ -66,23 +66,18 @@ function unknownFieldProblems(fields: Record<string, unknown>, known: readonly s
     .map((key) => `${key} is not a field of a Task`);
 }
 
-/** The fields of a Revision that ticks a Task done at `at`, or takes the tick back. */
-export function tickFields(done: boolean, at: Date): Record<string, unknown> {
-  return { done: done ? at.toISOString() : null };
-}
+/** What a Source or a message states about a Task; whether it is done is up to the Family. */
+export type StatedTask = Pick<Task, "title" | "deadline" | "bring" | "cancelled">;
 
-/** The Task its folded Revisions describe, or null while it has no title yet. */
-export function taskOf(folded: FoldedItem | null): Task | null {
+/** The Task its fields describe, or null while it has no title yet. */
+export function taskOf(folded: ItemFields | null): StatedTask | null {
   if (!folded) return null;
   const title = parseText(folded.fields.title);
   if (title === null) return null;
-  const doneAt = validDate(folded.fields.done);
   return {
     title,
     deadline: parseDeadline(folded.fields.deadline),
     bring: parseBring(folded.fields.bring) ?? [],
-    doneAt,
-    arrivedAt: validDate(folded.arrivedAt),
     cancelled: folded.cancelled,
   };
 }
@@ -106,7 +101,7 @@ export function isPinned(task: Task, today: LocalDate): boolean {
 /**
  * The instant whose day a done Task without a Deadline shows on: when it was first stated, not
  * when it was ticked, as what it asks of the Family belongs to that message. Null while it is not
- * done or has a Deadline. A Task stored before its arrival was kept falls back to its tick.
+ * done or has a Deadline. A Task whose arrival is unknown falls back to its tick.
  */
 export function instantOfTask(task: Task): Date | null {
   return task.deadline === null && task.doneAt ? (task.arrivedAt ?? task.doneAt) : null;
@@ -127,11 +122,6 @@ export function dayOfTask(task: Task, timeZone: string): LocalDate | null {
  */
 export function isOutstanding(task: Task): boolean {
   return !task.doneAt;
-}
-
-function validDate(value: unknown): Date | null {
-  const date = typeof value === "string" ? new Date(value) : null;
-  return date && !Number.isNaN(date.getTime()) ? date : null;
 }
 
 function parseText(value: unknown): string | null {

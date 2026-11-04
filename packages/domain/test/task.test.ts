@@ -9,9 +9,8 @@ import {
   problemsWithTaskRevision,
   taskOf,
   taskStatus,
-  tickFields,
   type Act,
-  type FoldedItem,
+  type ItemFields,
   type LocalDate,
   type Task,
 } from "../src";
@@ -160,40 +159,16 @@ describe("a Task Revision", () => {
   });
 });
 
-describe("tickFields", () => {
-  const at = new Date("2026-09-15T12:00:00Z");
-  it("states the instant when ticking", () => {
-    expect(tickFields(true, at)).toEqual({ done: at.toISOString() });
-  });
-  it("states null when taking the tick back", () => {
-    expect(tickFields(false, at)).toEqual({ done: null });
-  });
-});
-
 describe("taskOf", () => {
-  const folded = (fields: Record<string, unknown>, more: Partial<FoldedItem> = {}): FoldedItem => ({
+  const folded = (fields: Record<string, unknown>, more: Partial<ItemFields> = {}): ItemFields => ({
     fields,
     cancelled: false,
     ...more,
   });
 
-  it("returns the Task its Revisions describe", () => {
-    const result = taskOf(
-      folded({
-        title: "Bring milk",
-        deadline: "2026-09-15",
-        bring: ["milk", "juice"],
-        done: "2026-09-15T12:00:00.000Z",
-      }, { arrivedAt: "2026-09-10T10:00:00.000Z" }),
-    );
-    expect(result).toEqual({
-      title: "Bring milk",
-      deadline: day("2026-09-15"),
-      bring: ["milk", "juice"],
-      doneAt: at("2026-09-15T12:00:00Z"),
-      arrivedAt: at("2026-09-10T10:00:00Z"),
-      cancelled: false,
-    });
+  it("returns the Task its fields describe", () => {
+    const result = taskOf(folded({ title: "Bring milk", deadline: "2026-09-15", bring: ["milk", "juice"] }));
+    expect(result).toEqual({ title: "Bring milk", deadline: day("2026-09-15"), bring: ["milk", "juice"], cancelled: false });
   });
 
   it("returns null when there is no folded Item", () => {
@@ -214,8 +189,6 @@ describe("taskOf", () => {
       title: "Bring milk",
       deadline: null,
       bring: [],
-      doneAt: null,
-      arrivedAt: null,
       cancelled: false,
     });
   });
@@ -225,25 +198,6 @@ describe("taskOf", () => {
     expect(result?.cancelled).toBe(true);
   });
 
-  it("returns null for an invalid done date", () => {
-    const result = taskOf(folded({ title: "Bring milk", done: "not-a-date" }));
-    expect(result?.doneAt).toBeNull();
-  });
-
-  it("returns null for a non-string done value", () => {
-    const result = taskOf(folded({ title: "Bring milk", done: 123 }));
-    expect(result?.doneAt).toBeNull();
-  });
-
-  it("returns null for an invalid arrivedAt", () => {
-    const result = taskOf(folded({ title: "Bring milk" }, { arrivedAt: "not-a-date" }));
-    expect(result?.arrivedAt).toBeNull();
-  });
-
-  it("returns null for a non-string arrivedAt", () => {
-    const result = taskOf(folded({ title: "Bring milk" }, { arrivedAt: 123 } as unknown as Partial<FoldedItem>));
-    expect(result?.arrivedAt).toBeNull();
-  });
 });
 
 describe("taskStatus", () => {

@@ -16,8 +16,6 @@ export function extracted(
 ): ExtractedEvent {
   const { date, ...rest } = event;
   return {
-    updates: null,
-    cancelled: false,
     title: null,
     startTime: null,
     endTime: null,
@@ -32,7 +30,7 @@ export function extractedTask(
   task: Partial<Omit<ExtractedTask, "deadline">> & Pick<ExtractedTask, "evidence"> & { deadline?: Partial<DateMention> },
 ): ExtractedTask {
   const { deadline, ...rest } = task;
-  return { updates: null, cancelled: false, title: null, bring: [], ...rest, deadline: { ...noDate, ...deadline } };
+  return { title: null, bring: [], ...rest, deadline: { ...noDate, ...deadline } };
 }
 
 /**
@@ -42,13 +40,19 @@ export function extractedTask(
  */
 export class ScriptedExtractor implements Extractor {
   readonly requests: ExtractionRequest[] = [];
-  private readonly scripts: { contains: string; result: ExtractionResult }[] = [];
+  private readonly scripts: { contains: string; result: ExtractionResult; then?: ExtractionResult[] }[] = [];
   private healthResult: EndpointHealth = { ok: true };
   private offeredModels: string[] = [];
 
   /** The Events and Tasks a message containing `contains` yields. */
   script(contains: string, events: ExtractedEvent[], tasks: ExtractedTask[] = []): void {
     this.scripts.unshift({ contains, result: { ok: true, events, tasks } });
+  }
+
+  /** What a message containing `contains` yields on each reading in turn; the last one stays. */
+  scriptReadings(contains: string, readings: { events: ExtractedEvent[]; tasks?: ExtractedTask[] }[]): void {
+    const [first, ...then] = readings.map(({ events, tasks = [] }): ExtractionResult => ({ ok: true, events, tasks }));
+    if (first) this.scripts.unshift({ contains, result: first, then });
   }
 
   /** Makes the endpoint fail for every message, until scripted again. */
@@ -78,7 +82,10 @@ export class ScriptedExtractor implements Extractor {
   extract(request: ExtractionRequest): Promise<ExtractionResult> {
     this.requests.push(request);
     const script = this.scripts.find(({ contains }) => request.message.text.includes(contains));
-    return Promise.resolve(script?.result ?? { ok: true, events: [], tasks: [] });
+    const result = script?.result ?? { ok: true, events: [], tasks: [] };
+    const next = script?.then?.shift();
+    if (script && next) script.result = next;
+    return Promise.resolve(result);
   }
 
   health(): Promise<EndpointHealth> {

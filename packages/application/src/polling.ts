@@ -8,7 +8,6 @@ import type {
   Clock,
   IngestedMessage,
   IngestedOrigin,
-  IngestedRevision,
   ItemRepository,
   PollingIngestion,
   SecretStore,
@@ -19,7 +18,7 @@ import type {
   StoredFile,
   StoredMessage,
 } from "./ports";
-import { checked, project } from "./revisions";
+import { applyRevisions } from "./stated-items";
 import { runContextOf } from "./sources";
 
 export type PollingDeps = {
@@ -89,7 +88,7 @@ export function createSourcePolling(deps: PollingDeps) {
     try {
       ({ knownMessages: known, withdrawnFiles } = await items.recordRun(
         { sourceId: source.id, at: now, syncCursor: result.syncCursor, withdrawn: result.withdrawn, origins },
-        project,
+        applyRevisions,
       ));
     } catch (error) {
       await removeOriginBlobs(origins);
@@ -109,7 +108,7 @@ export function createSourcePolling(deps: PollingDeps) {
         attributes: origin.attributes,
         link: origin.link,
         part: origin.part,
-        revisions: origin.revisions.map((revision: IngestedRevision) => checked(revision, origin.occurredAt)),
+        revisions: origin.revisions,
         message: origin.message ? await stored(origin.message, origin.attributes) : null,
       });
     }

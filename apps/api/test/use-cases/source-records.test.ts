@@ -125,4 +125,17 @@ describe("Source Records, as what a Source delivered is stored", () => {
     expect(await titles()).toEqual(["Piano lesson"]);
     expect(await instance.query("SELECT withdrawn_at FROM source_record WHERE external_id = 'piano'")).toEqual([{ withdrawn_at: null }]);
   });
+
+  it("keeps every Item with the detail row of its kind, enforced by the schema", async () => {
+    testPluginControls.emit("calendar", [entry("piano")]);
+    await run();
+    const [item] = await instance.query("SELECT id, record_id FROM item");
+    expect(await instance.query(`SELECT title, kind FROM event WHERE item_id = '${String(item!.id)}'`)).toEqual([{ title: "Piano lesson", kind: "event" }]);
+
+    await expect(instance.query(`INSERT INTO item (kind, record_id) VALUES ('task', '${String(item!.record_id)}')`)).rejects.toThrow(/has no task row/);
+    await expect(instance.query(`DELETE FROM event WHERE item_id = '${String(item!.id)}'`)).rejects.toThrow(/lost its event row/);
+    await expect(instance.query(`INSERT INTO task (item_id, kind, title) VALUES ('${String(item!.id)}', 'task', 'Wrong kind')`)).rejects.toThrow();
+    await instance.query(`DELETE FROM item WHERE id = '${String(item!.id)}'`);
+    expect(await instance.query("SELECT count(*)::int AS n FROM event")).toEqual([{ n: 0 }]);
+  });
 });

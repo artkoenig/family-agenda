@@ -1,5 +1,5 @@
-import type { RawMessageId } from "@family-agenda/domain";
-import type { BlobStore, ItemRepository } from "./ports";
+import type { ItemId, RawMessageId } from "@family-agenda/domain";
+import type { BlobStore, ItemOfMessage, ItemRepository } from "./ports";
 
 export type MessageDetails = {
   id: RawMessageId;
@@ -9,9 +9,11 @@ export type MessageDetails = {
   text: string;
   /** Each with its place among the attachments, and why it could not be turned into text for extraction, or null. */
   attachments: { position: number; filename: string; contentType: string; size: number; conversionProblem: string | null }[];
+  /** The Items written from it, which an Admin can delete. */
+  items: ItemOfMessage[];
 };
 
-/** Raw messages, as an Admin opens them to check what a Source actually said. */
+/** Raw messages, as an Admin opens them to check what a Source actually said, and their Items. */
 export function createMessageAccess(deps: { items: ItemRepository; blobs: BlobStore }) {
   const { items, blobs } = deps;
   return {
@@ -30,6 +32,7 @@ export function createMessageAccess(deps: { items: ItemRepository; blobs: BlobSt
           size,
           conversionProblem,
         })),
+        items: await items.itemsOfMessage(id),
       };
     },
 
@@ -43,6 +46,11 @@ export function createMessageAccess(deps: { items: ItemRepository; blobs: BlobSt
       if (!attachment) return null;
       const bytes = await blobs.get(attachment.blob);
       return bytes && { filename: attachment.filename, contentType: attachment.contentType, bytes };
+    },
+
+    /** Deletes an Item, as an Admin's only correction (ADR-0016); nothing remembers it. Returns whether there was one. */
+    deleteItem(id: ItemId): Promise<boolean> {
+      return items.remove(id);
     },
   };
 }

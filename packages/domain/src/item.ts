@@ -1,6 +1,3 @@
-import type { AdminId } from "./admin";
-import type { AgendaId } from "./agenda";
-
 export type ItemId = string & { readonly __brand: "ItemId" };
 
 export type OriginId = string & { readonly __brand: "OriginId" };
@@ -8,74 +5,24 @@ export type OriginId = string & { readonly __brand: "OriginId" };
 /** A message, such as a mail, kept with its attachments for extraction (ADR-0006). */
 export type RawMessageId = string & { readonly __brand: "RawMessageId" };
 
-export const itemKinds = ["event", "lesson", "timetable-change", "task", "notice"] as const;
+/** The kinds of Item (ADR-0016): each comes from exactly one Source Record. */
+export const itemKinds = ["event", "task", "lesson"] as const;
 
 export type ItemKind = (typeof itemKinds)[number];
 
-/** What a Revision states about its Item (ADR-0009). */
+/**
+ * What a calendar or timetable plugin still states about an entry, until it states the whole Item
+ * on its Source Record (#137): the core applies these to the Item of the entry's Source Record.
+ */
 export const acts = ["create", "change", "move", "cancel"] as const;
 
 export type Act = (typeof acts)[number];
 
-/** One statement about an Item, appended and never changed except for being rejected or restored. */
-export type Revision = {
-  itemKind: ItemKind;
-  act: Act;
-  /** The fields the Revision states, by name, as their Item kind defines them. */
-  fields: Record<string, unknown>;
-  /** When the Source said it, such as a calendar entry's `LAST-MODIFIED`. */
-  sourceTime: Date;
-  author: RevisionAuthor;
-  accepted: boolean;
-};
-
 /**
- * Who said it: an Origin; or anyone with an Agenda, or an Admin, who ticked a Task done or took the
- * tick back (decisions in #13). An Agenda's or Admin's id is null once they are removed.
+ * An Item as JSON fields, the way a plugin states them, before its kind gives the fields a
+ * meaning; `cancelled` is whether it was called off.
  */
-export type RevisionAuthor =
-  | { kind: "origin"; originId: OriginId }
-  | { kind: "agenda"; agendaId: AgendaId | null }
-  | { kind: "admin"; adminId: AdminId | null };
-
-/** An Item as its accepted Revisions add up to, before its kind gives the fields a meaning. */
-export type FoldedItem = {
+export type ItemFields = {
   fields: Record<string, unknown>;
   cancelled: boolean;
-  /**
-   * When the Item was first stated, as an ISO instant: the source time of its earliest accepted
-   * Revision. Set on a Task, which an Agenda shows on that day when it is done without a Deadline.
-   */
-  arrivedAt?: string;
 };
-
-export type FoldableRevision = Pick<Revision, "act" | "fields" | "sourceTime" | "accepted"> & {
-  /** The order the Revision was received in, which decides between equal source times. */
-  sequence: number;
-};
-
-/**
- * Applies the accepted Revisions field by field in source-time order, so that the newest wins,
- * whatever order they arrived in. A cancel marks the Item cancelled and a create restores it.
- * Null when no accepted Revision is left, or when the first Revision received was rejected: that
- * removes the Item, and later Revisions stay with it without bringing it back.
- */
-export function fold(revisions: readonly FoldableRevision[]): FoldedItem | null {
-  const first = revisions.reduce<FoldableRevision | undefined>(
-    (earliest, revision) => (earliest && earliest.sequence <= revision.sequence ? earliest : revision),
-    undefined,
-  );
-  if (!first?.accepted) return null;
-  const accepted = revisions
-    .filter((revision) => revision.accepted)
-    .sort((a, b) => a.sourceTime.getTime() - b.sourceTime.getTime() || a.sequence - b.sequence);
-  if (accepted.length === 0) return null;
-  const folded: FoldedItem = { fields: {}, cancelled: false };
-  for (const revision of accepted) {
-    Object.assign(folded.fields, revision.fields);
-    if (revision.act === "cancel") folded.cancelled = true;
-    if (revision.act === "create") folded.cancelled = false;
-  }
-  return folded;
-}
-

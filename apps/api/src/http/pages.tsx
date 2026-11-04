@@ -1273,7 +1273,7 @@ function SourceTimelineSection(props: { source: SourceSummary; href: string; s: 
         </ul>
       </Group>
       {waiting !== undefined ? (
-        <RereadGroup action={`${href}/reread`} label={s.reread} hint={s.rereadHint} button={s.rereadButton} waiting={waiting} />
+        <WaitingGroup label={s.waitingTitle} waiting={waiting} />
       ) : null}
     </>
   );
@@ -2252,9 +2252,9 @@ export function LlmEndpointPage(props: {
         </Group>
         <OptionsGroup />
       </form>
-      {endpoint ? (
+      {endpoint && props.waiting > 0 ? (
         <section class="fam-sheet">
-          <RereadGroup action="/admin/llm/reread" label={l.reread} hint={l.rereadHint} button={l.rereadButton} waiting={props.waiting} />
+          <WaitingGroup label={l.waitingTitle} waiting={props.waiting} />
         </section>
       ) : null}
       <OcrSections languages={props.languages} />
@@ -2380,22 +2380,17 @@ function OptionsGroup() {
   );
 }
 
-/** Has messages read again with the current prompt and model (ADR-0015), with how many wait. */
-function RereadGroup(props: { action: string; label: string; hint: string; button: string; waiting: number }) {
+/** How many messages wait to be read, if any do. */
+function WaitingGroup(props: { label: string; waiting: number }) {
   const { t } = useTranslation();
+  if (props.waiting === 0) return null;
   return (
     <Group title={props.label} level={2}>
       <ul class="fam-rows">
         <li class="fam-row">
           <span class="fam-row__main">
-            <span class="fam-row__hint">{props.hint}</span>
-            {props.waiting > 0 ? <span class="fam-row__hint">{t.llm.waiting(props.waiting)}</span> : null}
+            <span class="fam-row__hint">{t.llm.waiting(props.waiting)}</span>
           </span>
-          <form method="post" action={props.action} class="fam-row__form">
-            <button type="submit" class="fam-button fam-button--secondary">
-              {props.button}
-            </button>
-          </form>
         </li>
       </ul>
     </Group>
@@ -2595,6 +2590,32 @@ export function MessagePage(props: { admin: SignedInAdmin; message: MessageDetai
           </ul>
         </>
       ) : null}
+      <h2>{m.items}</h2>
+      <p class="fam-row__hint">{message.items.length > 0 ? m.itemsHint : m.noItems}</p>
+      {message.items.length > 0 ? (
+        <ul class="fam-rows">
+          {message.items.map((item) => (
+            <li class="fam-row">
+              <span class="fam-row__main">
+                <span class="fam-row__label">{itemTitleOf(item)}</span>
+                <span class="fam-row__hint">{m[item.kind]}</span>
+              </span>
+              <form method="post" action={`/admin/items/${item.id}/delete`} class="fam-row__form">
+                <input type="hidden" name="message" value={message.id} />
+                <button type="submit" class="fam-button fam-button--secondary">
+                  {m.deleteItem}
+                </button>
+              </form>
+            </li>
+          ))}
+        </ul>
+      ) : null}
     </AdminLayout>
   );
+}
+
+function itemTitleOf(item: MessageDetails["items"][number]): string {
+  if (item.kind === "event") return item.event.title;
+  if (item.kind === "task") return item.task.title;
+  return item.lesson.subject;
 }

@@ -48,8 +48,6 @@ const completion = (content: string, finishReason = "stop") => ({
 });
 
 const event = {
-  updates: null,
-  cancelled: false,
   title: "Elternabend",
   date: { day: 17, month: 9, year: null, weekday: "thursday", daysAfter: null, weeksAfter: null },
   startTime: "19:30",
@@ -59,8 +57,6 @@ const event = {
 };
 
 const task = {
-  updates: null,
-  cancelled: false,
   title: "Sachen für den Ausflug",
   deadline: { day: 18, month: 9, year: null, weekday: "friday", daysAfter: null, weeksAfter: null },
   bring: ["Regenjacke", "Brotdose"],
@@ -82,11 +78,6 @@ describe("the OpenAI-compatible Extractor", () => {
       text: "Der Elternabend am Donnerstag, 17.09., um 19:30 Uhr findet in Raum 104 statt.",
       sent: { date: "2026-09-14" as LocalDate, time: "08:12" as LocalTime, weekday: "monday" },
     },
-    knownEvents: [{ ref: "E1", title: "Sportfest", when: "2026-09-20, all day", place: null }],
-    knownTasks: [
-      { ref: "T1", title: "Formular unterschreiben", deadline: null, bring: [] },
-      { ref: "T2", title: "Sachen fürs Sportfest", deadline: "2026-09-20" as LocalDate, bring: ["Turnschuhe"] },
-    ],
   });
 
   it("asks for JSON-schema output and reads the Events and Tasks from the answer", async () => {
@@ -105,9 +96,7 @@ describe("the OpenAI-compatible Extractor", () => {
     });
     const prompt = JSON.stringify(sent?.body.messages);
     expect(prompt).toContain("sent on monday, 2026-09-14 at 08:12");
-    expect(prompt).toContain("E1: Sportfest, 2026-09-20, all day");
-    expect(prompt).toContain("T1: Formular unterschreiben, no deadline");
-    expect(prompt).toContain("T2: Sachen fürs Sportfest, by 2026-09-20, bring: Turnschuhe");
+    expect(prompt).not.toContain("Known");
     expect(prompt).toContain("findet in Raum 104 statt.");
   });
 

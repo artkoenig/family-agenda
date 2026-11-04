@@ -110,24 +110,22 @@ describe("calendar Events on the timeline", () => {
     expect(await timeline()).toEqual({ "2026-09-15": ["17:00-18:00 Piano recital"] });
   });
 
-  it("ends up with the same Event whatever order the Revisions arrive in", async () => {
+  it("shows nothing for a change to an entry it does not know yet", async () => {
     await arrive(rename);
     expect(await timeline(), "a change alone has no time to show").toEqual({});
-    await arrive(moveToFive);
-    await arrive(piano());
 
-    expect(await timeline()).toEqual({ "2026-09-15": ["17:00-18:00 Piano recital"] });
+    await arrive(piano());
+    expect(await timeline()).toEqual({ "2026-09-15": ["16:00-17:00 Piano lesson"] });
   });
 
-  it("appends nothing when a calendar states the same thing again", async () => {
+  it("overwrites the Event with what the calendar states last, keeping one Item per entry", async () => {
     await arrive(piano());
     await arrive(rename);
     await arrive(piano());
 
-    expect(await timeline()).toEqual({ "2026-09-15": ["16:00-17:00 Piano recital"] });
-    // Folding gives the same Item either way; the change list (#44) will show the difference.
-    const [counts] = await instance.query("SELECT count(*)::int AS revisions FROM revisions");
-    expect(counts).toEqual({ revisions: 2 });
+    expect(await timeline()).toEqual({ "2026-09-15": ["16:00-17:00 Piano lesson"] });
+    const [counts] = await instance.query("SELECT count(*)::int AS items FROM item");
+    expect(counts).toEqual({ items: 1 });
   });
 
   it("strikes a cancelled Event through until its date has passed, then drops it", async () => {
@@ -204,27 +202,7 @@ describe("calendar Events on the timeline", () => {
 
     expect(await timeline()).toEqual({});
     expect((await instance.app.agendas.feed(agenda, { access: openAgendaAccess }))?.events).toEqual([]);
-    expect(await instance.query("SELECT id FROM items")).toEqual([]);
-  });
-
-  it("keeps an Item of a removed Source that another Source names, recomputed without its statements", async () => {
-    await arrive(piano());
-    const [source] = await instance.app.sources.list();
-    const other = await instance.app.sources.add({
-      sourceTypeId: "calendar",
-      plain: { url: "https://other.example.org" },
-      secrets: { password: "hunter2" },
-    });
-    if (!other.ok) throw new Error(`adding failed: ${other.problem}`);
-    const [, otherSource] = await instance.app.sources.list();
-    await instance.query(
-      `INSERT INTO item_keys (source_id, item_key, item_id) SELECT '${otherSource!.id}', item_key, item_id FROM item_keys`,
-    );
-
-    await instance.app.sources.remove(source!.id);
-
-    expect(await timeline()).toEqual({});
-    expect(await instance.query("SELECT folded FROM items")).toEqual([{ folded: null }]);
+    expect(await instance.query("SELECT id FROM item")).toEqual([]);
   });
 
   it("hides the Events of a hidden Source, and keeps reading it", async () => {
