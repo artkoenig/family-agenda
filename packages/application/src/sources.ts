@@ -276,6 +276,20 @@ export function createSourceAccess(deps: SourcesDeps) {
     },
 
     /**
+     * How many Sources there are and how many fail, for the Admin area's settings list. Unlike
+     * `list`, it does not ask the plugins for their choice fields' values, which may reach a
+     * mailbox or a homeserver.
+     */
+    async overview(): Promise<{ count: number; failing: number }> {
+      const all = await sources.list();
+      let failing = 0;
+      for (const source of all) {
+        if ((await healthOf(source, { clock, registry, sourceTypes, sources })).status === "failing") failing++;
+      }
+      return { count: all.length, failing };
+    },
+
+    /**
      * What a live setup step of a Source shows now, such as the QR code to scan; null if the
      * Source or the step is unknown, or its Source Type is not enabled.
      */
