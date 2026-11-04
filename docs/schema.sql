@@ -236,8 +236,8 @@ CREATE INDEX source_attribute_member_family_member_id_idx
 -- as the plugin states it, e.g. {"kind": "event", "title": ..., "starts_at": ...}. No file, no
 -- sender/subject/body, occurred_at NULL. The core writes its one Item from it without the LLM,
 -- in the same transaction that sets processed_at. Every run emits the full state; a Source Record
--- whose stated equals the stored one (compared by hash in the core) is skipped, a changed one
--- overwrites its Item, keeping only whether a Task was ticked done.
+-- whose stated equals the stored one (compared as jsonb) is skipped without a write, a changed one
+-- overwrites its Item in place; one that fails a check writes no Item and deletes the earlier one.
 --
 -- withdrawn_at: the Source no longer has it (deleted message, deleted calendar entry, unplanned
 -- Lesson, or an empty Source Attribute list). Its Items are deleted (trigger below), a message's
