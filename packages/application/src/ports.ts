@@ -515,9 +515,6 @@ export type ProjectedItem = ItemDetails & {
   sources: { sourceId: SourceId; part: string | null }[];
 };
 
-/** An Item of a message, as an Admin sees it next to the message. */
-export type ItemOfMessage = ItemDetails & { id: ItemId };
-
 /** Items, each written from its one Source Record (ADR-0016). */
 export interface ItemRepository {
   /**
@@ -542,8 +539,8 @@ export interface ItemRepository {
    */
   recordExtraction(extraction: Extraction): Promise<void>;
   findMessage(id: RawMessageId): Promise<RawMessage | null>;
-  /** The Items written from a message, in the order they were. */
-  itemsOfMessage(id: RawMessageId): Promise<ItemOfMessage[]>;
+  /** The Items written from a message, in the order they were, also those of a hidden Source. */
+  itemsOfMessage(id: RawMessageId): Promise<ProjectedItem[]>;
   /**
    * The Family's Items that may touch the given time, with the link of their Source Record; a
    * `to` of null means all of the future. Items of a hidden Source are left out.

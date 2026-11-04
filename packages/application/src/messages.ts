@@ -1,5 +1,5 @@
 import type { ItemId, RawMessageId } from "@family-agenda/domain";
-import type { BlobStore, ItemOfMessage, ItemRepository } from "./ports";
+import type { BlobStore, ItemRepository, ProjectedItem } from "./ports";
 
 export type MessageDetails = {
   id: RawMessageId;
@@ -10,7 +10,7 @@ export type MessageDetails = {
   /** Each with its place among the attachments, and why it could not be turned into text for extraction, or null. */
   attachments: { position: number; filename: string; contentType: string; size: number; conversionProblem: string | null }[];
   /** The Items written from it, which an Admin can delete. */
-  items: ItemOfMessage[];
+  items: ProjectedItem[];
 };
 
 /** Raw messages, as an Admin opens them to check what a Source actually said, and their Items. */

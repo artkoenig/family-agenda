@@ -945,7 +945,8 @@ function shownStatus(status: 200 | 400 | 413 | undefined, problems: (string | un
     const message = await messages.open(c.req.param("id") as RawMessageId);
     if (!message) return c.notFound();
     c.header("cache-control", "no-store");
-    return render(c, <MessagePage admin={c.get("admin")} message={message} timeZone={timeZone} />);
+    const items = await agendas.messageItemRows(message.items);
+    return render(c, <MessagePage admin={c.get("admin")} message={message} items={items} timeZone={timeZone} />);
   });
 
   // An Admin's only correction of an Item is deleting it (ADR-0016); back to the message it came from.
