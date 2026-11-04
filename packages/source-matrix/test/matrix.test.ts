@@ -130,7 +130,7 @@ describe("recorded /sync responses", () => {
 
     const { origins, syncCursor } = await poll(config, first.syncCursor);
 
-    expect(origins.map((origin) => [origin.occurredAt.toISOString(), origin.attributes.chat, textOf(origin)])).toEqual([
+    expect(origins.map((origin) => [origin.occurredAt?.toISOString(), origin.attributes.chat, textOf(origin)])).toEqual([
       ["2026-09-12T08:00:00.000Z", "FC Eltern U11", "Training am Dienstag fällt aus, Platz gesperrt."],
       ["2026-09-13T06:13:20.000Z", "FC Eltern U11", "Samstag Turnier in Musterstadt, Abfahrt 9 Uhr."],
     ]);

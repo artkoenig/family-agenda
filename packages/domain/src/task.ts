@@ -1,5 +1,5 @@
 import { isLocalDate, localDateTime, type LocalDate } from "./calendar";
-import type { Act, ItemFields } from "./item";
+import type { ItemFields } from "./item";
 
 /**
  * Something to do or bring, by its Deadline if it has one. It is done from the instant someone
@@ -36,16 +36,13 @@ export const maximumThingsToBring = 50;
  */
 const taskFields = ["title", "deadline", "bring"] as const;
 
-/** Why a Task Revision from a Source cannot be applied; none if it can. */
-export function problemsWithTaskRevision(act: Act, fields: Record<string, unknown>): string[] {
-  return [...missingProblems(act, fields), ...fieldProblems(fields), ...unknownFieldProblems(fields, taskFields)];
+/** Why the fields describe no Task; none if they do. */
+export function problemsWithTaskFields(fields: Record<string, unknown>): string[] {
+  return [...missingProblems(fields), ...fieldProblems(fields), ...unknownFieldProblems(fields, taskFields)];
 }
 
-function missingProblems(act: Act, fields: Record<string, unknown>): string[] {
-  const problems: string[] = [];
-  if (act === "create" && !("title" in fields)) problems.push("title is missing");
-  if (act === "move" && !("deadline" in fields)) problems.push("deadline is missing");
-  return problems;
+function missingProblems(fields: Record<string, unknown>): string[] {
+  return "title" in fields ? [] : ["title is missing"];
 }
 
 function fieldProblems(fields: Record<string, unknown>): string[] {

@@ -1,4 +1,4 @@
-import type { Act, ItemFields } from "./item";
+import type { ItemFields } from "./item";
 
 /** When a Lesson takes place: from one instant to another, never all day. */
 export type LessonSpan = { start: Date; end: Date };
@@ -30,45 +30,30 @@ export type TimetableChange = {
 export const maximumLessonTextLength = 200;
 
 /**
- * The fields of a Lesson Revision, as a Source states them in JSON: `subject` (text), `span`
- * (`{ allDay: false, start, end }` with ISO instants), and `room` and `teacher` (text or null).
+ * The fields of a Lesson, as a Source states them in JSON: `subject` (text), `span`
+ * (`{ allDay: false, start, end }` with ISO instants), `room` and `teacher` (text or null), and its
+ * Timetable Change: `change` (one of `timetableChangeKinds`, or null as planned), with
+ * `previousRoom`, `previousTeacher` and `note` (text or null), which only a change has.
  */
-const lessonFields = ["subject", "span", "room", "teacher"] as const;
-
-/**
- * The fields of a Timetable Change Revision: those of a Lesson, `change` (one of
- * `timetableChangeKinds`), and `previousRoom`, `previousTeacher` and `note` (text or null).
- */
-const timetableChangeFields = [...lessonFields, "change", "previousRoom", "previousTeacher", "note"] as const;
+const lessonFields = ["subject", "span", "room", "teacher", "change", "previousRoom", "previousTeacher", "note"] as const;
 
 const optionalTexts = ["room", "teacher", "previousRoom", "previousTeacher", "note"];
 
-/** Why a Lesson Revision cannot be applied; none if it can. */
-export function problemsWithLessonRevision(act: Act, fields: Record<string, unknown>): string[] {
-  return problemsWith(act, fields, lessonFields, ["subject", "span"]);
-}
+/** What only a Lesson with a Timetable Change has. */
+const changeDetails = ["previousRoom", "previousTeacher", "note"];
 
-/** Why a Timetable Change Revision cannot be applied; none if it can. */
-export function problemsWithTimetableChangeRevision(act: Act, fields: Record<string, unknown>): string[] {
-  const problems = problemsWith(act, fields, timetableChangeFields, ["change", "subject", "span"]);
-  if ("change" in fields && parseChange(fields.change) === null) {
-    problems.push(`change is not one of ${timetableChangeKinds.join(", ")}`);
-  }
+/** Why the fields describe no Lesson; none if they do. */
+export function problemsWithLessonFields(fields: Record<string, unknown>): string[] {
+  const problems = ["subject", "span"].filter((key) => !(key in fields)).map((key) => `${key} is missing`);
+  problems.push(...fieldTextProblems(fields), ...changeProblems(fields), ...unknownFieldProblems(fields, lessonFields));
   return problems;
 }
 
-function problemsWith(act: Act, fields: Record<string, unknown>, known: readonly string[], created: string[]): string[] {
-  const problems: string[] = [];
-  for (const key of requiredFor(act, created)) if (!(key in fields)) problems.push(`${key} is missing`);
-  problems.push(...fieldTextProblems(fields));
-  problems.push(...unknownFieldProblems(fields, known));
-  return problems;
-}
-
-function requiredFor(act: Act, created: string[]): string[] {
-  if (act === "create") return created;
-  if (act === "move") return ["span"];
-  return [];
+function changeProblems(fields: Record<string, unknown>): string[] {
+  const change = fields.change ?? null;
+  if (change !== null && parseChange(change) === null) return [`change is not one of ${timetableChangeKinds.join(", ")}, or null`];
+  if (change !== null) return [];
+  return changeDetails.filter((key) => (fields[key] ?? null) !== null).map((key) => `${key} needs a change`);
 }
 
 function fieldTextProblems(fields: Record<string, unknown>): string[] {

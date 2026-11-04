@@ -1,17 +1,11 @@
-import type { Origin } from "@family-agenda/source-sdk";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { bootHttpForTest, sessionCookieOf, type HttpTestInstance } from "../support/http";
-import { testPluginControls } from "../support/test-source-plugin";
+import { seedTasks } from "../support/seed-task";
 
 const password = "correct horse battery";
 
-/** A created Task, as a structured Source emits it. */
-const task = (key: string, fields: Record<string, unknown>): Origin => ({
-  externalId: key,
-  occurredAt: new Date("2026-09-10T10:00:00Z"),
-  attributes: {},
-  content: { kind: "revisions", revisions: [{ itemKind: "task", itemKey: key, action: "create", fields: fields as never }] },
-});
+/** A Task a message stated before the week began. */
+const task = (key: string, fields: { title: string; deadline?: string; bring?: string[] }) => ({ key, sentAt: "2026-09-10T10:00:00Z", ...fields });
 
 describe("Tasks over HTTP", () => {
   let instance: HttpTestInstance;
@@ -26,12 +20,12 @@ describe("Tasks over HTTP", () => {
     const created = await instance.app.agendas.create({ preselected: [], horizonDays: 3 });
     if (!created.ok) throw new Error("creating failed");
     path = `/agendas/${created.id}`;
-    testPluginControls.emit("school", [
+    await seedTasks(
+      (sql) => instance.query(sql),
       task("kit", { title: "Bring sports kit", deadline: "2026-09-14", bring: ["Trainers", "Towel"] }),
       task("form", { title: "Sign the trip form" }),
       task("photos", { title: "Pay for the photos", deadline: "2026-09-16" }),
-    ]);
-    await instance.app.polling.pollDue();
+    );
   });
   afterEach(async () => {
     await instance.close();

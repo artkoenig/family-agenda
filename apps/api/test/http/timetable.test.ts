@@ -1,33 +1,23 @@
-import type { Origin, PluginRevision } from "@family-agenda/source-sdk";
+import type { Origin, StatedLesson } from "@family-agenda/source-sdk";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { bootHttpForTest, type HttpTestInstance } from "../support/http";
 import { testPluginControls } from "../support/test-source-plugin";
 
 /** Berlin is two hours ahead of UTC in September. */
 const at = (from: string, until: string) => ({
-  allDay: false,
+  allDay: false as const,
   start: new Date(`2026-09-15T${from}:00+02:00`).toISOString(),
   end: new Date(`2026-09-15T${until}:00+02:00`).toISOString(),
 });
 
-/** A period of Tuesday's Timetable, its Lesson keyed by `key` and its Timetable Change by `key/change`. */
-const period = (key: string, revisions: Omit<PluginRevision, "itemKey">[]): Origin => ({
+/** A period of Tuesday's Timetable, its Lesson stated whole with how it deviates from the Timetable. */
+const period = (key: string, subject: string, span: ReturnType<typeof at>, room: string, teacher: string, deviation: Partial<StatedLesson> = {}): Origin => ({
   externalId: key,
-  occurredAt: new Date("2026-09-14T07:00:00Z"),
   attributes: {},
   content: {
-    kind: "revisions",
-    revisions: revisions.map((revision) => ({ ...revision, itemKey: revision.itemKind === "lesson" ? key : `${key}/change` })),
+    kind: "stated",
+    stated: { kind: "lesson", subject, span, room, teacher, change: null, previousRoom: null, previousTeacher: null, note: null, ...deviation },
   },
-});
-
-const lesson = (subject: string, span: ReturnType<typeof at>, room: string, teacher: string) =>
-  ({ itemKind: "lesson", action: "create", fields: { subject, span, room, teacher } }) as const;
-
-const change = (fields: PluginRevision["fields"]): Omit<PluginRevision, "itemKey"> => ({
-  itemKind: "timetable-change",
-  action: "create",
-  fields: { room: null, teacher: null, previousRoom: null, previousTeacher: null, note: null, ...fields },
 });
 
 describe("Timetables in an Agenda over HTTP", () => {
@@ -47,16 +37,9 @@ describe("Timetables in an Agenda over HTTP", () => {
     if (!created.ok) throw new Error("creating failed");
     path = `/agendas/${created.id}`;
     testPluginControls.emit("untis-test", [
-      period("maths", [lesson("Maths", at("08:00", "08:45"), "101", "Mr Brandt")]),
-      period("english", [
-        lesson("English", at("08:50", "09:35"), "102", "Ms Weber"),
-        change({ change: "substitution", subject: "English", span: at("08:50", "09:35"), teacher: "Ms Weber", previousTeacher: "Mr Roth" }),
-      ]),
-      period("physics", [
-        lesson("Physics", at("09:55", "10:40"), "Lab", "Ms Lang"),
-        { itemKind: "lesson", action: "cancel", fields: {} },
-        change({ change: "cancellation", subject: "Physics", span: at("09:55", "10:40"), note: "Teacher ill" }),
-      ]),
+      period("maths", "Maths", at("08:00", "08:45"), "101", "Mr Brandt"),
+      period("english", "English", at("08:50", "09:35"), "102", "Ms Weber", { change: "substitution", previousTeacher: "Mr Roth" }),
+      period("physics", "Physics", at("09:55", "10:40"), "Lab", "Ms Lang", { change: "cancellation", note: "Teacher ill" }),
     ]);
     await instance.app.polling.pollDue();
   });

@@ -1,13 +1,14 @@
 import ICAL from "ical.js";
 import {
+  clipped,
   sdkVersion,
   SourceError,
-  type EventFields,
+  statedTextLimits,
   type EventSpan,
   type Origin,
-  type PluginRevision,
   type RunContext,
   type SourcePlugin,
+  type StatedEvent,
 } from "@family-agenda/source-sdk";
 
 export type IcsPluginOptions = {
@@ -17,22 +18,16 @@ export type IcsPluginOptions = {
   timeoutMs?: number;
 };
 
-/**
- * What a calendar entry said the last time the plugin saw it. An entry that has gone from the
- * calendar is kept, cancelled, with the time it was noticed gone.
- */
-type Entry = { title: string; span: EventSpan; place: string | null; cancelled: boolean; goneAt?: string };
-
-/** The sync cursor: the calendar's ETag and every entry as last seen, by UID. */
-type State = { etag: string | null; entries: Record<string, Entry> };
+/** The sync cursor: the calendar's ETag and the UIDs of the entries it had, to notice those that go. */
+type State = { etag: string | null; known: string[] };
 
 type Download = { body: string; etag: string | null };
 
 /**
- * Reads a calendar from its secret ICS address and states its Events as Revisions keyed by UID,
- * at their `LAST-MODIFIED`. An ICS file has no change feed, so each run compares the calendar with
- * the entries the last run saw and states only what changed. Recurring entries are left out for
- * now; they need expanding into occurrences (#39).
+ * Reads a calendar from its secret ICS address and states each entry's Event whole, keyed by UID.
+ * An ICS file has no change feed, so each run whose download changed states every entry, and the
+ * core skips those whose Event is unchanged; an entry gone since the last run is withdrawn.
+ * Recurring entries are left out for now; they need expanding into occurrences (#39).
  */
 export function createIcsPlugin(options: IcsPluginOptions = {}): SourcePlugin {
   const fetch = options.fetch ?? globalThis.fetch;
@@ -101,9 +96,11 @@ export function createIcsPlugin(options: IcsPluginOptions = {}): SourcePlugin {
         if (!downloaded) return { origins: [], syncCursor: context.syncCursor };
         const calendar = parseCalendar(downloaded.body, context.timeZone);
         const attributes = { calendar: nameOf(context, calendar.name) };
-        const { origins, entries } = entriesOf(calendar, previous, attributes, context.now);
-        const state: State = { etag: downloaded.etag, entries };
-        return { origins, syncCursor: JSON.stringify(state) };
+        const origins = calendar.entries.map((entry) => originOf(entry, attributes));
+        const known = calendar.entries.map((entry) => entry.uid);
+        const withdrawn = previous.known.filter((uid) => !known.includes(uid));
+        const state: State = { etag: downloaded.etag, known };
+        return { origins, syncCursor: JSON.stringify(state), withdrawn };
       },
     },
     health: { silentApplies: false },
@@ -121,62 +118,13 @@ function addressOf(value: string | undefined): string {
   return address;
 }
 
-function entriesOf(
-  calendar: { name: string | null; entries: FoundEntry[] },
-  previous: State,
-  attributes: Record<string, string>,
-  now: Date,
-): { origins: Origin[]; entries: Record<string, Entry> } {
-  const entries: Record<string, Entry> = {};
-  const origins = presentEntries(calendar.entries, previous, entries, attributes, now);
-  goneEntries(previous, entries, attributes, now, origins);
-  return { origins, entries };
-}
-
-function presentEntries(
-  found: FoundEntry[],
-  previous: State,
-  entries: Record<string, Entry>,
-  attributes: Record<string, string>,
-  now: Date,
-): Origin[] {
-  const origins: Origin[] = [];
-  for (const entry of found) {
-    entries[entry.uid] = entry.entry;
-    const before = previous.entries[entry.uid];
-    const revisions = revisionsFor(entry.uid, before, entry.entry);
-    if (revisions.length === 0) continue;
-    origins.push({
-      externalId: entry.uid,
-      // An entry back from being gone comes back now, after its cancellation.
-      occurredAt: before?.goneAt ? now : (entry.lastModified ?? now),
-      attributes,
-      ...(entry.link ? { link: entry.link } : {}),
-      content: { kind: "revisions", revisions },
-    });
-  }
-  return origins;
-}
-
-/** An entry deleted from the calendar is cancelled when a run notices it is gone. */
-function goneEntries(
-  previous: State,
-  entries: Record<string, Entry>,
-  attributes: Record<string, string>,
-  now: Date,
-  origins: Origin[],
-): void {
-  for (const [uid, entry] of Object.entries(previous.entries)) {
-    if (uid in entries) continue;
-    entries[uid] = entry.goneAt ? entry : { ...entry, cancelled: true, goneAt: now.toISOString() };
-    if (entry.cancelled) continue;
-    origins.push({
-      externalId: uid,
-      occurredAt: now,
-      attributes,
-      content: { kind: "revisions", revisions: [revision(uid, "cancel", {})] },
-    });
-  }
+function originOf(entry: FoundEntry, attributes: Record<string, string>): Origin {
+  return {
+    externalId: entry.uid,
+    attributes,
+    ...(entry.link ? { link: entry.link } : {}),
+    content: { kind: "stated", stated: entry.event },
+  };
 }
 
 function nameOf(context: RunContext, calendarName: string | null): string {
@@ -186,50 +134,17 @@ function nameOf(context: RunContext, calendarName: string | null): string {
 }
 
 function parseState(state: string | null): State {
-  if (state === null) return { etag: null, entries: {} };
+  if (state === null) return { etag: null, known: [] };
   try {
     const parsed = JSON.parse(state) as Partial<State>;
-    return { etag: parsed.etag ?? null, entries: parsed.entries ?? {} };
+    const known = Array.isArray(parsed.known) ? parsed.known.filter((uid) => typeof uid === "string") : [];
+    return { etag: parsed.etag ?? null, known };
   } catch {
-    return { etag: null, entries: {} };
+    return { etag: null, known: [] };
   }
 }
 
-/** What to state about an entry, given how the last run saw it. */
-function revisionsFor(uid: string, before: Entry | undefined, now: Entry): PluginRevision[] {
-  const all: EventFields = { title: now.title, span: now.span, place: now.place };
-  if (!before || (before.cancelled && !now.cancelled)) return createRevisions(uid, all, now.cancelled);
-  if (now.cancelled) return before.cancelled ? [] : cancelRevisions(uid);
-  return changeRevisions(uid, changedFields(before, now));
-}
-
-function createRevisions(uid: string, all: EventFields, cancelled: boolean): PluginRevision[] {
-  return [revision(uid, "create", all), ...(cancelled ? [revision(uid, "cancel", {})] : [])];
-}
-
-function cancelRevisions(uid: string): PluginRevision[] {
-  return [revision(uid, "cancel", {})];
-}
-
-function changedFields(before: Entry, now: Entry): EventFields {
-  const changed: EventFields = {};
-  if (before.title !== now.title) changed.title = now.title;
-  if (JSON.stringify(before.span) !== JSON.stringify(now.span)) changed.span = now.span;
-  if (before.place !== now.place) changed.place = now.place;
-  return changed;
-}
-
-function changeRevisions(uid: string, changed: EventFields): PluginRevision[] {
-  const keys = Object.keys(changed);
-  if (keys.length === 0) return [];
-  return [revision(uid, keys.length === 1 && "span" in changed ? "move" : "change", changed)];
-}
-
-function revision(uid: string, action: PluginRevision["action"], fields: EventFields): PluginRevision {
-  return { itemKind: "event", itemKey: uid, action, fields };
-}
-
-type FoundEntry = { uid: string; entry: Entry; lastModified: Date | null; link: string | null };
+type FoundEntry = { uid: string; event: StatedEvent; link: string | null };
 
 function parseCalendar(body: string, familyTimeZone: string): { name: string | null; entries: FoundEntry[] } {
   let calendar: ICAL.Component;
@@ -278,18 +193,19 @@ function eventSpan(start: ICAL.Time, event: ICAL.Event, component: ICAL.Componen
     : timedSpan(instant(component.getFirstProperty("dtstart")), endInstant(component, instant));
 }
 
+/** An entry's Event, its texts clipped to what an Event keeps; cancelled only by `STATUS:CANCELLED`. */
 function entryFrom(event: ICAL.Event, component: ICAL.Component, uid: string, span: EventSpan): FoundEntry {
-  const lastModified = component.getFirstPropertyValue("last-modified");
   const link = text(component.getFirstPropertyValue("url"));
+  const place = text(event.location);
   return {
     uid,
-    entry: {
-      title: text(event.summary) ?? "(No title)",
+    event: {
+      kind: "event",
+      title: clipped(text(event.summary) ?? "(No title)", statedTextLimits.event),
       span,
-      place: text(event.location),
+      place: place && clipped(place, statedTextLimits.event),
       cancelled: text(component.getFirstPropertyValue("status"))?.toUpperCase() === "CANCELLED",
     },
-    lastModified: lastModified instanceof ICAL.Time ? lastModified.toJSDate() : null,
     link: link && /^https?:\/\//i.test(link) ? link : null,
   };
 }

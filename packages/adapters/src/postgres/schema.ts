@@ -1,5 +1,5 @@
 import type { ActivityKind } from "@family-agenda/application";
-import { familyLanguages, horizonDaysRange, itemKinds, photoTypes, agendaKinds, timetableChangeKinds, type RunError } from "@family-agenda/domain";
+import { statedItemKinds, familyLanguages, horizonDaysRange, itemKinds, photoTypes, agendaKinds, timetableChangeKinds, type RunError } from "@family-agenda/domain";
 import { sql, type SQL } from "drizzle-orm";
 import {
   bigint,
@@ -196,7 +196,7 @@ export const catalogueEntries = pgTable(
  * Sources of every Source Type, so that a new one needs no migration; only what an Admin
  * configures, as how their runs went is in `source_run` (ADR-0014). A Source keeps its Source
  * Type id even when the plugin is removed, and resumes once it is installed again. Removing a
- * Source removes everything it brought in, down to the Revisions, by cascade.
+ * Source removes everything it brought in, down to the Items, by cascade.
  */
 export const sources = pgTable(
   "source",
@@ -252,9 +252,21 @@ export const sourceRuns = pgTable(
     lastError: text("last_error"),
     /** When its last Origin not seen before was recorded, for the Silent status. */
     lastNewOriginAt: timestamptz("last_new_origin_at"),
+    /**
+     * A warning beside the Source Status: the external ids of Source Records whose stated Item
+     * failed a check, so that no Item was written. An id leaves when its Source Record writes its
+     * Item or is withdrawn.
+     */
+    invalidRecords: text("invalid_records").array().notNull().default(sql`'{}'::text[]`),
+    /** Since when `invalid_records` has had an id; null while it has none. */
+    invalidRecordsSince: timestamptz("invalid_records_since"),
   },
   (table) => [
     check("source_run_failure_complete", allOrNone(table.failingSince, table.lastErrorKind, table.lastError)),
+    check(
+      "source_run_invalid_records_complete",
+      sql`(cardinality(${table.invalidRecords}) = 0) = (${table.invalidRecordsSince} IS NULL)`,
+    ),
     oneOf("source_run_last_error_kind_known", table.lastErrorKind, ["definite", "temporary"] satisfies RunError["kind"][]),
   ],
 );
@@ -295,12 +307,17 @@ export const sourceRecords = pgTable(
       .references(() => sources.id, { onDelete: "cascade" }),
     /** Its id within its Source, such as a mail's Message-ID or a calendar entry's UID. */
     externalId: text("external_id").notNull(),
-    /** When the Source received it, as its plugin tells. */
-    occurredAt: timestamptz("occurred_at").notNull(),
+    /** When the Source received a message, as its plugin tells; null for a stated Item. */
+    occurredAt: timestamptz("occurred_at"),
     sender: text("sender"),
     subject: text("subject"),
     body: text("body"),
-    /** When its message was extracted successfully; null while it waits. */
+    /**
+     * The Item a calendar or timetable entry states, as its plugin states it, such as
+     * `{ "kind": "event", "title": ... }`, which the core writes without the LLM; null for a message.
+     */
+    stated: jsonb("stated").$type<Record<string, unknown>>(),
+    /** When its message was extracted, or its stated Item written; null while it waits, or if it was invalid. */
     processedAt: timestamptz("processed_at"),
     /**
      * When the Source said it no longer has it, such as a redacted message: its Items are deleted
@@ -323,6 +340,16 @@ export const sourceRecords = pgTable(
       .on(table.createdAt)
       .where(sql`${table.processedAt} IS NULL AND ${table.body} IS NOT NULL AND ${table.withdrawnAt} IS NULL`),
     index("source_record_thread_idx").on(table.sourceId, table.thread),
+    check(
+      "source_record_stated_kind_known",
+      sql`${table.stated} IS NULL OR ${table.stated}->>'kind' IN (${sql.raw(statedItemKinds.map((kind) => `'${kind}'`).join(", "))})`,
+    ),
+    // A stated Source Record carries nothing of a message; a message needs the time it came.
+    check(
+      "source_record_stated_is_no_message",
+      sql`${table.stated} IS NULL OR (${table.sender} IS NULL AND ${table.subject} IS NULL AND ${table.body} IS NULL AND ${table.occurredAt} IS NULL)`,
+    ),
+    check("source_record_message_occurred", sql`${table.stated} IS NOT NULL OR ${table.occurredAt} IS NOT NULL`),
   ],
 );
 

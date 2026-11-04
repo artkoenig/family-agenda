@@ -30,18 +30,13 @@ const poll = (plugin: SourcePlugin, context: Partial<RunContext> = {}): Promise<
   return plugin.ingestion.poll({ config, syncCursor: null, now, timeZone: "Europe/Berlin", ...context });
 };
 
-/** Each Origin as the Item key, act and fields of its Revisions, at its source time. */
+/** Each Origin as its UID and the Event it states. */
 const statements = (origins: Origin[]) =>
   origins.flatMap((origin) =>
-    origin.content.kind === "revisions"
-      ? origin.content.revisions.map((revision) => ({
-          key: revision.itemKey,
-          action: revision.action,
-          at: origin.occurredAt.toISOString(),
-          fields: revision.fields,
-        }))
-      : [],
+    origin.content.kind === "stated" && origin.content.stated.kind === "event" ? [{ key: origin.externalId, ...origin.content.stated }] : [],
   );
+
+const timed = (start: string, end: string) => ({ allDay: false as const, start, end });
 
 describeSourcePluginContract(() => createIcsPlugin({ fetch: server(calendar(fixture("family-v1.ics")), calendar(fixture("family-v1.ics"))).fetch }), {
   config,
@@ -51,60 +46,55 @@ describeSourcePluginContract(() => createIcsPlugin({ fetch: server(calendar(fixt
 });
 
 describe("the ICS plugin", () => {
-  it("creates an Event per calendar entry, keyed by UID, at its LAST-MODIFIED", async () => {
+  it("states each calendar entry's Event whole, keyed by UID, cancelled only by its status", async () => {
     const plugin = createIcsPlugin({ fetch: server(calendar(fixture("family-v1.ics"))).fetch });
 
-    const { origins } = await poll(plugin);
+    const { origins, withdrawn } = await poll(plugin);
 
     expect(statements(origins)).toEqual([
       {
         key: "piano-0915@google.com",
-        action: "create",
-        at: "2026-09-01T10:00:00.000Z",
-        fields: {
-          title: "Piano lesson",
-          span: { allDay: false, start: "2026-09-15T14:00:00.000Z", end: "2026-09-15T15:00:00.000Z" },
-          place: "Music school, room 3",
-        },
+        kind: "event",
+        title: "Piano lesson",
+        span: timed("2026-09-15T14:00:00.000Z", "2026-09-15T15:00:00.000Z"),
+        place: "Music school, room 3",
+        cancelled: false,
       },
       {
         key: "trip@google.com",
-        action: "create",
-        at: "2026-09-02T08:00:00.000Z",
-        fields: { title: "Class trip", span: { allDay: true, firstDay: "2026-09-18", lastDay: "2026-09-19" }, place: null },
+        kind: "event",
+        title: "Class trip",
+        span: { allDay: true, firstDay: "2026-09-18", lastDay: "2026-09-19" },
+        place: null,
+        cancelled: false,
       },
       {
         key: "match@google.com",
-        action: "create",
-        at: "2026-09-03T09:00:00.000Z",
-        fields: {
-          title: "Football match",
-          span: { allDay: false, start: "2026-09-16T15:00:00.000Z", end: "2026-09-16T16:30:00.000Z" },
-          place: "Sports ground",
-        },
+        kind: "event",
+        title: "Football match",
+        span: timed("2026-09-16T15:00:00.000Z", "2026-09-16T16:30:00.000Z"),
+        place: "Sports ground",
+        cancelled: false,
       },
       {
         key: "fair@google.com",
-        action: "create",
-        at: "2026-09-04T12:00:00.000Z",
-        fields: {
-          title: "School fair",
-          span: { allDay: false, start: "2026-09-19T08:00:00.000Z", end: "2026-09-19T10:00:00.000Z" },
-          place: null,
-        },
+        kind: "event",
+        title: "School fair",
+        span: timed("2026-09-19T08:00:00.000Z", "2026-09-19T10:00:00.000Z"),
+        place: null,
+        cancelled: true,
       },
-      { key: "fair@google.com", action: "cancel", at: "2026-09-04T12:00:00.000Z", fields: {} },
       {
         key: "dentist@google.com",
-        action: "create",
-        at: "2026-09-05T12:00:00.000Z",
-        fields: {
-          title: "Dentist",
-          span: { allDay: false, start: "2026-09-21T07:00:00.000Z", end: "2026-09-21T08:00:00.000Z" },
-          place: null,
-        },
+        kind: "event",
+        title: "Dentist",
+        span: timed("2026-09-21T07:00:00.000Z", "2026-09-21T08:00:00.000Z"),
+        place: null,
+        cancelled: false,
       },
     ]);
+    expect(origins.every((origin) => origin.occurredAt === undefined)).toBe(true);
+    expect(withdrawn).toEqual([]);
   });
 
   it("names the calendar on its Origins, and links to an entry's own address", async () => {
@@ -120,72 +110,89 @@ describe("the ICS plugin", () => {
     expect(trip?.link).toBeUndefined();
   });
 
-  it("states only what changed since the last run: moves, changes and cancellations", async () => {
+  it("states every entry again once the calendar changed, and withdraws those gone from it", async () => {
     const plugin = createIcsPlugin({
       fetch: server(calendar(fixture("family-v1.ics")), calendar(fixture("family-v2.ics"))).fetch,
     });
     const first = await poll(plugin);
-    const later = new Date("2026-09-14T08:00:00Z");
 
-    const { origins } = await poll(plugin, { syncCursor: first.syncCursor, now: later });
+    const { origins, withdrawn } = await poll(plugin, { syncCursor: first.syncCursor });
 
     expect(statements(origins)).toEqual([
       {
         key: "piano-0915@google.com",
-        action: "move",
-        at: "2026-09-14T06:00:00.000Z",
-        fields: { span: { allDay: false, start: "2026-09-15T15:00:00.000Z", end: "2026-09-15T16:00:00.000Z" } },
+        kind: "event",
+        title: "Piano lesson",
+        span: timed("2026-09-15T15:00:00.000Z", "2026-09-15T16:00:00.000Z"),
+        place: "Music school, room 3",
+        cancelled: false,
       },
-      { key: "trip@google.com", action: "cancel", at: "2026-09-14T06:20:00.000Z", fields: {} },
+      {
+        key: "trip@google.com",
+        kind: "event",
+        title: "Class trip",
+        span: { allDay: true, firstDay: "2026-09-18", lastDay: "2026-09-19" },
+        place: null,
+        cancelled: true,
+      },
       {
         key: "match@google.com",
-        action: "change",
-        at: "2026-09-14T06:10:00.000Z",
-        fields: { title: "Football final", place: "Stadium" },
+        kind: "event",
+        title: "Football final",
+        span: timed("2026-09-16T15:00:00.000Z", "2026-09-16T16:30:00.000Z"),
+        place: "Stadium",
+        cancelled: false,
+      },
+      {
+        key: "fair@google.com",
+        kind: "event",
+        title: "School fair",
+        span: timed("2026-09-19T08:00:00.000Z", "2026-09-19T10:00:00.000Z"),
+        place: null,
+        cancelled: true,
       },
       {
         key: "parents-evening@google.com",
-        action: "create",
-        at: "2026-09-14T06:30:00.000Z",
-        fields: {
-          title: "Parents' evening",
-          span: { allDay: false, start: "2026-09-22T16:00:00.000Z", end: "2026-09-22T17:30:00.000Z" },
-          place: "Assembly hall",
-        },
+        kind: "event",
+        title: "Parents' evening",
+        span: timed("2026-09-22T16:00:00.000Z", "2026-09-22T17:30:00.000Z"),
+        place: "Assembly hall",
+        cancelled: false,
       },
-      // Deleted from the calendar: cancelled when the run noticed.
-      { key: "dentist@google.com", action: "cancel", at: later.toISOString(), fields: {} },
     ]);
+    // Deleted from the calendar: withdrawn, not cancelled.
+    expect(withdrawn).toEqual(["dentist@google.com"]);
   });
 
-  it("restores an entry that comes back after it was gone, later than its cancellation", async () => {
+  it("states an entry again that comes back after it was gone", async () => {
     const plugin = createIcsPlugin({
-      fetch: server(
-        calendar(fixture("family-v1.ics")),
-        calendar(fixture("family-v2.ics")),
-        calendar(fixture("family-v2.ics")),
-        calendar(fixture("family-v1.ics")),
-      ).fetch,
+      fetch: server(calendar(fixture("family-v1.ics")), calendar(fixture("family-v2.ics")), calendar(fixture("family-v1.ics"))).fetch,
     });
     const first = await poll(plugin);
-    const gone = await poll(plugin, { syncCursor: first.syncCursor, now: new Date("2026-09-14T08:00:00Z") });
-    const stillGone = await poll(plugin, { syncCursor: gone.syncCursor, now: new Date("2026-09-14T08:15:00Z") });
-    expect(stillGone.origins).toEqual([]);
+    const gone = await poll(plugin, { syncCursor: first.syncCursor });
 
-    const back = await poll(plugin, { syncCursor: stillGone.syncCursor, now: new Date("2026-09-14T08:30:00Z") });
+    const back = await poll(plugin, { syncCursor: gone.syncCursor });
 
-    expect(statements(back.origins).filter((statement) => statement.key === "dentist@google.com")).toEqual([
-      {
-        key: "dentist@google.com",
-        action: "create",
-        at: "2026-09-14T08:30:00.000Z",
-        fields: {
-          title: "Dentist",
-          span: { allDay: false, start: "2026-09-21T07:00:00.000Z", end: "2026-09-21T08:00:00.000Z" },
-          place: null,
-        },
-      },
-    ]);
+    expect(statements(back.origins).map((statement) => statement.key)).toContain("dentist@google.com");
+    expect(back.withdrawn).toEqual(["parents-evening@google.com"]);
+  });
+
+  it("clips texts to what an Event keeps", async () => {
+    const long = "x".repeat(600);
+    const body = `BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:long\r\nDTSTART;VALUE=DATE:20260918\r\nSUMMARY:${long}\r\nLOCATION:${long}\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n`;
+    const plugin = createIcsPlugin({ fetch: server(calendar(body)).fetch });
+
+    const [event] = statements((await poll(plugin)).origins);
+
+    expect(event?.title).toHaveLength(500);
+    expect(event?.place).toHaveLength(500);
+  });
+
+  it("starts afresh from a sync cursor it cannot read", async () => {
+    const plugin = createIcsPlugin({ fetch: server(calendar(fixture("family-v1.ics")), calendar(fixture("family-v1.ics"))).fetch });
+
+    expect((await poll(plugin, { syncCursor: "not json" })).withdrawn).toEqual([]);
+    expect((await poll(plugin, { syncCursor: JSON.stringify({ etag: null, known: "nonsense" }) })).withdrawn).toEqual([]);
   });
 
   it("gives up on a calendar that does not answer in time, with a temporary error", async () => {
@@ -243,11 +250,11 @@ describe("the ICS plugin", () => {
 
     const { origins } = await poll(plugin);
 
-    expect(statements(origins).map(({ key, at, fields }) => [key, at, fields.span])).toEqual([
-      ["named", now.toISOString(), { allDay: false, start: "2026-09-15T20:00:00.000Z", end: "2026-09-15T21:00:00.000Z" }],
-      ["floating", now.toISOString(), { allDay: false, start: "2026-09-15T14:00:00.000Z", end: "2026-09-15T15:00:00.000Z" }],
-      ["no-end", now.toISOString(), { allDay: false, start: "2026-09-15T16:00:00.000Z", end: "2026-09-15T16:00:00.000Z" }],
-      ["no-end-all-day", now.toISOString(), { allDay: true, firstDay: "2026-09-18", lastDay: "2026-09-18" }],
+    expect(statements(origins).map(({ key, span }) => [key, span])).toEqual([
+      ["named", timed("2026-09-15T20:00:00.000Z", "2026-09-15T21:00:00.000Z")],
+      ["floating", timed("2026-09-15T14:00:00.000Z", "2026-09-15T15:00:00.000Z")],
+      ["no-end", timed("2026-09-15T16:00:00.000Z", "2026-09-15T16:00:00.000Z")],
+      ["no-end-all-day", { allDay: true, firstDay: "2026-09-18", lastDay: "2026-09-18" }],
     ]);
   });
 

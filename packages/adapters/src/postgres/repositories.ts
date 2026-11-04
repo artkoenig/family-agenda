@@ -581,6 +581,7 @@ export class PostgresSourceRepository implements SourceRepository {
           ? { kind: run.lastErrorKind === "definite" ? "definite" : "temporary", message: run.lastError, since: run.failingSince }
           : null,
       lastNewOriginAt: run.lastNewOriginAt,
+      invalidRecords: run.invalidRecords,
       createdAt: source.createdAt,
     }));
   }

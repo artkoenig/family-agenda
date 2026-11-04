@@ -288,6 +288,8 @@ export const en = {
     status: { ok: "OK", failing: "Failing", silent: "Silent" },
     silentHint: (days: number) => `Nothing new for ${days} days.`,
     lastError: (message: string) => `Last error: ${message}`,
+    invalidRecords: (count: number) =>
+      count === 1 ? "1 entry is not valid, so it is not shown." : `${count} entries are not valid, so they are not shown.`,
     lastRead: (when: string) => `Last read ${when}`,
     notReadYet: "Not read successfully yet",
     notInstalled: "Source Type not installed",

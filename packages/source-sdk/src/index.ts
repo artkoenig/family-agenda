@@ -2,7 +2,7 @@
  * The contract a Source plugin implements (ADR-0010). It is the only Family Agenda package a
  * plugin may import.
  */
-export const sdkVersion = "0.8.0";
+export const sdkVersion = "0.9.0";
 
 /**
  * A text the Admin area shows: plain, or per language as `{ en: "Calendar", de: "Kalender" }`.
@@ -133,8 +133,8 @@ export type IngestResult = {
   /** Where the next run resumes; stored only together with these Origins. */
   syncCursor: string | null;
   /**
-   * External ids of Origins deleted in the Source since, such as redacted messages; their
-   * Revisions are rejected. Ids the core never recorded are ignored.
+   * External ids of Origins deleted in the Source since, such as redacted messages or calendar
+   * entries that vanished; their Items are deleted. Ids the core never recorded are ignored.
    */
   withdrawn?: string[];
 };
@@ -154,25 +154,20 @@ export type Ingestion =
 
 export type Attachment = { filename: string; contentType: string; bytes: Uint8Array };
 
-export const itemKinds = ["event", "lesson", "timetable-change", "task", "notice"] as const;
-
-export type ItemKind = (typeof itemKinds)[number];
-
-export const revisionActions = ["create", "change", "move", "cancel"] as const;
+/** The kinds of Item a plugin states on its Origin, without the LLM (ADR-0016). */
+export const statedKinds = ["event", "lesson"] as const;
 
 /**
- * One statement about an Item from a structured Source (ADR-0009), made at the time of its
- * Origin. A create states the Item exists (again), a change or move states some of its fields,
- * and a cancel cancels it. The core folds an Item's Revisions field by field, newest first.
+ * The longest text an Item of each kind keeps, such as a title or a room. A plugin clips its texts
+ * to these with `clipped`; an Item with a longer one is not written.
  */
-export type PluginRevision = {
-  itemKind: ItemKind;
-  /** Identifies the Item within the Source, so that later Revisions reach the same Item. */
-  itemKey: string;
-  action: (typeof revisionActions)[number];
-  /** The Item kind's fields this Revision states, such as `EventFields` for an Event or `TaskFields` for a Task. */
-  fields: JsonObject;
-};
+export const statedTextLimits = { event: 500, lesson: 200 } as const;
+
+/** The text, trimmed, and cut to at most `limit` characters. */
+export function clipped(text: string, limit: number): string {
+  const trimmed = text.trim();
+  return trimmed.length <= limit ? trimmed : trimmed.slice(0, limit).trimEnd();
+}
 
 /**
  * When an Event takes place: between two ISO 8601 instants, or on whole days given as
@@ -183,49 +178,43 @@ export type EventSpan =
   | { allDay: true; firstDay: string; lastDay: string };
 
 /**
- * The fields of an Event. A create states `title` and `span`, a move states `span`; a change
- * states any of them. A Revision with other fields, or invalid ones, is rejected.
+ * An Event as a calendar states it, whole. `cancelled` only when the Source says so, such as an
+ * entry with `STATUS:CANCELLED`; an entry that is gone is withdrawn instead.
  */
-export type EventFields = { title?: string; span?: EventSpan; place?: string | null };
+export type StatedEvent = { kind: "event"; title: string; span: EventSpan; place: string | null; cancelled: boolean };
 
 /** When a Lesson takes place, between two ISO 8601 instants; never all day. */
 export type LessonSpan = { allDay: false; start: string; end: string };
 
 /**
- * The fields of a Lesson, as it takes place. A create states `subject` and `span`, a move states
- * `span`; a change states any of them. A cancel states that it does not take place, and a later
- * create that it does again.
+ * A Lesson as a timetable states it, whole: its subject, room and teacher as it takes place, and
+ * how it deviates from the Timetable, if it does. `previousRoom`, `previousTeacher` and `note`, what
+ * the school wrote about it, go only with a `change`.
  */
-export type LessonFields = { subject?: string; span?: LessonSpan; room?: string | null; teacher?: string | null };
-
-/**
- * The fields of a Timetable Change: a Lesson's, as it takes place, with what changed and what it
- * was before. A create states `change`, `subject` and `span`. A cancel withdraws the Timetable
- * Change, as a school does that takes a cancellation back. Its Item key is its own, not its
- * Lesson's.
- */
-export type TimetableChangeFields = LessonFields & {
-  change?: "cancellation" | "substitution" | "room-change";
-  previousRoom?: string | null;
-  previousTeacher?: string | null;
-  /** What the school wrote about it, such as "Teacher ill". */
-  note?: string | null;
+export type StatedLesson = {
+  kind: "lesson";
+  subject: string;
+  span: LessonSpan;
+  room: string | null;
+  teacher: string | null;
+  change: "cancellation" | "substitution" | "room-change" | null;
+  previousRoom: string | null;
+  previousTeacher: string | null;
+  note: string | null;
 };
 
-/**
- * The fields of a Task: something to do or bring, by `deadline` (`YYYY-MM-DD`) if it has one. A
- * packing list is one Task with its things in `bring`. A create states `title`, a move states
- * `deadline`; a change states any of them. Whether a Task is done is never a Source's to say:
- * only the Family ticks it.
- */
-export type TaskFields = { title?: string; deadline?: string | null; bring?: string[] };
+/** The one Item an Origin of a calendar or timetable states, as the Source has it now. */
+export type StatedItem = StatedEvent | StatedLesson;
 
-/** One appearance of an Item in a Source. */
+/** What a Source delivered under one external id: a message, or an entry stating its one Item. */
 export type Origin = {
-  /** Identifies the Origin within its Source, such as a message id. */
+  /** Identifies the Origin within its Source, such as a message id or a calendar entry's UID. */
   externalId: string;
-  /** When the Source received it, such as the time a mailbox or a homeserver got a message. */
-  occurredAt: Date;
+  /**
+   * When the Source received it, such as the time a mailbox or a homeserver got a message. A
+   * message needs it; a stated Item has none.
+   */
+  occurredAt?: Date;
   /** What the plugin tells about where it came from, such as its sender or calendar, shown with its message; whom it concerns is decided by its Source alone. */
   attributes: Record<string, string>;
   /** An `http` or `https` address where the Family can look at the original, if there is one. */
@@ -248,7 +237,14 @@ export type Origin = {
          */
         thread?: string;
       }
-    | { kind: "revisions"; revisions: PluginRevision[] };
+    | {
+        /**
+         * The Item as the Source has it now, which the core writes without the LLM. Every run
+         * states every current entry again; one whose Item is unchanged costs nothing.
+         */
+        kind: "stated";
+        stated: StatedItem;
+      };
 };
 
 export type Health = {
@@ -386,33 +382,24 @@ function problemsWithIdentity(identity: SourcePluginIdentity): string[] {
 }
 
 /** Problems with an Origin a plugin emitted. */
-function revisionProblems(revisions: PluginRevision[]): string[] {
-  const problems: string[] = [];
-  if (revisions.length === 0) problems.push("the Origin carries no Revisions");
-  for (const revision of revisions) {
-    if (!(itemKinds as readonly string[]).includes(revision.itemKind)) {
-      problems.push(`"${revision.itemKind}" is no Item kind`);
-    }
-    if (!(revisionActions as readonly string[]).includes(revision.action)) {
-      problems.push(`"${revision.action}" is no Revision action`);
-    }
-    if (revision.itemKey === "") problems.push("a Revision has no Item key");
-  }
-  return problems;
-}
-
 export function problemsWithOrigin(origin: Origin): string[] {
   const problems: string[] = [];
   if (origin.externalId === "") problems.push("the Origin has no external id");
-  if (Number.isNaN(origin.occurredAt.getTime())) problems.push("the Origin has no valid time");
-  if (origin.content.kind === "revisions") {
-    problems.push(...revisionProblems(origin.content.revisions));
-  }
+  problems.push(...contentProblems(origin));
   if (origin.part === "") problems.push("the Origin's Part is empty");
   if (origin.link !== undefined && !/^https?:\/\//i.test(origin.link)) {
     problems.push("the Origin's link is no http or https address");
   }
   return problems;
+}
+
+function contentProblems(origin: Origin): string[] {
+  const { content, occurredAt } = origin;
+  if (content.kind === "stated") {
+    const known = (statedKinds as readonly string[]).includes(content.stated.kind);
+    return known ? [] : [`"${content.stated.kind}" is no kind of Item a Source states`];
+  }
+  return occurredAt && !Number.isNaN(occurredAt.getTime()) ? [] : ["the Origin has no valid time"];
 }
 
 /**

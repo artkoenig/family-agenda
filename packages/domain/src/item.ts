@@ -10,17 +10,12 @@ export const itemKinds = ["event", "task", "lesson"] as const;
 
 export type ItemKind = (typeof itemKinds)[number];
 
-/**
- * What a calendar or timetable plugin still states about an entry, until it states the whole Item
- * on its Source Record (#137): the core applies these to the Item of the entry's Source Record.
- */
-export const acts = ["create", "change", "move", "cancel"] as const;
-
-export type Act = (typeof acts)[number];
+/** The kinds of Item a calendar or timetable Source states on its Source Record (ADR-0016). */
+export const statedItemKinds = ["event", "lesson"] as const satisfies readonly ItemKind[];
 
 /**
- * An Item as JSON fields, the way a plugin states them, before its kind gives the fields a
- * meaning; `cancelled` is whether it was called off.
+ * An Item as JSON fields, the way a plugin or extraction states them, before its kind gives the
+ * fields a meaning; `cancelled` is whether it was called off.
  */
 export type ItemFields = {
   fields: Record<string, unknown>;

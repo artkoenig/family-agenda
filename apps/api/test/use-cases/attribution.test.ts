@@ -11,19 +11,8 @@ const minutes = 60 * 1000;
 /** A calendar entry creating an Event on Tuesday, from a sender, as a structured Source emits it. */
 const entry = (key: string, sender = "Music school"): Origin => ({
   externalId: key,
-  occurredAt: new Date("2026-09-01T10:00:00Z"),
   attributes: { sender },
-  content: {
-    kind: "revisions",
-    revisions: [
-      {
-        itemKind: "event",
-        itemKey: key,
-        action: "create",
-        fields: { title: key, span: { allDay: false, start: "2026-09-15T14:00:00Z", end: "2026-09-15T15:00:00Z" } },
-      },
-    ],
-  },
+  content: { kind: "stated", stated: { kind: "event", title: key, span: { allDay: false, start: "2026-09-15T14:00:00Z", end: "2026-09-15T15:00:00Z" }, place: null, cancelled: false } },
 });
 
 describe("Attribution by Source", () => {
