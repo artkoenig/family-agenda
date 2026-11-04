@@ -273,6 +273,8 @@ export const de: Catalogue = {
     status: { ok: "OK", failing: "Gestört", silent: "Still" },
     silentHint: (days) => `Seit ${days} Tagen nichts Neues.`,
     lastError: (message) => `Letzter Fehler: ${message}`,
+    invalidRecords: (count) =>
+      count === 1 ? "1 Eintrag ist ungültig und wird deshalb nicht angezeigt." : `${count} Einträge sind ungültig und werden deshalb nicht angezeigt.`,
     lastRead: (when) => `Zuletzt gelesen ${when}`,
     notReadYet: "Noch nicht erfolgreich gelesen",
     notInstalled: "Quellentyp nicht installiert",

@@ -375,6 +375,7 @@ export function createSourceAccess(deps: SourcesDeps) {
         lastSuccessAt: null,
         failure: null,
         lastNewOriginAt: null,
+        invalidRecords: [],
         createdAt: clock.now(),
       });
       await assignParts(id, sourceType, given.plain, input);
@@ -438,7 +439,7 @@ export function createSourceAccess(deps: SourcesDeps) {
       return { ok: true };
     },
 
-    /** Removes the Source with its secrets, whom it is assigned to and everything it brought in: Origins, messages, Revisions and Items. */
+    /** Removes the Source with its secrets, whom it is assigned to and everything it brought in: its Source Records and their Items. */
     async remove(id: SourceId): Promise<void> {
       const source = await sources.findById(id);
       if (!source) return;

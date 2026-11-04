@@ -1482,7 +1482,7 @@ function SourceRow(props: { source: SourceSummary; form: SourceForm | undefined;
           {meta !== "" ? <span class="fam-row__hint">{meta}</span> : null}
           {concerns.length > 0 ? <span class="fam-row__hint">{s.concernsList(concerns.join(", "))}</span> : null}
           {/* Its page tells when it was last read; its row only once something went wrong. */}
-          {source.health.status !== "ok" || source.health.problem !== null ? (
+          {hasHealthDetails(source.health) ? (
             <span class="fam-row__hint fam-health">
               <HealthDetails health={source.health} timeZone={props.timeZone} />
             </span>
@@ -1903,6 +1903,11 @@ function HealthStatus(props: { health: SourceHealth; chip?: boolean }) {
   return <span class={`${kind} ${kind}--${tone}`}>{t.sources.status[props.health.status]}</span>;
 }
 
+/** Whether there is more to say of how a Source is doing than that it is OK. */
+function hasHealthDetails(health: SourceHealth): boolean {
+  return health.status !== "ok" || health.problem !== null || health.invalidRecords.length > 0;
+}
+
 /** When a Source was last read successfully, and its last error. */
 function HealthDetails(props: { health: SourceHealth; timeZone: string }) {
   const { health } = props;
@@ -1923,6 +1928,7 @@ function HealthDetails(props: { health: SourceHealth; timeZone: string }) {
       {health.status === "silent" ? <span>{s.silentHint(silentAfterMs / (24 * 60 * 60 * 1000))}</span> : null}
       <span>{health.lastSuccessAt ? s.lastRead(when(health.lastSuccessAt)) : s.notReadYet}</span>
       {problemText !== null ? <span class="fam-problem">{problemText}</span> : null}
+      {health.invalidRecords.length > 0 ? <span class="fam-problem">{s.invalidRecords(health.invalidRecords.length)}</span> : null}
     </>
   );
 }

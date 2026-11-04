@@ -1,51 +1,49 @@
 import { describe, expect, it } from "vitest";
-import { eventOf, problemsWithEventRevision, spanOnDay, lastDayOf, maximumEventTextLength, type LocalDate } from "../src";
+import { eventOf, problemsWithEventFields, spanOnDay, lastDayOf, maximumEventTextLength, type LocalDate } from "../src";
 
 const timed = (start: string, end: string) => ({ allDay: false, start, end });
 
-describe("an Event Revision", () => {
+/** The problems of fields that state only some of an Event, the rest being fine. */
+const completed = (fields: Record<string, unknown>) =>
+  problemsWithEventFields({ title: "Piano", span: timed("2026-09-15T14:00:00.000Z", "2026-09-15T15:00:00.000Z"), ...fields });
+
+describe("an Event's fields", () => {
   it.each([
     {
-      case: "a create with title, span and place",
-      act: "create" as const,
+      case: "fields with title, span and place",
       fields: { title: "Piano", span: timed("2026-09-15T14:00:00.000Z", "2026-09-15T15:00:00.000Z"), place: "Music school" },
       problems: [],
     },
     {
       case: "an all-day create without a place",
-      act: "create" as const,
       fields: { title: "Trip", span: { allDay: true, firstDay: "2026-09-18", lastDay: "2026-09-19" }, place: null },
       problems: [],
     },
-    { case: "a create without a span", act: "create" as const, fields: { title: "Piano" }, problems: ["span is missing"] },
-    { case: "a cancel with no fields", act: "cancel" as const, fields: {}, problems: [] },
-    { case: "a move without a span", act: "move" as const, fields: {}, problems: ["span is missing"] },
+    { case: "fields without a span", fields: { title: "Piano" }, problems: ["span is missing"] },
     {
-      case: "a change with fields no Event has, an empty title and a backwards span",
-      act: "change" as const,
+      case: "fields with fields no Event has, an empty title and a backwards span",
+      partial: true,
       fields: { title: " ", colour: "red", span: timed("2026-09-15T15:00:00.000Z", "2026-09-15T14:00:00.000Z") },
       problems: ["title is not a non-empty text", "span is not a valid time span", "colour is not a field of an Event"],
     },
     {
       case: "an all-day span with a date that does not exist",
-      act: "change" as const,
+      partial: true,
       fields: { span: { allDay: true, firstDay: "2026-02-30", lastDay: "2026-03-01" } },
       problems: ["span is not a valid time span"],
     },
     {
       case: "a place that is an empty string (not null)",
-      act: "create" as const,
       fields: { title: "Piano", span: timed("2026-09-15T14:00:00.000Z", "2026-09-15T15:00:00.000Z"), place: "" },
       problems: ["place is not a non-empty text or null"],
     },
     {
       case: "a place that is too long",
-      act: "create" as const,
       fields: { title: "Piano", span: timed("2026-09-15T14:00:00.000Z", "2026-09-15T15:00:00.000Z"), place: "x".repeat(501) },
       problems: ["place is not a non-empty text or null"],
     },
-  ])("$case", ({ act, fields, problems }) => {
-    expect(problemsWithEventRevision(act, fields)).toEqual(problems);
+  ])("$case", ({ partial, fields, problems }) => {
+    expect(partial ? completed(fields) : problemsWithEventFields(fields)).toEqual(problems);
   });
 });
 
@@ -113,93 +111,93 @@ describe("lastDayOf", () => {
   });
 });
 
-describe("parseSpan (via problemsWithEventRevision)", () => {
+describe("parseSpan (via problemsWithEventFields)", () => {
   it("rejects a null span", () => {
-    expect(problemsWithEventRevision("change", { span: null })).toContain("span is not a valid time span");
+    expect(completed({ span: null })).toContain("span is not a valid time span");
   });
 
   it("rejects a non-object span (a string)", () => {
-    expect(problemsWithEventRevision("change", { span: "not-a-span" })).toContain("span is not a valid time span");
+    expect(completed({ span: "not-a-span" })).toContain("span is not a valid time span");
   });
 
   it("rejects an all-day span where allDay is not true or false", () => {
-    expect(problemsWithEventRevision("change", { span: { allDay: undefined, start: "2026-09-15T14:00:00Z", end: "2026-09-15T15:00:00Z" } })).toContain("span is not a valid time span");
+    expect(completed({ span: { allDay: undefined, start: "2026-09-15T14:00:00Z", end: "2026-09-15T15:00:00Z" } })).toContain("span is not a valid time span");
   });
 
   it("rejects a timed span with allDay=true (wrong branch)", () => {
-    expect(problemsWithEventRevision("change", { span: { allDay: true, start: "2026-09-15T14:00:00Z", end: "2026-09-15T15:00:00Z" } })).toContain("span is not a valid time span");
+    expect(completed({ span: { allDay: true, start: "2026-09-15T14:00:00Z", end: "2026-09-15T15:00:00Z" } })).toContain("span is not a valid time span");
   });
 
   it("rejects a timed span with a non-string start", () => {
-    expect(problemsWithEventRevision("change", { span: { allDay: false, start: 123, end: "2026-09-15T15:00:00Z" } })).toContain("span is not a valid time span");
+    expect(completed({ span: { allDay: false, start: 123, end: "2026-09-15T15:00:00Z" } })).toContain("span is not a valid time span");
   });
 
   it("rejects a timed span with a non-string end", () => {
-    expect(problemsWithEventRevision("change", { span: { allDay: false, start: "2026-09-15T14:00:00Z", end: 123 } })).toContain("span is not a valid time span");
+    expect(completed({ span: { allDay: false, start: "2026-09-15T14:00:00Z", end: 123 } })).toContain("span is not a valid time span");
   });
 
   it("rejects a timed span with a non-parseable start date", () => {
-    expect(problemsWithEventRevision("change", { span: { allDay: false, start: "not-a-date", end: "2026-09-15T15:00:00Z" } })).toContain("span is not a valid time span");
+    expect(completed({ span: { allDay: false, start: "not-a-date", end: "2026-09-15T15:00:00Z" } })).toContain("span is not a valid time span");
   });
 
   it("accepts a zero-duration span (end === start is valid for events)", () => {
-    expect(problemsWithEventRevision("change", { span: { allDay: false, start: "2026-09-15T14:00:00Z", end: "2026-09-15T14:00:00Z" } })).not.toContain("span is not a valid time span");
+    expect(completed({ span: { allDay: false, start: "2026-09-15T14:00:00Z", end: "2026-09-15T14:00:00Z" } })).not.toContain("span is not a valid time span");
   });
 
   it("rejects a timed span where end is before start", () => {
-    expect(problemsWithEventRevision("change", { span: { allDay: false, start: "2026-09-15T15:00:00Z", end: "2026-09-15T14:00:00Z" } })).toContain("span is not a valid time span");
+    expect(completed({ span: { allDay: false, start: "2026-09-15T15:00:00Z", end: "2026-09-15T14:00:00Z" } })).toContain("span is not a valid time span");
   });
 
   it("rejects an all-day span with firstDay > lastDay", () => {
-    expect(problemsWithEventRevision("change", { span: { allDay: true, firstDay: "2026-09-19", lastDay: "2026-09-18" } })).toContain("span is not a valid time span");
+    expect(completed({ span: { allDay: true, firstDay: "2026-09-19", lastDay: "2026-09-18" } })).toContain("span is not a valid time span");
   });
 
   it("rejects an all-day span with firstDay null", () => {
-    expect(problemsWithEventRevision("change", { span: { allDay: true, firstDay: null, lastDay: "2026-09-18" } })).toContain("span is not a valid time span");
+    expect(completed({ span: { allDay: true, firstDay: null, lastDay: "2026-09-18" } })).toContain("span is not a valid time span");
   });
 
   it("rejects an all-day span with lastDay null", () => {
-    expect(problemsWithEventRevision("change", { span: { allDay: true, firstDay: "2026-09-18", lastDay: null } })).toContain("span is not a valid time span");
+    expect(completed({ span: { allDay: true, firstDay: "2026-09-18", lastDay: null } })).toContain("span is not a valid time span");
   });
 
   it("accepts an all-day span with firstDay === lastDay (single day)", () => {
-    expect(problemsWithEventRevision("change", { span: { allDay: true, firstDay: "2026-09-18", lastDay: "2026-09-18" } })).not.toContain("span is not a valid time span");
+    expect(completed({ span: { allDay: true, firstDay: "2026-09-18", lastDay: "2026-09-18" } })).not.toContain("span is not a valid time span");
   });
 
   it("rejects an all-day span with a non-string firstDay", () => {
-    expect(problemsWithEventRevision("change", { span: { allDay: true, firstDay: 123, lastDay: "2026-09-18" } })).toContain("span is not a valid time span");
+    expect(completed({ span: { allDay: true, firstDay: 123, lastDay: "2026-09-18" } })).toContain("span is not a valid time span");
   });
 
   it("rejects an all-day span with a date not at the start of the string", () => {
-    expect(problemsWithEventRevision("change", { span: { allDay: true, firstDay: "x2026-09-18", lastDay: "2026-09-18" } })).toContain("span is not a valid time span");
+    expect(completed({ span: { allDay: true, firstDay: "x2026-09-18", lastDay: "2026-09-18" } })).toContain("span is not a valid time span");
   });
 
   it("rejects an all-day span with a date not at the end of the string", () => {
-    expect(problemsWithEventRevision("change", { span: { allDay: true, firstDay: "2026-09-18x", lastDay: "2026-09-18" } })).toContain("span is not a valid time span");
+    expect(completed({ span: { allDay: true, firstDay: "2026-09-18x", lastDay: "2026-09-18" } })).toContain("span is not a valid time span");
   });
 
   it("accepts a valid all-day span", () => {
-    const problems = problemsWithEventRevision("change", { span: { allDay: true, firstDay: "2026-09-18", lastDay: "2026-09-19" } });
+    const problems = completed({ span: { allDay: true, firstDay: "2026-09-18", lastDay: "2026-09-19" } });
     expect(problems).not.toContain("span is not a valid time span");
   });
 });
 
-describe("parseText (via problemsWithEventRevision)", () => {
+describe("parseText (via problemsWithEventFields)", () => {
   it("rejects a title of exactly maximumEventTextLength + 1", () => {
     const title = "x".repeat(maximumEventTextLength + 1);
-    expect(problemsWithEventRevision("create", { title, span: { allDay: false, start: "2026-09-15T14:00:00Z", end: "2026-09-15T15:00:00Z" } })).toContain("title is not a non-empty text");
+    expect(problemsWithEventFields({ title, span: { allDay: false, start: "2026-09-15T14:00:00Z", end: "2026-09-15T15:00:00Z" } })).toContain("title is not a non-empty text");
   });
 
   it("accepts a title of exactly maximumEventTextLength", () => {
     const title = "x".repeat(maximumEventTextLength);
-    expect(problemsWithEventRevision("create", { title, span: { allDay: false, start: "2026-09-15T14:00:00Z", end: "2026-09-15T15:00:00Z" } })).not.toContain("title is not a non-empty text");
+    expect(problemsWithEventFields({ title, span: { allDay: false, start: "2026-09-15T14:00:00Z", end: "2026-09-15T15:00:00Z" } })).not.toContain("title is not a non-empty text");
   });
 
   it("rejects a title that is whitespace only", () => {
-    expect(problemsWithEventRevision("create", { title: "   ", span: { allDay: false, start: "2026-09-15T14:00:00Z", end: "2026-09-15T15:00:00Z" } })).toContain("title is not a non-empty text");
+    expect(problemsWithEventFields({ title: "   ", span: { allDay: false, start: "2026-09-15T14:00:00Z", end: "2026-09-15T15:00:00Z" } })).toContain("title is not a non-empty text");
   });
 
   it("rejects a non-string title", () => {
-    expect(problemsWithEventRevision("create", { title: 123, span: { allDay: false, start: "2026-09-15T14:00:00Z", end: "2026-09-15T15:00:00Z" } })).toContain("title is not a non-empty text");
+    expect(problemsWithEventFields({ title: 123, span: { allDay: false, start: "2026-09-15T14:00:00Z", end: "2026-09-15T15:00:00Z" } })).toContain("title is not a non-empty text");
   });
 });

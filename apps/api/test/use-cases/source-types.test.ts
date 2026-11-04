@@ -104,7 +104,7 @@ describe("Source Types", () => {
       {
         id: "old-portal",
         enabled: false,
-        notLoadable: "built for SDK 9.0.0, but this is SDK 0.8.0",
+        notLoadable: "built for SDK 9.0.0, but this is SDK 0.9.0",
       },
     ]);
     expect(await instance.app.sourceTypes.enable("old-portal")).toEqual({ ok: false, problem: "not-loadable" });
@@ -176,7 +176,7 @@ describe("Sources", () => {
         pollIntervalSeconds: null,
         shown: true,
         name: null,
-        health: { status: "ok", problem: null, lastSuccessAt: null },
+        health: { status: "ok", problem: null, lastSuccessAt: null, invalidRecords: [] },
         choices: {},
         concerns: [],
         partConcerns: {},

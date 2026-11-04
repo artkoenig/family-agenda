@@ -18,7 +18,7 @@ import type {
   StoredFile,
   StoredMessage,
 } from "./ports";
-import { applyRevisions } from "./stated-items";
+import { readStated } from "./stated-items";
 import { runContextOf } from "./sources";
 
 export type PollingDeps = {
@@ -42,6 +42,8 @@ export type PollReport = {
   /** The Sources run successfully. */
   polled: SourceId[];
   failed: { sourceId: SourceId; kind: "definite" | "temporary"; message: string }[];
+  /** The entries whose stated Item was invalid, so that none was written, and why. */
+  invalid: { sourceId: SourceId; externalId: string; problems: string[] }[];
 };
 
 export function createSourcePolling(deps: PollingDeps) {
@@ -74,21 +76,23 @@ export function createSourcePolling(deps: PollingDeps) {
     for (const file of message.attachments) await blobs.remove(file.blob);
   }
 
-  /** Runs one Source and records what it emitted; the failure, if it failed. */
-  async function run(source: Source, ingestion: PollingIngestion): Promise<PollReport["failed"][number] | null> {
+  /** Runs one Source and records what it emitted into the report. */
+  async function run(source: Source, ingestion: PollingIngestion, report: PollReport): Promise<void> {
     const now = clock.now();
     const result = await ingestion.poll(await runContextOf(source, { secrets, now, timeZone }));
     if (!result.ok) {
       await sources.recordFailedRun(source.id, now, { kind: result.kind, message: result.message });
-      return { sourceId: source.id, kind: result.kind, message: result.message };
+      report.failed.push({ sourceId: source.id, kind: result.kind, message: result.message });
+      return;
     }
     const origins = await buildOrigins(result.origins);
     let known: string[];
     let withdrawnFiles;
+    let invalid;
     try {
-      ({ knownMessages: known, withdrawnFiles } = await items.recordRun(
+      ({ knownMessages: known, withdrawnFiles, invalid } = await items.recordRun(
         { sourceId: source.id, at: now, syncCursor: result.syncCursor, withdrawn: result.withdrawn, origins },
-        applyRevisions,
+        readStated,
       ));
     } catch (error) {
       await removeOriginBlobs(origins);
@@ -96,7 +100,8 @@ export function createSourcePolling(deps: PollingDeps) {
     }
     for (const origin of origins) if (origin.message && known.includes(origin.externalId)) await removeBlobsOf(origin.message);
     for (const file of withdrawnFiles) await blobs.remove(file);
-    return null;
+    report.invalid.push(...invalid.map((record) => ({ sourceId: source.id, ...record })));
+    report.polled.push(source.id);
   }
 
   async function buildOrigins(rawOrigins: IngestedOrigin[]) {
@@ -108,7 +113,7 @@ export function createSourcePolling(deps: PollingDeps) {
         attributes: origin.attributes,
         link: origin.link,
         part: origin.part,
-        revisions: origin.revisions,
+        stated: origin.stated,
         message: origin.message ? await stored(origin.message, origin.attributes) : null,
       });
     }
@@ -157,7 +162,7 @@ function isDue(
      * using a catalogue entry, such as a Messenger, is polled at the entry's interval.
      */
     async pollDue(): Promise<PollReport> {
-      const report: PollReport = { polled: [], failed: [] };
+      const report: PollReport = { polled: [], failed: [], invalid: [] };
       const enabled = new Set((await sourceTypes.list()).filter((type) => type.enabled).map((type) => type.id));
       const now = clock.now().getTime();
       const due = await findDue(enabled, now);
@@ -165,9 +170,7 @@ function isDue(
       const progress = await activity.begin("polling", due.length);
       try {
         for (const { source, ingestion } of due) {
-          const failure = await run(source, ingestion);
-          if (failure) report.failed.push(failure);
-          else report.polled.push(source.id);
+          await run(source, ingestion, report);
           await progress.advance();
         }
       } finally {

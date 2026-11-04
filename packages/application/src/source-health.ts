@@ -5,7 +5,7 @@ import { enabledSourceType } from "./enabled-source-type";
 /** Why a Source is not OK, or why its last run failed. */
 export type HealthProblem =
   | { kind: "run-failed"; message: string }
-  /** Its plugin was removed; its Origins and Revisions stay, and it resumes once reinstalled. */
+  /** Its plugin was removed; its Source Records and Items stay, and it resumes once reinstalled. */
   | { kind: "not-installed" }
   /** Installed, but its code cannot be loaded; `reason` is null when the registry gives none. */
   | { kind: "not-loadable"; reason: string | null };
@@ -15,6 +15,11 @@ export type SourceHealth = {
   /** The last error of a Source whose last run failed, even while it is still OK; null otherwise. */
   problem: HealthProblem | null;
   lastSuccessAt: Date | null;
+  /**
+   * A warning beside the status: the external ids of Source Records whose stated Item was invalid,
+   * so that none was written.
+   */
+  invalidRecords: string[];
 };
 
 export type SourceHealthDeps = {
@@ -26,14 +31,14 @@ export type SourceHealthDeps = {
 
 /** How a Source is doing, as the Admin area shows it (ADR-0010). */
 export async function healthOf(source: Source, deps: SourceHealthDeps): Promise<SourceHealth> {
-  const { lastSuccessAt, failure } = source;
+  const { lastSuccessAt, failure, invalidRecords } = source;
   const loaded = await enabledSourceType(source.sourceTypeId, deps);
   if (!loaded) {
     const installed = deps.registry.installed().find((type) => type.id === source.sourceTypeId);
     const problem: HealthProblem = installed
       ? { kind: "not-loadable", reason: installed.notLoadable }
       : { kind: "not-installed" };
-    return { status: "failing", problem, lastSuccessAt };
+    return { status: "failing", problem, lastSuccessAt, invalidRecords };
   }
   const status = sourceStatus({
     failure,
@@ -42,7 +47,7 @@ export async function healthOf(source: Source, deps: SourceHealthDeps): Promise<
     createdAt: source.createdAt,
     now: deps.clock.now(),
   });
-  return { status, problem: failure ? { kind: "run-failed", message: failure.message } : null, lastSuccessAt };
+  return { status, problem: failure ? { kind: "run-failed", message: failure.message } : null, lastSuccessAt, invalidRecords };
 }
 
 /** Whether the Family's Sources work, as every Agenda hints at without detail. */

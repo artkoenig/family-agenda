@@ -6,10 +6,9 @@ import {
   isPinned,
   maximumTaskTextLength,
   maximumThingsToBring,
-  problemsWithTaskRevision,
+  problemsWithTaskFields,
   taskOf,
   taskStatus,
-  type Act,
   type ItemFields,
   type LocalDate,
   type Task,
@@ -28,135 +27,114 @@ const task = (overrides: Partial<Task> = {}): Task => ({
   ...overrides,
 });
 
-describe("a Task Revision", () => {
+/** The problems of fields that state only some of a Task, the rest being fine. */
+const completed = (fields: Record<string, unknown>) => problemsWithTaskFields({ title: "Bring milk", ...fields });
+
+describe("a Task's fields", () => {
   it.each([
     {
-      case: "a create with all fields",
-      act: "create" as Act,
+      case: "fields with all fields",
       fields: { title: "Bring milk", deadline: "2026-09-15", bring: ["milk", "juice"] },
       problems: [],
     },
     {
-      case: "a create without a title",
-      act: "create" as Act,
+      case: "fields without a title",
       fields: { deadline: "2026-09-15" },
       problems: ["title is missing"],
     },
     {
-      case: "a move without a deadline",
-      act: "move" as Act,
-      fields: { title: "Bring milk" },
-      problems: ["deadline is missing"],
-    },
-    {
-      case: "a cancel with no fields",
-      act: "cancel" as Act,
-      fields: {},
-      problems: [],
-    },
-    {
       case: "an empty title",
-      act: "change" as Act,
+      partial: true,
       fields: { title: "   " },
       problems: ["title is not a non-empty text"],
     },
     {
       case: "a title that is too long",
-      act: "change" as Act,
+      partial: true,
       fields: { title: "x".repeat(maximumTaskTextLength + 1) },
       problems: ["title is not a non-empty text"],
     },
     {
       case: "a title at the maximum length",
-      act: "change" as Act,
+      partial: true,
       fields: { title: "x".repeat(maximumTaskTextLength) },
       problems: [],
     },
     {
       case: "a title that is not a string",
-      act: "change" as Act,
+      partial: true,
       fields: { title: 42 },
       problems: ["title is not a non-empty text"],
     },
     {
       case: "a deadline that is not a date",
-      act: "change" as Act,
+      partial: true,
       fields: { deadline: "15-09-2026" },
       problems: ["deadline is not a date or null"],
     },
     {
       case: "a deadline that is a real but impossible date",
-      act: "change" as Act,
+      partial: true,
       fields: { deadline: "2026-02-30" },
       problems: ["deadline is not a date or null"],
     },
     {
       case: "a deadline of null is fine",
-      act: "change" as Act,
+      partial: true,
       fields: { deadline: null },
       problems: [],
     },
     {
       case: "a bring that is not an array",
-      act: "change" as Act,
+      partial: true,
       fields: { bring: "milk" },
       problems: [`bring is not a list of at most ${maximumThingsToBring} non-empty texts`],
     },
     {
       case: "a bring with more than the maximum",
-      act: "change" as Act,
+      partial: true,
       fields: { bring: Array.from({ length: maximumThingsToBring + 1 }, (_, i) => `item ${i}`) },
       problems: [`bring is not a list of at most ${maximumThingsToBring} non-empty texts`],
     },
     {
       case: "a bring at the maximum is fine",
-      act: "change" as Act,
+      partial: true,
       fields: { bring: Array.from({ length: maximumThingsToBring }, (_, i) => `item ${i}`) },
       problems: [],
     },
     {
       case: "a bring with an empty string",
-      act: "change" as Act,
+      partial: true,
       fields: { bring: ["milk", ""] },
       problems: [`bring is not a list of at most ${maximumThingsToBring} non-empty texts`],
     },
     {
       case: "a bring with a non-string",
-      act: "change" as Act,
+      partial: true,
       fields: { bring: ["milk", 42] },
       problems: [`bring is not a list of at most ${maximumThingsToBring} non-empty texts`],
     },
     {
       case: "a bring with a too-long text",
-      act: "change" as Act,
+      partial: true,
       fields: { bring: ["milk", "x".repeat(maximumTaskTextLength + 1)] },
       problems: [`bring is not a list of at most ${maximumThingsToBring} non-empty texts`],
     },
     {
       case: "an unknown field",
-      act: "change" as Act,
+      partial: true,
       fields: { colour: "red" },
       problems: ["colour is not a field of a Task"],
     },
     {
       case: "multiple problems",
-      act: "create" as Act,
       fields: { deadline: "bad", bring: [], colour: "red" },
       problems: ["title is missing", "deadline is not a date or null", "colour is not a field of a Task"],
     },
-  ])("$case", ({ act, fields, problems }) => {
-    expect(problemsWithTaskRevision(act, fields)).toEqual(problems);
+  ])("$case", ({ partial, fields, problems }) => {
+    expect(partial ? completed(fields) : problemsWithTaskFields(fields)).toEqual(problems);
   });
 
-  it("does not report a missing deadline when deadline is present", () => {
-    const problems = problemsWithTaskRevision("move", { deadline: "2026-01-15" });
-    expect(problems).not.toContain("deadline is missing");
-  });
-
-  it("reports a missing deadline when it is absent from a move", () => {
-    const problems = problemsWithTaskRevision("move", {});
-    expect(problems).toContain("deadline is missing");
-  });
 });
 
 describe("taskOf", () => {

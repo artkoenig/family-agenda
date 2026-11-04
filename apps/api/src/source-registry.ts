@@ -268,19 +268,12 @@ async function run(ingest: () => Promise<IngestResult>): Promise<SourceRunResult
     withdrawn: (result.withdrawn ?? []).filter((id) => typeof id === "string" && id !== ""),
     origins: result.origins.map((origin) => ({
       externalId: origin.externalId,
-      occurredAt: origin.occurredAt,
       attributes: origin.attributes,
       link: origin.link ?? null,
       part: origin.part ?? null,
-      revisions:
-        origin.content.kind === "revisions"
-          ? origin.content.revisions.map(({ itemKind, itemKey, action, fields }) => ({
-              itemKind,
-              itemKey,
-              act: action,
-              fields,
-            }))
-          : [],
+      // A stated Item has no time of its own, even if the plugin gives one.
+      occurredAt: origin.content.kind === "stated" ? null : (origin.occurredAt ?? null),
+      stated: origin.content.kind === "stated" ? (origin.content.stated as Record<string, unknown>) : null,
       message:
         origin.content.kind === "raw-message"
           ? { text: origin.content.text, attachments: origin.content.attachments, thread: origin.content.thread ?? null }

@@ -1,4 +1,4 @@
-import type { Origin, PluginRevision } from "@family-agenda/source-sdk";
+import type { Origin } from "@family-agenda/source-sdk";
 import { openAgendaAccess } from "@family-agenda/application";
 import type { ItemId, LocalDate, AgendaId } from "@family-agenda/domain";
 import ICAL from "ical.js";
@@ -8,24 +8,16 @@ import { bootForTest, type TestInstance } from "../support/boot";
 import { InMemoryBlobStore } from "../support/in-memory-blob-store";
 import { extractedTask, ScriptedExtractor } from "../support/scripted-extractor";
 import { testPluginControls, writeTestPluginPackage } from "../support/test-source-plugin";
+import { seedTasks, type SeededTask } from "../support/seed-task";
 import { openTimeline } from "../support/timeline";
 
 const minutes = 60 * 1000;
 const days = 24 * 60 * minutes;
 
-/** A Source stating something about a Task, as a structured Source emits it. */
-const task = (key: string, action: PluginRevision["action"], sourceTime: string, fields: PluginRevision["fields"] = {}): Origin => ({
-  externalId: key,
-  occurredAt: new Date(sourceTime),
-  attributes: {},
-  content: { kind: "revisions", revisions: [{ itemKind: "task", itemKey: key, action, fields }] },
-});
+/** A Task a message sent at `sentAt` stated. */
+const task = (key: string, sentAt: string, fields: Omit<SeededTask, "key" | "sentAt">): SeededTask => ({ key, sentAt, ...fields });
 
-const sportsKit = task("kit", "create", "2026-09-10T10:00:00Z", {
-  title: "Bring sports kit",
-  deadline: "2026-09-16",
-  bring: ["Trainers", "Towel"],
-});
+const sportsKit = task("kit", "2026-09-10T10:00:00Z", { title: "Bring sports kit", deadline: "2026-09-16", bring: ["Trainers", "Towel"] });
 
 describe("Tasks", () => {
   let instance: TestInstance;
@@ -46,11 +38,9 @@ describe("Tasks", () => {
     await instance.close();
   });
 
-  /** The Source emits the Origins on its next run, and the worker runs it. */
-  const arrive = async (...origins: Origin[]) => {
-    testPluginControls.emit("school", origins);
-    instance.clock.advance(15 * minutes);
-    await instance.app.polling.pollDue();
+  /** Messages stating the Tasks were read. */
+  const arrive = async (...tasks: SeededTask[]) => {
+    await seedTasks((sql) => instance.query(sql), ...tasks);
   };
 
   /** The Agenda's pinned Tasks and those on each day, as `title (status)`. */
@@ -80,8 +70,8 @@ describe("Tasks", () => {
 
   it("pins a Task without a Deadline at once, Deadlines first", async () => {
     await arrive(
-      task("form", "create", "2026-09-10T10:00:00Z", { title: "Sign the trip form" }),
-      task("library", "create", "2026-09-10T10:00:00Z", { title: "Return library books", deadline: "2026-09-12" }),
+      task("form", "2026-09-10T10:00:00Z", { title: "Sign the trip form" }),
+      task("library", "2026-09-10T10:00:00Z", { title: "Return library books", deadline: "2026-09-12" }),
     );
 
     expect(await shown()).toEqual({ pinned: ["Return library books (overdue)", "Sign the trip form (due)"], days: {} });
@@ -115,7 +105,7 @@ describe("Tasks", () => {
   });
 
   it("keeps a Task without a Deadline on the day its message was sent once it is ticked done, not on the day it was ticked", async () => {
-    await arrive(task("form", "create", "2026-09-10T10:00:00Z", { title: "Sign the trip form" }));
+    await arrive(task("form", "2026-09-10T10:00:00Z", { title: "Sign the trip form" }));
     const form = await taskId("Sign the trip form");
 
     await instance.app.tasks.tickFromAgenda(agenda, form, { done: true, access: openAgendaAccess });
@@ -145,7 +135,7 @@ describe("Tasks", () => {
     await instance.app.tasks.tickFromAgenda(list, kit, { done: true, access: openAgendaAccess });
 
     expect(await instance.query(`SELECT status, done_at FROM task WHERE item_id = '${kit}'`)).toEqual([
-      { status: "done", done_at: new Date("2026-09-14T07:25:00Z") },
+      { status: "done", done_at: new Date("2026-09-14T07:10:00Z") },
     ]);
     expect((await shown()).days).toEqual({ "2026-09-16": ["Bring sports kit (done)"] });
   });
@@ -155,9 +145,9 @@ describe("Tasks", () => {
     if (!created.ok) throw new Error(`creating failed: ${created.problem}`);
     await arrive(
       sportsKit,
-      task("form", "create", "2026-09-10T10:00:00Z", { title: "Sign the trip form", deadline: "2026-09-12" }),
-      task("old", "create", "2026-07-01T10:00:00Z", { title: "Return the library book", deadline: "2026-07-03" }),
-      task("photo", "create", "2026-09-10T10:00:00Z", { title: "Say if a photo may be taken" }),
+      task("form", "2026-09-10T10:00:00Z", { title: "Sign the trip form", deadline: "2026-09-12" }),
+      task("old", "2026-07-01T10:00:00Z", { title: "Return the library book", deadline: "2026-07-03" }),
+      task("photo", "2026-09-10T10:00:00Z", { title: "Say if a photo may be taken" }),
     );
     await instance.app.tasks.tickFromAgenda(created.id, await taskId("Say if a photo may be taken"), { done: true, access: openAgendaAccess });
     await instance.app.tasks.tickFromAgenda(created.id, await taskId("Return the library book"), { done: true, access: openAgendaAccess });
@@ -172,13 +162,13 @@ describe("Tasks", () => {
   });
 
   it("adds nothing for a tick that changes nothing, and refuses what is no Task or no Agenda", async () => {
-    await arrive(sportsKit, task("form", "create", "2026-09-10T10:00:00Z", { title: "Sign the trip form" }));
+    await arrive(sportsKit, task("form", "2026-09-10T10:00:00Z", { title: "Sign the trip form" }));
     const kit = await taskId("Bring sports kit");
 
     await instance.app.tasks.tickFromAgenda(agenda, kit, { done: true, access: openAgendaAccess });
     instance.clock.advance(5 * minutes);
     await instance.app.tasks.tickFromAgenda(agenda, kit, { done: true, access: openAgendaAccess });
-    expect(await instance.query(`SELECT done_at FROM task WHERE item_id = '${kit}'`)).toEqual([{ done_at: new Date("2026-09-14T07:15:00Z") }]);
+    expect(await instance.query(`SELECT done_at FROM task WHERE item_id = '${kit}'`)).toEqual([{ done_at: new Date("2026-09-14T07:00:00Z") }]);
 
     const refusing = { mayOpen: () => Promise.resolve(false) };
     const form = await taskId("Sign the trip form");
@@ -188,23 +178,16 @@ describe("Tasks", () => {
     expect((await shown()).pinned).toEqual(["Sign the trip form (due)"]);
   });
 
-  it("leaves a done Task done when a later update merges into it, and strikes it through when it is cancelled", async () => {
-    await arrive(sportsKit);
-    const kit = await taskId("Bring sports kit");
-    await instance.app.tasks.tickFromAgenda(agenda, kit, { done: true, access: openAgendaAccess });
+  it("strikes a done Task through when it is cancelled", async () => {
+    await arrive({ ...sportsKit, cancelled: true });
+    await instance.app.tasks.tickFromAgenda(agenda, await taskId("Bring sports kit"), { done: true, access: openAgendaAccess });
 
-    await arrive(task("kit", "change", "2026-09-15T10:00:00Z", { title: "Bring sports kit and a swimsuit", bring: ["Trainers", "Swimsuit"] }));
-    expect(await shown()).toEqual({ pinned: [], days: { "2026-09-16": ["Bring sports kit and a swimsuit (done)"] } });
-
-    await arrive(task("kit", "cancel", "2026-09-15T11:00:00Z"));
-    expect(await shown()).toEqual({ pinned: [], days: { "2026-09-16": ["Bring sports kit and a swimsuit (done, cancelled)"] } });
+    expect(await shown()).toEqual({ pinned: [], days: { "2026-09-16": ["Bring sports kit (done, cancelled)"] } });
   });
 
   it("keeps a cancelled Task that is not done pinned and struck through, with or without a Deadline, until it is ticked", async () => {
-    await arrive(sportsKit, task("form", "create", "2026-09-10T10:00:00Z", { title: "Sign the trip form" }));
+    await arrive({ ...sportsKit, cancelled: true }, task("form", "2026-09-10T10:00:00Z", { title: "Sign the trip form", cancelled: true }));
     instance.clock.advance(2 * days);
-
-    await arrive(task("kit", "cancel", "2026-09-16T06:00:00Z"), task("form", "cancel", "2026-09-16T06:00:00Z"));
 
     expect(await shown()).toEqual({ pinned: ["Bring sports kit (due, cancelled)", "Sign the trip form (due, cancelled)"], days: {} });
     await instance.app.tasks.tickFromAgenda(agenda, await taskId("Sign the trip form"), { done: true, access: openAgendaAccess });
@@ -228,9 +211,9 @@ describe("Tasks", () => {
   it("carries undone Tasks with a Deadline in the feed as all-day entries, until they are ticked done", async () => {
     await arrive(
       sportsKit,
-      task("form", "create", "2026-09-10T10:00:00Z", { title: "Sign the trip form" }),
-      task("library", "create", "2026-09-10T10:00:00Z", { title: "Return library books", deadline: "2026-09-12" }),
-      task("old", "create", "2026-07-01T10:00:00Z", { title: "Pay for the photos", deadline: "2026-07-01" }),
+      task("form", "2026-09-10T10:00:00Z", { title: "Sign the trip form" }),
+      task("library", "2026-09-10T10:00:00Z", { title: "Return library books", deadline: "2026-09-12" }),
+      task("old", "2026-07-01T10:00:00Z", { title: "Pay for the photos", deadline: "2026-07-01" }),
     );
 
     expect(await feed()).toEqual([
@@ -257,16 +240,20 @@ describe("Tasks", () => {
     expect((await feed()).map((entry) => entry.summary)).toEqual(["Return library books"]);
 
     await instance.app.tasks.tickFromAgenda(agenda, kit, { done: false, access: openAgendaAccess });
-    await arrive(task("kit", "cancel", "2026-09-15T11:00:00Z"));
+    await instance.query(`UPDATE task SET cancelled = true WHERE item_id = '${kit}'`);
     expect((await feed()).map(({ summary, status }) => ({ summary, status }))).toEqual([
       { summary: "Return library books", status: null },
       { summary: "Bring sports kit", status: "CANCELLED" },
     ]);
   });
 
-  it("rejects a Source stating that a Task is done", async () => {
-    await arrive(task("form", "create", "2026-09-10T10:00:00Z", { title: "Sign the trip form", done: "2026-09-10T10:00:00Z" }));
+  it("refuses a Source stating a Task, which only a message can", async () => {
+    testPluginControls.emit("school", [
+      { externalId: "form", attributes: {}, content: { kind: "stated", stated: { kind: "task", title: "Sign the trip form" } as never } },
+    ]);
+    instance.clock.advance(15 * minutes);
 
+    expect((await instance.app.polling.pollDue()).failed).toMatchObject([{ kind: "definite" }]);
     expect(await shown()).toEqual({ pinned: [], days: {} });
   });
 });

@@ -1,5 +1,5 @@
 import { addDays, localDateTime, type LocalDate, type LocalTime } from "./calendar";
-import type { Act, ItemFields } from "./item";
+import type { ItemFields } from "./item";
 
 /**
  * When an Event takes place: from one instant to another, or whole days in the Family's time
@@ -14,20 +14,19 @@ export type Event = { title: string; span: TimeSpan; place: string | null; cance
 export const maximumEventTextLength = 500;
 
 /**
- * The fields of an Event Revision, as a Source states them in JSON: `title` (text), `span`
+ * The fields of an Event, as a Source or extraction states them in JSON: `title` (text), `span`
  * (`{ allDay: false, start, end }` with ISO instants, or `{ allDay: true, firstDay, lastDay }`
  * with `YYYY-MM-DD` dates) and `place` (text or null).
  */
 const eventFields = ["title", "span", "place"] as const;
 
-/** Why an Event Revision cannot be applied; none if it can. */
-export function problemsWithEventRevision(act: Act, fields: Record<string, unknown>): string[] {
-  return [...missingProblems(act, fields), ...fieldProblems(fields), ...unknownFieldProblems(fields, eventFields)];
+/** Why the fields describe no Event; none if they do. */
+export function problemsWithEventFields(fields: Record<string, unknown>): string[] {
+  return [...missingProblems(fields), ...fieldProblems(fields), ...unknownFieldProblems(fields, eventFields)];
 }
 
-function missingProblems(act: Act, fields: Record<string, unknown>): string[] {
-  const required = act === "create" ? ["title", "span"] : act === "move" ? ["span"] : [];
-  return required.filter((key) => !(key in fields)).map((key) => `${key} is missing`);
+function missingProblems(fields: Record<string, unknown>): string[] {
+  return ["title", "span"].filter((key) => !(key in fields)).map((key) => `${key} is missing`);
 }
 
 function fieldProblems(fields: Record<string, unknown>): string[] {

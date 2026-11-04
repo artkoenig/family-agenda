@@ -23,6 +23,9 @@ const poll = () => {
       for (const failure of report.failed) {
         console.warn(`Source ${failure.sourceId} failed (${failure.kind}): ${failure.message}`);
       }
+      for (const record of report.invalid) {
+        console.warn(`Source ${record.sourceId} states an invalid Item for ${record.externalId}, which is not written: ${record.problems.join("; ")}`);
+      }
     })
     .catch((error: unknown) => {
       console.error("Polling Sources failed:", error);

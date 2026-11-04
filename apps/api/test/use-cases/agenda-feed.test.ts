@@ -1,4 +1,4 @@
-import type { Origin, PluginRevision } from "@family-agenda/source-sdk";
+import type { Origin, StatedEvent } from "@family-agenda/source-sdk";
 import { openAgendaAccess } from "@family-agenda/application";
 import type { AgendaId } from "@family-agenda/domain";
 import ICAL from "ical.js";
@@ -10,27 +10,18 @@ import { testPluginControls, writeTestPluginPackage } from "../support/test-sour
 const minutes = 60 * 1000;
 const days = 24 * 60 * minutes;
 
-/** A calendar entry stating something about an Item, as a structured Source emits it. */
-const entry = (
-  key: string,
-  action: PluginRevision["action"],
-  sourceTime: string,
-  fields: PluginRevision["fields"] = {},
-  itemKind: PluginRevision["itemKind"] = "event",
-): Origin => ({
+/** A calendar entry stating its Event whole, as a calendar Source emits it. */
+const entry = (key: string, fields: Partial<Omit<StatedEvent, "kind">>): Origin => ({
   externalId: key,
-  occurredAt: new Date(sourceTime),
   attributes: {},
-  content: { kind: "revisions", revisions: [{ itemKind, itemKey: key, action, fields }] },
+  content: { kind: "stated", stated: { kind: "event", place: null, cancelled: false, ...fields } as StatedEvent },
 });
 
-const timed = (start: string, end: string) => ({ allDay: false, start, end });
+const timed = (start: string, end: string) => ({ allDay: false as const, start, end });
 
-const piano = entry("piano", "create", "2026-09-01T10:00:00Z", {
-  title: "Piano lesson",
-  span: timed("2026-09-15T14:00:00Z", "2026-09-15T15:00:00Z"),
-  place: "Music school",
-});
+const pianoLesson = { title: "Piano lesson", span: timed("2026-09-15T14:00:00Z", "2026-09-15T15:00:00Z"), place: "Music school" };
+
+const piano = entry("piano", pianoLesson);
 
 describe("the ICS feed of an Agenda", () => {
   let instance: TestInstance;
@@ -87,7 +78,7 @@ describe("the ICS feed of an Agenda", () => {
   it("carries the Family's Events with their time, place and the details of the Agenda", async () => {
     await arrive(
       piano,
-      entry("trip", "create", "2026-09-01T10:00:00Z", {
+      entry("trip", {
         title: "Class trip",
         span: { allDay: true, firstDay: "2026-09-16", lastDay: "2026-09-17" },
       }),
@@ -116,10 +107,10 @@ describe("the ICS feed of an Agenda", () => {
   });
 
   it("keeps an Event's UID when it changes, so that calendar apps update it in place", async () => {
-    await arrive(piano, entry("dentist", "create", "2026-09-01T10:00:00Z", { title: "Dentist", span: timed("2026-09-16T08:00:00Z", "2026-09-16T08:30:00Z") }));
+    await arrive(piano, entry("dentist", { title: "Dentist", span: timed("2026-09-16T08:00:00Z", "2026-09-16T08:30:00Z") }));
     const before = await feed();
 
-    await arrive(entry("piano", "move", "2026-09-10T08:00:00Z", { span: timed("2026-09-15T15:00:00Z", "2026-09-15T16:00:00Z") }));
+    await arrive(entry("piano", { ...pianoLesson, span: timed("2026-09-15T15:00:00Z", "2026-09-15T16:00:00Z") }));
     const after = await feed();
 
     expect(after?.map(({ uid, start }) => ({ uid, start }))).toEqual([
@@ -131,23 +122,23 @@ describe("the ICS feed of an Agenda", () => {
 
   it("covers the last 30 days and all of the future, whatever the Agenda's horizon", async () => {
     await arrive(
-      entry("late-party", "create", "2026-08-01T10:00:00Z", {
+      entry("late-party", {
         title: "Party until midnight",
         span: timed("2026-08-14T18:00:00Z", "2026-08-14T22:00:00Z"),
       }),
-      entry("later-party", "create", "2026-08-01T10:00:00Z", {
+      entry("later-party", {
         title: "Party past midnight",
         span: timed("2026-08-14T18:00:00Z", "2026-08-14T22:30:00Z"),
       }),
-      entry("camp", "create", "2026-08-01T10:00:00Z", {
+      entry("camp", {
         title: "Camp",
         span: { allDay: true, firstDay: "2026-08-10", lastDay: "2026-08-14" },
       }),
-      entry("fair", "create", "2026-08-01T10:00:00Z", {
+      entry("fair", {
         title: "Fair",
         span: { allDay: true, firstDay: "2026-08-15", lastDay: "2026-08-15" },
       }),
-      entry("christmas", "create", "2026-08-01T10:00:00Z", {
+      entry("christmas", {
         title: "Christmas next year",
         span: { allDay: true, firstDay: "2027-12-24", lastDay: "2027-12-26" },
       }),
@@ -174,12 +165,8 @@ describe("the ICS feed of an Agenda", () => {
     expect((await feed(forMia.id))?.map((event) => event.summary)).toEqual(["Piano lesson"]);
   });
 
-  it("leaves out Notices and entries stated without a time", async () => {
-    await arrive(
-      piano,
-      entry("broken", "create", "2026-09-01T10:00:00Z", { title: "No time" }),
-      entry("letter", "create", "2026-09-01T10:00:00Z", { title: "School photos are online" }, "notice"),
-    );
+  it("leaves out entries stated without a time", async () => {
+    await arrive(piano, entry("broken", { title: "No time" }));
 
     expect((await feed())?.map((event) => event.summary)).toEqual(["Piano lesson"]);
   });
@@ -192,7 +179,7 @@ describe("the ICS feed of an Agenda", () => {
 
   it("sends a cancelled Event as cancelled", async () => {
     await arrive(piano);
-    await arrive(entry("piano", "cancel", "2026-09-12T08:00:00Z"));
+    await arrive(entry("piano", { ...pianoLesson, cancelled: true }));
 
     expect(await feed()).toEqual([
       expect.objectContaining({

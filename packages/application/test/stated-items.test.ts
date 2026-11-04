@@ -1,94 +1,77 @@
-import type { LocalDate } from "@family-agenda/domain";
 import { describe, expect, it } from "vitest";
-import type { IngestedRevision, StatedItem } from "../src/ports";
-import { applyRevisions } from "../src/stated-items";
-
-const revision = (itemKind: IngestedRevision["itemKind"], act: IngestedRevision["act"], fields: Record<string, unknown> = {}): IngestedRevision => ({
-  itemKind,
-  itemKey: "entry",
-  act,
-  fields,
-});
+import type { LocalDate } from "@family-agenda/domain";
+import { readStated } from "../src/stated-items";
 
 const span = { allDay: false, start: "2026-09-15T14:00:00.000Z", end: "2026-09-15T15:00:00.000Z" };
 const timed = { start: new Date(span.start), end: new Date(span.end) };
 
-const piano: StatedItem = { kind: "event", event: { title: "Piano lesson", span: { allDay: false, ...timed }, place: "Music school", cancelled: false } };
-
-const physics = (change: Extract<StatedItem, { kind: "lesson" }>["change"] = null): StatedItem => ({
+const lesson = {
   kind: "lesson",
-  lesson: { subject: "Physics", span: timed, room: "Lab", teacher: "Ms Weber" },
-  change,
-});
+  subject: "Physics",
+  span,
+  room: "Lab",
+  teacher: "Ms Weber",
+  change: null,
+  previousRoom: null,
+  previousTeacher: null,
+  note: null,
+};
 
-const cancellation = { change: "cancellation" as const, previousRoom: null, previousTeacher: null, note: null };
-
-describe("applying a plugin's Revisions to its entry's one Item", () => {
-  it("creates an Event and overwrites it with later changes and moves", () => {
-    const created = applyRevisions(null, [revision("event", "create", { title: "Piano lesson", span, place: "Music school" })]);
-    expect(created).toEqual(piano);
-
-    const later = { allDay: false, start: "2026-09-15T15:00:00.000Z", end: "2026-09-15T16:00:00.000Z" };
-    expect(applyRevisions(created, [revision("event", "move", { span: later }), revision("event", "change", { title: "Recital" })])).toEqual({
-      kind: "event",
-      event: { title: "Recital", span: { allDay: false, start: new Date(later.start), end: new Date(later.end) }, place: "Music school", cancelled: false },
+describe("reading the Item a calendar or timetable entry states", () => {
+  it("reads a timed Event", () => {
+    expect(readStated({ kind: "event", title: "Piano lesson", span, place: "Music school", cancelled: false })).toEqual({
+      ok: true,
+      item: { kind: "event", event: { title: "Piano lesson", span: { allDay: false, ...timed }, place: "Music school", cancelled: false } },
     });
   });
 
-  it("cancels an Event, and a create restores it", () => {
-    const cancelled = applyRevisions(piano, [revision("event", "cancel")]);
-    expect(cancelled).toMatchObject({ event: { cancelled: true } });
-    expect(applyRevisions(cancelled, [revision("event", "change", { place: "Hall" })])).toMatchObject({ event: { cancelled: true, place: "Hall" } });
-    expect(applyRevisions(cancelled, [revision("event", "create", { title: "Piano lesson", span })])).toMatchObject({ event: { cancelled: false } });
-  });
-
-  it("keeps an all-day Event's days", () => {
-    const days = { allDay: true, firstDay: "2026-09-14", lastDay: "2026-09-15" };
-    const trip = applyRevisions(null, [revision("event", "create", { title: "Class trip", span: days })]);
-    expect(applyRevisions(trip, [revision("event", "change", { place: "Zoo" })])).toEqual({
-      kind: "event",
-      event: { title: "Class trip", span: days, place: "Zoo", cancelled: false },
+  it("reads an all-day Event, cancelled by its Source", () => {
+    const allDay = { allDay: true, firstDay: "2026-09-18", lastDay: "2026-09-19" };
+    expect(readStated({ kind: "event", title: "Trip", span: allDay, place: null, cancelled: true })).toEqual({
+      ok: true,
+      item: { kind: "event", event: { title: "Trip", span: { allDay: true, firstDay: "2026-09-18" as LocalDate, lastDay: "2026-09-19" as LocalDate }, place: null, cancelled: true } },
     });
   });
 
-  it("leaves out a Revision whose fields cannot apply, and a Notice", () => {
-    expect(applyRevisions(piano, [revision("event", "change", { title: "" })])).toEqual(piano);
-    expect(applyRevisions(null, [revision("notice", "create", { title: "Photos are online" })])).toBeNull();
-    expect(applyRevisions(piano, [revision("notice", "create", { title: "Photos are online" })])).toEqual(piano);
+  it("reads a Lesson as planned", () => {
+    expect(readStated(lesson)).toEqual({
+      ok: true,
+      item: { kind: "lesson", lesson: { subject: "Physics", span: timed, room: "Lab", teacher: "Ms Weber" }, change: null },
+    });
   });
 
-  it("states no Item for an entry that never got a title or time", () => {
-    expect(applyRevisions(null, [revision("event", "change", { title: "Recital" })])).toBeNull();
-    expect(applyRevisions(null, [])).toBeNull();
+  it("reads a Lesson with its Timetable Change and what it was before", () => {
+    const substituted = { ...lesson, change: "substitution", previousTeacher: "Mr Roth", note: "Teacher ill" };
+    expect(readStated(substituted)).toEqual({
+      ok: true,
+      item: {
+        kind: "lesson",
+        lesson: { subject: "Physics", span: timed, room: "Lab", teacher: "Ms Weber" },
+        change: { change: "substitution", previousRoom: null, previousTeacher: "Mr Roth", note: "Teacher ill" },
+      },
+    });
   });
 
-  it("writes a Task, keeping what it was", () => {
-    const task = applyRevisions(null, [revision("task", "create", { title: "Bring sports kit", deadline: "2026-09-16" })]);
-    expect(task).toEqual({ kind: "task", task: { title: "Bring sports kit", deadline: "2026-09-16" as LocalDate, bring: [], cancelled: false } });
-    expect(applyRevisions(task, [revision("task", "change", { bring: ["Towel"] })])).toMatchObject({ task: { title: "Bring sports kit", bring: ["Towel"] } });
+  it.each([
+    { case: "an Event without a title", stated: { kind: "event", span, place: null, cancelled: false }, problems: ["title is missing"] },
+    {
+      case: "an Event whose title is too long",
+      stated: { kind: "event", title: "x".repeat(501), span, place: null, cancelled: false },
+      problems: ["title is not a non-empty text"],
+    },
+    {
+      case: "an Event cancelled neither true nor false",
+      stated: { kind: "event", title: "Piano", span, place: null, cancelled: "yes" },
+      problems: ["cancelled is not true or false"],
+    },
+    { case: "a Lesson with a previous room but no change", stated: { ...lesson, previousRoom: "101" }, problems: ["previousRoom needs a change"] },
+    { case: "a Lesson that ends before it starts", stated: { ...lesson, span: { ...span, end: span.start } }, problems: ["span is not a valid time span of a Lesson"] },
+    { case: "a kind of Item no Source states", stated: { kind: "task", title: "Bring milk" }, problems: ['"task" is no kind of Item a Source states'] },
+  ])("finds no Item in $case", ({ stated, problems }) => {
+    expect(readStated(stated)).toEqual({ ok: false, problems });
   });
 
-  it("stores a Timetable Change on its Lesson, keeping the Lesson's room, and drops it when the school withdraws it", () => {
-    const lesson = applyRevisions(null, [revision("lesson", "create", { subject: "Physics", span, room: "Lab", teacher: "Ms Weber" })]);
-    expect(lesson).toEqual(physics());
-
-    const changed = applyRevisions(lesson, [
-      revision("timetable-change", "create", { change: "room-change", subject: "Physics", span, room: null, teacher: null, previousRoom: "Lab", previousTeacher: null, note: "Flood" }),
-    ]);
-    expect(changed).toEqual(physics({ change: "room-change", previousRoom: "Lab", previousTeacher: null, note: "Flood" }));
-
-    expect(applyRevisions(changed, [revision("timetable-change", "cancel")])).toEqual(physics());
-  });
-
-  it("stores a Lesson the plugin cancels without a Timetable Change as cancelled, until it takes place again", () => {
-    const cancelled = applyRevisions(physics(), [revision("lesson", "cancel")]);
-    expect(cancelled).toEqual(physics(cancellation));
-    expect(applyRevisions(cancelled, [revision("lesson", "change", { room: "201" })])).toMatchObject({ change: cancellation, lesson: { room: "201" } });
-
-    expect(applyRevisions(cancelled, [revision("lesson", "create", { subject: "Physics", span })])).toEqual(physics());
-  });
-
-  it("ignores Revisions of another kind than the entry's Item", () => {
-    expect(applyRevisions(piano, [revision("task", "create", { title: "Bring sports kit" })])).toEqual(piano);
+  it("reads an Event without a place or cancellation as neither", () => {
+    expect(readStated({ kind: "event", title: "Piano", span })).toMatchObject({ ok: true, item: { event: { place: null, cancelled: false } } });
   });
 });

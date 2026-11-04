@@ -1,16 +1,15 @@
-import type { Origin } from "@family-agenda/source-sdk";
+import type { Origin, StatedEvent } from "@family-agenda/source-sdk";
 import ICAL from "ical.js";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createHttpApp } from "../../src/http/app";
 import { bootHttpForTest, type HttpTestInstance } from "../support/http";
 import { testPluginControls } from "../support/test-source-plugin";
 
-/** A created Event, as a calendar Source emits it. */
-const event = (key: string, fields: Record<string, unknown>, more: Partial<Origin> = {}): Origin => ({
+/** An Event stated whole, as a calendar Source emits it. */
+const event = (key: string, fields: Partial<StatedEvent>, more: Partial<Origin> = {}): Origin => ({
   externalId: key,
-  occurredAt: new Date("2026-09-01T10:00:00Z"),
   attributes: {},
-  content: { kind: "revisions", revisions: [{ itemKind: "event", itemKey: key, action: "create", fields: fields as never }] },
+  content: { kind: "stated", stated: { kind: "event", place: null, cancelled: false, ...fields } as StatedEvent },
   ...more,
 });
 
@@ -76,7 +75,7 @@ describe("Events in an Agenda over HTTP", () => {
     if (!mia.ok) throw new Error("adding failed");
     const [source] = await instance.app.sources.list();
     if (!source) throw new Error("no Source");
-    const span = { allDay: false, start: "2026-09-15T14:00:00Z", end: "2026-09-15T15:00:00Z" };
+    const span = { allDay: false as const, start: "2026-09-15T14:00:00Z", end: "2026-09-15T15:00:00Z" };
     await arrive(event("piano", { title: "Piano lesson", span }));
     expect(rowOf(await (await instance.get(path)).text(), "Piano lesson")).not.toContain("fam-event__who");
 
@@ -92,11 +91,7 @@ describe("Events in an Agenda over HTTP", () => {
       event("dentist", { title: "Dentist", span: { allDay: false, start: "2026-09-14T13:00:00Z", end: "2026-09-14T13:30:00Z" } }),
     );
     testPluginControls.emit("timeline-cal", [
-      {
-        ...event("dentist", {}),
-        occurredAt: new Date("2026-09-02T10:00:00Z"),
-        content: { kind: "revisions", revisions: [{ itemKind: "event", itemKey: "dentist", action: "cancel", fields: {} }] },
-      },
+      event("dentist", { title: "Dentist", span: { allDay: false, start: "2026-09-14T13:00:00Z", end: "2026-09-14T13:30:00Z" }, cancelled: true }),
     ]);
     instance.clock.advance(10 * 60 * 1000);
     await instance.app.polling.pollDue();

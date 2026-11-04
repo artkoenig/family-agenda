@@ -3,8 +3,8 @@ import {
   eventOf,
   instantAt,
   localDateTime,
-  problemsWithEventRevision,
-  problemsWithTaskRevision,
+  problemsWithEventFields,
+  problemsWithTaskFields,
   quoteFoundIn,
   resolveDate,
   resolveDeadline,
@@ -243,7 +243,7 @@ function eventItemOf(extracted: ExtractedEvent, reading: Reading): Outcome {
   const date = eventDate(extracted, reading);
   if ("problem" in date) return { title, problem: date.problem };
   const fields = { title, span: spanOf(date.date, extracted.startTime, extracted.endTime, reading.timeZone), place: extracted.place };
-  const event = problemsWithEventRevision("create", fields).length === 0 ? eventOf({ fields, cancelled: false }) : null;
+  const event = problemsWithEventFields(fields).length === 0 ? eventOf({ fields, cancelled: false }) : null;
   return event ? { kind: "event", event } : { title, problem: "invalid-fields" };
 }
 
@@ -253,7 +253,7 @@ function taskItemOf(extracted: ExtractedTask, reading: Reading): Outcome {
   const deadline = taskDeadline(extracted, reading);
   if ("problem" in deadline) return { title, problem: deadline.problem };
   const fields = { title, deadline: deadline.deadline, bring: extracted.bring };
-  const task = problemsWithTaskRevision("create", fields).length === 0 ? taskOf({ fields, cancelled: false }) : null;
+  const task = problemsWithTaskFields(fields).length === 0 ? taskOf({ fields, cancelled: false }) : null;
   return task ? { kind: "task", task } : { title, problem: "invalid-fields" };
 }
 
