@@ -64,6 +64,13 @@
       "when": 1793778676662,
       "tag": "0008_items_without_revisions",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1793780917327,
+      "tag": "0009_stated_source_records",
+      "breakpoints": true
     }
   ]
 }

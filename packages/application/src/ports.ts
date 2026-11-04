@@ -1,5 +1,4 @@
 import type {
-  Act,
   Admin,
   DateMention,
   BlobRef,
@@ -218,19 +217,8 @@ export type SourceRunContext = {
   timeZone: string;
 };
 
-/**
- * The kinds of Item a plugin still states Revisions about, until it states its Items on the
- * Source Record (#137); a Timetable Change is stored on its Lesson, a Notice is not kept.
- */
-export type PluginItemKind = "event" | "lesson" | "timetable-change" | "task" | "notice";
-
-/** A Revision as a plugin states it, before the core applies it to its Source Record's Item. */
-export type IngestedRevision = {
-  itemKind: PluginItemKind;
-  itemKey: string;
-  act: Act;
-  fields: Record<string, unknown>;
-};
+/** The Item a calendar or timetable entry states, as JSON the way its plugin states it, with its `kind`. */
+export type StatedJson = Record<string, unknown>;
 
 export type IngestedAttachment = { filename: string; contentType: string; bytes: Uint8Array };
 
@@ -238,18 +226,19 @@ export type IngestedAttachment = { filename: string; contentType: string; bytes:
 export type IngestedMessage = { text: string; attachments: IngestedAttachment[]; thread: string | null };
 
 /**
- * An Origin as a plugin emits it: structured Revisions about its one Item, or a raw message whose
- * Items extraction writes later.
+ * An Origin as a plugin emits it: an entry stating its one Item, or a raw message whose Items
+ * extraction writes later.
  */
 export type IngestedOrigin = {
   externalId: string;
-  /** When the Source received it; for a message, the time it was sent. */
-  occurredAt: Date;
+  /** When the Source received a message; null for a stated Item. */
+  occurredAt: Date | null;
   attributes: Record<string, string>;
   link: string | null;
   /** The Part of the Source it came from, such as a mail's folder; null if it has none. */
   part: string | null;
-  revisions: IngestedRevision[];
+  /** The Item an entry states; null for a message. */
+  stated: StatedJson | null;
   message: IngestedMessage | null;
 };
 
@@ -379,6 +368,8 @@ export type Source = {
   failure: SourceFailure | null;
   /** When its last Origin not seen before came; null before the first. */
   lastNewOriginAt: Date | null;
+  /** The external ids of its Source Records whose stated Item was invalid, so that none was written. */
+  invalidRecords: string[];
   createdAt: Date;
 };
 
@@ -415,20 +406,19 @@ export interface SourceRepository {
   remove(id: SourceId): Promise<BlobRef[]>;
 }
 
-/**
- * The one Item a calendar or timetable entry states, as the core worked it out from the plugin's
- * Revisions; null when they leave no Item, such as a change to an entry not known yet.
- */
+/** The one Item a calendar or timetable entry states, checked and ready to write. */
 export type StatedItem =
   | { kind: "event"; event: Event }
-  | { kind: "task"; task: StatedTask }
   | { kind: "lesson"; lesson: Omit<Lesson, "cancelled">; change: StoredChange | null };
 
 /** A Lesson's Timetable Change as it is stored on the Lesson. */
 export type StoredChange = Pick<TimetableChange, "change" | "previousRoom" | "previousTeacher" | "note">;
 
-/** Works out the one Item of an entry from what it was and the Revisions the plugin states now. */
-export type ApplyRevisions = (current: StatedItem | null, revisions: IngestedRevision[]) => StatedItem | null;
+/** The Item an entry states, or why it is none. */
+export type ReadStated = (stated: StatedJson) => { ok: true; item: StatedItem } | { ok: false; problems: string[] };
+
+/** A Source Record whose stated Item was not written, and why. */
+export type InvalidRecord = { externalId: string; problems: string[] };
 
 /** A file of a raw message, kept in the BlobStore with a hash of its contents (ADR-0006). */
 export type StoredFile = { blob: BlobRef; sha256: string; size: number };
@@ -452,14 +442,14 @@ export type SourceRun = {
   withdrawn: string[];
   origins: {
     externalId: string;
-    /** When the Source received it. */
-    occurredAt: Date;
+    /** When the Source received a message; null for a stated Item. */
+    occurredAt: Date | null;
     attributes: Record<string, string>;
     link: string | null;
     /** The Part of the Source it came from; null if it has none. */
     part: string | null;
-    /** What the plugin states about the entry's one Item; none for a message. */
-    revisions: IngestedRevision[];
+    /** The Item an entry states, as its plugin states it; null for a message. */
+    stated: StatedJson | null;
     message: StoredMessage | null;
   }[];
 };
@@ -532,13 +522,16 @@ export type ItemOfMessage = ItemDetails & { id: ItemId };
 export interface ItemRepository {
   /**
    * Records a run in one transaction: its Source Records, the one Item of each calendar or
-   * timetable entry worked out with `apply` from what it was, and the Source's sync cursor. A
-   * withdrawn Source Record's Items are deleted and its message's text and attachments removed.
-   * Arriving again, it is no longer withdrawn, but its message is not recorded or read again.
-   * Returns the external ids of messages recorded before or withdrawn, whose new attachments the
-   * caller removes, and the attachments of the withdrawn messages, for the caller to remove.
+   * timetable entry, and the Source's sync cursor. An entry whose stated Item is unchanged is not
+   * written at all; a changed one overwrites its Item, read with `read`, and one that is invalid,
+   * by `read` or by a check of the schema, writes none and is kept among the Source's invalid
+   * records. A withdrawn Source Record's Items are deleted and its message's text and attachments
+   * removed. Arriving again, it is no longer withdrawn: an entry writes its Item as new, but a
+   * message is not recorded or read again. Returns the external ids of messages recorded before or
+   * withdrawn, whose new attachments the caller removes, the attachments of the withdrawn
+   * messages, for the caller to remove, and the entries whose Item was invalid.
    */
-  recordRun(run: SourceRun, apply: ApplyRevisions): Promise<{ knownMessages: string[]; withdrawnFiles: BlobRef[] }>;
+  recordRun(run: SourceRun, read: ReadStated): Promise<{ knownMessages: string[]; withdrawnFiles: BlobRef[]; invalid: InvalidRecord[] }>;
   /** Raw messages not yet extracted successfully, oldest first. */
   pendingMessages(limit: number): Promise<PendingMessage[]>;
   /** How many raw messages, of one Source or of all, wait for extraction. */

@@ -1,6 +1,6 @@
 import { rm } from "node:fs/promises";
 import { join } from "node:path";
-import type { Origin, PluginRevision } from "@family-agenda/source-sdk";
+import type { Origin, StatedEvent } from "@family-agenda/source-sdk";
 import { openAgendaAccess } from "@family-agenda/application";
 import type { AgendaId } from "@family-agenda/domain";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -10,22 +10,15 @@ import { openTimeline } from "../support/timeline";
 
 const minutes = 60 * 1000;
 
-/** A calendar entry stating something about an Event, as a structured Source emits it. */
-const entry = (
-  key: string,
-  action: PluginRevision["action"],
-  sourceTime: string,
-  fields: PluginRevision["fields"] = {},
-  more: Partial<Origin> = {},
-): Origin => ({
+const timed = (start: string, end: string) => ({ allDay: false as const, start, end });
+
+/** A calendar entry stating its Event whole, as a calendar Source emits it on every run. */
+const entry = (key: string, event: Partial<Omit<StatedEvent, "kind">> & Pick<StatedEvent, "title" | "span">, more: Partial<Origin> = {}): Origin => ({
   externalId: key,
-  occurredAt: new Date(sourceTime),
   attributes: { sender: "Mia's clubs" },
-  content: { kind: "revisions", revisions: [{ itemKind: "event", itemKey: key, action, fields }] },
+  content: { kind: "stated", stated: { kind: "event", place: null, cancelled: false, ...event } },
   ...more,
 });
-
-const timed = (start: string, end: string) => ({ allDay: false, start, end });
 
 describe("calendar Events on the timeline", () => {
   let instance: TestInstance;
@@ -67,17 +60,11 @@ describe("calendar Events on the timeline", () => {
     );
   };
 
-  it("shows a created Event on every Agenda", async () => {
+  it("shows an Event on every Agenda", async () => {
     const other = await instance.app.agendas.create({ preselected: [], horizonDays: 3 });
     if (!other.ok) throw new Error("creating failed");
 
-    await arrive(
-      entry("piano", "create", "2026-09-01T10:00:00Z", {
-        title: "Piano lesson",
-        span: timed("2026-09-15T14:00:00Z", "2026-09-15T15:00:00Z"),
-        place: "Music school",
-      }),
-    );
+    await arrive(entry("piano", { title: "Piano lesson", span: timed("2026-09-15T14:00:00Z", "2026-09-15T15:00:00Z"), place: "Music school" }));
 
     expect(await timeline()).toEqual({ "2026-09-15": ["16:00-17:00 Piano lesson"] });
     expect(await timeline(other.id)).toEqual({ "2026-09-15": ["16:00-17:00 Piano lesson"] });
@@ -89,48 +76,57 @@ describe("calendar Events on the timeline", () => {
     });
   });
 
-  const piano = (sourceTime = "2026-09-01T10:00:00Z") =>
-    entry("piano", "create", sourceTime, {
-      title: "Piano lesson",
-      span: timed("2026-09-15T14:00:00Z", "2026-09-15T15:00:00Z"),
-      place: "Music school",
-    });
-  const moveToFive = entry("piano", "move", "2026-09-10T08:00:00Z", {
-    span: timed("2026-09-15T15:00:00Z", "2026-09-15T16:00:00Z"),
-  });
-  const rename = entry("piano", "change", "2026-09-11T08:00:00Z", { title: "Piano recital" });
+  const piano = (event: Partial<StatedEvent> = {}, more: Partial<Origin> = {}) =>
+    entry("piano", { title: "Piano lesson", span: timed("2026-09-15T14:00:00Z", "2026-09-15T15:00:00Z"), place: "Music school", ...event }, more);
 
-  it("updates the Event when the calendar later changes or moves it", async () => {
+  /** The entry's Source Record and Item, with the transaction that last wrote each. */
+  const written = async () =>
+    instance.query(
+      "SELECT r.xmin::text AS record, r.processed_at IS NOT NULL AS processed, i.id AS item, e.xmin::text AS event FROM source_record r LEFT JOIN item i ON i.record_id = r.id LEFT JOIN event e ON e.item_id = i.id WHERE r.external_id = 'piano'",
+    );
+
+  it("writes nothing for an entry stated as it was", async () => {
+    await arrive(piano());
+    const before = await written();
+    expect(before).toMatchObject([{ processed: true }]);
+
     await arrive(piano());
 
-    await arrive(moveToFive);
-    expect(await timeline()).toEqual({ "2026-09-15": ["17:00-18:00 Piano lesson"] });
+    expect(await written()).toEqual(before);
+  });
 
-    await arrive(rename);
+  it("overwrites the Event when the calendar states it otherwise, keeping its one Item", async () => {
+    await arrive(piano());
+    const [before] = await written();
+
+    await arrive(piano({ title: "Piano recital", span: timed("2026-09-15T15:00:00Z", "2026-09-15T16:00:00Z") }));
+
     expect(await timeline()).toEqual({ "2026-09-15": ["17:00-18:00 Piano recital"] });
-  });
-
-  it("shows nothing for a change to an entry it does not know yet", async () => {
-    await arrive(rename);
-    expect(await timeline(), "a change alone has no time to show").toEqual({});
-
-    await arrive(piano());
-    expect(await timeline()).toEqual({ "2026-09-15": ["16:00-17:00 Piano lesson"] });
-  });
-
-  it("overwrites the Event with what the calendar states last, keeping one Item per entry", async () => {
-    await arrive(piano());
-    await arrive(rename);
-    await arrive(piano());
-
-    expect(await timeline()).toEqual({ "2026-09-15": ["16:00-17:00 Piano lesson"] });
+    expect(await written()).toMatchObject([{ item: before?.item }]);
     const [counts] = await instance.query("SELECT count(*)::int AS items FROM item");
     expect(counts).toEqual({ items: 1 });
   });
 
-  it("strikes a cancelled Event through until its date has passed, then drops it", async () => {
+  it("deletes the Event of an entry the calendar withdraws, and writes it as new when the entry comes back", async () => {
     await arrive(piano());
-    await arrive(entry("piano", "cancel", "2026-09-12T08:00:00Z"));
+    const [before] = await written();
+
+    testPluginControls.withdraw("calendar", ["piano"]);
+    instance.clock.advance(15 * minutes);
+    await instance.app.polling.pollDue();
+    expect(await timeline()).toEqual({});
+    expect(await written()).toMatchObject([{ item: null }]);
+
+    await arrive(piano());
+    expect(await timeline()).toEqual({ "2026-09-15": ["16:00-17:00 Piano lesson"] });
+    const [after] = await written();
+    expect(after?.item).not.toBeNull();
+    expect(after?.item).not.toBe(before?.item);
+  });
+
+  it("strikes an Event the calendar cancels through until its date has passed, then drops it", async () => {
+    await arrive(piano());
+    await arrive(piano({ cancelled: true }));
 
     expect(await timeline()).toEqual({ "2026-09-15": ["16:00-17:00 Piano lesson (cancelled)"] });
 
@@ -145,22 +141,10 @@ describe("calendar Events on the timeline", () => {
 
   it("dims Events of today that are over, and orders a day's rows by time, all-day ones first", async () => {
     await arrive(
-      entry("breakfast", "create", "2026-09-01T10:00:00Z", {
-        title: "School breakfast",
-        span: timed("2026-09-14T05:30:00Z", "2026-09-14T06:30:00Z"),
-      }),
-      entry("dentist", "create", "2026-09-01T10:00:00Z", {
-        title: "Dentist",
-        span: timed("2026-09-14T13:00:00Z", "2026-09-14T13:30:00Z"),
-      }),
-      entry("trip", "create", "2026-09-01T10:00:00Z", {
-        title: "Class trip",
-        span: { allDay: true, firstDay: "2026-09-14", lastDay: "2026-09-15" },
-      }),
-      entry("sleepover", "create", "2026-09-01T10:00:00Z", {
-        title: "Sleepover",
-        span: timed("2026-09-14T16:00:00Z", "2026-09-15T07:00:00Z"),
-      }),
+      entry("breakfast", { title: "School breakfast", span: timed("2026-09-14T05:30:00Z", "2026-09-14T06:30:00Z") }),
+      entry("dentist", { title: "Dentist", span: timed("2026-09-14T13:00:00Z", "2026-09-14T13:30:00Z") }),
+      entry("trip", { title: "Class trip", span: { allDay: true, firstDay: "2026-09-14", lastDay: "2026-09-15" } }),
+      entry("sleepover", { title: "Sleepover", span: timed("2026-09-14T16:00:00Z", "2026-09-15T07:00:00Z") }),
     );
 
     expect(await timeline()).toEqual({
@@ -170,15 +154,25 @@ describe("calendar Events on the timeline", () => {
   });
 
   it("links an Event to where the calendar shows it", async () => {
-    await arrive({ ...piano(), link: "https://calendar.example.org/event/piano" });
-    await arrive(rename);
+    await arrive(piano({}, { link: "https://calendar.example.org/event/piano" }));
 
     const page = await openTimeline(instance.app, agenda, { access: openAgendaAccess });
     expect(page?.days[1]?.items[0]?.links).toEqual([{ url: "https://calendar.example.org/event/piano", source: "calendar" }]);
   });
 
+  it("follows where an unchanged entry comes from without writing its Event again", async () => {
+    await arrive(piano());
+    const [before] = await written();
+
+    await arrive(piano({}, { link: "https://calendar.example.org/event/piano" }));
+
+    const page = await openTimeline(instance.app, agenda, { access: openAgendaAccess });
+    expect(page?.days[1]?.items[0]?.links).toEqual([{ url: "https://calendar.example.org/event/piano", source: "calendar" }]);
+    expect(await written()).toMatchObject([{ event: before?.event }]);
+  });
+
   it("names an Event's link after its Source once an Admin named it", async () => {
-    await arrive({ ...piano(), link: "https://calendar.example.org/event/piano" });
+    await arrive(piano({}, { link: "https://calendar.example.org/event/piano" }));
     const [source] = await instance.app.sources.list();
     await instance.app.sources.rename(source!.id, "Music school");
 
@@ -186,12 +180,39 @@ describe("calendar Events on the timeline", () => {
     expect(page?.days[1]?.items[0]?.links).toEqual([{ url: "https://calendar.example.org/event/piano", source: "Music school" }]);
   });
 
-  it("rejects a Revision whose fields an Event cannot have, and keeps the rest", async () => {
+  it("writes no Event an entry states invalidly, and warns beside the Source Status until it is valid", async () => {
+    const [source] = await instance.app.sources.list();
     await arrive(piano());
-    await arrive(entry("piano", "change", "2026-09-11T08:00:00Z", { title: "" }));
-    await arrive(entry("broken", "create", "2026-09-11T08:00:00Z", { title: "No time" }));
 
-    expect(await timeline()).toEqual({ "2026-09-15": ["16:00-17:00 Piano lesson"] });
+    testPluginControls.emit("calendar", [piano({ title: "x".repeat(501) }), entry("dentist", { title: "Dentist", span: timed("2026-09-14T13:00:00Z", "2026-09-14T13:30:00Z") })]);
+    instance.clock.advance(15 * minutes);
+    const report = await instance.app.polling.pollDue();
+
+    expect(report.invalid).toEqual([{ sourceId: source!.id, externalId: "piano", problems: ["title is not a non-empty text"] }]);
+    expect(await timeline()).toEqual({ "2026-09-14": ["15:00-15:30 Dentist"] });
+    expect(await written()).toMatchObject([{ processed: false, item: null }]);
+    expect(await instance.app.sources.list()).toMatchObject([{ health: { invalidRecords: ["piano"] } }]);
+    const [since] = await instance.query("SELECT invalid_records_since FROM source_run");
+
+    // Still invalid on the next run, the warning stays as it was.
+    await arrive(piano({ title: "x".repeat(501) }));
+    expect(await instance.query("SELECT invalid_records_since FROM source_run")).toEqual([since]);
+
+    await arrive(piano());
+    expect(await timeline()).toMatchObject({ "2026-09-15": ["16:00-17:00 Piano lesson"] });
+    expect(await instance.app.sources.list()).toMatchObject([{ health: { invalidRecords: [] } }]);
+    expect(await instance.query("SELECT invalid_records_since FROM source_run")).toEqual([{ invalid_records_since: null }]);
+  });
+
+  it("forgets the warning of an invalid entry the calendar withdraws", async () => {
+    await arrive(piano({ title: "" }));
+    expect(await instance.app.sources.list()).toMatchObject([{ health: { invalidRecords: ["piano"] } }]);
+
+    testPluginControls.withdraw("calendar", ["piano"]);
+    instance.clock.advance(15 * minutes);
+    await instance.app.polling.pollDue();
+
+    expect(await instance.app.sources.list()).toMatchObject([{ health: { invalidRecords: [] } }]);
   });
 
   it("removes the Events of a removed Source", async () => {
@@ -214,7 +235,7 @@ describe("calendar Events on the timeline", () => {
     expect((await instance.app.agendas.feed(agenda, { access: openAgendaAccess }))?.events).toEqual([]);
     expect(await instance.app.sources.list()).toMatchObject([{ shown: false }]);
 
-    await arrive(rename);
+    await arrive(piano({ title: "Piano recital" }));
     await instance.app.sources.setShown(source!.id, true);
     expect(await timeline()).toEqual({ "2026-09-15": ["16:00-17:00 Piano recital"] });
   });
@@ -283,8 +304,9 @@ describe("polling Sources", () => {
     expect(await instance.app.polling.pollDue()).toEqual({
       polled: [club],
       failed: [{ sourceId: school, kind: "definite", message: "school-cal failed" }],
+      invalid: [],
     });
-    expect(await instance.app.polling.pollDue()).toEqual({ polled: [], failed: [] });
+    expect(await instance.app.polling.pollDue()).toEqual({ polled: [], failed: [], invalid: [] });
 
     instance.clock.advance(10 * minutes);
     await instance.app.polling.pollDue();
@@ -296,8 +318,8 @@ describe("polling Sources", () => {
     const created = await instance.app.agendas.create({ preselected: [], horizonDays: 7 });
     if (!created.ok) throw new Error("creating failed");
     testPluginControls.emit("school-cal", [
-      entry("ok", "create", "2026-09-01T10:00:00Z", { title: "Fine", span: timed("2026-09-15T14:00:00Z", "2026-09-15T15:00:00Z") }),
-      { ...entry("bad", "create", "2026-09-01T10:00:00Z"), externalId: "" },
+      entry("ok", { title: "Fine", span: timed("2026-09-15T14:00:00Z", "2026-09-15T15:00:00Z") }),
+      { ...entry("bad", { title: "Bad", span: timed("2026-09-15T14:00:00Z", "2026-09-15T15:00:00Z") }), externalId: "" },
     ]);
 
     const report = await instance.app.polling.pollDue();
@@ -314,6 +336,6 @@ describe("polling Sources", () => {
     await rm(join(instance.workspacePackages, "school-cal"), { recursive: true });
     await instance.restart();
 
-    expect(await instance.app.polling.pollDue()).toEqual({ polled: [], failed: [] });
+    expect(await instance.app.polling.pollDue()).toEqual({ polled: [], failed: [], invalid: [] });
   });
 });

@@ -1,6 +1,6 @@
 import type {
-  ApplyRevisions,
   Extraction,
+  InvalidRecord,
   ItemDetails,
   ItemOfMessage,
   ItemRepository,
@@ -8,10 +8,12 @@ import type {
   PendingMessage,
   ProjectedItem,
   RawMessage,
+  ReadStated,
   SourceRun,
   StatedItem,
+  StoredMessage,
 } from "@family-agenda/application";
-import type { BlobRef, ItemId, LocalDate, RawMessageId, SourceId, SourceTypeId, TimeSpan, TimetableChangeKind } from "@family-agenda/domain";
+import type { BlobRef, Event, ItemId, StatedTask, LocalDate, RawMessageId, SourceId, SourceTypeId, TimeSpan, TimetableChangeKind } from "@family-agenda/domain";
 import { and, asc, eq, gte, inArray, isNotNull, isNull, lte, sql, type SQL, type SQLWrapper } from "drizzle-orm";
 import { uuidPattern } from "../uuid";
 import type { Database } from "./database";
@@ -19,6 +21,11 @@ import { cursorToJson, failureColumns } from "./repositories";
 import { events, items, lessons, sourceRecordAttachments, sourceRecords, sourceRuns, sources, tasks } from "./schema";
 
 type Transaction = Parameters<Parameters<Database["transaction"]>[0]>[0];
+
+type RunOrigin = SourceRun["origins"][number];
+
+/** What recording a run's stated Source Records found: which wrote their Item, and which were invalid. */
+type StatedOutcome = { written: string[]; invalid: InvalidRecord[] };
 
 /** A message, with its text, waiting for its one successful extraction. */
 const pendingMessage = and(isNull(sourceRecords.processedAt), isNotNull(sourceRecords.body), isNull(sourceRecords.withdrawnAt));
@@ -34,12 +41,15 @@ const arrivalDay = sql`(CASE WHEN ${tasks.status} = 'done' AND ${tasks.deadline}
 const windowFrom = sql<Date | null>`coalesce(${events.startsAt}, ${dayFrom(events.firstDay)}, ${lessons.startsAt}, ${dayFrom(tasks.deadline)}, ${dayFrom(arrivalDay)})`;
 const windowTo = sql<Date | null>`coalesce(${events.endsAt}, ${dayTo(events.lastDay)}, ${lessons.endsAt}, ${dayTo(tasks.deadline)}, ${dayTo(arrivalDay)})`;
 
+/** When a Source Record arrived: when its Source received it, or, for a stated Item, when it was first recorded. */
+const arrivedAt = sql<Date>`coalesce(${sourceRecords.occurredAt}, ${sourceRecords.createdAt})`.mapWith(sourceRecords.occurredAt);
+
 /** What a read of Items selects: the Item, its Source Record and Source, and its detail row. */
 const columns = {
   id: items.id,
   kind: items.kind,
   recordId: items.recordId,
-  occurredAt: sourceRecords.occurredAt,
+  occurredAt: arrivedAt,
   link: sourceRecords.link,
   isMessage: sql<boolean>`(${sourceRecords.body} IS NOT NULL)`,
   sourceId: sourceRecords.sourceId,
@@ -65,54 +75,13 @@ type Row = {
 export class PostgresItemRepository implements ItemRepository {
   constructor(private readonly db: Database) {}
 
-  async recordRun(run: SourceRun, apply: ApplyRevisions): Promise<{ knownMessages: string[]; withdrawnFiles: BlobRef[] }> {
+  async recordRun(run: SourceRun, read: ReadStated): Promise<{ knownMessages: string[]; withdrawnFiles: BlobRef[]; invalid: InvalidRecord[] }> {
     return this.db.transaction(async (tx) => {
       const knownMessages: string[] = [];
+      const outcome: StatedOutcome = { written: [], invalid: [] };
       for (const origin of run.origins) {
-        const { message } = origin;
-        const [row] = await tx
-          .insert(sourceRecords)
-          .values({
-            sourceId: run.sourceId,
-            externalId: origin.externalId,
-            occurredAt: origin.occurredAt,
-            sender: message?.sender ?? null,
-            subject: message?.subject ?? null,
-            body: message?.body ?? null,
-            createdAt: run.at,
-            attributes: origin.attributes,
-            link: origin.link,
-            part: origin.part,
-            thread: message?.thread ?? null,
-          })
-          .onConflictDoUpdate({
-            target: [sourceRecords.sourceId, sourceRecords.externalId],
-            // A later appearance without a link, such as a cancellation, keeps the link. A message
-            // keeps what it was first recorded with; a withdrawn one arriving again stays without it.
-            set: {
-              attributes: origin.attributes,
-              link: sql`coalesce(excluded.link, ${sourceRecords.link})`,
-              withdrawnAt: null,
-            },
-          })
-          // A row the insert wrote has no previous version, so its xmax is 0.
-          .returning({ id: sourceRecords.id, inserted: sql<boolean>`(xmax = 0)` });
-        if (!row) throw new Error("recording a Source Record returned no row");
-        if (message && !row.inserted) knownMessages.push(origin.externalId);
-        else if (message && message.attachments.length > 0) {
-          await tx.insert(sourceRecordAttachments).values(
-            message.attachments.map((attachment, position) => ({
-              recordId: row.id,
-              position,
-              filename: attachment.filename,
-              mediaType: attachment.contentType,
-              blob: attachment.blob,
-              sha256: attachment.sha256,
-              size: attachment.size,
-            })),
-          );
-        }
-        if (!message && origin.revisions.length > 0) await this.state(tx, row.id, apply, origin.revisions);
+        if (origin.stated) await recordStated(tx, run, origin, origin.stated, read, outcome);
+        else if (origin.message && (await recordMessage(tx, run, origin, origin.message))) knownMessages.push(origin.externalId);
       }
       const withdrawnFiles = await this.withdraw(tx, run);
       const lastNewOrigin = tx
@@ -127,19 +96,11 @@ export class PostgresItemRepository implements ItemRepository {
           lastSuccessAt: run.at,
           ...failureColumns(null),
           lastNewOriginAt: sql`(${lastNewOrigin})`,
+          ...(await invalidColumns(tx, run, outcome)),
         })
         .where(eq(sourceRuns.sourceId, run.sourceId));
-      return { knownMessages, withdrawnFiles };
+      return { knownMessages, withdrawnFiles, invalid: outcome.invalid };
     });
-  }
-
-  /** Writes the one Item of a calendar or timetable entry as the plugin's Revisions leave it, keeping a Task's tick. */
-  private async state(tx: Transaction, recordId: string, apply: ApplyRevisions, revisions: Parameters<ApplyRevisions>[1]): Promise<void> {
-    const [row] = await selectItems(tx).where(eq(items.recordId, recordId)).limit(1);
-    const current = row ? detailsOf(row) : null;
-    const next = apply(current && statedOf(current), revisions);
-    if (row && next?.kind === row.kind) await updateDetail(tx, row.id, next);
-    else await replaceItem(tx, recordId, row?.id ?? null, next);
   }
 
   /**
@@ -165,7 +126,7 @@ export class PostgresItemRepository implements ItemRepository {
 
   async pendingMessages(limit: number): Promise<PendingMessage[]> {
     const rows = await this.db
-      .select({ id: sourceRecords.id, sourceId: sourceRecords.sourceId, sentAt: sourceRecords.occurredAt, body: sourceRecords.body })
+      .select({ id: sourceRecords.id, sourceId: sourceRecords.sourceId, sentAt: arrivedAt, body: sourceRecords.body })
       .from(sourceRecords)
       .where(pendingMessage)
       .orderBy(asc(sourceRecords.createdAt), asc(sourceRecords.occurredAt))
@@ -232,7 +193,7 @@ export class PostgresItemRepository implements ItemRepository {
     return {
       id,
       sourceId: row.sourceId as SourceId,
-      sentAt: row.occurredAt,
+      sentAt: row.occurredAt ?? row.createdAt,
       attributes: row.attributes,
       body: row.body,
       attachments: attachments.map(({ position, filename, mediaType, size, blob, conversionProblem }) => ({
@@ -341,26 +302,153 @@ function lessonDetails(row: typeof lessons.$inferSelect): ItemDetails {
   return { kind: "lesson", lesson, change: change && { change, subject, span: lesson.span, room, teacher, previousRoom, previousTeacher, note } };
 }
 
-/** An Item as a plugin's Revisions apply to it. */
-function statedOf(details: ItemDetails): StatedItem {
-  if (details.kind === "event") return details;
-  if (details.kind === "task") {
-    const { title, deadline, bring, cancelled } = details.task;
-    return { kind: "task", task: { title, deadline, bring, cancelled } };
+/**
+ * Records a message, unless it was recorded before, as a message is read once. Returns whether it
+ * was, so that the caller removes the attachments it stored for it again.
+ */
+async function recordMessage(tx: Transaction, run: SourceRun, origin: RunOrigin, message: StoredMessage): Promise<boolean> {
+  const [row] = await tx
+    .insert(sourceRecords)
+    .values({
+      sourceId: run.sourceId,
+      externalId: origin.externalId,
+      occurredAt: origin.occurredAt,
+      sender: message.sender,
+      subject: message.subject,
+      body: message.body,
+      createdAt: run.at,
+      attributes: origin.attributes,
+      link: origin.link,
+      part: origin.part,
+      thread: message.thread,
+    })
+    .onConflictDoUpdate({
+      target: [sourceRecords.sourceId, sourceRecords.externalId],
+      // A message keeps what it was first recorded with; a withdrawn one arriving again stays without it.
+      set: { attributes: origin.attributes, link: sql`coalesce(excluded.link, ${sourceRecords.link})`, withdrawnAt: null },
+    })
+    // A row the insert wrote has no previous version, so its xmax is 0.
+    .returning({ id: sourceRecords.id, inserted: sql<boolean>`(xmax = 0)` });
+  if (!row) throw new Error("recording a Source Record returned no row");
+  if (!row.inserted) return true;
+  if (message.attachments.length > 0) {
+    await tx.insert(sourceRecordAttachments).values(
+      message.attachments.map((attachment, position) => ({
+        recordId: row.id,
+        position,
+        filename: attachment.filename,
+        mediaType: attachment.contentType,
+        blob: attachment.blob,
+        sha256: attachment.sha256,
+        size: attachment.size,
+      })),
+    );
   }
-  const { subject, span, room, teacher } = details.lesson;
-  const { change } = details;
-  return {
-    kind: "lesson",
-    lesson: { subject, span, room, teacher },
-    change: change && { change: change.change, previousRoom: change.previousRoom, previousTeacher: change.previousTeacher, note: change.note },
-  };
+  return false;
 }
 
-/** Deletes the entry's Item, if any, and writes the one its Source states now, if any. */
-async function replaceItem(tx: Transaction, recordId: string, current: string | null, next: StatedItem | null): Promise<void> {
-  if (current) await tx.delete(items).where(eq(items.id, current));
-  if (next) await insertItem(tx, recordId, next);
+/**
+ * Records an entry stating its one Item. One stating what it stated before, and not withdrawn, is
+ * not written, apart from where it came from if that changed. Otherwise its Item is overwritten,
+ * keeping the Item itself, or written as new if it had none; one that is invalid leaves its Source
+ * Record without an Item.
+ */
+async function recordStated(
+  tx: Transaction,
+  run: SourceRun,
+  origin: RunOrigin,
+  stated: Record<string, unknown>,
+  read: ReadStated,
+  outcome: StatedOutcome,
+): Promise<void> {
+  if (await keptUnchanged(tx, run, origin, stated)) return;
+  const fromWhere = { attributes: origin.attributes, link: origin.link, part: origin.part };
+  const [row] = await tx
+    .insert(sourceRecords)
+    .values({ sourceId: run.sourceId, externalId: origin.externalId, occurredAt: null, stated, createdAt: run.at, ...fromWhere })
+    .onConflictDoUpdate({
+      target: [sourceRecords.sourceId, sourceRecords.externalId],
+      set: { stated, ...fromWhere, withdrawnAt: null, processedAt: null },
+    })
+    .returning({ id: sourceRecords.id });
+  if (!row) throw new Error("recording a Source Record returned no row");
+  const [current] = await tx.select({ id: items.id, kind: items.kind }).from(items).where(eq(items.recordId, row.id)).limit(1);
+  const result = read(stated);
+  const problems = result.ok ? await writeStated(tx, row.id, current ?? null, result.item, run.at) : result.problems;
+  if (problems.length === 0) {
+    outcome.written.push(origin.externalId);
+    return;
+  }
+  // The Item it stated before is no longer what the Source says.
+  if (current) await tx.delete(items).where(eq(items.id, current.id));
+  outcome.invalid.push({ externalId: origin.externalId, problems });
+}
+
+/**
+ * Whether the entry states what it stated before and is not withdrawn, so that its Item is left as
+ * it is; where it comes from is followed all the same.
+ */
+async function keptUnchanged(tx: Transaction, run: SourceRun, origin: RunOrigin, stated: Record<string, unknown>): Promise<boolean> {
+  const where = and(eq(sourceRecords.sourceId, run.sourceId), eq(sourceRecords.externalId, origin.externalId));
+  const [known] = await tx
+    .select({
+      // Compared as jsonb, which does not mind the order of the keys.
+      unchanged: sql<boolean>`(${sourceRecords.stated} = ${JSON.stringify(stated)}::jsonb AND ${sourceRecords.withdrawnAt} IS NULL)`,
+      sameOrigin: sql<boolean>`(${sourceRecords.attributes} = ${JSON.stringify(origin.attributes)}::jsonb AND ${sourceRecords.link} IS NOT DISTINCT FROM ${origin.link} AND ${sourceRecords.part} IS NOT DISTINCT FROM ${origin.part})`,
+    })
+    .from(sourceRecords)
+    .where(where);
+  if (!known?.unchanged) return false;
+  if (!known.sameOrigin) await tx.update(sourceRecords).set({ attributes: origin.attributes, link: origin.link, part: origin.part }).where(where);
+  return true;
+}
+
+/**
+ * Writes an entry's Item over the one it had, and marks the entry processed. Returns the check of
+ * the schema it fails, which leaves it unwritten; none once it is written.
+ */
+async function writeStated(tx: Transaction, recordId: string, current: { id: string; kind: string } | null, item: StatedItem, at: Date): Promise<string[]> {
+  try {
+    // A savepoint, so that a failing check leaves the rest of the run to be recorded.
+    await tx.transaction(async (savepoint) => {
+      if (current && current.kind === item.kind) await updateDetail(savepoint, current.id, item);
+      else {
+        if (current) await savepoint.delete(items).where(eq(items.id, current.id));
+        await insertItem(savepoint, recordId, item, at);
+      }
+      await savepoint.update(sourceRecords).set({ processedAt: at }).where(eq(sourceRecords.id, recordId));
+    });
+    return [];
+  } catch (error) {
+    const violated = checkViolated(error);
+    if (violated === null) throw error;
+    return [violated];
+  }
+}
+
+/** The message of the check of the schema the error is about, or null if it is about something else. */
+function checkViolated(error: unknown): string | null {
+  for (let cause: unknown = error; typeof cause === "object" && cause !== null; cause = (cause as { cause?: unknown }).cause) {
+    const { code, message } = cause as { code?: unknown; message?: unknown };
+    if (code === "23514") return typeof message === "string" ? message : "a check of the schema failed";
+  }
+  return null;
+}
+
+/**
+ * The Source's invalid records after the run: those it had, but for any written or withdrawn now,
+ * and those found invalid now, with since when there have been any.
+ */
+async function invalidColumns(tx: Transaction, run: SourceRun, outcome: StatedOutcome) {
+  const [previous] = await tx
+    .select({ ids: sourceRuns.invalidRecords, since: sourceRuns.invalidRecordsSince })
+    .from(sourceRuns)
+    .where(eq(sourceRuns.sourceId, run.sourceId));
+  const found = outcome.invalid.map((record) => record.externalId);
+  const gone = new Set([...outcome.written, ...run.withdrawn, ...found]);
+  const ids = [...(previous?.ids ?? []).filter((id) => !gone.has(id)), ...found];
+  const since = ids.length === 0 ? null : (previous?.since ?? run.at);
+  return { invalidRecords: ids, invalidRecordsSince: since };
 }
 
 /** Items with their Source Record, Source and detail row. */
@@ -377,10 +465,10 @@ function selectItems(db: Database | Transaction) {
 }
 
 /** Writes a new Item with the detail row of its kind. */
-async function insertItem(tx: Transaction, recordId: string, item: StatedItem | NewItem, at?: Date): Promise<void> {
+async function insertItem(tx: Transaction, recordId: string, item: StatedItem | NewItem, at: Date): Promise<void> {
   const [row] = await tx
     .insert(items)
-    .values({ kind: item.kind, recordId, ...(at ? { createdAt: at } : {}) })
+    .values({ kind: item.kind, recordId, createdAt: at })
     .returning({ id: items.id });
   if (!row) throw new Error("writing an Item returned no row");
   if (item.kind === "event") await tx.insert(events).values({ itemId: row.id, ...eventColumns(item.event) });
@@ -388,15 +476,14 @@ async function insertItem(tx: Transaction, recordId: string, item: StatedItem | 
   else await tx.insert(lessons).values({ itemId: row.id, ...lessonColumns(item) });
 }
 
-/** Overwrites an Item with what its Source states now, keeping whether a Task was ticked done. */
+/** Overwrites an Item with what its Source states now. */
 async function updateDetail(tx: Transaction, id: string, item: StatedItem): Promise<void> {
   if (item.kind === "event") await tx.update(events).set(eventColumns(item.event)).where(eq(events.itemId, id));
-  else if (item.kind === "task") await tx.update(tasks).set(taskColumns(item.task)).where(eq(tasks.itemId, id));
   else await tx.update(lessons).set(lessonColumns(item)).where(eq(lessons.itemId, id));
 }
 
 /** An Event as the columns of its row. */
-function eventColumns(event: Extract<StatedItem, { kind: "event" }>["event"]) {
+function eventColumns(event: Event) {
   const { span } = event;
   return {
     title: event.title,
@@ -409,8 +496,8 @@ function eventColumns(event: Extract<StatedItem, { kind: "event" }>["event"]) {
   };
 }
 
-/** What a Source states about a Task, as columns; its tick is left as it is. */
-function taskColumns(task: Extract<StatedItem, { kind: "task" }>["task"]) {
+/** What a message states about a Task, as columns. */
+function taskColumns(task: StatedTask) {
   return { title: task.title, deadline: task.deadline, bring: task.bring, cancelled: task.cancelled };
 }
 

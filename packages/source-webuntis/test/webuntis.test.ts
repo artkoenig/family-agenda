@@ -46,19 +46,14 @@ const poll = (plugin: SourcePlugin, context: Partial<RunContext> = {}): Promise<
   return plugin.ingestion.poll({ config, syncCursor: null, now, timeZone: "Europe/Berlin", ...context });
 };
 
-/** Each Origin's Revisions as Item kind, key, act and fields, at its source time. */
+/** Each Origin as its key and the Lesson it states. */
 const statements = (origins: Origin[]) =>
   origins.flatMap((origin) =>
-    origin.content.kind === "revisions"
-      ? origin.content.revisions.map((revision) => ({
-          kind: revision.itemKind,
-          key: revision.itemKey,
-          action: revision.action,
-          at: origin.occurredAt.toISOString(),
-          fields: revision.fields,
-        }))
-      : [],
+    origin.content.kind === "stated" && origin.content.stated.kind === "lesson" ? [{ key: origin.externalId, ...origin.content.stated }] : [],
   );
+
+/** A Lesson as planned, without a Timetable Change. */
+const asPlanned = { change: null, previousRoom: null, previousTeacher: null, note: null };
 
 /** A Lesson of a recorded Timetable, which Untis calls a period, to change it between runs. */
 const lessonIn = (timetable: Json, id: number) =>
@@ -99,134 +94,92 @@ describe("the WebUntis plugin", () => {
     ]);
   });
 
-  it("states each child's Lessons, keyed by child and the id Untis gives the Lesson, at the time of the poll", async () => {
+  it("states each child's Lessons whole, keyed by child and the id Untis gives the Lesson, with how they deviate from the Timetable", async () => {
     const { origins } = await poll(createWebUntisPlugin({ fetch: server().fetch }));
 
-    const lessons = statements(origins).filter((statement) => statement.kind === "lesson" && statement.action === "create");
-    expect(lessons).toEqual([
+    expect(statements(origins)).toEqual([
       {
-        kind: "lesson",
         key: "1201/90001",
-        action: "create",
-        at: now.toISOString(),
-        fields: { subject: "Mathematik", span: span("2026-09-15", "08:00", "08:45"), room: "101", teacher: "Jonas Brandt" },
+        kind: "lesson",
+        subject: "Mathematik",
+        span: span("2026-09-15", "08:00", "08:45"),
+        room: "101",
+        teacher: "Jonas Brandt",
+        ...asPlanned,
       },
       {
-        kind: "lesson",
         key: "1201/90002",
-        action: "create",
-        at: now.toISOString(),
-        fields: { subject: "Englisch", span: span("2026-09-15", "08:50", "09:35"), room: "102", teacher: "Sara Weber" },
+        kind: "lesson",
+        subject: "Englisch",
+        span: span("2026-09-15", "08:50", "09:35"),
+        room: "102",
+        teacher: "Sara Weber",
+        change: "substitution",
+        previousRoom: null,
+        previousTeacher: "Petra Roth",
+        note: "Vertretung",
       },
       {
-        kind: "lesson",
         key: "1201/90003",
-        action: "create",
-        at: now.toISOString(),
-        fields: { subject: "Physik", span: span("2026-09-15", "09:55", "10:40"), room: "PH1", teacher: "Eva Lang" },
+        kind: "lesson",
+        subject: "Physik",
+        span: span("2026-09-15", "09:55", "10:40"),
+        room: "PH1",
+        teacher: "Eva Lang",
+        change: "cancellation",
+        previousRoom: null,
+        previousTeacher: null,
+        note: "Lehrkraft erkrankt",
       },
       {
-        kind: "lesson",
         key: "1201/90004",
-        action: "create",
-        at: now.toISOString(),
-        fields: { subject: "Mathematik", span: span("2026-09-16", "08:00", "08:45"), room: "204", teacher: "Jonas Brandt" },
+        kind: "lesson",
+        subject: "Mathematik",
+        span: span("2026-09-16", "08:00", "08:45"),
+        room: "204",
+        teacher: "Jonas Brandt",
+        change: "room-change",
+        previousRoom: "101",
+        previousTeacher: null,
+        note: null,
       },
       // The school withholds its teachers from Leo's parents.
       {
-        kind: "lesson",
         key: "1202/91001",
-        action: "create",
-        at: now.toISOString(),
-        fields: { subject: "Kunst", span: span("2026-09-15", "08:00", "09:35"), room: "KU1", teacher: null },
+        kind: "lesson",
+        subject: "Kunst",
+        span: span("2026-09-15", "08:00", "09:35"),
+        room: "KU1",
+        teacher: null,
+        ...asPlanned,
       },
     ]);
     expect(origins.map((origin) => [origin.externalId, origin.attributes])).toContainEqual(["1202/91001", { child: "Leo König" }]);
+    expect(origins.every((origin) => origin.occurredAt === undefined)).toBe(true);
   });
 
-  it("states cancellations, substitutions and room changes as Timetable Changes, and cancels a cancelled Lesson", async () => {
-    const { origins } = await poll(createWebUntisPlugin({ fetch: server().fetch }));
-
-    const changes = statements(origins).filter((statement) => statement.kind === "timetable-change");
-    expect(changes).toEqual([
-      {
-        kind: "timetable-change",
-        key: "1201/90002/change",
-        action: "create",
-        at: now.toISOString(),
-        fields: {
-          change: "substitution",
-          subject: "Englisch",
-          span: span("2026-09-15", "08:50", "09:35"),
-          room: "102",
-          teacher: "Sara Weber",
-          previousRoom: null,
-          previousTeacher: "Petra Roth",
-          note: "Vertretung",
-        },
-      },
-      {
-        kind: "timetable-change",
-        key: "1201/90003/change",
-        action: "create",
-        at: now.toISOString(),
-        fields: {
-          change: "cancellation",
-          subject: "Physik",
-          span: span("2026-09-15", "09:55", "10:40"),
-          room: "PH1",
-          teacher: "Eva Lang",
-          previousRoom: null,
-          previousTeacher: null,
-          note: "Lehrkraft erkrankt",
-        },
-      },
-      {
-        kind: "timetable-change",
-        key: "1201/90004/change",
-        action: "create",
-        at: now.toISOString(),
-        fields: {
-          change: "room-change",
-          subject: "Mathematik",
-          span: span("2026-09-16", "08:00", "08:45"),
-          room: "204",
-          teacher: "Jonas Brandt",
-          previousRoom: "101",
-          previousTeacher: null,
-          note: null,
-        },
-      },
-    ]);
-    expect(statements(origins).filter((statement) => statement.action === "cancel")).toEqual([
-      { kind: "lesson", key: "1201/90003", action: "cancel", at: now.toISOString(), fields: {} },
-    ]);
-  });
-
-  it("withdraws a cancellation the school takes back, and the Lesson takes place again", async () => {
+  it("states a Lesson as planned again once the school takes its cancellation back", async () => {
     const untis = server();
     const plugin = createWebUntisPlugin({ fetch: untis.fetch });
     const first = await poll(plugin);
     const physics = lessonIn(untis.timetables[1201]!, 90003);
     physics.is = ["STANDARD"];
     physics.text = { lesson: "", substitution: "", info: "" };
-    const later = new Date("2026-09-14T07:15:00Z");
 
-    const { origins } = await poll(plugin, { syncCursor: first.syncCursor, now: later });
+    const { origins } = await poll(plugin, { syncCursor: first.syncCursor });
 
-    expect(statements(origins)).toEqual([
-      {
-        kind: "lesson",
-        key: "1201/90003",
-        action: "create",
-        at: later.toISOString(),
-        fields: { subject: "Physik", span: span("2026-09-15", "09:55", "10:40"), room: "PH1", teacher: "Eva Lang" },
-      },
-      { kind: "timetable-change", key: "1201/90003/change", action: "cancel", at: later.toISOString(), fields: {} },
-    ]);
+    expect(statements(origins).find((statement) => statement.key === "1201/90003")).toEqual({
+      key: "1201/90003",
+      kind: "lesson",
+      subject: "Physik",
+      span: span("2026-09-15", "09:55", "10:40"),
+      room: "PH1",
+      teacher: "Eva Lang",
+      ...asPlanned,
+    });
   });
 
-  it("states only what changed since the last run, and withdraws a Lesson gone from the Timetable", async () => {
+  it("states every Lesson again on each run, and withdraws a Lesson gone from the Timetable", async () => {
     const untis = server();
     const plugin = createWebUntisPlugin({ fetch: untis.fetch });
     const first = await poll(plugin);
@@ -235,15 +188,29 @@ describe("the WebUntis plugin", () => {
     const maths = lessonIn(untis.timetables[1201]!, 90004);
     maths.startDateTime = "2026-09-16T08:50Z";
     maths.endDateTime = "2026-09-16T09:35Z";
-    const later = new Date("2026-09-14T07:15:00Z");
 
-    const { origins, withdrawn } = await poll(plugin, { syncCursor: first.syncCursor, now: later });
+    const { origins, withdrawn } = await poll(plugin, { syncCursor: first.syncCursor });
 
-    expect(statements(origins)).toEqual([
-      { kind: "lesson", key: "1201/90004", action: "move", at: later.toISOString(), fields: { span: span("2026-09-16", "08:50", "09:35") } },
-      { kind: "timetable-change", key: "1201/90004/change", action: "move", at: later.toISOString(), fields: { span: span("2026-09-16", "08:50", "09:35") } },
-    ]);
+    expect(statements(origins).map((statement) => statement.key)).toEqual(["1201/90002", "1201/90003", "1201/90004", "1202/91001"]);
+    expect(statements(origins).find((statement) => statement.key === "1201/90004")?.span).toEqual(span("2026-09-16", "08:50", "09:35"));
     expect(withdrawn).toEqual(["1201/90001"]);
+  });
+
+  it("clips texts to what a Lesson keeps", async () => {
+    const untis = server();
+    const physics = lessonIn(untis.timetables[1201]!, 90003);
+    physics.text = { lesson: "", substitution: "", info: `  ${"x".repeat(300)}` };
+
+    const { origins } = await poll(createWebUntisPlugin({ fetch: untis.fetch }));
+
+    expect(statements(origins).find((statement) => statement.key === "1201/90003")?.note).toBe("x".repeat(200));
+  });
+
+  it("starts afresh from a sync cursor it cannot read", async () => {
+    const plugin = createWebUntisPlugin({ fetch: server().fetch });
+
+    expect((await poll(plugin, { syncCursor: "not json" })).withdrawn).toEqual([]);
+    expect((await poll(plugin, { syncCursor: JSON.stringify({ children: [], known: "nonsense" }) })).withdrawn).toEqual([]);
   });
 
   it("forgets past Lessons without cancelling them", async () => {
@@ -280,7 +247,7 @@ describe("the WebUntis plugin", () => {
 
     const { origins, withdrawn } = await poll(plugin, { config: { ...config, plain: { ...config.plain, children: ["1201"] } }, syncCursor: first.syncCursor });
 
-    expect(origins).toEqual([]);
+    expect(new Set(origins.map((origin) => origin.externalId.split("/")[0]))).toEqual(new Set(["1201"]));
     expect(withdrawn).toEqual(["1202/91001"]);
   });
 

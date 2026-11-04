@@ -5,21 +5,10 @@ import { testPluginControls } from "../support/test-source-plugin";
 
 const minutes = 60 * 1000;
 
-const notice = (externalId: string): Origin => ({
+const notice = (externalId: string, title = "Parents' evening"): Origin => ({
   externalId,
-  occurredAt: new Date("2026-09-14T06:00:00Z"),
   attributes: { sender: "School" },
-  content: {
-    kind: "revisions",
-    revisions: [
-      {
-        itemKind: "event",
-        itemKey: externalId,
-        action: "create",
-        fields: { title: "Parents' evening", span: { allDay: true, firstDay: "2026-09-20", lastDay: "2026-09-20" } },
-      },
-    ],
-  },
+  content: { kind: "stated", stated: { kind: "event", title, span: { allDay: true, firstDay: "2026-09-20", lastDay: "2026-09-20" }, place: null, cancelled: false } },
 });
 
 /** Makes every such write to the table fail, as a crash in the middle of a run would. */
@@ -95,5 +84,31 @@ describe("A Source's run", () => {
     await execute(healed("source_run"));
     expect(await origins()).toBe(0);
     expect(await cursor()).toBe("1");
+  });
+
+  it("records the rest of the run when a stated Item fails a check of the schema, and warns of it", async () => {
+    await execute(["ALTER TABLE event ADD CONSTRAINT event_title_not_secret CHECK (title <> 'Secret')"]);
+    testPluginControls.emit("school-portal", [notice("secret", "Secret"), notice("evening")]);
+
+    instance.clock.advance(10 * minutes);
+    const report = await instance.app.polling.pollDue();
+
+    expect(report.invalid).toMatchObject([{ externalId: "secret", problems: [expect.stringContaining("event_title_not_secret")] }]);
+    expect(await instance.query("SELECT r.external_id, r.processed_at IS NOT NULL AS processed, count(i.id)::int AS items FROM source_record r LEFT JOIN item i ON i.record_id = r.id GROUP BY r.id ORDER BY r.external_id")).toEqual([
+      { external_id: "evening", processed: true, items: 1 },
+      { external_id: "secret", processed: false, items: 0 },
+    ]);
+    expect(await instance.query("SELECT invalid_records FROM source_run")).toEqual([{ invalid_records: ["secret"] }]);
+  });
+
+  it("fails the run on any other error writing a stated Item", async () => {
+    await execute(failing("event", "INSERT"));
+    testPluginControls.emit("school-portal", [notice("evening")]);
+
+    instance.clock.advance(10 * minutes);
+    await expect(instance.app.polling.pollDue()).rejects.toThrow();
+
+    await execute(healed("event"));
+    expect(await origins()).toBe(0);
   });
 });

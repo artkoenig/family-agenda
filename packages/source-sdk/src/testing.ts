@@ -117,7 +117,8 @@ export function describeSourcePluginContract(
         for (const origin of result.origins) expect(problemsWithOrigin(origin)).toEqual([]);
         expect(result.syncCursor === null || typeof result.syncCursor === "string").toBe(true);
         const again = await plugin.ingestion.poll({ config, syncCursor: result.syncCursor, now, timeZone: "Europe/Berlin" });
-        expect(again.origins, "a second run with the sync cursor of the first emits no Origin again").toEqual([]);
+        const messages = again.origins.filter((origin) => origin.content.kind === "raw-message");
+        expect(messages, "a second run with the sync cursor of the first emits no message again").toEqual([]);
       });
     }
   });

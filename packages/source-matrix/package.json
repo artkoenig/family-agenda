@@ -15,7 +15,7 @@
         "en": "Matrix",
         "de": "Matrix"
       },
-      "sdkVersion": "0.8.0",
+      "sdkVersion": "0.9.0",
       "description": {
         "en": "Reads chats of Messengers such as WhatsApp through bridges on a Matrix homeserver of the Instance. Each Source is one linked Messenger account, and only the chats an Admin allow-lists are read. It only receives: it never posts, marks a chat read or shows the account online. The Instance runs the homeserver and the bridges itself, while a Messenger is enabled.",
         "de": "Liest Chats von Messengern wie WhatsApp über Bridges auf einem Matrix-Homeserver der Instanz. Jede Quelle ist ein verknüpftes Messenger-Konto, und nur die Chats, die ein Admin freigibt, werden gelesen. Es empfängt nur: Es schreibt nie, markiert keinen Chat als gelesen und zeigt das Konto nie als online. Die Instanz betreibt den Homeserver und die Bridges selbst, solange ein Messenger aktiviert ist."

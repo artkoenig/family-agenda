@@ -1,14 +1,14 @@
 import { createHmac } from "node:crypto";
 import {
+  clipped,
   sdkVersion,
   SourceError,
+  statedTextLimits,
   type Choice,
-  type LessonFields,
   type Origin,
-  type PluginRevision,
   type RunContext,
   type SourcePlugin,
-  type TimetableChangeFields,
+  type StatedLesson,
 } from "@family-agenda/source-sdk";
 
 export type WebUntisPluginOptions = {
@@ -21,11 +21,14 @@ export type WebUntisPluginOptions = {
 /** How many days of Timetable each run reads, today included. */
 const daysAhead = 14;
 
-/** A Lesson as the last run saw it, with its Timetable Change if it had one. */
-type SeenLesson = { day: string; lesson: Required<LessonFields>; cancelled: boolean; change: Required<TimetableChangeFields> | null };
+/** A Lesson of the days read, on the Family's day it takes place. */
+type SeenLesson = { day: string; lesson: StatedLesson };
 
-/** The sync cursor: the children of the account, and every Lesson of the days read, by key. */
-type State = { children: Choice[]; lessons: Record<string, SeenLesson> };
+/**
+ * The sync cursor: the children of the account, and the day of every Lesson of the days read, by
+ * key, to notice those that go.
+ */
+type State = { children: Choice[]; known: Record<string, string> };
 
 type Json = Record<string, unknown>;
 
@@ -35,9 +38,9 @@ type Child = { id: number; name: string };
  * Reads the Timetables of the children of a WebUntis parent account through the endpoints of the
  * Untis Mobile app, which authenticate each request with a one-time password from the key the
  * account shares with Untis Mobile (research in #2). One login lists the children; each child's
- * Timetable is then read as a STUDENT's. Its Lessons and Timetable Changes are stated as Revisions
- * keyed by child and the id Untis gives the Lesson, at the time of the poll. Untis gives the Timetable as it is now, not
- * its changes, so each run compares it with what the last run saw and states only what changed.
+ * Timetable is then read as a STUDENT's. Each run states every Lesson of the days read whole, with
+ * how it deviates from the Timetable as the Untis flags tell, keyed by child and the id Untis gives
+ * the Lesson; the core skips those that are unchanged.
  */
 export function createWebUntisPlugin(options: WebUntisPluginOptions = {}): SourcePlugin {
   const fetch = options.fetch ?? globalThis.fetch;
@@ -108,7 +111,7 @@ export function createWebUntisPlugin(options: WebUntisPluginOptions = {}): Sourc
 
     const origins: Origin[] = [];
     const withdrawn: string[] = [];
-    const lessons: Record<string, SeenLesson> = {};
+    const known: Record<string, string> = {};
     for (const child of read) {
       const result = await call(context, "getTimetable2017", {
         id: child.id,
@@ -122,23 +125,22 @@ export function createWebUntisPlugin(options: WebUntisPluginOptions = {}): Sourc
       const attributes = { child: child.name };
       for (const [lessonId, seen] of seenIn(result, context.timeZone)) {
         const key = `${child.id}/${lessonId}`;
-        lessons[key] = seen;
-        const revisions = revisionsFor(key, previous.lessons[key], seen);
-        if (revisions.length > 0) origins.push({ externalId: key, occurredAt: context.now, attributes, content: { kind: "revisions", revisions } });
+        known[key] = seen.day;
+        origins.push({ externalId: key, attributes, content: { kind: "stated", stated: seen.lesson } });
       }
     }
     // A Lesson of the days read that has gone from the Timetable, or whose child is no longer
-    // read, is withdrawn with its Timetable Change: the school no longer plans it, which is not a
-    // cancellation. One of a day that has passed is forgotten and stays as it was.
-    const isWithdrawn = (key: string, seen: SeenLesson): boolean => {
-      if (key in lessons || seen.day < today) return false;
+    // read, is withdrawn: the school no longer plans it, which is not a cancellation. One of a day
+    // that has passed is forgotten and stays as it was.
+    const isWithdrawn = (key: string, day: string): boolean => {
+      if (key in known || day < today) return false;
       const childRead = read.some((child) => key.startsWith(`${child.id}/`));
-      return !childRead || seen.day <= lastDay;
+      return !childRead || day <= lastDay;
     };
-    for (const [key, seen] of Object.entries(previous.lessons)) {
-      if (isWithdrawn(key, seen)) withdrawn.push(key);
+    for (const [key, day] of Object.entries(previous.known)) {
+      if (isWithdrawn(key, day)) withdrawn.push(key);
     }
-    const state: State = { children: children.map((child) => ({ value: String(child.id), label: child.name })), lessons };
+    const state: State = { children: children.map((child) => ({ value: String(child.id), label: child.name })), known };
     return { origins, syncCursor: JSON.stringify(state), withdrawn };
   }
 
@@ -251,14 +253,7 @@ function seenIn(result: Json, timeZone: string): [string, SeenLesson][] {
     const room = nameOf("ROOM", rooms);
     const teacher = nameOf("TEACHER", teachers);
     const flags = flagsOf(period.is);
-    const cancelled = flags.includes("CANCELLED");
-    const lesson: Required<LessonFields> = {
-      subject: subject.name,
-      span: { allDay: false, start: start.toISOString(), end: end.toISOString() },
-      room: room.name,
-      teacher: teacher.name,
-    };
-    const kind = cancelled
+    const change = flags.includes("CANCELLED")
       ? "cancellation"
       : teacher.previous || subject.previous || flags.includes("SUBSTITUTION")
         ? "substitution"
@@ -266,16 +261,18 @@ function seenIn(result: Json, timeZone: string): [string, SeenLesson][] {
           ? "room-change"
           : null;
     const periodText = isObject(period.text) ? period.text : {};
-    const change: Required<TimetableChangeFields> | null = kind
-      ? {
-          ...lesson,
-          change: kind,
-          previousRoom: room.previous,
-          previousTeacher: teacher.previous,
-          note: text(periodText.substitution) ?? text(periodText.info),
-        }
-      : null;
-    return [[String(period.id), { day: localDate(start, timeZone), lesson, cancelled, change }]];
+    const lesson: StatedLesson = {
+      kind: "lesson",
+      subject: clip(subject.name),
+      span: { allDay: false, start: start.toISOString(), end: end.toISOString() },
+      room: clipOrNull(room.name),
+      teacher: clipOrNull(teacher.name),
+      change,
+      previousRoom: change ? clipOrNull(room.previous) : null,
+      previousTeacher: change ? clipOrNull(teacher.previous) : null,
+      note: change ? clipOrNull(text(periodText.substitution) ?? text(periodText.info)) : null,
+    };
+    return [[String(period.id), { day: localDate(start, timeZone), lesson }]];
   });
 }
 
@@ -304,53 +301,18 @@ function flagsOf(value: unknown): string[] {
   return [];
 }
 
-/** What to state about a Lesson, given how the last run saw it. */
-function revisionsFor(key: string, before: SeenLesson | undefined, now: SeenLesson): PluginRevision[] {
-  const revisions: PluginRevision[] = [];
-  if (!before || (before.cancelled && !now.cancelled)) {
-    revisions.push(revision("lesson", key, "create", now.lesson));
-  } else {
-    revisions.push(...changed("lesson", key, before.lesson, now.lesson));
-  }
-  if (now.cancelled && !before?.cancelled) revisions.push(revision("lesson", key, "cancel", {}));
-  revisions.push(...changeRevisions(key, before, now));
-  return revisions;
-}
+/** A text clipped to what a Lesson keeps. */
+const clip = (value: string): string => clipped(value, statedTextLimits.lesson);
 
-/** Revisions for the timetable change attached to a lesson. */
-function changeRevisions(key: string, before: SeenLesson | undefined, now: SeenLesson): PluginRevision[] {
-  return changeRevisionsOf(`${key}/change`, before?.change ?? undefined, now.change ?? undefined);
-}
-
-function changeRevisionsOf(changeKey: string, before: Json | undefined, now: Json | undefined): PluginRevision[] {
-  if (now && !before) return [revision("timetable-change", changeKey, "create", now)];
-  if (now && before) return changed("timetable-change", changeKey, before, now);
-  if (!now && before) return [revision("timetable-change", changeKey, "cancel", {})];
-  return [];
-}
-
-/** A change or move stating the fields that differ, if any do. */
-function changed(kind: PluginRevision["itemKind"], key: string, before: Json, now: Json): PluginRevision[] {
-  const fields: Json = {};
-  for (const [field, value] of Object.entries(now)) {
-    if (JSON.stringify(before[field]) !== JSON.stringify(value)) fields[field] = value;
-  }
-  const keys = Object.keys(fields);
-  if (keys.length === 0) return [];
-  return [revision(kind, key, keys.length === 1 && "span" in fields ? "move" : "change", fields)];
-}
-
-function revision(itemKind: PluginRevision["itemKind"], itemKey: string, action: PluginRevision["action"], fields: object): PluginRevision {
-  return { itemKind, itemKey, action, fields: fields as PluginRevision["fields"] };
-}
+const clipOrNull = (value: string | null): string | null => (value === null ? null : clip(value));
 
 function parseState(state: string | null): State {
-  if (state === null) return { children: [], lessons: {} };
+  if (state === null) return { children: [], known: {} };
   try {
     const parsed = JSON.parse(state) as Partial<State>;
-    return { children: parsed.children ?? [], lessons: parsed.lessons ?? {} };
+    return { children: parsed.children ?? [], known: isObject(parsed.known) ? parsed.known : {} };
   } catch {
-    return { children: [], lessons: {} };
+    return { children: [], known: {} };
   }
 }
 

@@ -711,7 +711,7 @@ async function originsOf(
   withdrawn: Set<string>,
   context: { state: State; userId: string; token: string; messenger: Messenger; homeserver: HomeserverClient; serverName: string },
 ): Promise<Origin[]> {
-  const origins: Origin[] = [];
+  const origins: MessageOrigin[] = [];
   for (const { roomId, event } of events.values()) {
     if (withdrawn.has(event.event_id ?? "")) continue;
     const origin = await originOf(event, roomId, context);
@@ -744,12 +744,15 @@ function fileInfoOf(content: Record<string, unknown>): { size: number; contentTy
   return { size: typeof info.size === "number" ? info.size : 0, contentType: stringOr(info.mimetype, "application/octet-stream") };
 }
 
+/** An Origin of a message, which always has the time its homeserver got it. */
+type MessageOrigin = Origin & { occurredAt: Date };
+
 /** A message of an allow-listed room as an Origin; null for anything that is not one to read. */
 async function originOf(
   event: MatrixEvent,
   roomId: string,
   context: { state: State; userId: string; token: string; messenger: Messenger; homeserver: HomeserverClient; serverName: string },
-): Promise<Origin | null> {
+): Promise<MessageOrigin | null> {
   const eventId = event.event_id;
   if (!eventId || !isReadable(event, context)) return null;
   const relation = event.content["m.relates_to"] as { rel_type?: string; event_id?: string; "m.in_reply_to"?: { event_id?: string } } | undefined;

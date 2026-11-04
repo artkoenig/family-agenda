@@ -6,7 +6,10 @@ import {
   problemsWithOrigin,
   sdkVersion,
   SourceError,
+  clipped,
+  statedTextLimits,
   type Origin,
+  type StatedEvent,
   type SourcePlugin,
 } from "../src";
 import { describeSourcePluginContract } from "../src/testing";
@@ -138,23 +141,48 @@ describe("Origins", () => {
     content,
   });
 
-  it("carry a raw message or structured Revisions", () => {
+  const event: StatedEvent = {
+    kind: "event",
+    title: "Match",
+    span: { allDay: true, firstDay: "2026-09-19", lastDay: "2026-09-19" },
+    place: null,
+    cancelled: false,
+  };
+
+  it("carry a raw message or a stated Item", () => {
     expect(problemsWithOrigin(origin({ kind: "raw-message", text: "Hi", attachments: [] }))).toEqual([]);
-    expect(
-      problemsWithOrigin(
-        origin({
-          kind: "revisions",
-          revisions: [{ itemKind: "event", itemKey: "e1", action: "create", fields: { title: "Match" } }],
-        }),
-      ),
-    ).toEqual([]);
+    expect(problemsWithOrigin(origin({ kind: "stated", stated: event }))).toEqual([]);
   });
 
-  it("need an external id and at least one Revision", () => {
-    expect(
-      problemsWithOrigin({ ...origin({ kind: "revisions", revisions: [] }), externalId: "" }),
-    ).toEqual(["the Origin has no external id", "the Origin carries no Revisions"]);
+  it("state an Item without a time, but a message needs one", () => {
+    const timeless = (content: Origin["content"]): Origin => ({ externalId: "1", attributes: {}, content });
+    expect(problemsWithOrigin(timeless({ kind: "stated", stated: event }))).toEqual([]);
+    const message = timeless({ kind: "raw-message", text: "Hi", attachments: [] });
+    expect(problemsWithOrigin(message)).toEqual(["the Origin has no valid time"]);
+    expect(problemsWithOrigin({ ...message, occurredAt: new Date("nonsense") })).toEqual(["the Origin has no valid time"]);
   });
+
+  it("need an external id and a kind of Item a Source states", () => {
+    const task = { ...event, kind: "task" } as unknown as StatedEvent;
+    expect(problemsWithOrigin({ ...origin({ kind: "stated", stated: task }), externalId: "" })).toEqual([
+      "the Origin has no external id",
+      '"task" is no kind of Item a Source states',
+    ]);
+  });
+});
+
+describe("clipped texts", () => {
+  it("are trimmed and cut to the limit", () => {
+    expect(clipped("  Piano  ", 10)).toBe("Piano");
+    expect(clipped("Piano lesson", 5)).toBe("Piano");
+    expect(clipped("Piano lesson", 6)).toBe("Piano");
+    expect(clipped("Piano", 5)).toBe("Piano");
+    expect(statedTextLimits).toEqual({ event: 500, lesson: 200 });
+  });
+});
+
+describe("Origin links", () => {
+  const origin = (content: Origin["content"]): Origin => ({ externalId: "1", occurredAt: new Date(), attributes: {}, content });
 
   it("link only to http or https addresses", () => {
     const message = origin({ kind: "raw-message", text: "Hi", attachments: [] });
