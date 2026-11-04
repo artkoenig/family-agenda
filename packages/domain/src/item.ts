@@ -10,6 +10,9 @@ export const itemKinds = ["event", "task", "lesson"] as const;
 
 export type ItemKind = (typeof itemKinds)[number];
 
+/** The kinds of Item a calendar or timetable Source states on its Source Record (ADR-0016). */
+export const statedItemKinds = ["event", "lesson"] as const satisfies readonly ItemKind[];
+
 /**
  * An Item as JSON fields, the way a plugin or extraction states them, before its kind gives the
  * fields a meaning; `cancelled` is whether it was called off.

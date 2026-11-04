@@ -1,5 +1,5 @@
 import type { ActivityKind } from "@family-agenda/application";
-import { familyLanguages, horizonDaysRange, itemKinds, photoTypes, agendaKinds, timetableChangeKinds, type RunError } from "@family-agenda/domain";
+import { statedItemKinds, familyLanguages, horizonDaysRange, itemKinds, photoTypes, agendaKinds, timetableChangeKinds, type RunError } from "@family-agenda/domain";
 import { sql, type SQL } from "drizzle-orm";
 import {
   bigint,
@@ -340,7 +340,10 @@ export const sourceRecords = pgTable(
       .on(table.createdAt)
       .where(sql`${table.processedAt} IS NULL AND ${table.body} IS NOT NULL AND ${table.withdrawnAt} IS NULL`),
     index("source_record_thread_idx").on(table.sourceId, table.thread),
-    check("source_record_stated_kind_known", sql`${table.stated} IS NULL OR ${table.stated}->>'kind' IN ('event', 'lesson')`),
+    check(
+      "source_record_stated_kind_known",
+      sql`${table.stated} IS NULL OR ${table.stated}->>'kind' IN (${sql.raw(statedItemKinds.map((kind) => `'${kind}'`).join(", "))})`,
+    ),
     // A stated Source Record carries nothing of a message; a message needs the time it came.
     check(
       "source_record_stated_is_no_message",
