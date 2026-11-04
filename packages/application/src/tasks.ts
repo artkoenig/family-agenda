@@ -1,11 +1,10 @@
 import { isShownTo, type ItemId, type AgendaId } from "@family-agenda/domain";
 import { concernsOf } from "./assignment";
-import type { Clock, ItemRepository, ProjectedItem, SourceRepository, AgendaAccessPolicy, AgendaRepository } from "./ports";
+import type { Clock, ItemRepository, ProjectedItem, AgendaAccessPolicy, AgendaRepository } from "./ports";
 
 export type TasksDeps = {
   clock: Clock;
   items: ItemRepository;
-  sources: SourceRepository;
   agendas: AgendaRepository;
 };
 
@@ -17,12 +16,12 @@ export type TickProblem = "unknown-agenda" | "unknown-task";
  * states the Task again.
  */
 export function createTaskAccess(deps: TasksDeps) {
-  const { clock, items, sources, agendas } = deps;
+  const { clock, items, agendas } = deps;
 
   /** Ticks the Task, unless it already is as ticked. */
-  async function tick(id: ItemId, done: boolean, mayTick: (item: Pick<ProjectedItem, "sources">) => Promise<boolean>) {
+  async function tick(id: ItemId, done: boolean, mayTick: (item: Pick<ProjectedItem, "assignments">) => boolean) {
     const item = await items.find(id);
-    if (!item || item.kind !== "task" || !(await mayTick(item))) return { ok: false as const, problem: "unknown-task" as const };
+    if (!item || item.kind !== "task" || !mayTick(item)) return { ok: false as const, problem: "unknown-task" as const };
     if ((item.task.doneAt !== null) === done) return { ok: true as const };
     await items.setTaskDone(id, done ? clock.now() : null);
     return { ok: true as const };
@@ -40,10 +39,7 @@ export function createTaskAccess(deps: TasksDeps) {
     ): Promise<{ ok: true } | { ok: false; problem: TickProblem }> {
       const agenda = await agendas.findById(agendaId);
       if (!agenda || !(await input.access.mayOpen(agenda.id))) return { ok: false, problem: "unknown-agenda" };
-      return tick(id, input.done, async (item) => {
-        if (agenda.preselected.length === 0) return true;
-        return isShownTo(concernsOf(item, await sources.list()), agenda.preselected);
-      });
+      return tick(id, input.done, (item) => agenda.preselected.length === 0 || isShownTo(concernsOf(item), agenda.preselected));
     },
   };
 }

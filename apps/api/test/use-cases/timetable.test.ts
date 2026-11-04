@@ -4,6 +4,7 @@ import type { FamilyMemberId, SourceId, AgendaId } from "@family-agenda/domain";
 import ICAL from "ical.js";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { icsFeed } from "../../src/http/ics-feed";
+import { assignSource } from "../support/assign";
 import { bootForTest, type TestInstance } from "../support/boot";
 import { testPluginControls, writeTestPluginPackage } from "../support/test-source-plugin";
 import { openTimeline } from "../support/timeline";
@@ -13,7 +14,7 @@ const minutes = 60 * 1000;
 /** One Lesson of a Timetable, stated whole as a timetable Source states it on every run. */
 const timetableLesson = (key: string, stated: StatedLesson): Origin => ({
   externalId: key,
-  attributes: {},
+  attributes: ["main"],
   content: { kind: "stated", stated },
 });
 
@@ -64,8 +65,7 @@ describe("Timetables on the timeline and in the feed", () => {
     const member = await instance.app.familyMembers.add({ name: "Mia" });
     if (!member.ok) throw new Error(`adding failed: ${member.problem}`);
     mia = member.id;
-    const assigned = await instance.app.sources.assign(untis, [mia]);
-    if (!assigned.ok) throw new Error(`assigning failed: ${assigned.problem}`);
+    await assignSource(instance, untis, [mia]);
     const created = await instance.app.agendas.create({ preselected: [], horizonDays: 7 });
     if (!created.ok) throw new Error(`creating failed: ${created.problem}`);
     agenda = created.id;
@@ -185,8 +185,7 @@ describe("Timetables on the timeline and in the feed", () => {
       const member = await instance.app.familyMembers.add({ name: "Leo" });
       if (!member.ok) throw new Error(`adding failed: ${member.problem}`);
       leo = member.id;
-      const assigned = await instance.app.sources.assign(added.id, [leo]);
-      if (!assigned.ok) throw new Error(`assigning failed: ${assigned.problem}`);
+      await assignSource(instance, added.id, [leo]);
     });
 
     /** Leo's Source states the Lessons on its next run, and the worker runs it. */

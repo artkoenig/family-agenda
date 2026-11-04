@@ -15,7 +15,7 @@ const timed = (start: string, end: string) => ({ allDay: false as const, start, 
 /** A calendar entry stating its Event whole, as a calendar Source emits it on every run. */
 const entry = (key: string, event: Partial<Omit<StatedEvent, "kind">> & Pick<StatedEvent, "title" | "span">, more: Partial<Origin> = {}): Origin => ({
   externalId: key,
-  attributes: { sender: "Mia's clubs" },
+  sender: "Mia's clubs", attributes: ["main"],
   content: { kind: "stated", stated: { kind: "event", place: null, cancelled: false, ...event } },
   ...more,
 });
@@ -305,8 +305,9 @@ describe("polling Sources", () => {
       polled: [club],
       failed: [{ sourceId: school, kind: "definite", message: "school-cal failed" }],
       invalid: [],
+      refused: [],
     });
-    expect(await instance.app.polling.pollDue()).toEqual({ polled: [], failed: [], invalid: [] });
+    expect(await instance.app.polling.pollDue()).toEqual({ polled: [], failed: [], invalid: [], refused: [] });
 
     instance.clock.advance(10 * minutes);
     await instance.app.polling.pollDue();
@@ -336,6 +337,6 @@ describe("polling Sources", () => {
     await rm(join(instance.workspacePackages, "school-cal"), { recursive: true });
     await instance.restart();
 
-    expect(await instance.app.polling.pollDue()).toEqual({ polled: [], failed: [], invalid: [] });
+    expect(await instance.app.polling.pollDue()).toEqual({ polled: [], failed: [], invalid: [], refused: [] });
   });
 });

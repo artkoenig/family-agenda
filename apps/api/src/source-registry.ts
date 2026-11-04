@@ -4,6 +4,7 @@ import { registerHooks } from "node:module";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import type {
+  AttributeReporting,
   InstalledSourceType,
   LoadedSourceType,
   PlainConfig,
@@ -21,6 +22,7 @@ import {
   type IngestResult,
   type JsonObject,
   type SetupProgress,
+  type SourceAttributes,
   type SourcePlugin,
   type SourcePluginManifest,
   type ManifestResult,
@@ -153,7 +155,7 @@ function loadedSourceType(plugin: SourcePlugin): LoadedSourceType {
   return {
     configuration: {
       version: configuration.version,
-      fields: configuration.fields.map(({ key, label, secret, required, description, setByPlugin, choices, parts }) => ({
+      fields: configuration.fields.map(({ key, label, secret, required, description, setByPlugin, choices }) => ({
         key,
         label,
         secret,
@@ -161,7 +163,6 @@ function loadedSourceType(plugin: SourcePlugin): LoadedSourceType {
         description: description ?? null,
         setByPlugin: setByPlugin === true,
         choice: choices !== undefined,
-        parts: parts === true,
       })),
     },
     setupSteps: setupSteps.map(({ id, title, description, progress }) => ({ id, title, description, live: progress !== undefined })),
@@ -227,7 +228,7 @@ function loadedSourceType(plugin: SourcePlugin): LoadedSourceType {
         ? {
             mode: "polling",
             suggestedIntervalSeconds: ingestion.suggestedIntervalSeconds,
-            poll: (context) => run(() => ingestion.poll(runContextOf(context))),
+            poll: (context, attributes) => run(() => ingestion.poll({ ...runContextOf(context), attributes: checkedAttributes(attributes) })),
           }
         : { mode: "push" },
     silentApplies: health.silentApplies,
@@ -240,6 +241,19 @@ function loadedSourceType(plugin: SourcePlugin): LoadedSourceType {
       }
       return migrated;
     },
+  };
+}
+
+/** What a plugin reports its Source's Source Attributes through; one declared without an id or a name fails its run. */
+function checkedAttributes(reporting: AttributeReporting): SourceAttributes {
+  return {
+    declare(attributes) {
+      if (attributes.some(({ externalId, name }) => typeof externalId !== "string" || externalId === "" || typeof name !== "string" || name.trim() === "")) {
+        return Promise.reject(SourceError.definite("The plugin declared a Source Attribute without an id or a name."));
+      }
+      return reporting.declare(attributes.map(({ externalId, name }) => ({ externalId, name: name.trim() })));
+    },
+    archive: (externalId) => reporting.archive(externalId),
   };
 }
 
@@ -269,8 +283,9 @@ async function run(ingest: () => Promise<IngestResult>): Promise<SourceRunResult
     origins: result.origins.map((origin) => ({
       externalId: origin.externalId,
       attributes: origin.attributes,
+      sender: origin.sender ?? null,
+      subject: origin.subject ?? null,
       link: origin.link ?? null,
-      part: origin.part ?? null,
       // A stated Item has no time of its own, even if the plugin gives one.
       occurredAt: origin.content.kind === "stated" ? null : (origin.occurredAt ?? null),
       stated: origin.content.kind === "stated" ? (origin.content.stated as Record<string, unknown>) : null,

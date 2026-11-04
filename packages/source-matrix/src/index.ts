@@ -8,6 +8,7 @@ import {
   type Choice,
   type Origin,
   type PluginText,
+  type IngestContext,
   type RunContext,
   type SetupProgress,
   type Services,
@@ -225,8 +226,10 @@ export function createMatrixPlugin(options: MatrixPluginOptions = {}): SourcePlu
     throw SourceError.definite(`The ${name} account was logged out${reason ? ` (${reason})` : ""}. Press Fix to scan the QR code again.`);
   }
 
-  async function poll(context: RunContext) {
+  async function poll(context: IngestContext) {
     const { homeserver, messenger, bridge, instance } = await connectionOf(context.config.plain);
+    // One Source Attribute for the account until its chats become Source Attributes of their own.
+    await context.attributes.declare([{ externalId: accountAttribute, name: messenger.attributeValue }]);
     const { userId, token } = accountOf(context);
     await checkLogin(bridge, messenger, userId);
     const previous = parseState(context.syncCursor);
@@ -763,23 +766,19 @@ async function originOf(
   return {
     externalId: eventId,
     occurredAt: new Date(event.origin_server_ts ?? Date.now()),
-    attributes: attributesOf(event, roomId, context),
+    attributes: [accountAttribute],
+    ...describedBy(event, roomId, context.state),
     content: { kind: "raw-message", text, attachments, ...(thread ? { thread } : {}) },
   };
 }
 
-function attributesOf(
-  event: MatrixEvent,
-  roomId: string,
-  context: { state: State; messenger: Messenger },
-): Record<string, string> {
-  const { state, messenger } = context;
-  return {
-    messenger: messenger.attributeValue,
-    chat: state.rooms[roomId] ?? roomId,
-    sender: state.names[event.sender] ?? event.sender,
-  };
+/** Who sent a message, and in which chat, as the Admin area shows it with the message. */
+function describedBy(event: MatrixEvent, roomId: string, state: State): { sender: string; subject: string } {
+  return { sender: state.names[event.sender] ?? event.sender, subject: state.rooms[roomId] ?? roomId };
 }
+
+/** The one Source Attribute of a Messenger account. */
+const accountAttribute = "account";
 
 function isReadable(
   event: MatrixEvent,

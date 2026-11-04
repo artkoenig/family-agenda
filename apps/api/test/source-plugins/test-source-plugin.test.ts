@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { describeSourcePluginContract } from "@family-agenda/source-sdk/testing";
+import { describeSourcePluginContract, recordingAttributes } from "@family-agenda/source-sdk/testing";
 import { testPluginControls, testSourcePlugin } from "../support/test-source-plugin";
 
 const config = { plain: { url: "https://example.org" }, secrets: {} };
@@ -10,14 +10,15 @@ describe("the test plugin", () => {
   const poll = (sourceTypeId: string, syncCursor: string | null) => {
     const { ingestion } = testSourcePlugin({ sourceTypeId });
     if (ingestion.mode !== "polling") throw new Error("the test plugin polls");
-    return ingestion.poll({ config, syncCursor, now: new Date(), timeZone: "Europe/Berlin" });
+    return ingestion.poll({ config, syncCursor, now: new Date(), timeZone: "Europe/Berlin", attributes: recordingAttributes() });
   };
 
   it("emits the Origins it is given, once, and advances its sync cursor", async () => {
     const origin = {
       externalId: "mail-1",
       occurredAt: new Date("2026-09-14T07:00:00Z"),
-      attributes: { sender: "school@example.org" },
+      sender: "school@example.org",
+      attributes: ["inbox"],
       content: { kind: "raw-message" as const, text: "Trip on Friday", attachments: [] },
     };
     testPluginControls.emit("emitting", [origin]);

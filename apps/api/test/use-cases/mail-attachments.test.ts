@@ -20,7 +20,7 @@ type Attachment = { filename: string; contentType: string; bytes: Uint8Array };
 const mail = (id: string, text: string, attachments: Attachment[]): Origin => ({
   externalId: id,
   occurredAt: new Date("2026-09-14T06:12:00Z"),
-  attributes: { sender: "klasse5b@schule.example.org" },
+  sender: "klasse5b@schule.example.org", attributes: ["main"],
   content: { kind: "raw-message", text, attachments, thread: id },
 });
 

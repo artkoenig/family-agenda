@@ -835,14 +835,17 @@ function shownStatus(status: 200 | 400 | 413 | undefined, problems: (string | un
     return c.redirect(sourceHref(source.id), 303);
   });
 
-  // Whom its Items concern: the Family Members ticked, or the whole Family with none.
-  app.post("/admin/sources/:id/concerns", async (c) => {
+  // Whom the Items of each of its Source Attributes concern: the Family Members ticked, or the whole Family with none.
+  app.post("/admin/sources/:id/attributes", async (c) => {
     const source = await sourceOf(c.req.param("id"));
     if (!source) return c.redirect("/admin/sources", 303);
-    const chosen = (await c.req.parseBody({ all: true })).concerns;
-    const concerns = (Array.isArray(chosen) ? chosen : [chosen]).filter((id): id is string => typeof id === "string");
-    const result = await sources.assign(source.id, concerns as FamilyMemberId[]);
-    if (!result.ok) return sourcePage(c, source, { problem: problemIn(c, result.problem) });
+    const form = await c.req.parseBody({ all: true });
+    for (const attribute of source.attributes) {
+      const chosen = form[`member.${attribute.id}`];
+      const concerns = (Array.isArray(chosen) ? chosen : [chosen]).filter((id): id is string => typeof id === "string");
+      const result = await sources.assignAttribute(attribute.id, concerns as FamilyMemberId[]);
+      if (!result.ok) return sourcePage(c, source, { problem: problemIn(c, result.problem) });
+    }
     return c.redirect(sourceHref(source.id), 303);
   });
 
@@ -980,68 +983,24 @@ function shownStatus(status: 200 | 400 | 413 | undefined, problems: (string | un
 function sourceInputOf(form: Record<string, unknown>): SourceInput {
   const plain: Record<string, string | string[]> = {};
   const secrets: Record<string, string> = {};
-  const parts: Record<string, Map<number, { name: string; members: FamilyMemberId[] }>> = {};
   for (const [name, given] of Object.entries(form)) {
     const values = (Array.isArray(given) ? given : [given]).filter((value): value is string => typeof value === "string");
-    if (classifyField(name, values, plain, secrets, parts)) continue;
+    classifyField(name, values, plain, secrets);
   }
   const minutes = field(form, "pollIntervalMinutes").trim();
-  const input: SourceInput = { plain, secrets, pollIntervalSeconds: minutes === "" ? null : Number(minutes) * 60 };
-  if (Object.keys(parts).length === 0) return input;
-  return { ...input, ...assembleParts(parts, plain) };
+  return { plain, secrets, pollIntervalSeconds: minutes === "" ? null : Number(minutes) * 60 };
 }
 
-/**
- * Fills `plain`, `secrets` or `parts` from one form field. Returns true when the field is a Part
- * row (which the caller skips), false otherwise.
- */
-function classifyField(
-  name: string,
-  values: string[],
-  plain: Record<string, string | string[]>,
-  secrets: Record<string, string>,
-  parts: Record<string, Map<number, { name: string; members: FamilyMemberId[] }>>,
-): boolean {
-  if (partField(name, values, parts)) return true;
+/** Fills `plain` or `secrets` from one form field. */
+function classifyField(name: string, values: string[], plain: Record<string, string | string[]>, secrets: Record<string, string>): void {
   if (name.startsWith("choice.")) {
     plain[name.slice("choice.".length)] = values.map((value) => value.trim()).filter((value) => value !== "");
-    return false;
+    return;
   }
   const value = values.at(-1);
-  if (value === undefined) return false;
+  if (value === undefined) return;
   if (name.startsWith("plain.")) plain[name.slice("plain.".length)] = value.trim();
   if (name.startsWith("secret.")) secrets[name.slice("secret.".length)] = value.trim();
-  return false;
-}
-
-function partField(
-  name: string,
-  values: string[],
-  parts: Record<string, Map<number, { name: string; members: FamilyMemberId[] }>>,
-): boolean {
-  const part = /^part\.(.+)\.(\d+)\.(name|member)$/.exec(name);
-  if (!part) return false;
-  const [, key = "", index = "0", what] = part;
-  const rows = (parts[key] ??= new Map());
-  const row = rows.get(Number(index)) ?? { name: "", members: [] };
-  if (what === "name") row.name = values.at(-1)?.trim() ?? "";
-  else row.members = values as FamilyMemberId[];
-  rows.set(Number(index), row);
-  return true;
-}
-
-/** A Part's rows with no name are dropped; the named ones become plain entries and concerns. */
-function assembleParts(
-  parts: Record<string, Map<number, { name: string; members: FamilyMemberId[] }>>,
-  plain: Record<string, string | string[]>,
-): { plain: Record<string, string | string[]>; partConcerns: Record<string, FamilyMemberId[]> } {
-  const partConcerns: Record<string, FamilyMemberId[]> = {};
-  for (const [key, rows] of Object.entries(parts)) {
-    const named = [...rows.entries()].sort(([a], [b]) => a - b).map(([, row]) => row).filter((row) => row.name !== "");
-    plain[key] = named.map((row) => row.name);
-    for (const row of named) partConcerns[row.name] = row.members;
-  }
-  return { plain, partConcerns };
 }
 
 /**

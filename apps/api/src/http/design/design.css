@@ -390,7 +390,7 @@ html[data-theme-mode="dark"] .fam-theme__icon--dark { display: block; }
 /* A Family Member as a switch, to tick whom an Agenda or a Source concerns, or to filter an Agenda by. Off, it is the
    avatar alone. Hovering unfolds the name next to it, the avatar staying where it is. On, ticked or the current choice,
    the avatar, the knob, slides to the right end and the name to the left, and the pill gets the dark edge. */
-.fam-choices--members, .fam-part__members {
+.fam-choices--members, .fam-attribute__members {
   display: flex; flex-wrap: nowrap; align-items: center; gap: var(--space-2); overflow-x: auto; scrollbar-width: thin;
   margin: -4px; padding: 4px;
 }
@@ -432,14 +432,15 @@ html[data-theme-mode="dark"] .fam-theme__icon--dark { display: block; }
 }
 .fam-dialog__form:has(input[name="kind"][value="tasks"]:checked) .fam-agenda-horizon { display: none; }
 
-/* A Source's Parts, such as mail folders: a name and the Family Members it concerns as switches to tap */
-.fam-parts { display: grid; gap: var(--space-3); }
-.fam-part {
+/* A Source's Source Attributes, such as mail folders: a name and the Family Members it concerns as switches to tap */
+.fam-attributes { display: grid; gap: var(--space-3); }
+.fam-attribute {
   display: grid; gap: var(--space-2); padding: var(--space-3);
   border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface);
 }
-.fam-part__all { margin: 0; color: var(--ink-muted); font-size: 13px; }
-.fam-part:has(input[type="checkbox"]:checked) .fam-part__all { display: none; }
+.fam-attribute__name { margin: 0; display: flex; align-items: center; gap: var(--space-2); font-weight: 600; }
+.fam-attribute__all { margin: 0; color: var(--ink-muted); font-size: 13px; }
+.fam-attribute:has(input[type="checkbox"]:checked) .fam-attribute__all { display: none; }
 
 /* Signing in and setting up: one narrow column without the settings list - */
 .fam-admin--narrow { max-width: 480px; margin: 0 auto; padding: var(--space-7) var(--space-4); }

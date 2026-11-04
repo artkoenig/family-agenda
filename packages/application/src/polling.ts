@@ -44,7 +44,14 @@ export type PollReport = {
   failed: { sourceId: SourceId; kind: "definite" | "temporary"; message: string }[];
   /** The entries whose stated Item was invalid, so that none was written, and why. */
   invalid: { sourceId: SourceId; externalId: string; problems: string[] }[];
+  /** The Sources whose plugin emitted Origins naming Source Attributes it never declared, or had archived. */
+  refused: { sourceId: SourceId; attributes: string[] }[];
 };
+
+/** The refusal to report for a run, none if it refused nothing. */
+function refusalsOf(sourceId: SourceId, attributes: string[]): PollReport["refused"] {
+  return attributes.length > 0 ? [{ sourceId, attributes }] : [];
+}
 
 export function createSourcePolling(deps: PollingDeps) {
   const { clock, timeZone, registry, sourceTypes, catalogues, sources, secrets, items, blobs, activity } = deps;
@@ -55,17 +62,16 @@ export function createSourcePolling(deps: PollingDeps) {
   }
 
   /**
-   * Puts a message's attachments into the BlobStore; its text goes to Postgres. Its sender is the
-   * one the plugin tells among its attributes.
+   * Puts a message's attachments into the BlobStore; its text, sender and subject go to Postgres.
    */
-  async function stored(message: IngestedMessage, attributes: Record<string, string>): Promise<StoredMessage> {
+  async function stored(message: IngestedMessage, origin: IngestedOrigin): Promise<StoredMessage> {
     const attachments: StoredMessage["attachments"] = [];
     for (const { filename, contentType, bytes } of message.attachments) {
       attachments.push({ ...(await store(bytes)), filename, contentType });
     }
     return {
-      sender: attributes.sender || null,
-      subject: null,
+      sender: origin.sender,
+      subject: origin.subject,
       body: message.text,
       attachments,
       thread: message.thread,
@@ -79,7 +85,10 @@ export function createSourcePolling(deps: PollingDeps) {
   /** Runs one Source and records what it emitted into the report. */
   async function run(source: Source, ingestion: PollingIngestion, report: PollReport): Promise<void> {
     const now = clock.now();
-    const result = await ingestion.poll(await runContextOf(source, { secrets, now, timeZone }));
+    const result = await ingestion.poll(await runContextOf(source, { secrets, now, timeZone }), {
+      declare: (attributes) => sources.declareAttributes(source.id, attributes),
+      archive: (externalId) => sources.archiveAttribute(source.id, externalId),
+    });
     if (!result.ok) {
       await sources.recordFailedRun(source.id, now, { kind: result.kind, message: result.message });
       report.failed.push({ sourceId: source.id, kind: result.kind, message: result.message });
@@ -89,8 +98,9 @@ export function createSourcePolling(deps: PollingDeps) {
     let known: string[];
     let withdrawnFiles;
     let invalid;
+    let refused;
     try {
-      ({ knownMessages: known, withdrawnFiles, invalid } = await items.recordRun(
+      ({ knownMessages: known, withdrawnFiles, invalid, refused } = await items.recordRun(
         { sourceId: source.id, at: now, syncCursor: result.syncCursor, withdrawn: result.withdrawn, origins },
         readStated,
       ));
@@ -101,6 +111,7 @@ export function createSourcePolling(deps: PollingDeps) {
     for (const origin of origins) if (origin.message && known.includes(origin.externalId)) await removeBlobsOf(origin.message);
     for (const file of withdrawnFiles) await blobs.remove(file);
     report.invalid.push(...invalid.map((record) => ({ sourceId: source.id, ...record })));
+    report.refused.push(...refusalsOf(source.id, refused));
     report.polled.push(source.id);
   }
 
@@ -111,10 +122,11 @@ export function createSourcePolling(deps: PollingDeps) {
         externalId: origin.externalId,
         occurredAt: origin.occurredAt,
         attributes: origin.attributes,
+        sender: origin.sender,
+        subject: origin.subject,
         link: origin.link,
-        part: origin.part,
         stated: origin.stated,
-        message: origin.message ? await stored(origin.message, origin.attributes) : null,
+        message: origin.message ? await stored(origin.message, origin) : null,
       });
     }
     return origins;
@@ -162,7 +174,7 @@ function isDue(
      * using a catalogue entry, such as a Messenger, is polled at the entry's interval.
      */
     async pollDue(): Promise<PollReport> {
-      const report: PollReport = { polled: [], failed: [], invalid: [] };
+      const report: PollReport = { polled: [], failed: [], invalid: [], refused: [] };
       const enabled = new Set((await sourceTypes.list()).filter((type) => type.enabled).map((type) => type.id));
       const now = clock.now().getTime();
       const due = await findDue(enabled, now);

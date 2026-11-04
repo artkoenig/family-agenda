@@ -1,17 +1,11 @@
 import { attributionOf, type Attribution } from "@family-agenda/domain";
-import type { ProjectedItem, Source } from "./ports";
+import type { ProjectedItem } from "./ports";
 
 /**
- * Whom an Item concerns, by the Family Members assigned to each Origin's Part of its Source, or
- * to the Source itself where the Part is assigned to no one or the Origin has none.
+ * Whom an Item concerns: the Family Members assigned to the Source Attributes its Source Record
+ * names, or the whole Family if one of them is assigned to no one. Computed on every read, so that
+ * a changed assignment applies to Items that came before it.
  */
-export function concernsOf(item: Pick<ProjectedItem, "sources">, all: readonly Pick<Source, "id" | "concerns" | "partConcerns">[]): Attribution {
-  const byId = new Map(all.map((source) => [source.id as string, source]));
-  return attributionOf(
-    item.sources.map(({ sourceId, part }) => {
-      const source = byId.get(sourceId);
-      if (!source) return [];
-      return (part !== null ? source.partConcerns[part] : undefined) ?? source.concerns;
-    }),
-  );
+export function concernsOf(item: Pick<ProjectedItem, "assignments">): Attribution {
+  return attributionOf(item.assignments);
 }

@@ -102,7 +102,7 @@ describe("the LLM endpoint", () => {
       {
         externalId: `m${mails}`,
         occurredAt: new Date("2026-09-14T06:00:00Z"),
-        attributes: {},
+        attributes: ["main"],
         content: { kind: "raw-message", text: "Hallo", attachments: [] },
       },
     ]);

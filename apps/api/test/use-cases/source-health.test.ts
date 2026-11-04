@@ -13,7 +13,7 @@ const days = 24 * hours;
 
 const notice = (externalId: string): Origin => ({
   externalId,
-  attributes: { sender: "School" },
+  sender: "School", attributes: ["main"],
   content: { kind: "stated", stated: { kind: "event", title: "Parents' evening", span: { allDay: true, firstDay: "2026-09-20", lastDay: "2026-09-20" }, place: null, cancelled: false } },
 });
 
@@ -52,6 +52,7 @@ describe("Source health", () => {
       problem: null,
       lastSuccessAt: new Date("2026-09-14T07:10:00Z"),
       invalidRecords: [],
+      unknownAttributes: [],
     });
   });
 
@@ -65,6 +66,7 @@ describe("Source health", () => {
       problem: { kind: "run-failed", message: "school-portal failed" },
       lastSuccessAt: new Date("2026-09-14T07:10:00Z"),
       invalidRecords: [],
+      unknownAttributes: [],
     });
   });
 
@@ -77,6 +79,7 @@ describe("Source health", () => {
       problem: { kind: "run-failed", message: "school-portal failed" },
       lastSuccessAt: new Date("2026-09-14T07:10:00Z"),
       invalidRecords: [],
+      unknownAttributes: [],
     });
 
     testPluginControls.failNext("school-portal", "temporary");
@@ -91,11 +94,11 @@ describe("Source health", () => {
   it("is OK again after a successful run", async () => {
     testPluginControls.failNext("school-portal", "definite");
     await tick();
-    expect(await health()).toMatchObject({ status: "failing", lastSuccessAt: null, invalidRecords: [] });
+    expect(await health()).toMatchObject({ status: "failing", lastSuccessAt: null, invalidRecords: [], unknownAttributes: [] });
 
     await tick();
 
-    expect(await health()).toEqual({ status: "ok", problem: null, lastSuccessAt: new Date("2026-09-14T07:20:00Z"), invalidRecords: [] });
+    expect(await health()).toEqual({ status: "ok", problem: null, lastSuccessAt: new Date("2026-09-14T07:20:00Z"), invalidRecords: [], unknownAttributes: [] });
   });
 
   it("stays Failing after a definite error until a run succeeds, whatever errors follow", async () => {
@@ -109,6 +112,7 @@ describe("Source health", () => {
       problem: { kind: "run-failed", message: "school-portal failed" },
       lastSuccessAt: null,
       invalidRecords: [],
+      unknownAttributes: [],
     });
   });
 
@@ -161,6 +165,7 @@ describe("Source health", () => {
       problem: { kind: "not-installed" },
       lastSuccessAt: new Date("2026-09-14T07:10:00Z"),
       invalidRecords: [],
+      unknownAttributes: [],
     });
     const [items] = await instance.query("SELECT count(*)::int AS items FROM item");
     expect(items).toEqual({ items: 1 });
@@ -170,7 +175,7 @@ describe("Source health", () => {
     await tick();
 
     expect(testPluginControls.runs("school-portal").at(-1)?.syncCursor).toBe("1");
-    expect(await health()).toEqual({ status: "ok", problem: null, lastSuccessAt: new Date("2026-09-14T07:30:00Z"), invalidRecords: [] });
+    expect(await health()).toEqual({ status: "ok", problem: null, lastSuccessAt: new Date("2026-09-14T07:30:00Z"), invalidRecords: [], unknownAttributes: [] });
   });
 
   it("tells every Agenda it may be out of date while a Source is Failing, and only then", async () => {

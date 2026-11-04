@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { describeSourcePluginContract } from "@family-agenda/source-sdk/testing";
-import { SourceError, type IngestResult, type Origin, type RunContext, type SourcePlugin } from "@family-agenda/source-sdk";
+import { describeSourcePluginContract, recordingAttributes } from "@family-agenda/source-sdk/testing";
+import { SourceError, type IngestResult, type Origin, type IngestContext, type RunContext, type SourcePlugin } from "@family-agenda/source-sdk";
 import { createImapPlugin } from "../src";
 import { ImapServerFixture } from "./imap-server";
 
@@ -61,15 +61,15 @@ server.deliver("Schule", invitation, new Date("2026-09-14T06:12:00Z"));
 server.deliver("INBOX", "Subject: Privat\n\nNicht für die Schule.\n", new Date("2026-09-14T06:00:00Z"));
 
 const config = (plain: Record<string, unknown> = {}, password = account.password): RunContext["config"] => ({
-  plain: { host: "127.0.0.1", port: String(server.port), username: account.user, folders: ["Schule"], ...plain },
+  plain: { host: "127.0.0.1", port: String(server.port), username: account.user, folders: "Schule", ...plain },
   secrets: { password },
 });
 
 const plugin = () => createImapPlugin({ allowPlaintext: true });
 
-const poll = (context: Partial<RunContext> = {}, of: SourcePlugin = plugin()): Promise<IngestResult> => {
+const poll = (context: Partial<IngestContext> = {}, of: SourcePlugin = plugin()): Promise<IngestResult> => {
   if (of.ingestion.mode !== "polling") throw new Error("the IMAP plugin polls");
-  return of.ingestion.poll({ config: config(), syncCursor: null, now, timeZone: "Europe/Berlin", ...context });
+  return of.ingestion.poll({ config: config(), syncCursor: null, now, timeZone: "Europe/Berlin", attributes: recordingAttributes(), ...context });
 };
 
 const message = (origin: Origin | undefined) => {
@@ -97,8 +97,9 @@ describe("the IMAP plugin", () => {
     expect(origin).toMatchObject({
       externalId: "<elternabend-1@schule.example.org>",
       occurredAt: new Date("2026-09-14T06:12:00Z"),
-      attributes: { sender: "berger@schule.example.org" },
-      part: "Schule",
+      sender: "berger@schule.example.org",
+      subject: "Elternabend 5b",
+      attributes: ["mailbox"],
     });
     expect(origin?.link).toBeUndefined();
     const content = message(origin);
@@ -120,7 +121,7 @@ Bitte Turnbeutel mitbringen.
 `;
     server.deliver("Nachtraege", backdated, new Date("2026-09-14T06:30:00Z"));
 
-    const { origins } = await poll({ config: config({ folders: ["Nachtraege"] }) });
+    const { origins } = await poll({ config: config({ folders: "Nachtraege" }) });
 
     expect(origins.map((origin) => origin.occurredAt)).toEqual([new Date("2026-09-14T06:30:00Z")]);
   });
@@ -142,18 +143,18 @@ Bitte Turnbeutel mitbringen.
     const { origins } = await poll({ config: config({ folders: undefined }) });
 
     expect(origins).toHaveLength(1);
-    expect(origins[0]?.part).toBeUndefined();
+    expect(origins[0]?.attributes).toEqual(["mailbox"]);
     expect(message(origins[0]).text).toContain("Nicht für die Schule.");
   });
 
-  it("reads each configured folder as a Part of its own, with a sync cursor per folder", async () => {
-    const both = config({ folders: ["Schule", "INBOX"] });
-    const first = await poll({ config: both });
+  it("reads each configured folder, with a sync cursor per folder, and declares one Source Attribute for the mailbox", async () => {
+    const both = config({ folders: "Schule, INBOX" });
+    const declared = recordingAttributes();
+    const first = await poll({ config: both, attributes: declared });
 
-    const parts = first.origins.map((origin) => origin.part);
-    expect(parts).toContain("Schule");
-    expect(parts.filter((part) => part === "INBOX")).toHaveLength(1);
-    expect(parts.every((part) => part === "Schule" || part === "INBOX")).toBe(true);
+    expect(first.origins.length).toBeGreaterThan(1);
+    expect(first.origins.every((origin) => origin.attributes.join() === "mailbox")).toBe(true);
+    expect(declared.active()).toEqual(["mailbox"]);
     expect(Object.keys(JSON.parse(first.syncCursor ?? "{}") as object).sort()).toEqual(["INBOX", "Schule"]);
     expect((await poll({ config: both, syncCursor: first.syncCursor })).origins).toEqual([]);
   });
@@ -174,6 +175,13 @@ Bitte Turnbeutel mitbringen.
     expect(migrate?.({ host: "h", folder: "" })).toEqual({ host: "h" });
   });
 
+  it("migrates the list of folders of a version 2 configuration into one field", () => {
+    const migrate = plugin().configuration.migrations?.[2];
+
+    expect(migrate?.({ host: "h", folders: ["Schule", "INBOX"] })).toEqual({ host: "h", folders: "Schule, INBOX" });
+    expect(migrate?.({ host: "h", folders: [] })).toEqual({ host: "h" });
+  });
+
   it("only reads, never marking, moving or deleting a mail", async () => {
     server.commands.length = 0;
 
@@ -189,11 +197,11 @@ Bitte Turnbeutel mitbringen.
 
   it("reads on after the last UID in use when a folder holds nothing recent at first", async () => {
     server.deliver("Archiv", old, new Date("2026-08-01T08:00:00Z"));
-    const first = await poll({ config: config({ folders: ["Archiv"] }) });
+    const first = await poll({ config: config({ folders: "Archiv" }) });
     expect(first.origins).toEqual([]);
     server.deliver("Archiv", moved, new Date("2026-09-15T10:00:00Z"));
 
-    const { origins } = await poll({ config: config({ folders: ["Archiv"] }), syncCursor: first.syncCursor, now: new Date(now.getTime() + days) });
+    const { origins } = await poll({ config: config({ folders: "Archiv" }), syncCursor: first.syncCursor, now: new Date(now.getTime() + days) });
 
     expect(origins.map((origin) => origin.externalId)).toEqual(["<elternabend-2@schule.example.org>"]);
   });
@@ -211,7 +219,7 @@ Bitte Turnbeutel mitbringen.
 
   it("fails definitely on a wrong password or a folder that does not exist", async () => {
     await expect(poll({ config: config({}, "wrong") })).rejects.toMatchObject({ kind: "definite" });
-    await expect(poll({ config: config({ folders: ["Nirgends"] }) })).rejects.toMatchObject({ kind: "definite" });
+    await expect(poll({ config: config({ folders: "Nirgends" }) })).rejects.toMatchObject({ kind: "definite" });
   });
 
   it("fails temporarily when the server cannot be reached", async () => {

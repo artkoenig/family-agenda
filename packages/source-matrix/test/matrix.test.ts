@@ -3,7 +3,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
-import { describeSourcePluginContract } from "@family-agenda/source-sdk/testing";
+import { describeSourcePluginContract, recordingAttributes } from "@family-agenda/source-sdk/testing";
 import { SourceError, type IngestResult, type Origin, type RunContext, type SetupProgress, type SourcePlugin } from "@family-agenda/source-sdk";
 import { createMatrixPlugin } from "../src";
 import { FakeHomeserver, installedPrograms } from "../src/testing";
@@ -28,7 +28,7 @@ const userOf = (config: RunContext["config"]) => config.plain.userId as string;
 
 const poll = (config: RunContext["config"], syncCursor: string | null = null, of: SourcePlugin = plugin(), at = now): Promise<IngestResult> => {
   if (of.ingestion.mode !== "polling") throw new Error("the Matrix plugin polls");
-  return of.ingestion.poll({ config, syncCursor, now: at, timeZone: "Europe/Berlin" });
+  return of.ingestion.poll({ config, syncCursor, now: at, timeZone: "Europe/Berlin", attributes: recordingAttributes() });
 };
 
 const allowListing = (config: RunContext["config"], ...chats: string[]): RunContext["config"] => ({
@@ -87,7 +87,9 @@ describe("recorded /sync responses", () => {
     expect(origins[0]).toEqual({
       externalId: "$WnDtrip5bfriday0aTreffpunktSchultor8Uhr0001",
       occurredAt: new Date("2026-09-14T06:12:00Z"),
-      attributes: { messenger: "WhatsApp", chat: "Klasse 5b Eltern", sender: "Frau Berger (WA)" },
+      attributes: ["account"],
+      sender: "Frau Berger (WA)",
+      subject: "Klasse 5b Eltern",
       content: {
         kind: "raw-message",
         text: "Liebe Eltern, am Freitag, 18.09., ist Wandertag. Treffpunkt 8:00 Uhr am Schultor.",
@@ -101,7 +103,7 @@ describe("recorded /sync responses", () => {
     });
     // A reply belongs to the conversation of the message it answers.
     expect(origins[2]?.content).toMatchObject({ thread: "$WnDtrip5bfriday0aTreffpunktSchultor8Uhr0001" });
-    expect(origins[2]?.attributes.sender).toBe("Jonas' Papa (WA)");
+    expect(origins[2]?.sender).toBe("Jonas' Papa (WA)");
   });
 
   it("accepts only invitations of its own bridge", async () => {
@@ -130,7 +132,7 @@ describe("recorded /sync responses", () => {
 
     const { origins, syncCursor } = await poll(config, first.syncCursor);
 
-    expect(origins.map((origin) => [origin.occurredAt?.toISOString(), origin.attributes.chat, textOf(origin)])).toEqual([
+    expect(origins.map((origin) => [origin.occurredAt?.toISOString(), origin.subject, textOf(origin)])).toEqual([
       ["2026-09-12T08:00:00.000Z", "FC Eltern U11", "Training am Dienstag fällt aus, Platz gesperrt."],
       ["2026-09-13T06:13:20.000Z", "FC Eltern U11", "Samstag Turnier in Musterstadt, Abfahrt 9 Uhr."],
     ]);

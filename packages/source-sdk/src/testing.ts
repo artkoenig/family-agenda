@@ -5,9 +5,11 @@ import {
   problemsWithOrigin,
   type Catalogue,
   type ConfigField,
+  type IngestContext,
   type PluginText,
   type RunContext,
   type SetupStep,
+  type SourceAttributes,
   type SourcePlugin,
 } from "./index";
 
@@ -67,6 +69,49 @@ function manifestTexts(packageJson: unknown): [string, PluginText][] {
   return texts;
 }
 
+/** A `SourceAttributes` that remembers what a plugin declared, as the Instance would for a Source. */
+export function recordingAttributes(): SourceAttributes & { active(): string[] } {
+  const names = new Map<string, string>();
+  const archived = new Set<string>();
+  return {
+    declare(attributes) {
+      for (const { externalId, name } of attributes) {
+        names.set(externalId, name);
+        archived.delete(externalId);
+      }
+      return Promise.resolve();
+    },
+    archive(externalId) {
+      if (names.has(externalId)) archived.add(externalId);
+      return Promise.resolve();
+    },
+    /** The ids declared and not archived since. */
+    active: () => [...names.keys()].filter((id) => !archived.has(id)),
+  };
+}
+
+/**
+ * Runs a polling plugin twice, the second time with the sync cursor of the first, and returns the
+ * Source Attribute ids its Origins named without being declared (and not archived) by then, in
+ * the order they came. Empty for a plugin that declares before it emits.
+ */
+export async function undeclaredAttributes(plugin: SourcePlugin, config: RunContext["config"], now = new Date()): Promise<string[]> {
+  if (plugin.ingestion.mode !== "polling") return [];
+  const attributes = recordingAttributes();
+  const undeclared: string[] = [];
+  let syncCursor: string | null = null;
+  for (let run = 0; run < 2; run++) {
+    const context: IngestContext = { config, syncCursor, now, timeZone: "Europe/Berlin", attributes };
+    const result = await plugin.ingestion.poll(context);
+    const known = new Set(attributes.active());
+    for (const origin of result.origins) {
+      for (const id of origin.attributes) if (!known.has(id) && !undeclared.includes(id)) undeclared.push(id);
+    }
+    syncCursor = result.syncCursor;
+  }
+  return undeclared;
+}
+
 /**
  * The contract tests every Source plugin passes, first-party and third-party alike.
  * Call it from the plugin's own test file with a factory for the plugin under test.
@@ -113,12 +158,18 @@ export function describeSourcePluginContract(
       it("emits valid Origins and state for a Source", async () => {
         const plugin = createPlugin();
         if (plugin.ingestion.mode !== "polling") return;
-        const result = await plugin.ingestion.poll({ config, syncCursor: null, now, timeZone: "Europe/Berlin" });
+        const attributes = recordingAttributes();
+        const context = { config, now, timeZone: "Europe/Berlin", attributes };
+        const result = await plugin.ingestion.poll({ ...context, syncCursor: null });
         for (const origin of result.origins) expect(problemsWithOrigin(origin)).toEqual([]);
         expect(result.syncCursor === null || typeof result.syncCursor === "string").toBe(true);
-        const again = await plugin.ingestion.poll({ config, syncCursor: result.syncCursor, now, timeZone: "Europe/Berlin" });
+        const again = await plugin.ingestion.poll({ ...context, syncCursor: result.syncCursor });
         const messages = again.origins.filter((origin) => origin.content.kind === "raw-message");
         expect(messages, "a second run with the sync cursor of the first emits no message again").toEqual([]);
+      });
+
+      it("declares a Source Attribute before an Origin names it", async () => {
+        expect(await undeclaredAttributes(createPlugin(), config, now), "Source Attribute ids named without being declared").toEqual([]);
       });
     }
   });

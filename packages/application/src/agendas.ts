@@ -42,7 +42,6 @@ import type {
   InstalledSourceType,
   ItemRepository,
   ProjectedItem,
-  SourceRepository,
   SourceTypeRegistry,
   AgendaAccessPolicy,
   AgendaRepository,
@@ -57,7 +56,6 @@ export type AgendasDeps = {
   members: FamilyMemberRepository;
   agendas: AgendaRepository;
   items: ItemRepository;
-  sources: SourceRepository;
   registry: SourceTypeRegistry;
   activity: ActivityLog;
   sourceHealth: SourceHealthCheck;
@@ -301,7 +299,7 @@ const taskListDaysBack = 30;
 export const openAgendaAccess: AgendaAccessPolicy = { mayOpen: () => Promise.resolve(true) };
 
 export function createAgendaAccess(deps: AgendasDeps) {
-  const { clock, timeZone, families, members, agendas, items, sources, registry, activity, sourceHealth } = deps;
+  const { clock, timeZone, families, members, agendas, items, registry, activity, sourceHealth } = deps;
 
   /**
    * The name an Admin gave the Source, else the display name of its Source Type, or that type's id
@@ -322,7 +320,6 @@ export function createAgendaAccess(deps: AgendasDeps) {
     const day = 24 * 60 * 60 * 1000;
     const from = new Date(new Date(`${first}T00:00:00Z`).getTime() - day);
     const to = last ? new Date(new Date(`${addDays(last, 1)}T00:00:00Z`).getTime() + day) : null;
-    const known = await sources.list();
     const order = (await members.list()).map((member) => member.id);
     const installed = registry.installed();
     const found: Around = { events: [], lessons: [], changes: [], tasks: [] };
@@ -331,7 +328,7 @@ export function createAgendaAccess(deps: AgendasDeps) {
     // An undone Task stays pinned, whatever its Deadline.
     const outstanding = (await items.outstanding()).filter((item) => !seen.has(item.id));
     for (const item of [...overlapping, ...outstanding]) {
-      const attribution = concernsOf(item, known);
+      const attribution = concernsOf(item);
       if (showing !== "all" && !isShownTo(attribution, showing)) continue;
       const concerns = attribution === "whole-family" ? attribution : order.filter((id) => attribution.includes(id));
       const links = item.links.map((link) => ({ url: link.url, source: sourceName(link, installed) }));
@@ -563,7 +560,6 @@ export function createAgendaAccess(deps: AgendasDeps) {
      * dates, in order of time. Its own message is left out of their Sources: it is the one open.
      */
     async messageItemRows(written: ProjectedItem[]): Promise<MessageItemRows> {
-      const known = await sources.list();
       const family = await members.list();
       const order = family.map((member) => member.id);
       const installed = registry.installed();
@@ -571,7 +567,7 @@ export function createAgendaAccess(deps: AgendasDeps) {
       const now = localDateTime(instant, timeZone);
       const found: Around = { events: [], lessons: [], changes: [], tasks: [] };
       for (const item of written) {
-        const attribution = concernsOf(item, known);
+        const attribution = concernsOf(item);
         const concerns = attribution === "whole-family" ? attribution : order.filter((member) => attribution.includes(member));
         const links = item.links.map((link) => ({ url: link.url, source: sourceName(link, installed) }));
         classifyItem(item, found, links, [], concerns);

@@ -3,6 +3,9 @@ export type SourceTypeId = string & { readonly __brand: "SourceTypeId" };
 
 export type SourceId = string & { readonly __brand: "SourceId" };
 
+/** A subdivision of a Source that its plugin reports, such as a mail folder (ADR-0016). */
+export type SourceAttributeId = string & { readonly __brand: "SourceAttributeId" };
+
 /**
  * Whether a Source works: OK, Failing when it needs an Admin, or Silent when no new Origin has
  * come for a while from a Source Type that expects them.

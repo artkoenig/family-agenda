@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { parseName, textIn, type BlobRef, type FamilyMemberId, type MultilingualText, type SourceId, type SourceTypeId } from "@family-agenda/domain";
+import { parseName, textIn, type BlobRef, type FamilyMemberId, type MultilingualText, type SourceAttributeId, type SourceId, type SourceTypeId } from "@family-agenda/domain";
 import type {
   BlobStore,
   CatalogueRepository,
@@ -14,6 +14,7 @@ import type {
   SetupProgress,
   SetupStepSpec,
   Source,
+  SourceAttribute,
   SourceRepository,
   SourceRunContext,
   SourceTypeRegistry,
@@ -51,10 +52,8 @@ export type SourceSummary = {
   shown: boolean;
   /** As an Admin named it; null for the name the Admin area derives from its settings. */
   name: string | null;
-  /** The Family Members it is assigned to, in the Family's order, whom its Items concern; none for the whole Family. */
-  concerns: FamilyMemberId[];
-  /** The Family Members each Part of it is assigned to, in the Family's order, by the Part's name; a Part not listed concerns those the Source does. */
-  partConcerns: Record<string, FamilyMemberId[]>;
+  /** Its Source Attributes as its plugin reported them, each with the Family Members assigned to it. */
+  attributes: SourceAttribute[];
   health: SourceHealth;
   /** The values each choice field offers, such as the chats of a linked account, by field key. */
   choices: Record<string, KnownValue[]>;
@@ -83,12 +82,6 @@ export type SourceInput = {
   secrets: Record<string, string>;
   /** Null or left out for the plugin's suggestion. */
   pollIntervalSeconds?: number | null;
-  /**
-   * The Family Members each Part of the Source, named by a list field, is assigned to; given, it
-   * replaces every assignment of the Source's Parts and clears the Source's own, as a Part with
-   * no one chosen concerns the whole Family. Left out, they stay.
-   */
-  partConcerns?: Record<string, FamilyMemberId[]>;
 };
 
 export type SourceProblem =
@@ -108,11 +101,6 @@ export type EditSourceResult =
   | { ok: true }
   | { ok: false; problem: "unknown-source" | "source-type-not-enabled" }
   | SourceProblem;
-
-/** Whether a value is a list of distinct, non-empty names, as a Source's Parts are. */
-function isPartNames(value: unknown): value is string[] {
-  return Array.isArray(value) && value.every((name) => typeof name === "string" && name.trim() !== "") && new Set(value).size === value.length;
-}
 
 export function createSourceAccess(deps: SourcesDeps) {
   const { clock, members, registry, sourceTypes, catalogues, sources, secrets, blobs, timeZone } = deps;
@@ -206,20 +194,6 @@ export function createSourceAccess(deps: SourcesDeps) {
     if (!typeFits(field, value)) yield field.key;
   }
 
-  /** Stores the Part assignments an input gives, for the Parts the saved configuration names. */
-  async function assignParts(id: SourceId, sourceType: LoadedSourceType, plain: PlainConfig, input: SourceInput): Promise<void> {
-    if (!input.partConcerns) return;
-    const names = new Set(sourceType.configuration.fields.filter((field) => field.parts).flatMap((field) => (plain[field.key] as string[] | undefined) ?? []));
-    const family = (await members.list()).map((member) => member.id);
-    const parts: Record<string, FamilyMemberId[]> = {};
-    for (const [part, chosen] of Object.entries(input.partConcerns)) {
-      const assigned = family.filter((member) => chosen.includes(member));
-      if (names.has(part) && assigned.length > 0) parts[part] = assigned;
-    }
-    await sources.assignParts(id, parts);
-    await sources.assign(id, []);
-  }
-
   /** Plain values left empty are not stored; a choice with none chosen is. */
   function plainOf(input: SourceInput): PlainConfig {
     return Object.fromEntries(Object.entries(input.plain).filter(([, value]) => value !== "" && value != null));
@@ -273,7 +247,6 @@ export function createSourceAccess(deps: SourcesDeps) {
       pollIntervalSeconds: input.pollIntervalSeconds ?? null,
       lastRunAt: null,
     });
-    await assignParts(source.id, sourceType, plainOf(input), input);
     for (const ref of replaced) await secrets.remove(ref);
     return { ok: true };
   }
@@ -294,8 +267,7 @@ export function createSourceAccess(deps: SourcesDeps) {
           pollIntervalSeconds: source.pollIntervalSeconds,
           shown: source.shown,
           name: source.name,
-          concerns: source.concerns,
-          partConcerns: source.partConcerns,
+          attributes: source.attributes,
           health: await healthOf(source, { clock, registry, sourceTypes, sources }),
           choices: await choicesOf(source),
         });
@@ -369,16 +341,15 @@ export function createSourceAccess(deps: SourcesDeps) {
         pollIntervalSeconds: input.pollIntervalSeconds ?? null,
         shown: true,
         name: null,
-        concerns: [],
-        partConcerns: {},
+        attributes: [],
         lastRunAt: null,
         lastSuccessAt: null,
         failure: null,
         lastNewOriginAt: null,
         invalidRecords: [],
+        unknownAttributes: [],
         createdAt: clock.now(),
       });
-      await assignParts(id, sourceType, given.plain, input);
       return { ok: true, id, setUp: sourceType.setupSteps.some((step) => step.live) };
     },
 
@@ -422,24 +393,24 @@ export function createSourceAccess(deps: SourcesDeps) {
     },
 
     /**
-     * Assigns the Source to Family Members, whom its Items then concern, also those it brought in
-     * before; none for the whole Family. Nothing within the Source, such as a sender, counts.
+     * Assigns a Source Attribute to Family Members, whom the Items of its Source Records then
+     * concern, also those that came before; none for the whole Family. Nothing within a Source
+     * Record, such as a sender, counts.
      */
-    async assign(
-      id: SourceId,
+    async assignAttribute(
+      id: SourceAttributeId,
       concerns: FamilyMemberId[],
-    ): Promise<{ ok: true } | { ok: false; problem: "unknown-source" | "unknown-member" }> {
-      if (!(await sources.findById(id))) return { ok: false, problem: "unknown-source" };
+    ): Promise<{ ok: true } | { ok: false; problem: "unknown-attribute" | "unknown-member" }> {
       const family = await members.list();
       if (concerns.some((member) => !family.some((known) => known.id === member))) return { ok: false, problem: "unknown-member" };
-      await sources.assign(
+      const found = await sources.assignAttribute(
         id,
         family.filter((member) => concerns.includes(member.id)).map((member) => member.id),
       );
-      return { ok: true };
+      return found ? { ok: true } : { ok: false, problem: "unknown-attribute" };
     },
 
-    /** Removes the Source with its secrets, whom it is assigned to and everything it brought in: its Source Records and their Items. */
+    /** Removes the Source with its secrets, its Source Attributes and everything it brought in: its Source Records and their Items. */
     async remove(id: SourceId): Promise<void> {
       const source = await sources.findById(id);
       if (!source) return;
@@ -466,10 +437,9 @@ export async function runContextOf(
   return { plain: source.plain, secrets: secretValues, syncCursor: source.syncCursor, now: context.now, timeZone: context.timeZone };
 }
 
-/** Whether a value has the shape its field takes: names for a choice or Parts, a single value otherwise. */
+/** Whether a value has the shape its field takes: names for a choice, a single value otherwise. */
 function typeFits(field: ConfigFieldSpec, value: unknown): boolean {
   if (field.choice) return value === undefined || isStrings(value);
-  if (field.parts) return value === undefined || isPartNames(value);
   return !Array.isArray(value);
 }
 

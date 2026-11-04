@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { describeSourcePluginContract } from "@family-agenda/source-sdk/testing";
-import type { IngestResult, Origin, RunContext, SourcePlugin } from "@family-agenda/source-sdk";
+import { describeSourcePluginContract, recordingAttributes } from "@family-agenda/source-sdk/testing";
+import type { IngestContext, IngestResult, Origin, SourcePlugin } from "@family-agenda/source-sdk";
 import { createIcsPlugin } from "../src";
 
 const fixture = (name: string) => readFileSync(new URL(`./fixtures/${name}`, import.meta.url), "utf8");
@@ -25,9 +25,9 @@ function server(...responses: (Response | Error)[]) {
 const calendar = (body: string, headers: Record<string, string> = {}) =>
   new Response(body, { status: 200, headers: { "content-type": "text/calendar", ...headers } });
 
-const poll = (plugin: SourcePlugin, context: Partial<RunContext> = {}): Promise<IngestResult> => {
+const poll = (plugin: SourcePlugin, context: Partial<IngestContext> = {}): Promise<IngestResult> => {
   if (plugin.ingestion.mode !== "polling") throw new Error("the ICS plugin polls");
-  return plugin.ingestion.poll({ config, syncCursor: null, now, timeZone: "Europe/Berlin", ...context });
+  return plugin.ingestion.poll({ config, syncCursor: null, now, timeZone: "Europe/Berlin", attributes: recordingAttributes(), ...context });
 };
 
 /** Each Origin as its UID and the Event it states. */
@@ -104,7 +104,7 @@ describe("the ICS plugin", () => {
 
     expect(piano).toMatchObject({
       externalId: "piano-0915@google.com",
-      attributes: { calendar: "Mia's clubs" },
+      attributes: ["calendar"],
       link: "https://calendar.example.org/event/piano-0915",
     });
     expect(trip?.link).toBeUndefined();
@@ -228,12 +228,15 @@ describe("the ICS plugin", () => {
     const { fetch, requests } = server(calendar(fixture("family-v1.ics")));
     const plugin = createIcsPlugin({ fetch });
 
+    const declared = recordingAttributes();
     const { origins } = await poll(plugin, {
       config: { plain: { name: "Clubs" }, secrets: { url: "webcal://calendar.example.org/basic.ics" } },
+      attributes: declared,
     });
 
     expect(requests[0]?.url).toBe("https://calendar.example.org/basic.ics");
-    expect(origins[0]?.attributes).toEqual({ calendar: "Clubs" });
+    expect(origins[0]?.attributes).toEqual(["calendar"]);
+    expect(declared.active()).toEqual(["calendar"]);
   });
 
   it("places times without a known zone in their named zone, or else in the Family's", async () => {
