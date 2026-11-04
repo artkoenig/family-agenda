@@ -107,6 +107,9 @@ describe("the LLM endpoint and mail over HTTP", () => {
     const page = await (await instance.get(link!, { cookie })).text();
     const action = /<form method="post" action="(\/admin\/items\/[0-9a-f-]+\/delete)"/.exec(page)?.[1];
     expect(page).toContain("Wandertag");
+    // As the Agenda shows an Event: under its day, as a row.
+    expect(page).toContain('class="fam-day"');
+    expect(page).toContain("fam-item__title");
     expect(action).toBeDefined();
 
     const deleted = await instance.post(action!, { message: link!.split("/")[3]! }, { cookie });

@@ -1,6 +1,7 @@
 import type {
   CurrentActivity,
   FamilyMemberSummary,
+  MessageItemRows,
   Showing,
   TaskListPage,
   TimelineDays,
@@ -167,7 +168,7 @@ export function AgendaTimeline(props: { page: AgendaPage }) {
           </h2>
           <ul class="fam-tasks__list">
             {page.pinned.map((row) => (
-              <TaskRow row={row} page={page} />
+              <TaskRow row={row} members={page.members} tick={<TickForm row={row} page={page} />} />
             ))}
           </ul>
         </section>
@@ -205,7 +206,7 @@ export function TaskList(props: { page: TaskListPage }) {
         </h2>
         <ul class="fam-tasks__list">
           {rows.map((row) => (
-            <TaskRow row={row} page={page} />
+            <TaskRow row={row} members={page.members} tick={<TickForm row={row} page={page} />} />
           ))}
         </ul>
       </section>
@@ -466,7 +467,7 @@ function DayEntry(props: { page: AgendaPage; day: TimelineDay }) {
       {day.tasks.length > 0 ? (
         <ul class="fam-tasks__list">
           {day.tasks.map((row) => (
-            <TaskRow row={row} page={page} onDay />
+            <TaskRow row={row} members={page.members} tick={<TickForm row={row} page={page} />} onDay />
           ))}
         </ul>
       ) : null}
@@ -642,7 +643,7 @@ function itemState(row: TimelineEvent): string {
  * concerns, none if it concerns the whole Family, and below the title its last day if that is
  * a later one, its place and its Sources. The day it is on says its date.
  */
-function EventRow(props: { row: TimelineEvent; day: LocalDate; members: FamilyMemberSummary[]; now: string | undefined }) {
+function EventRow(props: { row: TimelineEvent; day: LocalDate; members: FamilyMemberSummary[]; now: string | undefined; action?: Child }) {
   const { row } = props;
   const translation = useTranslation();
   const { t } = translation;
@@ -671,6 +672,7 @@ function EventRow(props: { row: TimelineEvent; day: LocalDate; members: FamilyMe
         <Sources row={row} />
       </span>
       <Concerned concerns={row.concerns} members={props.members} />
+      {props.action}
     </div>
   );
 }
@@ -713,11 +715,10 @@ function taskStatusLabel(row: TimelineTask, v: Catalogue["agenda"], deadline: st
  * checked and dimmed, and its tick can be taken back. On its day, the tick takes the place of an
  * Event's time, and the row leaves out its Deadline and status, which the day and the tick say.
  */
-function TaskRow(props: { row: TimelineTask; page: AgendaPage | TaskListPage; onDay?: boolean }) {
-  const { row, page } = props;
+function TaskRow(props: { row: TimelineTask; members: FamilyMemberSummary[]; tick: Child; onDay?: boolean; action?: Child }) {
+  const { row } = props;
   const { t, locale } = useTranslation();
   const v = t.agenda;
-  const done = row.status === "done";
   const classes = ["fam-item", "fam-task", `fam-task--${row.status}`, row.cancelled ? "fam-item--cancelled" : ""]
     .filter(Boolean)
     .join(" ");
@@ -725,7 +726,7 @@ function TaskRow(props: { row: TimelineTask; page: AgendaPage | TaskListPage; on
   const status = taskStatusLabel(row, v, deadline);
   return (
     <li class={classes}>
-      {props.onDay ? <span class="fam-item__lead"><TickForm row={row} page={page} done={done} /></span> : <TickForm row={row} page={page} done={done} />}
+      {props.onDay ? <span class="fam-item__lead">{props.tick}</span> : props.tick}
       <span class="fam-item__text">
         <span class="fam-item__title">
           {row.cancelled ? (
@@ -744,13 +745,15 @@ function TaskRow(props: { row: TimelineTask; page: AgendaPage | TaskListPage; on
         ) : null}
         <Sources row={row} />
       </span>
-      <Concerned concerns={row.concerns} members={page.members} />
+      <Concerned concerns={row.concerns} members={props.members} />
+      {props.action}
     </li>
   );
 }
 
-function TickForm(props: { row: TimelineTask; page: AgendaPage | TaskListPage; done: boolean }) {
-  const { row, page, done } = props;
+function TickForm(props: { row: TimelineTask; page: AgendaPage | TaskListPage }) {
+  const { row, page } = props;
+  const done = row.status === "done";
   const { t } = useTranslation();
   const v = t.agenda;
   const action = `/agendas/${page.id}/tasks/${row.itemId}/${done ? "undone" : "done"}`;
@@ -885,4 +888,73 @@ function memberColourOf(id: string): number {
   let hash = 0;
   for (const char of id) hash = (hash * 31 + char.charCodeAt(0)) % 8;
   return hash + 1;
+}
+
+/** The tick of a Task on the message page: shown as in an Agenda, but only the Agenda changes it. */
+function StaticTick(props: { row: TimelineTask }) {
+  return (
+    <label class="fam-task__tick">
+      <input type="checkbox" checked={props.row.status === "done"} disabled aria-label={props.row.title} />
+    </label>
+  );
+}
+
+/** Takes the Item away from the Agenda; reading the message again would bring it back. */
+function DeleteItem(props: { messageId: string; itemId: string; title: string }) {
+  const { t } = useTranslation();
+  return (
+    <form method="post" action={`/admin/items/${props.itemId}/delete`}>
+      <input type="hidden" name="message" value={props.messageId} />
+      <button type="submit" class="fam-button fam-button--secondary" aria-label={`${t.message.deleteItem}: ${props.title}`}>
+        {t.message.deleteItem}
+      </button>
+    </form>
+  );
+}
+
+/**
+ * The Items read from a raw message as an Agenda shows them, each with a button to delete it: the
+ * Events under the days they start on, then the Tasks.
+ */
+export function MessageItems(props: { messageId: string; items: MessageItemRows }) {
+  const { items } = props;
+  const { t, locale } = useTranslation();
+  const none = items.days.length === 0 && items.tasks.length === 0;
+  return (
+    <section>
+      <h2>{t.message.items}</h2>
+      <p class="fam-row__hint">{none ? t.message.noItems : t.message.itemsHint}</p>
+      <ol class="fam-days">
+        {items.days.map((day) => (
+          <li class="fam-day" data-date={day.date}>
+            <h2 class="fam-day__header">
+              <span class="fam-day__name">{weekdayLabel(day.date, locale)}</span>{" "}
+              <span class="fam-day__date">{dayMonthLabel(day.date, locale)}</span>
+            </h2>
+            {day.items.map((row) => (
+              <EventRow
+                row={row}
+                day={day.date}
+                members={items.members}
+                now={undefined}
+                action={<DeleteItem messageId={props.messageId} itemId={row.itemId} title={row.title} />}
+              />
+            ))}
+          </li>
+        ))}
+      </ol>
+      {items.tasks.length > 0 ? (
+        <ul class="fam-tasks__list">
+          {items.tasks.map((row) => (
+            <TaskRow
+              row={row}
+              members={items.members}
+              tick={<StaticTick row={row} />}
+              action={<DeleteItem messageId={props.messageId} itemId={row.itemId} title={row.title} />}
+            />
+          ))}
+        </ul>
+      ) : null}
+    </section>
+  );
 }

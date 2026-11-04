@@ -2,7 +2,6 @@ import type {
   Extraction,
   InvalidRecord,
   ItemDetails,
-  ItemOfMessage,
   ItemRepository,
   NewItem,
   PendingMessage,
@@ -207,13 +206,9 @@ export class PostgresItemRepository implements ItemRepository {
     };
   }
 
-  async itemsOfMessage(id: RawMessageId): Promise<ItemOfMessage[]> {
+  async itemsOfMessage(id: RawMessageId): Promise<ProjectedItem[]> {
     if (!uuidPattern.test(id)) return [];
-    const rows = await this.query(eq(items.recordId, id), false);
-    return rows.flatMap((row) => {
-      const details = detailsOf(row);
-      return details ? [{ ...details, id: row.id as ItemId }] : [];
-    });
+    return this.projected(eq(items.recordId, id), false);
   }
 
   async overlapping(from: Date, to: Date | null): Promise<ProjectedItem[]> {
@@ -253,8 +248,8 @@ export class PostgresItemRepository implements ItemRepository {
   }
 
   /** The Items that match, with the link of their Source Record, leaving out those of a hidden Source. */
-  private async projected(where: SQL | undefined): Promise<ProjectedItem[]> {
-    const rows = await this.query(where, true);
+  private async projected(where: SQL | undefined, shownOnly = true): Promise<ProjectedItem[]> {
+    const rows = await this.query(where, shownOnly);
     return rows.flatMap((row) => {
       const details = detailsOf(row);
       if (!details) return [];

@@ -266,6 +266,18 @@ export type FeedTask = {
   cancelled: boolean;
 };
 
+/**
+ * The Events and Tasks read from one raw message, for an Admin to look at and delete: laid out as
+ * an Agenda lays them out, each Event on the day it starts, the Tasks after them.
+ */
+export type MessageItemRows = {
+  language: FamilyLanguage;
+  now: LocalDateTime;
+  members: FamilyMemberSummary[];
+  days: { date: LocalDate; items: TimelineEvent[] }[];
+  tasks: TimelineTask[];
+};
+
 export type AgendaFeed = {
   id: AgendaId;
   /** The Family Language, which the details' dates are formatted in. */
@@ -546,6 +558,40 @@ export function createAgendaAccess(deps: AgendasDeps) {
 
 
   return {
+    /**
+     * The Events and Tasks written from a raw message, whoever they concern and whatever their
+     * dates, in order of time. Its own message is left out of their Sources: it is the one open.
+     */
+    async messageItemRows(written: ProjectedItem[]): Promise<MessageItemRows> {
+      const known = await sources.list();
+      const family = await members.list();
+      const order = family.map((member) => member.id);
+      const installed = registry.installed();
+      const instant = clock.now();
+      const now = localDateTime(instant, timeZone);
+      const found: Around = { events: [], lessons: [], changes: [], tasks: [] };
+      for (const item of written) {
+        const attribution = concernsOf(item, known);
+        const concerns = attribution === "whole-family" ? attribution : order.filter((member) => attribution.includes(member));
+        const links = item.links.map((link) => ({ url: link.url, source: sourceName(link, installed) }));
+        classifyItem(item, found, links, [], concerns);
+      }
+      const dates = new Map<LocalDate, TimelineEvent[]>();
+      for (const { id: itemId, event, links, messages, concerns } of found.events) {
+        const date = event.span.allDay ? event.span.firstDay : localDateTime(event.span.start, timeZone).date;
+        const on = spanOnDay(event.span, date, timeZone);
+        if (!on) continue;
+        dates.set(date, [...(dates.get(date) ?? []), row(itemId, event, { links, messages, concerns }, on, instant)]);
+      }
+      return {
+        language: (await families.languages()).language,
+        now,
+        members: family.map(summariseFamilyMember),
+        days: [...dates.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([date, rows]) => ({ date, items: rows.toSorted(byTime) })),
+        tasks: found.tasks.map((task) => taskRow(task, now.date)).sort(byDeadline),
+      };
+    },
+
     async list(): Promise<AgendaSummary[]> {
       const all = await agendas.list();
       return all.map(({ id, kind, preselected, horizonDays }) => ({ id, kind, preselected, horizonDays }));

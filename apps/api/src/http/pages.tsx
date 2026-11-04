@@ -7,6 +7,7 @@ import {
   type LlmEndpointHealth,
   type LlmEndpointSummary,
   type MessageDetails,
+  type MessageItemRows,
   type RecoveryKit,
   type SetupProgress,
   type SourceForm,
@@ -36,7 +37,7 @@ import { raw } from "hono/html";
 import { useTranslation, type Translation } from "./i18n/translation";
 import type { Catalogue } from "./i18n/en";
 import { Layout, Problem } from "./layout";
-import { Avatar, agendaUrl } from "./agenda-page";
+import { Avatar, MessageItems, agendaUrl } from "./agenda-page";
 
 /** The Family Languages to choose from, the given one selected. */
 function FamilyLanguageOptions(props: { selected: FamilyLanguage }) {
@@ -2555,7 +2556,7 @@ export function DisplayPage(props: { admin: SignedInAdmin; family: FamilyLanguag
   );
 }
 
-export function MessagePage(props: { admin: SignedInAdmin; message: MessageDetails; timeZone: string }) {
+export function MessagePage(props: { admin: SignedInAdmin; message: MessageDetails; items: MessageItemRows; timeZone: string }) {
   const { message } = props;
   const { t, locale } = useTranslation();
   const m = t.message;
@@ -2596,32 +2597,7 @@ export function MessagePage(props: { admin: SignedInAdmin; message: MessageDetai
           </ul>
         </>
       ) : null}
-      <h2>{m.items}</h2>
-      <p class="fam-row__hint">{message.items.length > 0 ? m.itemsHint : m.noItems}</p>
-      {message.items.length > 0 ? (
-        <ul class="fam-rows">
-          {message.items.map((item) => (
-            <li class="fam-row">
-              <span class="fam-row__main">
-                <span class="fam-row__label">{itemTitleOf(item)}</span>
-                <span class="fam-row__hint">{m[item.kind]}</span>
-              </span>
-              <form method="post" action={`/admin/items/${item.id}/delete`} class="fam-row__form">
-                <input type="hidden" name="message" value={message.id} />
-                <button type="submit" class="fam-button fam-button--secondary">
-                  {m.deleteItem}
-                </button>
-              </form>
-            </li>
-          ))}
-        </ul>
-      ) : null}
+      <MessageItems messageId={message.id} items={props.items} />
     </AdminLayout>
   );
-}
-
-function itemTitleOf(item: MessageDetails["items"][number]): string {
-  if (item.kind === "event") return item.event.title;
-  if (item.kind === "task") return item.task.title;
-  return item.lesson.subject;
 }
