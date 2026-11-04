@@ -7,7 +7,7 @@ const minutes = 60 * 1000;
 
 const notice = (externalId: string, title = "Parents' evening"): Origin => ({
   externalId,
-  attributes: { sender: "School" },
+  sender: "School", attributes: ["main"],
   content: { kind: "stated", stated: { kind: "event", title, span: { allDay: true, firstDay: "2026-09-20", lastDay: "2026-09-20" }, place: null, cancelled: false } },
 });
 

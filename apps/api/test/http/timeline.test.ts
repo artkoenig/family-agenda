@@ -1,5 +1,6 @@
 import type { Origin, StatedEvent } from "@family-agenda/source-sdk";
 import ICAL from "ical.js";
+import { assignSource } from "../support/assign";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createHttpApp } from "../../src/http/app";
 import { bootHttpForTest, type HttpTestInstance } from "../support/http";
@@ -8,7 +9,7 @@ import { testPluginControls } from "../support/test-source-plugin";
 /** An Event stated whole, as a calendar Source emits it. */
 const event = (key: string, fields: Partial<StatedEvent>, more: Partial<Origin> = {}): Origin => ({
   externalId: key,
-  attributes: {},
+  attributes: ["main"],
   content: { kind: "stated", stated: { kind: "event", place: null, cancelled: false, ...fields } as StatedEvent },
   ...more,
 });
@@ -79,7 +80,7 @@ describe("Events in an Agenda over HTTP", () => {
     await arrive(event("piano", { title: "Piano lesson", span }));
     expect(rowOf(await (await instance.get(path)).text(), "Piano lesson")).not.toContain("fam-event__who");
 
-    await instance.app.sources.assign(source.id, [mia.id]);
+    await assignSource(instance, source.id, [mia.id]);
     const page = await (await instance.get(path)).text();
 
     expect(rowOf(page, "Piano lesson")).toMatch(/<span class="fam-event__who" aria-label="Mia" role="img">.*>M<\/span>/s);

@@ -6,8 +6,10 @@ import {
   SourceError,
   type CatalogueEntry,
   type Configuration,
+  type IngestContext,
   type Origin,
   type PluginText,
+  type SourceAttributeDeclaration,
   type RunContext,
   type SetupProgress,
   type SetupStep,
@@ -19,6 +21,9 @@ export const loadedTestPlugins: string[] = [];
 
 const pending = new Map<string, { origins: Origin[]; failure?: SourceError; withdrawn?: string[] }>();
 const runs = new Map<string, RunContext[]>();
+const declaring = new Map<string, SourceAttributeDeclaration[]>();
+const archiving = new Map<string, string[]>();
+const undeclared = new Set<string>();
 const knownValues = new Map<string, { value: string; label: string }[]>();
 const catalogueEntries = new Map<string, CatalogueEntry[]>();
 const setupProgress = new Map<string, SetupProgress>();
@@ -31,8 +36,21 @@ let accounts = 0;
 
 /** Controls what the test plugin of a Source Type does on its next run. */
 export const testPluginControls = {
-  emit(sourceTypeId: string, origins: Origin[]): void {
+  /**
+   * On its next run, the plugin emits these Origins, having declared every Source Attribute they
+   * name (as its own name) unless `declaring` is false, as a plugin that breaks the contract would.
+   */
+  emit(sourceTypeId: string, origins: Origin[], options: { declaring?: boolean } = {}): void {
     pending.set(sourceTypeId, { origins });
+    if (options.declaring === false) undeclared.add(sourceTypeId);
+  },
+  /** On its next run, the plugin also declares these Source Attributes, naming them as given. */
+  declare(sourceTypeId: string, attributes: SourceAttributeDeclaration[]): void {
+    declaring.set(sourceTypeId, [...(declaring.get(sourceTypeId) ?? []), ...attributes]);
+  },
+  /** On its next run, after declaring, the plugin archives these Source Attributes. */
+  archive(sourceTypeId: string, externalIds: string[]): void {
+    archiving.set(sourceTypeId, [...(archiving.get(sourceTypeId) ?? []), ...externalIds]);
   },
   /** On its next run, the plugin says these Origins were deleted, along with any it emits. */
   withdraw(sourceTypeId: string, externalIds: string[], origins: Origin[] = []): void {
@@ -176,21 +194,33 @@ function basicTestSourcePlugin(options: TestPluginOptions): SourcePlugin {
     ingestion: {
       mode: "polling",
       suggestedIntervalSeconds: 600,
-      poll: (context) => {
+      poll: async (context) => {
         const { syncCursor } = context;
         runs.set(sourceTypeId, [...(runs.get(sourceTypeId) ?? []), context]);
         const next = pending.get(sourceTypeId) ?? { origins: [] };
         pending.delete(sourceTypeId);
-        if (next.failure) return Promise.reject(next.failure);
-        return Promise.resolve({
+        if (next.failure) throw next.failure;
+        await reportAttributes(sourceTypeId, context, next.origins);
+        return {
           origins: next.origins,
           syncCursor: String(Number(syncCursor ?? 0) + 1),
           ...(next.withdrawn ? { withdrawn: next.withdrawn } : {}),
-        });
+        };
       },
     },
     health: { silentApplies: options.silentApplies ?? true },
   };
+}
+
+/** Declares the Source Attributes the Origins name and those asked for, then archives those asked for. */
+async function reportAttributes(sourceTypeId: string, context: IngestContext, origins: Origin[]): Promise<void> {
+  const named = new Map<string, string>();
+  if (!undeclared.delete(sourceTypeId)) for (const id of origins.flatMap((origin) => origin.attributes)) named.set(id, id);
+  for (const { externalId, name } of declaring.get(sourceTypeId) ?? []) named.set(externalId, name);
+  declaring.delete(sourceTypeId);
+  if (named.size > 0) await context.attributes.declare([...named].map(([externalId, name]) => ({ externalId, name })));
+  for (const externalId of archiving.get(sourceTypeId) ?? []) await context.attributes.archive(externalId);
+  archiving.delete(sourceTypeId);
 }
 
 export type TestPluginPackage = {

@@ -8,16 +8,30 @@ import type {
   ProjectedItem,
   RawMessage,
   ReadStated,
+  RunRecorded,
   SourceRun,
   StatedItem,
   StoredMessage,
 } from "@family-agenda/application";
-import type { BlobRef, Event, ItemId, StatedTask, LocalDate, RawMessageId, SourceId, SourceTypeId, TimeSpan, TimetableChangeKind } from "@family-agenda/domain";
+import type { BlobRef, Event, FamilyMemberId, ItemId, StatedTask, LocalDate, RawMessageId, SourceId, SourceTypeId, TimeSpan, TimetableChangeKind } from "@family-agenda/domain";
 import { and, asc, eq, gte, inArray, isNotNull, isNull, lte, sql, type SQL, type SQLWrapper } from "drizzle-orm";
 import { uuidPattern } from "../uuid";
 import type { Database } from "./database";
 import { cursorToJson, failureColumns } from "./repositories";
-import { events, items, lessons, sourceRecordAttachments, sourceRecords, sourceRuns, sources, tasks } from "./schema";
+import {
+  events,
+  familyMembers,
+  items,
+  lessons,
+  sourceAttributeMembers,
+  sourceAttributes,
+  sourceRecordAttachments,
+  sourceRecordAttributes,
+  sourceRecords,
+  sourceRuns,
+  sources,
+  tasks,
+} from "./schema";
 
 type Transaction = Parameters<Parameters<Database["transaction"]>[0]>[0];
 
@@ -25,6 +39,9 @@ type RunOrigin = SourceRun["origins"][number];
 
 /** What recording a run's stated Source Records found: which wrote their Item, and which were invalid. */
 type StatedOutcome = { written: string[]; invalid: InvalidRecord[] };
+
+/** The Source Attributes of a Source by external id, as `recordRun` resolves what Origins name. */
+type KnownAttributes = Map<string, { id: string; archived: boolean }>;
 
 /** A message, with its text, waiting for its one successful extraction. */
 const pendingMessage = and(isNull(sourceRecords.processedAt), isNotNull(sourceRecords.body), isNull(sourceRecords.withdrawnAt));
@@ -51,8 +68,6 @@ const columns = {
   occurredAt: arrivedAt,
   link: sourceRecords.link,
   isMessage: sql<boolean>`(${sourceRecords.body} IS NOT NULL)`,
-  sourceId: sourceRecords.sourceId,
-  part: sourceRecords.part,
   sourceTypeId: sources.sourceTypeId,
   sourceName: sources.name,
   event: events,
@@ -74,15 +89,25 @@ type Row = {
 export class PostgresItemRepository implements ItemRepository {
   constructor(private readonly db: Database) {}
 
-  async recordRun(run: SourceRun, read: ReadStated): Promise<{ knownMessages: string[]; withdrawnFiles: BlobRef[]; invalid: InvalidRecord[] }> {
+  async recordRun(run: SourceRun, read: ReadStated): Promise<RunRecorded> {
     return this.db.transaction(async (tx) => {
       const knownMessages: string[] = [];
       const outcome: StatedOutcome = { written: [], invalid: [] };
+      const known = await attributesOfSource(tx, run.sourceId);
+      const refused = new Set<string>();
+      // An Origin naming no Source Attribute is one the Source no longer has.
+      const withdrawn = [...run.withdrawn];
       for (const origin of run.origins) {
-        if (origin.stated) await recordStated(tx, run, origin, origin.stated, read, outcome);
-        else if (origin.message && (await recordMessage(tx, run, origin, origin.message))) knownMessages.push(origin.externalId);
+        if (origin.attributes.length === 0) {
+          withdrawn.push(origin.externalId);
+          continue;
+        }
+        const attributeIds = resolved(known, origin.attributes, refused);
+        if (attributeIds === null) continue;
+        if (origin.stated) await recordStated(tx, run, origin, origin.stated, attributeIds, read, outcome);
+        else if (origin.message && (await recordMessage(tx, run, origin, origin.message, attributeIds))) knownMessages.push(origin.externalId);
       }
-      const withdrawnFiles = await this.withdraw(tx, run);
+      const withdrawnFiles = await this.withdraw(tx, run, withdrawn);
       const lastNewOrigin = tx
         .select({ at: sql`max(${sourceRecords.createdAt})` })
         .from(sourceRecords)
@@ -95,10 +120,11 @@ export class PostgresItemRepository implements ItemRepository {
           lastSuccessAt: run.at,
           ...failureColumns(null),
           lastNewOriginAt: sql`(${lastNewOrigin})`,
-          ...(await invalidColumns(tx, run, outcome)),
+          ...(await invalidColumns(tx, run, outcome, withdrawn)),
+          ...(await unknownColumns(tx, run, [...refused])),
         })
         .where(eq(sourceRuns.sourceId, run.sourceId));
-      return { knownMessages, withdrawnFiles, invalid: outcome.invalid };
+      return { knownMessages, withdrawnFiles, invalid: outcome.invalid, refused: [...refused] };
     });
   }
 
@@ -106,13 +132,13 @@ export class PostgresItemRepository implements ItemRepository {
    * Marks the Source Records the Source deleted as withdrawn, which deletes their Items, and
    * removes their messages' text and attachments. Returns the files of the removed attachments.
    */
-  private async withdraw(tx: Transaction, run: SourceRun): Promise<BlobRef[]> {
-    if (run.withdrawn.length === 0) return [];
+  private async withdraw(tx: Transaction, run: SourceRun, externalIds: string[]): Promise<BlobRef[]> {
+    if (externalIds.length === 0) return [];
     const withdrawn = await tx
       .update(sourceRecords)
       .set({ withdrawnAt: run.at, sender: null, subject: null, body: null })
       .where(
-        and(eq(sourceRecords.sourceId, run.sourceId), inArray(sourceRecords.externalId, run.withdrawn), isNull(sourceRecords.withdrawnAt)),
+        and(eq(sourceRecords.sourceId, run.sourceId), inArray(sourceRecords.externalId, externalIds), isNull(sourceRecords.withdrawnAt)),
       )
       .returning({ id: sourceRecords.id });
     if (withdrawn.length === 0) return [];
@@ -189,11 +215,19 @@ export class PostgresItemRepository implements ItemRepository {
       .from(sourceRecordAttachments)
       .where(eq(sourceRecordAttachments.recordId, id))
       .orderBy(asc(sourceRecordAttachments.position));
+    const attributes = await this.db
+      .select({ name: sourceAttributes.name })
+      .from(sourceRecordAttributes)
+      .innerJoin(sourceAttributes, eq(sourceAttributes.id, sourceRecordAttributes.attributeId))
+      .where(eq(sourceRecordAttributes.recordId, id))
+      .orderBy(asc(sourceAttributes.name));
     return {
       id,
       sourceId: row.sourceId as SourceId,
       sentAt: row.occurredAt ?? row.createdAt,
-      attributes: row.attributes,
+      sender: row.sender,
+      subject: row.subject,
+      attributes: attributes.map((attribute) => attribute.name),
       body: row.body,
       attachments: attachments.map(({ position, filename, mediaType, size, blob, conversionProblem }) => ({
         position,
@@ -250,6 +284,7 @@ export class PostgresItemRepository implements ItemRepository {
   /** The Items that match, with the link of their Source Record, leaving out those of a hidden Source. */
   private async projected(where: SQL | undefined, shownOnly = true): Promise<ProjectedItem[]> {
     const rows = await this.query(where, shownOnly);
+    const assignments = await assignmentsOf(this.db, rows.map((row) => row.recordId));
     return rows.flatMap((row) => {
       const details = detailsOf(row);
       if (!details) return [];
@@ -260,7 +295,7 @@ export class PostgresItemRepository implements ItemRepository {
           id: row.id as ItemId,
           links: row.link ? [{ url: row.link, ...source }] : [],
           messages: row.isMessage ? [{ id: row.recordId as RawMessageId, ...source, sentAt: row.occurredAt }] : [],
-          sources: [{ sourceId: row.sourceId as SourceId, part: row.part }],
+          assignments: assignments.get(row.recordId) ?? [],
         },
       ];
     });
@@ -301,7 +336,7 @@ function lessonDetails(row: typeof lessons.$inferSelect): ItemDetails {
  * Records a message, unless it was recorded before, as a message is read once. Returns whether it
  * was, so that the caller removes the attachments it stored for it again.
  */
-async function recordMessage(tx: Transaction, run: SourceRun, origin: RunOrigin, message: StoredMessage): Promise<boolean> {
+async function recordMessage(tx: Transaction, run: SourceRun, origin: RunOrigin, message: StoredMessage, attributeIds: string[]): Promise<boolean> {
   const [row] = await tx
     .insert(sourceRecords)
     .values({
@@ -312,19 +347,18 @@ async function recordMessage(tx: Transaction, run: SourceRun, origin: RunOrigin,
       subject: message.subject,
       body: message.body,
       createdAt: run.at,
-      attributes: origin.attributes,
       link: origin.link,
-      part: origin.part,
       thread: message.thread,
     })
     .onConflictDoUpdate({
       target: [sourceRecords.sourceId, sourceRecords.externalId],
       // A message keeps what it was first recorded with; a withdrawn one arriving again stays without it.
-      set: { attributes: origin.attributes, link: sql`coalesce(excluded.link, ${sourceRecords.link})`, withdrawnAt: null },
+      set: { link: sql`coalesce(excluded.link, ${sourceRecords.link})`, withdrawnAt: null },
     })
     // A row the insert wrote has no previous version, so its xmax is 0.
     .returning({ id: sourceRecords.id, inserted: sql<boolean>`(xmax = 0)` });
   if (!row) throw new Error("recording a Source Record returned no row");
+  await replaceAttributes(tx, row.id, attributeIds);
   if (!row.inserted) return true;
   if (message.attachments.length > 0) {
     await tx.insert(sourceRecordAttachments).values(
@@ -353,11 +387,12 @@ async function recordStated(
   run: SourceRun,
   origin: RunOrigin,
   stated: Record<string, unknown>,
+  attributeIds: string[],
   read: ReadStated,
   outcome: StatedOutcome,
 ): Promise<void> {
-  if (await keptUnchanged(tx, run, origin, stated)) return;
-  const fromWhere = { attributes: origin.attributes, link: origin.link, part: origin.part };
+  if (await keptUnchanged(tx, run, origin, stated, attributeIds)) return;
+  const fromWhere = { link: origin.link };
   const [row] = await tx
     .insert(sourceRecords)
     .values({ sourceId: run.sourceId, externalId: origin.externalId, occurredAt: null, stated, createdAt: run.at, ...fromWhere })
@@ -367,6 +402,7 @@ async function recordStated(
     })
     .returning({ id: sourceRecords.id });
   if (!row) throw new Error("recording a Source Record returned no row");
+  await replaceAttributes(tx, row.id, attributeIds);
   const [current] = await tx.select({ id: items.id, kind: items.kind }).from(items).where(eq(items.recordId, row.id)).limit(1);
   const result = read(stated);
   const problems = result.ok ? await writeStated(tx, row.id, current ?? null, result.item, run.at) : result.problems;
@@ -383,18 +419,26 @@ async function recordStated(
  * Whether the entry states what it stated before and is not withdrawn, so that its Item is left as
  * it is; where it comes from is followed all the same.
  */
-async function keptUnchanged(tx: Transaction, run: SourceRun, origin: RunOrigin, stated: Record<string, unknown>): Promise<boolean> {
+async function keptUnchanged(
+  tx: Transaction,
+  run: SourceRun,
+  origin: RunOrigin,
+  stated: Record<string, unknown>,
+  attributeIds: string[],
+): Promise<boolean> {
   const where = and(eq(sourceRecords.sourceId, run.sourceId), eq(sourceRecords.externalId, origin.externalId));
   const [known] = await tx
     .select({
+      id: sourceRecords.id,
       // Compared as jsonb, which does not mind the order of the keys.
       unchanged: sql<boolean>`(${sourceRecords.stated} = ${JSON.stringify(stated)}::jsonb AND ${sourceRecords.withdrawnAt} IS NULL)`,
-      sameOrigin: sql<boolean>`(${sourceRecords.attributes} = ${JSON.stringify(origin.attributes)}::jsonb AND ${sourceRecords.link} IS NOT DISTINCT FROM ${origin.link} AND ${sourceRecords.part} IS NOT DISTINCT FROM ${origin.part})`,
+      sameOrigin: sql<boolean>`(${sourceRecords.link} IS NOT DISTINCT FROM ${origin.link})`,
     })
     .from(sourceRecords)
     .where(where);
   if (!known?.unchanged) return false;
-  if (!known.sameOrigin) await tx.update(sourceRecords).set({ attributes: origin.attributes, link: origin.link, part: origin.part }).where(where);
+  if (!known.sameOrigin) await tx.update(sourceRecords).set({ link: origin.link }).where(where);
+  await replaceAttributes(tx, known.id, attributeIds);
   return true;
 }
 
@@ -434,16 +478,84 @@ function checkViolated(error: unknown): string | null {
  * The Source's invalid records after the run: those it had, but for any written or withdrawn now,
  * and those found invalid now, with since when there have been any.
  */
-async function invalidColumns(tx: Transaction, run: SourceRun, outcome: StatedOutcome) {
+async function invalidColumns(tx: Transaction, run: SourceRun, outcome: StatedOutcome, withdrawn: string[]) {
   const [previous] = await tx
     .select({ ids: sourceRuns.invalidRecords, since: sourceRuns.invalidRecordsSince })
     .from(sourceRuns)
     .where(eq(sourceRuns.sourceId, run.sourceId));
   const found = outcome.invalid.map((record) => record.externalId);
-  const gone = new Set([...outcome.written, ...run.withdrawn, ...found]);
+  const gone = new Set([...outcome.written, ...withdrawn, ...found]);
   const ids = [...(previous?.ids ?? []).filter((id) => !gone.has(id)), ...found];
   const since = ids.length === 0 ? null : (previous?.since ?? run.at);
   return { invalidRecords: ids, invalidRecordsSince: since };
+}
+
+/** The Source's unknown attributes after the run: those it refused now, since when there have been any. */
+async function unknownColumns(tx: Transaction, run: SourceRun, refused: string[]) {
+  const [previous] = await tx
+    .select({ since: sourceRuns.unknownAttributesSince })
+    .from(sourceRuns)
+    .where(eq(sourceRuns.sourceId, run.sourceId));
+  return { unknownAttributes: refused, unknownAttributesSince: refused.length === 0 ? null : (previous?.since ?? run.at) };
+}
+
+/** The Source Attributes a Source has, archived ones too. */
+async function attributesOfSource(tx: Transaction, sourceId: string): Promise<KnownAttributes> {
+  const rows = await tx
+    .select({ id: sourceAttributes.id, externalId: sourceAttributes.externalId, archivedAt: sourceAttributes.archivedAt })
+    .from(sourceAttributes)
+    .where(eq(sourceAttributes.sourceId, sourceId));
+  return new Map(rows.map((row) => [row.externalId, { id: row.id, archived: row.archivedAt !== null }]));
+}
+
+/**
+ * The ids of the Source Attributes an Origin names; null if it names one that is unknown or
+ * archived, which is added to `refused` along with the others like it.
+ */
+function resolved(known: KnownAttributes, named: string[], refused: Set<string>): string[] | null {
+  const unknown = named.filter((externalId) => !known.has(externalId) || known.get(externalId)?.archived);
+  for (const externalId of unknown) refused.add(externalId);
+  return unknown.length > 0 ? null : named.flatMap((externalId) => known.get(externalId)?.id ?? []);
+}
+
+/** Gives a Source Record these Source Attributes, and no others, leaving its rows as they are if they already are. */
+async function replaceAttributes(tx: Transaction, recordId: string, attributeIds: string[]): Promise<void> {
+  const current = await tx
+    .select({ id: sourceRecordAttributes.attributeId })
+    .from(sourceRecordAttributes)
+    .where(eq(sourceRecordAttributes.recordId, recordId));
+  const wanted = new Set(attributeIds);
+  if (current.length === wanted.size && current.every((row) => wanted.has(row.id))) return;
+  await tx.delete(sourceRecordAttributes).where(eq(sourceRecordAttributes.recordId, recordId));
+  await tx.insert(sourceRecordAttributes).values([...wanted].map((attributeId) => ({ recordId, attributeId })));
+}
+
+/**
+ * For each Source Record, the Family Members assigned to each of its Source Attributes, in the
+ * Family's order; archived Source Attributes count, as archiving never unassigns Items.
+ */
+async function assignmentsOf(db: Database | Transaction, recordIds: string[]): Promise<Map<string, FamilyMemberId[][]>> {
+  const assignments = new Map<string, FamilyMemberId[][]>();
+  if (recordIds.length === 0) return assignments;
+  const rows = await db
+    .select({ recordId: sourceRecordAttributes.recordId, attributeId: sourceRecordAttributes.attributeId, familyMemberId: sourceAttributeMembers.familyMemberId })
+    .from(sourceRecordAttributes)
+    .leftJoin(sourceAttributeMembers, eq(sourceAttributeMembers.attributeId, sourceRecordAttributes.attributeId))
+    .leftJoin(familyMembers, eq(familyMembers.id, sourceAttributeMembers.familyMemberId))
+    .where(inArray(sourceRecordAttributes.recordId, [...new Set(recordIds)]))
+    .orderBy(asc(familyMembers.position));
+  const byAttribute = new Map<string, { recordId: string; members: FamilyMemberId[] }>();
+  for (const row of rows) {
+    const key = `${row.recordId}/${row.attributeId}`;
+    let entry = byAttribute.get(key);
+    if (!entry) {
+      entry = { recordId: row.recordId, members: [] };
+      byAttribute.set(key, entry);
+      assignments.set(row.recordId, [...(assignments.get(row.recordId) ?? []), entry.members]);
+    }
+    if (row.familyMemberId) entry.members.push(row.familyMemberId as FamilyMemberId);
+  }
+  return assignments;
 }
 
 /** Items with their Source Record, Source and detail row. */

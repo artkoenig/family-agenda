@@ -249,7 +249,7 @@ describe("Tasks", () => {
 
   it("refuses a Source stating a Task, which only a message can", async () => {
     testPluginControls.emit("school", [
-      { externalId: "form", attributes: {}, content: { kind: "stated", stated: { kind: "task", title: "Sign the trip form" } as never } },
+      { externalId: "form", attributes: ["main"], content: { kind: "stated", stated: { kind: "task", title: "Sign the trip form" } as never } },
     ]);
     instance.clock.advance(15 * minutes);
 
@@ -262,7 +262,7 @@ describe("Tasks", () => {
 const mail = (id: string, sentAt: string, text: string, thread = id): Origin => ({
   externalId: id,
   occurredAt: new Date(sentAt),
-  attributes: { sender: "klasse5b@schule.example.org" },
+  sender: "klasse5b@schule.example.org", attributes: ["main"],
   content: { kind: "raw-message", text, attachments: [], thread },
 });
 

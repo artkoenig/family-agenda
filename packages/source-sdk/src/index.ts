@@ -2,7 +2,7 @@
  * The contract a Source plugin implements (ADR-0010). It is the only Family Agenda package a
  * plugin may import.
  */
-export const sdkVersion = "0.9.0";
+export const sdkVersion = "0.10.0";
 
 /**
  * A text the Admin area shows: plain, or per language as `{ en: "Calendar", de: "Kalender" }`.
@@ -50,12 +50,6 @@ export type ConfigField = {
    * has none to offer yet.
    */
   choices?: (context: RunContext) => Promise<Choice[]>;
-  /**
-   * Makes a plain field a list of names an Admin types, such as the folders of a mailbox, whose
-   * entries are Parts of the Source: an Admin assigns each Part to Family Members on its own, and
-   * an Origin names the Part it came from. Its value is the list of names, in the Admin's order.
-   */
-  parts?: boolean;
 };
 
 /** A value a plugin offers, with how it names it. */
@@ -128,6 +122,37 @@ export type RunContext = {
   timeZone: string;
 };
 
+/** A subdivision of a Source a plugin reports, such as a mail folder, a chat or a child of a school account. */
+export type SourceAttributeDeclaration = {
+  /** Identifies it within its Source; stable, such as a folder's id or a chat's JID. */
+  externalId: string;
+  /** What the Admin area shows, where an Admin assigns Family Members to it. */
+  name: string;
+};
+
+/**
+ * The Source Attributes of the Source being run (ADR-0016), which a plugin reports and nothing
+ * else creates. Whom an Item concerns follows from the Source Attributes its Origin names, and
+ * the Family Members an Admin assigned to them. A call takes effect when it returns, so an Origin
+ * may name an id from the moment `declare` returned it.
+ */
+export interface SourceAttributes {
+  /**
+   * Makes these Source Attributes known; idempotent. An id the Source knows already gets its new
+   * name and is revived if it was archived, keeping the Family Members assigned to it. A Source
+   * without subdivisions declares exactly one.
+   */
+  declare(attributes: SourceAttributeDeclaration[]): Promise<void>;
+  /**
+   * Archives one that is gone, such as a deleted folder. Its assignment and the Items it decided
+   * stay; an Origin cannot name it until it is declared again. An unknown id is ignored.
+   */
+  archive(externalId: string): Promise<void>;
+}
+
+/** What a plugin gets to ingest for one Source: the run, and the Source's Source Attributes. */
+export type IngestContext = RunContext & { attributes: SourceAttributes };
+
 export type IngestResult = {
   origins: Origin[];
   /** Where the next run resumes; stored only together with these Origins. */
@@ -144,12 +169,12 @@ export type Ingestion =
       mode: "polling";
       /** How often the worker polls a Source by default; an Admin can change it. */
       suggestedIntervalSeconds: number;
-      poll(context: RunContext): Promise<IngestResult>;
+      poll(context: IngestContext): Promise<IngestResult>;
     }
   | {
       /** The plugin's own process delivers to an ingest endpoint the Instance gives each Source. */
       mode: "push";
-      receive(context: RunContext, payload: Uint8Array): Promise<IngestResult>;
+      receive(context: IngestContext, payload: Uint8Array): Promise<IngestResult>;
     };
 
 export type Attachment = { filename: string; contentType: string; bytes: Uint8Array };
@@ -215,16 +240,20 @@ export type Origin = {
    * message needs it; a stated Item has none.
    */
   occurredAt?: Date;
-  /** What the plugin tells about where it came from, such as its sender or calendar, shown with its message; whom it concerns is decided by its Source alone. */
-  attributes: Record<string, string>;
+  /**
+   * The external ids of the Source Attributes it belongs to, such as the folder of a mail, each
+   * declared before (ADR-0016). Whom it concerns is decided by the Family Members assigned to
+   * them. Naming one that is unknown or archived is a plugin bug: the Origin is refused. Emitted
+   * again with another list, an Origin moves to it without being read again; with an empty list, it
+   * is withdrawn like one named in `withdrawn`.
+   */
+  attributes: string[];
+  /** Who sent a message, shown with it; the Family does not choose whom an Item concerns by it. */
+  sender?: string;
+  /** The subject of a message, shown with it. */
+  subject?: string;
   /** An `http` or `https` address where the Family can look at the original, if there is one. */
   link?: string;
-  /**
-   * The Part of the Source it came from, one of the entries of its `parts` field, such as the
-   * folder of a mail. Whom it concerns is then decided by the Family Members its Part is assigned
-   * to; an Origin without one, by those its Source is assigned to.
-   */
-  part?: string;
   content:
     | {
         /** A message to extract Items from, such as a mail. */
@@ -343,20 +372,10 @@ function fieldProblems(fields: ConfigField[]): string[] {
   return problems;
 }
 
-function partsConflict(field: ConfigField): string | null {
-  if (!field.parts) return null;
-  if (field.secret || field.choices || field.setByPlugin) {
-    return `configuration field "${field.key}" is a list of Parts, so it is no secret, choice or field the plugin sets`;
-  }
-  return null;
-}
-
 function fieldProblemsOf(field: ConfigField, keys: Set<string>): string[] {
   const problems: string[] = [];
   if (keys.has(field.key)) problems.push(`configuration field "${field.key}" is declared twice`);
   if (field.choices && field.secret) problems.push(`configuration field "${field.key}" is a choice, so it cannot be secret`);
-  const partsProblem = partsConflict(field);
-  if (partsProblem) problems.push(partsProblem);
   return problems;
 }
 
@@ -386,10 +405,18 @@ export function problemsWithOrigin(origin: Origin): string[] {
   const problems: string[] = [];
   if (origin.externalId === "") problems.push("the Origin has no external id");
   problems.push(...contentProblems(origin));
-  if (origin.part === "") problems.push("the Origin's Part is empty");
+  problems.push(...attributeProblems(origin.attributes));
   if (origin.link !== undefined && !/^https?:\/\//i.test(origin.link)) {
     problems.push("the Origin's link is no http or https address");
   }
+  return problems;
+}
+
+function attributeProblems(attributes: string[]): string[] {
+  const problems: string[] = [];
+  if (attributes.includes("")) problems.push("the Origin names an empty Source Attribute id");
+  const twice = attributes.filter((id, index) => id !== "" && attributes.indexOf(id) !== index);
+  for (const id of new Set(twice)) problems.push(`the Origin names the Source Attribute "${id}" twice`);
   return problems;
 }
 

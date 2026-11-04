@@ -12,7 +12,7 @@ const minutes = 60 * 1000;
 const mail = (id: string, text: string): Origin => ({
   externalId: id,
   occurredAt: new Date("2026-09-14T06:00:00Z"),
-  attributes: {},
+  attributes: ["main"],
   content: { kind: "raw-message", text, attachments: [], thread: id },
 });
 

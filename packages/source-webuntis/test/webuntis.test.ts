@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { describeSourcePluginContract } from "@family-agenda/source-sdk/testing";
+import { describeSourcePluginContract, recordingAttributes } from "@family-agenda/source-sdk/testing";
 import type { IngestResult, Origin, RunContext, SourcePlugin } from "@family-agenda/source-sdk";
 import { createWebUntisPlugin } from "../src";
 
@@ -43,7 +43,7 @@ function server(timetables: Record<number, Json> = { 1201: fixture("timetable-mi
 
 const poll = (plugin: SourcePlugin, context: Partial<RunContext> = {}): Promise<IngestResult> => {
   if (plugin.ingestion.mode !== "polling") throw new Error("the WebUntis plugin polls");
-  return plugin.ingestion.poll({ config, syncCursor: null, now, timeZone: "Europe/Berlin", ...context });
+  return plugin.ingestion.poll({ config, syncCursor: null, now, timeZone: "Europe/Berlin", attributes: recordingAttributes(), ...context });
 };
 
 /** Each Origin as its key and the Lesson it states. */
@@ -154,7 +154,7 @@ describe("the WebUntis plugin", () => {
         ...asPlanned,
       },
     ]);
-    expect(origins.map((origin) => [origin.externalId, origin.attributes])).toContainEqual(["1202/91001", { child: "Leo König" }]);
+    expect(origins.map((origin) => [origin.externalId, origin.attributes])).toContainEqual(["1202/91001", ["account"]]);
     expect(origins.every((origin) => origin.occurredAt === undefined)).toBe(true);
   });
 

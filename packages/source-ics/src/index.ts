@@ -5,6 +5,7 @@ import {
   SourceError,
   statedTextLimits,
   type EventSpan,
+  type IngestContext,
   type Origin,
   type RunContext,
   type SourcePlugin,
@@ -93,10 +94,15 @@ export function createIcsPlugin(options: IcsPluginOptions = {}): SourcePlugin {
       async poll(context) {
         const previous = parseState(context.syncCursor);
         const downloaded = await download(context, previous.etag);
-        if (!downloaded) return { origins: [], syncCursor: context.syncCursor };
+        if (!downloaded) {
+          // A calendar that has not changed keeps the name an Admin gave it, should they change that.
+          const configured = configuredName(context);
+          if (configured) await context.attributes.declare([{ externalId: calendarAttribute, name: configured }]);
+          return { origins: [], syncCursor: context.syncCursor };
+        }
         const calendar = parseCalendar(downloaded.body, context.timeZone);
-        const attributes = { calendar: nameOf(context, calendar.name) };
-        const origins = calendar.entries.map((entry) => originOf(entry, attributes));
+        await context.attributes.declare([{ externalId: calendarAttribute, name: nameOf(context, calendar.name) }]);
+        const origins = calendar.entries.map(originOf);
         const known = calendar.entries.map((entry) => entry.uid);
         const withdrawn = previous.known.filter((uid) => !known.includes(uid));
         const state: State = { etag: downloaded.etag, known };
@@ -118,19 +124,26 @@ function addressOf(value: string | undefined): string {
   return address;
 }
 
-function originOf(entry: FoundEntry, attributes: Record<string, string>): Origin {
+/** The one Source Attribute of a calendar, which has no subdivisions. */
+const calendarAttribute = "calendar";
+
+function originOf(entry: FoundEntry): Origin {
   return {
     externalId: entry.uid,
-    attributes,
+    attributes: [calendarAttribute],
     ...(entry.link ? { link: entry.link } : {}),
     content: { kind: "stated", stated: entry.event },
   };
 }
 
-function nameOf(context: RunContext, calendarName: string | null): string {
+/** The name an Admin gave the calendar, if they did. */
+function configuredName(context: IngestContext): string | null {
   const name = context.config.plain.name;
-  if (typeof name === "string" && name.trim() !== "") return name.trim();
-  return calendarName ?? "Calendar";
+  return typeof name === "string" && name.trim() !== "" ? name.trim() : null;
+}
+
+function nameOf(context: IngestContext, calendarName: string | null): string {
+  return configuredName(context) ?? calendarName ?? "Calendar";
 }
 
 function parseState(state: string | null): State {

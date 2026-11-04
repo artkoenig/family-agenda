@@ -20,6 +20,11 @@ export type SourceHealth = {
    * so that none was written.
    */
   invalidRecords: string[];
+  /**
+   * A warning beside the status: the Source Attribute ids that Source Records named without their
+   * being declared, or after they were archived, so that those were refused. A plugin bug.
+   */
+  unknownAttributes: string[];
 };
 
 export type SourceHealthDeps = {
@@ -31,14 +36,14 @@ export type SourceHealthDeps = {
 
 /** How a Source is doing, as the Admin area shows it (ADR-0010). */
 export async function healthOf(source: Source, deps: SourceHealthDeps): Promise<SourceHealth> {
-  const { lastSuccessAt, failure, invalidRecords } = source;
+  const { lastSuccessAt, failure, invalidRecords, unknownAttributes } = source;
   const loaded = await enabledSourceType(source.sourceTypeId, deps);
   if (!loaded) {
     const installed = deps.registry.installed().find((type) => type.id === source.sourceTypeId);
     const problem: HealthProblem = installed
       ? { kind: "not-loadable", reason: installed.notLoadable }
       : { kind: "not-installed" };
-    return { status: "failing", problem, lastSuccessAt, invalidRecords };
+    return { status: "failing", problem, lastSuccessAt, invalidRecords, unknownAttributes };
   }
   const status = sourceStatus({
     failure,
@@ -47,7 +52,7 @@ export async function healthOf(source: Source, deps: SourceHealthDeps): Promise<
     createdAt: source.createdAt,
     now: deps.clock.now(),
   });
-  return { status, problem: failure ? { kind: "run-failed", message: failure.message } : null, lastSuccessAt, invalidRecords };
+  return { status, problem: failure ? { kind: "run-failed", message: failure.message } : null, lastSuccessAt, invalidRecords, unknownAttributes };
 }
 
 /** Whether the Family's Sources work, as every Agenda hints at without detail. */

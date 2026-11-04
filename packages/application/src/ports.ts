@@ -17,6 +17,7 @@ import type {
   RawMessageId,
   RunError,
   SourceFailure,
+  SourceAttributeId,
   SourceId,
   SourceTypeId,
   StatedTask,
@@ -164,8 +165,6 @@ export type ConfigFieldSpec = {
   setByPlugin: boolean;
   /** A choice among values the plugin offers for an existing Source; its value is the list of the chosen ones. */
   choice: boolean;
-  /** A list of names an Admin types, each a Part of the Source that is assigned on its own. */
-  parts: boolean;
 };
 
 /** An interactive step of a Source's form, as a plugin declares it. */
@@ -233,10 +232,12 @@ export type IngestedOrigin = {
   externalId: string;
   /** When the Source received a message; null for a stated Item. */
   occurredAt: Date | null;
-  attributes: Record<string, string>;
+  /** The external ids of the Source Attributes it names; none withdraws it. */
+  attributes: string[];
+  /** Who sent a message, if the plugin tells. */
+  sender: string | null;
+  subject: string | null;
   link: string | null;
-  /** The Part of the Source it came from, such as a mail's folder; null if it has none. */
-  part: string | null;
   /** The Item an entry states; null for a message. */
   stated: StatedJson | null;
   message: IngestedMessage | null;
@@ -248,11 +249,25 @@ export type SourceRunResult =
   /** A definite error needs an Admin; a temporary one is retried. */
   | { ok: false; kind: "definite" | "temporary"; message: string };
 
+/** A subdivision of a Source as its plugin declares it. */
+export type DeclaredAttribute = { externalId: string; name: string };
+
+/**
+ * What a plugin reports the Source Attributes of its Source through, while it runs. A call takes
+ * effect when it returns, whether or not the run goes on to succeed.
+ */
+export type AttributeReporting = {
+  /** Inserts them; a known id gets the new name and is revived, keeping its assignment. */
+  declare(attributes: DeclaredAttribute[]): Promise<void>;
+  /** Archives one, keeping its assignment and the Items it decided. */
+  archive(externalId: string): Promise<void>;
+};
+
 export type PollingIngestion = {
   mode: "polling";
   suggestedIntervalSeconds: number;
   /** Runs the plugin; a plugin that throws or emits invalid Origins fails the run. */
-  poll(context: SourceRunContext): Promise<SourceRunResult>;
+  poll(context: SourceRunContext, attributes: AttributeReporting): Promise<SourceRunResult>;
 };
 
 /** What the core needs of a loaded plugin; it never asks which one it is. */
@@ -349,17 +364,8 @@ export type Source = {
   shown: boolean;
   /** As an Admin named it, such as "Class 3b"; null for the name the Admin area derives from its settings. */
   name: string | null;
-  /**
-   * The Family Members an Admin assigned it to, in the Family's order, whom its Items concern;
-   * none for the whole Family. Family Members removed since are no longer listed.
-   */
-  concerns: FamilyMemberId[];
-  /**
-   * The Family Members an Admin assigned each of its Parts to, in the Family's order, by the
-   * Part's name, such as a mail folder's; a Part not listed here concerns those the Source is
-   * assigned to, or the whole Family.
-   */
-  partConcerns: Record<string, FamilyMemberId[]>;
+  /** Its Source Attributes as its plugin reported them, archived ones too, by name. */
+  attributes: SourceAttribute[];
   /** When the worker last ran it, successfully or not; null before its first run, or after an Admin changed it. */
   lastRunAt: Date | null;
   /** When it last ran successfully; null before then. */
@@ -370,7 +376,20 @@ export type Source = {
   lastNewOriginAt: Date | null;
   /** The external ids of its Source Records whose stated Item was invalid, so that none was written. */
   invalidRecords: string[];
+  /** The Source Attribute ids that Source Records named without their being declared, or after they were archived. */
+  unknownAttributes: string[];
   createdAt: Date;
+};
+
+/** A subdivision of a Source that its plugin reported (ADR-0016), and the Family Members an Admin assigned to it. */
+export type SourceAttribute = {
+  id: SourceAttributeId;
+  externalId: string;
+  name: string;
+  /** Archived by its plugin: it keeps its assignment and the Items it decided, but no Source Record can name it. */
+  archived: boolean;
+  /** The Family Members assigned to it, in the Family's order, whom the Items of its Source Records concern; none for the whole Family. */
+  concerns: FamilyMemberId[];
 };
 
 export interface SourceRepository {
@@ -395,10 +414,19 @@ export interface SourceRepository {
   setShown(id: SourceId, shown: boolean): Promise<void>;
   /** Names the Source as an Admin calls it; null for the name derived from its settings. */
   rename(id: SourceId, name: string | null): Promise<void>;
-  /** Assigns the Source to the Family Members, replacing those it was assigned to; none for the whole Family. */
-  assign(id: SourceId, concerns: FamilyMemberId[]): Promise<void>;
-  /** Assigns each Part of the Source to Family Members, replacing every Part's assignment; a Part with none is left out. */
-  assignParts(id: SourceId, parts: Record<string, FamilyMemberId[]>): Promise<void>;
+  /**
+   * Makes the Source Attributes known on a plugin's behalf, in one transaction: an unknown id is
+   * inserted, a known one gets its name and is revived. The ids no longer count as unknown on the
+   * Source's run state.
+   */
+  declareAttributes(id: SourceId, attributes: DeclaredAttribute[]): Promise<void>;
+  /** Archives a Source Attribute by its external id; an unknown one is ignored. */
+  archiveAttribute(id: SourceId, externalId: string): Promise<void>;
+  /**
+   * Assigns the Source Attribute to the Family Members, replacing those it was assigned to; none
+   * for the whole Family. Returns whether the Source Attribute exists.
+   */
+  assignAttribute(id: SourceAttributeId, concerns: FamilyMemberId[]): Promise<boolean>;
   /**
    * Removes the Source in one transaction with its Source Records and their Items. Returns the
    * BlobStore files of its messages' attachments, for the caller to remove.
@@ -444,14 +472,27 @@ export type SourceRun = {
     externalId: string;
     /** When the Source received a message; null for a stated Item. */
     occurredAt: Date | null;
-    attributes: Record<string, string>;
+    /**
+     * The external ids of the Source Attributes it names. Naming one that is unknown or archived
+     * refuses the Origin; an empty list withdraws it.
+     */
+    attributes: string[];
+    sender: string | null;
+    subject: string | null;
     link: string | null;
-    /** The Part of the Source it came from; null if it has none. */
-    part: string | null;
     /** The Item an entry states, as its plugin states it; null for a message. */
     stated: StatedJson | null;
     message: StoredMessage | null;
   }[];
+};
+
+/** What recording a run found out, for the caller to act on. */
+export type RunRecorded = {
+  knownMessages: string[];
+  withdrawnFiles: BlobRef[];
+  invalid: InvalidRecord[];
+  /** The Source Attribute ids that Origins named without being declared, or after they were archived. */
+  refused: string[];
 };
 
 /** A raw message waiting for its one successful extraction (ADR-0009). */
@@ -472,7 +513,10 @@ export type RawMessage = {
   id: RawMessageId;
   sourceId: SourceId;
   sentAt: Date;
-  attributes: Record<string, string>;
+  sender: string | null;
+  subject: string | null;
+  /** The names of its Source Attributes. */
+  attributes: string[];
   body: string;
   attachments: {
     position: number;
@@ -511,8 +555,11 @@ export type ProjectedItem = ItemDetails & {
   links: { url: string; sourceTypeId: SourceTypeId; sourceName: string | null }[];
   /** The message it was extracted from, if any, with the Source Type and name of its Source. */
   messages: { id: RawMessageId; sourceTypeId: SourceTypeId; sourceName: string | null; sentAt: Date }[];
-  /** The Source, with its Part, of its Source Record, which decides whom it concerns. */
-  sources: { sourceId: SourceId; part: string | null }[];
+  /**
+   * The Family Members assigned to each Source Attribute of its Source Record, in the Family's
+   * order; an empty list for one assigned to no one. They decide whom it concerns.
+   */
+  assignments: FamilyMemberId[][];
 };
 
 /** Items, each written from its one Source Record (ADR-0016). */
@@ -527,8 +574,13 @@ export interface ItemRepository {
    * message is not recorded or read again. Returns the external ids of messages recorded before or
    * withdrawn, whose new attachments the caller removes, the attachments of the withdrawn
    * messages, for the caller to remove, and the entries whose Item was invalid.
+   *
+   * An Origin naming a Source Attribute that is unknown or archived is refused, as a plugin bug:
+   * it is not recorded, and the ids are returned and kept among the Source's unknown attributes
+   * until a run refuses nothing or a declare covers them. One recorded again with another list of
+   * Source Attributes moves to it without being read again; one with an empty list is withdrawn.
    */
-  recordRun(run: SourceRun, read: ReadStated): Promise<{ knownMessages: string[]; withdrawnFiles: BlobRef[]; invalid: InvalidRecord[] }>;
+  recordRun(run: SourceRun, read: ReadStated): Promise<RunRecorded>;
   /** Raw messages not yet extracted successfully, oldest first. */
   pendingMessages(limit: number): Promise<PendingMessage[]>;
   /** How many raw messages, of one Source or of all, wait for extraction. */

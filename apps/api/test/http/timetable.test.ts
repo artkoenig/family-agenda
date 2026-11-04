@@ -1,5 +1,6 @@
 import type { Origin, StatedLesson } from "@family-agenda/source-sdk";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { assignSource } from "../support/assign";
 import { bootHttpForTest, type HttpTestInstance } from "../support/http";
 import { testPluginControls } from "../support/test-source-plugin";
 
@@ -13,7 +14,7 @@ const at = (from: string, until: string) => ({
 /** A period of Tuesday's Timetable, its Lesson stated whole with how it deviates from the Timetable. */
 const period = (key: string, subject: string, span: ReturnType<typeof at>, room: string, teacher: string, deviation: Partial<StatedLesson> = {}): Origin => ({
   externalId: key,
-  attributes: {},
+  attributes: ["main"],
   content: {
     kind: "stated",
     stated: { kind: "lesson", subject, span, room, teacher, change: null, previousRoom: null, previousTeacher: null, note: null, ...deviation },
@@ -32,7 +33,7 @@ describe("Timetables in an Agenda over HTTP", () => {
     if (!added.ok) throw new Error("adding failed");
     const mia = await instance.app.familyMembers.add({ name: "Mia" });
     if (!mia.ok) throw new Error("adding failed");
-    await instance.app.sources.assign(added.id, [mia.id]);
+    await assignSource(instance, added.id, [mia.id]);
     const created = await instance.app.agendas.create({ preselected: [], horizonDays: 3 });
     if (!created.ok) throw new Error("creating failed");
     path = `/agendas/${created.id}`;
@@ -41,6 +42,8 @@ describe("Timetables in an Agenda over HTTP", () => {
       period("english", "English", at("08:50", "09:35"), "102", "Ms Weber", { change: "substitution", previousTeacher: "Mr Roth" }),
       period("physics", "Physics", at("09:55", "10:40"), "Lab", "Ms Lang", { change: "cancellation", note: "Teacher ill" }),
     ]);
+    // Assigning the Source ran it once already.
+    instance.clock.advance(15 * 60 * 1000);
     await instance.app.polling.pollDue();
   });
   afterEach(async () => {

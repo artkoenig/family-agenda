@@ -13,7 +13,7 @@ const minutes = 60 * 1000;
 const message = (id: string, text: string, thread?: string): Origin => ({
   externalId: id,
   occurredAt: new Date("2026-09-14T06:12:00Z"),
-  attributes: { sender: "Frau Berger" },
+  sender: "Frau Berger", attributes: ["main"],
   content: { kind: "raw-message", text, attachments: [], ...(thread ? { thread } : {}) },
 });
 

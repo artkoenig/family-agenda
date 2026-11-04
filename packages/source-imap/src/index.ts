@@ -86,10 +86,13 @@ export function createImapPlugin(options: ImapPluginOptions = {}): SourcePlugin 
   return {
     identity: { sourceTypeId: "imap", displayName: { en: "IMAP mailbox", de: "IMAP-Postfach" }, version: "0.1.0", sdkVersion },
     configuration: {
-      version: 2,
+      version: 3,
       migrations: {
-        // The single folder became a list of folders, each assigned on its own.
+        // The single folder became a list of folders.
         1: ({ folder, ...rest }) => (typeof folder === "string" && folder !== "" ? { ...rest, folders: [folder] } : rest),
+        // The folders are typed as a list in one field, as Parts no longer exist.
+        2: ({ folders, ...rest }) =>
+          Array.isArray(folders) && folders.length > 0 ? { ...rest, folders: folders.filter((name) => typeof name === "string").join(", ") } : rest,
       },
       fields: [
         {
@@ -131,10 +134,9 @@ export function createImapPlugin(options: ImapPluginOptions = {}): SourcePlugin 
           label: { en: "Folders", de: "Ordner" },
           secret: false,
           required: false,
-          parts: true,
           description: {
-            en: "Optional; INBOX by default. Use folders your mail filters fill with school mail, or a mailbox only school mail is forwarded to: every mail in them is sent to the LLM endpoint. Assign each folder to the Family Members it concerns.",
-            de: "Optional; sonst INBOX. Nimm Ordner, die deine Mailfilter mit Schulmails füllen, oder ein Postfach, an das nur Schulmails weitergeleitet werden: Jede Mail darin geht an den LLM-Endpunkt. Weise jeden Ordner den Familienmitgliedern zu, die er betrifft.",
+            en: "Optional, separated by commas; INBOX by default. Use folders your mail filters fill with school mail, or a mailbox only school mail is forwarded to: every mail in them is sent to the LLM endpoint.",
+            de: "Optional, durch Kommas getrennt; sonst INBOX. Nimm Ordner, die deine Mailfilter mit Schulmails füllen, oder ein Postfach, an das nur Schulmails weitergeleitet werden: Jede Mail darin geht an den LLM-Endpunkt.",
           },
         },
       ],
@@ -145,6 +147,8 @@ export function createImapPlugin(options: ImapPluginOptions = {}): SourcePlugin 
       suggestedIntervalSeconds: 5 * 60,
       poll: (context) =>
         withMailbox(context, async (client) => {
+          // One Source Attribute for the mailbox until its folders become Source Attributes of their own.
+          await context.attributes.declare([{ externalId: mailboxAttribute, name: stringOf(context.config.plain.username) || "Mailbox" }]);
           const configured = foldersOf(context.config.plain);
           // Without folders, INBOX is read as the Source itself.
           const folders = configured.length > 0 ? configured : ["INBOX"];
@@ -157,7 +161,7 @@ export function createImapPlugin(options: ImapPluginOptions = {}): SourcePlugin 
             for (const mail of read.mails) {
               // A mail in several folders, such as under several labels, counts once, in the first.
               if (origins.has(mail.externalId)) continue;
-              origins.set(mail.externalId, configured.length > 0 ? { ...mail, part: folder } : mail);
+              origins.set(mail.externalId, mail);
             }
           }
           return { origins: [...origins.values()], syncCursor: JSON.stringify(state) };
@@ -169,6 +173,14 @@ export function createImapPlugin(options: ImapPluginOptions = {}): SourcePlugin 
 }
 
 export default createImapPlugin();
+
+/** The sender and subject a mail is shown with, those it has. */
+function shownWith(sender: string | null, subject: string | undefined): { sender?: string; subject?: string } {
+  return { ...(sender ? { sender } : {}), ...(subject?.trim() ? { subject: subject.trim() } : {}) };
+}
+
+/** The one Source Attribute of a mailbox. */
+const mailboxAttribute = "mailbox";
 
 function stringOf(value: unknown): string {
   return typeof value === "string" ? value : "";
@@ -183,9 +195,10 @@ function isPort(port: number): boolean {
   return Number.isInteger(port) && port >= 1 && port <= 65_535;
 }
 
-/** The folders an Admin configured, in their order. */
+/** The folders an Admin configured, separated by commas or lines, in their order. */
 function foldersOf(plain: Record<string, unknown>): string[] {
-  return Array.isArray(plain.folders) ? plain.folders.filter((folder): folder is string => typeof folder === "string" && folder !== "") : [];
+  if (typeof plain.folders !== "string") return [];
+  return [...new Set(plain.folders.split(/[,\n]/).map((folder) => folder.trim()).filter((folder) => folder !== ""))];
 }
 
 /** Opens the folder and reads its mails after the highest UID seen, or the last days on the first read. */
@@ -238,7 +251,8 @@ async function originOf(mail: FetchMessageObject, uidValidity: string, now: Date
   return {
     externalId: parsed.messageId?.trim() || `uid:${uidValidity}:${mail.uid}`,
     occurredAt: receivedAt(mail, parsed, now),
-    attributes: sender ? { sender } : {},
+    attributes: [mailboxAttribute],
+    ...shownWith(sender, parsed.subject),
     content: {
       kind: "raw-message",
       text: textOf(parsed),

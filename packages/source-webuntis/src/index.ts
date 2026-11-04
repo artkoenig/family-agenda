@@ -6,6 +6,7 @@ import {
   statedTextLimits,
   type Choice,
   type Origin,
+  type IngestContext,
   type RunContext,
   type SourcePlugin,
   type StatedLesson,
@@ -101,8 +102,10 @@ export function createWebUntisPlugin(options: WebUntisPluginOptions = {}): Sourc
     throw SourceError.definite("The WebUntis account lists no children.");
   }
 
-  async function poll(context: RunContext) {
+  async function poll(context: IngestContext) {
     const previous = parseState(context.syncCursor);
+    // One Source Attribute for the account until the children become Source Attributes of their own.
+    await context.attributes.declare([{ externalId: accountAttribute, name: connectionOf(context).school }]);
     const children = await childrenOf(context);
     const ticked = ticksOf(context.config.plain.children);
     const read = ticked.length > 0 ? children.filter((child) => ticked.includes(String(child.id))) : children;
@@ -122,11 +125,10 @@ export function createWebUntisPlugin(options: WebUntisPluginOptions = {}): Sourc
         timetableTimestamp: 0,
         timetableTimestamps: [],
       });
-      const attributes = { child: child.name };
       for (const [lessonId, seen] of seenIn(result, context.timeZone)) {
         const key = `${child.id}/${lessonId}`;
         known[key] = seen.day;
-        origins.push({ externalId: key, attributes, content: { kind: "stated", stated: seen.lesson } });
+        origins.push({ externalId: key, attributes: [accountAttribute], content: { kind: "stated", stated: seen.lesson } });
       }
     }
     // A Lesson of the days read that has gone from the Timetable, or whose child is no longer
@@ -208,6 +210,9 @@ export function createWebUntisPlugin(options: WebUntisPluginOptions = {}): Sourc
 }
 
 export default createWebUntisPlugin();
+
+/** The one Source Attribute of a WebUntis account. */
+const accountAttribute = "account";
 
 function connectionOf(context: RunContext): { server: string; school: string; user: string } {
   const text = (key: string) => {
