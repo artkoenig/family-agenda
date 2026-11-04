@@ -1,5 +1,5 @@
 import { addDays, localDateTime, type LocalDate, type LocalTime } from "./calendar";
-import type { Act, FoldedItem } from "./item";
+import type { Act, ItemFields } from "./item";
 
 /**
  * When an Event takes place: from one instant to another, or whole days in the Family's time
@@ -46,8 +46,8 @@ function unknownFieldProblems(fields: Record<string, unknown>, known: readonly s
     .map((key) => `${key} is not a field of an Event`);
 }
 
-/** The Event its folded Revisions describe, or null while it has no title or span yet. */
-export function eventOf(folded: FoldedItem | null): Event | null {
+/** The Event its fields describe, or null while it has no title or span yet. */
+export function eventOf(folded: ItemFields | null): Event | null {
   if (!folded) return null;
   const title = parseText(folded.fields.title);
   const span = parseSpan(folded.fields.span);

@@ -71,9 +71,7 @@ describe("Origins a Source withdraws, such as deleted chat messages", () => {
     expect(blobs.size).toBe(0);
     expect(await instance.query("SELECT sender, body FROM source_record")).toEqual([{ sender: null, body: null }]);
     expect(await instance.query("SELECT count(*)::int AS n FROM source_record_attachment")).toEqual([{ n: 0 }]);
-    expect(await instance.query("SELECT accepted, rejection FROM revisions")).toEqual([
-      { accepted: false, rejection: "origin-withdrawn" },
-    ]);
+    expect(await instance.query("SELECT count(*)::int AS n FROM item")).toEqual([{ n: 0 }]);
   });
 
   it("records a withdrawn message arriving again as no longer withdrawn, without reading it again", async () => {
@@ -90,18 +88,6 @@ describe("Origins a Source withdraws, such as deleted chat messages", () => {
       await instance.query("SELECT withdrawn_at, body, processed_at FROM source_record WHERE external_id = '$m1'"),
     ).toEqual([{ withdrawn_at: null, body: null, processed_at: null }]);
     expect(blobs.size).toBe(0);
-  });
-
-  it("leaves a withdrawn message out of what later messages of its thread are read with", async () => {
-    testPluginControls.emit("chat", [message("$m1", trip, "$m1")]);
-    await run();
-    testPluginControls.withdraw("chat", ["$m1"]);
-    await run();
-
-    testPluginControls.emit("chat", [{ ...message("$m2", "Bitte an Regenjacken denken.", "$m1"), occurredAt: new Date("2026-09-14T06:20:00Z") }]);
-    await run();
-
-    expect(extractor.requests.at(-1)?.knownEvents).toEqual([]);
   });
 
   it("ignores withdrawing an Origin it never recorded", async () => {

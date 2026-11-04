@@ -1,4 +1,4 @@
-import type { Act, FoldedItem } from "./item";
+import type { Act, ItemFields } from "./item";
 
 /** When a Lesson takes place: from one instant to another, never all day. */
 export type LessonSpan = { start: Date; end: Date };
@@ -13,8 +13,8 @@ export type TimetableChangeKind = (typeof timetableChangeKinds)[number];
 /**
  * A deviation from the Timetable on one date: a Lesson cancelled, taught by a substitute, or moved
  * to another room. `room` and `teacher` are those the Lesson has now, `previousRoom` and
- * `previousTeacher` those it had; `note` is what the school wrote about it. A cancelled Timetable
- * Change is one the school withdrew.
+ * `previousTeacher` those it had; `note` is what the school wrote about it. It is stored on its
+ * Lesson (ADR-0016).
  */
 export type TimetableChange = {
   change: TimetableChangeKind;
@@ -25,7 +25,6 @@ export type TimetableChange = {
   previousRoom: string | null;
   previousTeacher: string | null;
   note: string | null;
-  cancelled: boolean;
 };
 
 export const maximumLessonTextLength = 200;
@@ -93,8 +92,8 @@ function unknownFieldProblems(fields: Record<string, unknown>, known: readonly s
   return problems;
 }
 
-/** The Lesson its folded Revisions describe, or null while it has no subject or span yet. */
-export function lessonOf(folded: FoldedItem | null): Lesson | null {
+/** The Lesson its fields describe, or null while it has no subject or span yet. */
+export function lessonOf(folded: ItemFields | null): Lesson | null {
   if (!folded) return null;
   const subject = parseText(folded.fields.subject);
   const span = parseSpan(folded.fields.span);
@@ -103,14 +102,17 @@ export function lessonOf(folded: FoldedItem | null): Lesson | null {
   return { subject, span, room: parseText(room), teacher: parseText(teacher), cancelled: folded.cancelled };
 }
 
-/** The Timetable Change its folded Revisions describe, or null while it lacks its kind, subject or span. */
-export function timetableChangeOf(folded: FoldedItem | null): TimetableChange | null {
+/** The Timetable Change its fields describe, or null while it lacks its kind, subject or span. */
+export function timetableChangeOf(folded: ItemFields | null): TimetableChange | null {
   const lesson = lessonOf(folded);
   const change = parseChange(folded?.fields.change);
   if (!folded || !lesson || !change) return null;
   const { previousRoom, previousTeacher, note } = folded.fields;
   return {
-    ...lesson,
+    subject: lesson.subject,
+    span: lesson.span,
+    room: lesson.room,
+    teacher: lesson.teacher,
     change,
     previousRoom: parseText(previousRoom),
     previousTeacher: parseText(previousTeacher),

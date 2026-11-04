@@ -3,18 +3,14 @@ import {
   addDays,
   daysBetween,
   dayOfTask,
-  eventOf,
   isPinned,
   isAcceptableHorizon,
   isAcceptableTimelineRange,
   lastDayOf,
   localDateTime,
   isShownTo,
-  lessonOf,
   spanOnDay,
-  taskOf,
   taskStatus,
-  timetableChangeOf,
   type Attribution,
   type Event,
   type FamilyLanguage,
@@ -340,30 +336,12 @@ export function createAgendaAccess(deps: AgendasDeps) {
     messages: TimelineEvent["messages"],
     concerns: Attribution,
   ): void {
-    if (item.kind === "event") classifyEvent(item, found, links, messages, concerns);
-    else if (item.kind === "task") classifyTask(item, found, links, messages, concerns);
-    else if (item.kind === "lesson") classifyLesson(item, found, concerns);
-    else if (item.kind === "timetable-change") classifyChange(item, found, concerns);
-  }
-
-  function classifyEvent(item: ProjectedItem, found: Around, links: TimelineEvent["links"], messages: TimelineEvent["messages"], concerns: Attribution): void {
-    const event = eventOf(item.folded);
-    if (event) found.events.push({ id: item.id, event, links, messages, concerns });
-  }
-
-  function classifyTask(item: ProjectedItem, found: Around, links: TimelineEvent["links"], messages: TimelineEvent["messages"], concerns: Attribution): void {
-    const task = taskOf(item.folded);
-    if (task) found.tasks.push({ id: item.id, task, links, messages, concerns });
-  }
-
-  function classifyLesson(item: ProjectedItem, found: Around, concerns: Attribution): void {
-    const lesson = lessonOf(item.folded);
-    if (lesson) found.lessons.push({ id: item.id, lesson, concerns });
-  }
-
-  function classifyChange(item: ProjectedItem, found: Around, concerns: Attribution): void {
-    const change = timetableChangeOf(item.folded);
-    if (change && !change.cancelled) found.changes.push({ id: item.id, change, concerns });
+    if (item.kind === "event") found.events.push({ id: item.id, event: item.event, links, messages, concerns });
+    else if (item.kind === "task") found.tasks.push({ id: item.id, task: item.task, links, messages, concerns });
+    else {
+      found.lessons.push({ id: item.id, lesson: item.lesson, concerns });
+      if (item.change) found.changes.push({ id: item.id, change: item.change, concerns });
+    }
   }
 
   function taskRow(found: Around["tasks"][number], today: LocalDate): TimelineTask {

@@ -7,7 +7,7 @@ import {
   timetableChangeKinds,
   timetableChangeOf,
   type Act,
-  type FoldedItem,
+  type ItemFields,
 } from "../src";
 
 const span = (start = "2026-09-15T08:00:00.000Z", end = "2026-09-15T09:00:00.000Z") => ({
@@ -16,7 +16,7 @@ const span = (start = "2026-09-15T08:00:00.000Z", end = "2026-09-15T09:00:00.000
   end,
 });
 
-const folded = (fields: Record<string, unknown>, more: Partial<FoldedItem> = {}): FoldedItem => ({
+const folded = (fields: Record<string, unknown>, more: Partial<ItemFields> = {}): ItemFields => ({
   fields,
   cancelled: false,
   ...more,
@@ -323,7 +323,6 @@ describe("timetableChangeOf", () => {
       previousRoom: "201",
       previousTeacher: "Ms. Smith",
       note: "ill",
-      cancelled: false,
     });
   });
 

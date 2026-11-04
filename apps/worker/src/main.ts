@@ -33,6 +33,9 @@ const poll = () => {
       for (const failure of report.failed) {
         console.warn(`Extracting message ${failure.messageId} failed (${failure.problem}): ${failure.message}`);
       }
+      for (const dropped of report.dropped) {
+        console.warn(`An Item "${dropped.title ?? ""}" of message ${dropped.messageId} failed a check twice and is not written: ${dropped.problem}`);
+      }
     })
     .catch((error: unknown) => {
       console.error("Extracting messages failed:", error);

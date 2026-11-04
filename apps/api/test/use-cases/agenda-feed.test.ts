@@ -174,18 +174,11 @@ describe("the ICS feed of an Agenda", () => {
     expect((await feed(forMia.id))?.map((event) => event.summary)).toEqual(["Piano lesson"]);
   });
 
-  it("leaves out Notices and Items whose first Revision was rejected", async () => {
+  it("leaves out Notices and entries stated without a time", async () => {
     await arrive(
       piano,
       entry("broken", "create", "2026-09-01T10:00:00Z", { title: "No time" }),
       entry("letter", "create", "2026-09-01T10:00:00Z", { title: "School photos are online" }, "notice"),
-    );
-    // A later valid statement about the rejected Item does not bring it back.
-    await arrive(
-      entry("broken", "move", "2026-09-02T10:00:00Z", {
-        title: "Now with a time",
-        span: timed("2026-09-16T08:00:00Z", "2026-09-16T09:00:00Z"),
-      }),
     );
 
     expect((await feed())?.map((event) => event.summary)).toEqual(["Piano lesson"]);

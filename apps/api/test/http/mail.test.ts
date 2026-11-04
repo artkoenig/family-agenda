@@ -83,6 +83,38 @@ describe("the LLM endpoint and mail over HTTP", () => {
     expect(
       (await instance.get("/admin/messages/00000000-0000-0000-0000-000000000000/attachments/0")).headers.get("location"),
     ).toBe("/admin/sign-in");
+    expect((await instance.post("/admin/items/00000000-0000-0000-0000-000000000000/delete", {})).headers.get("location")).toBe(
+      "/admin/sign-in",
+    );
+  });
+
+  it("lists a mail's Items next to it, where an Admin deletes a wrong one", async () => {
+    await instance.app.sourceTypes.enable("school-mail");
+    await instance.app.sources.add({ sourceTypeId: "school-mail", plain: { url: "imap.example.org" }, secrets: {} });
+    await instance.app.llmEndpoint.save({ baseUrl: "http://ollama:11434/v1", model: "qwen3.5:9b", apiKey: "" });
+    const created = await instance.app.agendas.create({ preselected: [], horizonDays: 3 });
+    if (!created.ok) throw new Error("creating failed");
+    extractor.script("Wandertag", [
+      extracted({ title: "Wandertag", date: { daysAfter: 1 }, startTime: "08:00", evidence: "Morgen ist Wandertag, Treffpunkt 8 Uhr" }),
+    ]);
+    testPluginControls.emit("school-mail", [
+      { externalId: "m1", occurredAt: new Date("2026-09-14T06:00:00Z"), attributes: {}, content: { kind: "raw-message", text: "Morgen ist Wandertag, Treffpunkt 8 Uhr.", attachments: [] } },
+    ]);
+    await instance.app.polling.pollDue();
+    await instance.app.extraction.extractPending();
+    const link = /<a href="(\/admin\/messages\/[0-9a-f-]+)"/.exec(await (await instance.get(`/agendas/${created.id}`)).text())?.[1];
+
+    const page = await (await instance.get(link!, { cookie })).text();
+    const action = /<form method="post" action="(\/admin\/items\/[0-9a-f-]+\/delete)"/.exec(page)?.[1];
+    expect(page).toContain("Wandertag");
+    expect(action).toBeDefined();
+
+    const deleted = await instance.post(action!, { message: link!.split("/")[3]! }, { cookie });
+
+    expect(deleted.status).toBe(303);
+    expect(deleted.headers.get("location")).toBe(link);
+    expect(await (await instance.get(link!, { cookie })).text()).toContain("No Items were read from it.");
+    expect(await (await instance.get(`/agendas/${created.id}`)).text()).not.toContain("Wandertag");
   });
 
   it("links an Event from a mail to the mail, which Admins can open", async () => {

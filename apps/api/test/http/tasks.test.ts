@@ -79,8 +79,7 @@ describe("Tasks over HTTP", () => {
     const done = rowOf(after, "Bring sports kit");
     expect(done).toContain("fam-task--done");
     expect(done).toContain("Mark “Bring sports kit” not done");
-    const ticks = await instance.app.tasks.ticks(tick.split("/")[4] as never);
-    expect(ticks).toMatchObject([{ done: true, by: { kind: "agenda", agendaId: path.split("/")[2] } }]);
+    expect(await instance.query(`SELECT status FROM task WHERE item_id = '${tick.split("/")[4]}'`)).toEqual([{ status: "done" }]);
 
     const undone = await instance.post(tickOf(done), {});
     expect(undone.status).toBe(303);
