@@ -1,11 +1,13 @@
 import type { ActivityKind } from "@family-agenda/application";
-import { acts, familyLanguages, horizonDaysRange, itemKinds, photoTypes, agendaKinds, type RunError } from "@family-agenda/domain";
+import { familyLanguages, horizonDaysRange, itemKinds, photoTypes, agendaKinds, timetableChangeKinds, type RunError } from "@family-agenda/domain";
 import { sql, type SQL } from "drizzle-orm";
 import {
   bigint,
   boolean,
   check,
   customType,
+  date,
+  foreignKey,
   index,
   integer,
   jsonb,
@@ -282,8 +284,7 @@ export const sourceMembers = pgTable(
 
 /**
  * What a Source delivered under one external id (ADR-0016): a message, with its text here and its
- * attachments behind the BlobStore (ADR-0006), or an entry carrying Revisions, such as a calendar
- * entry, without text. A message has a body, empty if it is only attachments, until it is withdrawn.
+ * attachments behind the BlobStore (ADR-0006), or a calendar or timetable entry, without text. A message has a body, empty if it is only attachments, until it is withdrawn.
  */
 export const sourceRecords = pgTable(
   "source_record",
@@ -302,8 +303,8 @@ export const sourceRecords = pgTable(
     /** When its message was extracted successfully; null while it waits. */
     processedAt: timestamptz("processed_at"),
     /**
-     * When the Source said it no longer has it, such as a redacted message: its Revisions are
-     * rejected and its message's text and attachments are gone. Arriving again clears it.
+     * When the Source said it no longer has it, such as a redacted message: its Items are deleted
+     * and its message's text and attachments are gone. Arriving again clears it.
      */
     withdrawnAt: timestamptz("withdrawn_at"),
     createdAt: timestamptz("created_at").notNull().defaultNow(),
@@ -351,95 +352,122 @@ export const sourceRecordAttachments = pgTable(
 );
 
 /**
- * Items as projections of their Revisions: `folded` and the window are recomputed whenever one of
- * their Revisions arrives or goes, and never written otherwise.
+ * An Item, written from its one Source Record (ADR-0016): a message's Items are written once, a
+ * calendar or timetable entry's one Item is found again through its Source Record. Its fields are
+ * in the detail table of its kind; an Admin can only delete it.
  */
 export const items = pgTable(
-  "items",
+  "item",
   {
-    id: uuid("id").primaryKey(),
+    id: uuid("id").primaryKey().defaultRandom(),
     kind: text("kind").notNull(),
-    folded: jsonb("folded").$type<{ fields: Record<string, unknown>; cancelled: boolean }>(),
-    /** Instants certainly before and after the Item's time, to find it by. */
-    windowFrom: timestamptz("window_from"),
-    windowTo: timestamptz("window_to"),
-    /** Whether it waits for someone to act on it whatever its time, as an undone Task does. */
-    outstanding: boolean("outstanding").notNull().default(false),
-    createdAt: timestamptz("created_at").notNull(),
+    recordId: uuid("record_id")
+      .notNull()
+      .references(() => sourceRecords.id, { onDelete: "cascade" }),
+    createdAt: timestamptz("created_at").notNull().defaultNow(),
   },
   (table) => [
-    index("items_window_idx").on(table.windowFrom, table.windowTo),
-    index("items_outstanding_idx").on(table.id).where(sql`${table.outstanding}`),
-    check("items_window_complete", allOrNone(table.windowFrom, table.windowTo)),
-    check("items_window_ordered", sql`${table.windowFrom} <= ${table.windowTo}`),
-    oneOf("items_kind_known", table.kind, itemKinds),
+    unique("item_id_kind_unique").on(table.id, table.kind),
+    index("item_record_id_idx").on(table.recordId),
+    oneOf("item_kind_known", table.kind, itemKinds),
   ],
 );
 
-/**
- * Which Item a Source's own key for it, such as a calendar UID, belongs to. An Item stays while
- * any Source names it.
- */
-export const itemKeys = pgTable(
-  "item_keys",
-  {
-    sourceId: uuid("source_id")
-      .notNull()
-      .references(() => sources.id, { onDelete: "cascade" }),
-    itemKey: text("item_key").notNull(),
-    itemId: uuid("item_id")
-      .notNull()
-      .references(() => items.id, { onDelete: "cascade" }),
-  },
-  (table) => [primaryKey({ columns: [table.sourceId, table.itemKey] }), index("item_keys_item_id_idx").on(table.itemId)],
-);
+/** The key of a detail table, which references its Item together with the Item's kind. */
+const detailOf = (kind: (typeof itemKinds)[number]) => ({
+  itemId: uuid("item_id").primaryKey(),
+  kind: text("kind").notNull().default(kind),
+});
 
-/**
- * The author kinds as stored in `revisions.author`. An Agenda was called a View when they were
- * first stored, so its kind stays `view` in the database, to keep the existing rows and the CHECK
- * constraints valid without a migration.
- */
-export const storedRevisionAuthors = ["origin", "view", "admin"] as const;
+const detailKey = (name: string, table: { itemId: AnyPgColumn; kind: AnyPgColumn }) =>
+  foreignKey({ name: `${name}_item_fk`, columns: [table.itemId, table.kind], foreignColumns: [items.id, items.kind] }).onDelete("cascade");
 
-/** Append-only statements about Items (ADR-0009). */
-export const revisions = pgTable(
-  "revisions",
+/** An appointment, at a time or over whole days; a cancelled one stays shown, struck through. */
+export const events = pgTable(
+  "event",
   {
-    id: uuid("id").primaryKey(),
-    /** The order Revisions were received in, which decides between equal source times. */
-    sequence: bigint("sequence", { mode: "number" }).notNull().generatedAlwaysAsIdentity(),
-    itemId: uuid("item_id")
-      .notNull()
-      .references(() => items.id, { onDelete: "cascade" }),
-    /** Who stated it: an Origin, or an Agenda or an Admin ticking a Task (ADR-0009). */
-    author: text("author").notNull().default("origin"),
-    /** The Source Record that stated it, for a Revision of author `origin` only. */
-    originId: uuid("origin_id").references(() => sourceRecords.id, { onDelete: "cascade" }),
-    /** The Agenda it was made in; null for another author, or once the Agenda is removed, which keeps the Revision. */
-    agendaId: uuid("view_id").references(() => agendas.id, { onDelete: "set null" }),
-    /** The Admin who made it; null for another author, or once the Admin is removed. */
-    adminId: uuid("admin_id").references(() => admins.id, { onDelete: "set null" }),
-    act: text("act").notNull(),
-    fields: jsonb("fields").$type<Record<string, unknown>>().notNull(),
-    sourceTime: timestamptz("source_time").notNull(),
-    receivedAt: timestamptz("received_at").notNull(),
-    accepted: boolean("accepted").notNull(),
-    /** Why it was rejected automatically, such as an evidence quote not found in its message. */
-    rejection: text("rejection"),
-    /** The words of its message it was extracted from; null for a structured Source. */
-    evidence: text("evidence"),
-    /** A hash of what the Revision states, so that a Source stating it again adds nothing. */
-    fingerprint: text("fingerprint").notNull(),
+    ...detailOf("event"),
+    title: text("title").notNull(),
+    location: text("location"),
+    startsAt: timestamptz("starts_at"),
+    endsAt: timestamptz("ends_at"),
+    firstDay: date("first_day", { mode: "string" }),
+    lastDay: date("last_day", { mode: "string" }),
+    cancelled: boolean("cancelled").notNull().default(false),
   },
   (table) => [
-    index("revisions_item_id_idx").on(table.itemId),
-    unique("revisions_origin_fingerprint_unique").on(table.originId, table.fingerprint),
-    oneOf("revisions_act_known", table.act, acts),
-    oneOf("revisions_author_known", table.author, storedRevisionAuthors),
-    check("revisions_origin_only_of_origin", sql`(${table.author} = 'origin') = (${table.originId} IS NOT NULL)`),
-    check("revisions_view_only_of_view", sql`${table.agendaId} IS NULL OR ${table.author} = 'view'`),
-    check("revisions_admin_only_of_admin", sql`${table.adminId} IS NULL OR ${table.author} = 'admin'`),
-    check("revisions_rejection_only_when_rejected", sql`${table.rejection} IS NULL OR NOT ${table.accepted}`),
+    detailKey("event", table),
+    check("event_kind", sql`${table.kind} = 'event'`),
+    check("event_title_length", sql`char_length(${table.title}) <= 500`),
+    check("event_location_length", sql`char_length(${table.location}) <= 500`),
+    check(
+      "event_one_window",
+      sql`(${table.startsAt} IS NOT NULL AND ${table.endsAt} IS NOT NULL AND ${table.firstDay} IS NULL AND ${table.lastDay} IS NULL) OR (${table.startsAt} IS NULL AND ${table.endsAt} IS NULL AND ${table.firstDay} IS NOT NULL AND ${table.lastDay} IS NOT NULL)`,
+    ),
+    check("event_time_ordered", sql`${table.endsAt} >= ${table.startsAt}`),
+    check("event_days_ordered", sql`${table.lastDay} >= ${table.firstDay}`),
+    index("event_starts_at_idx").on(table.startsAt, table.endsAt),
+    index("event_first_day_idx").on(table.firstDay, table.lastDay),
+  ],
+);
+
+/** The statuses of a Task: only ticking it makes it done. */
+export const taskStatuses = ["open", "done"] as const;
+
+/** Something to do or bring; its arrival is its Source Record's `occurred_at`. */
+export const tasks = pgTable(
+  "task",
+  {
+    ...detailOf("task"),
+    title: text("title").notNull(),
+    deadline: date("deadline", { mode: "string" }),
+    bring: text("bring").array().notNull().default(sql`'{}'::text[]`),
+    cancelled: boolean("cancelled").notNull().default(false),
+    status: text("status").notNull().default("open"),
+    doneAt: timestamptz("done_at"),
+  },
+  (table) => [
+    detailKey("task", table),
+    check("task_kind", sql`${table.kind} = 'task'`),
+    check("task_title_length", sql`char_length(${table.title}) <= 500`),
+    check("task_bring_count", sql`cardinality(${table.bring}) <= 50`),
+    check("task_bring_length", sql`texts_within(${table.bring}, 500)`),
+    oneOf("task_status_known", table.status, taskStatuses),
+    check("task_done_at_when_done", sql`(${table.status} = 'done') = (${table.doneAt} IS NOT NULL)`),
+    index("task_status_deadline_idx").on(table.status, table.deadline),
+  ],
+);
+
+/** One slot of a Timetable; `change` is its Timetable Change, with the values it replaces. */
+export const lessons = pgTable(
+  "lesson",
+  {
+    ...detailOf("lesson"),
+    subject: text("subject").notNull(),
+    startsAt: timestamptz("starts_at").notNull(),
+    endsAt: timestamptz("ends_at").notNull(),
+    room: text("room"),
+    teacher: text("teacher"),
+    change: text("change"),
+    previousSubject: text("previous_subject"),
+    previousRoom: text("previous_room"),
+    previousTeacher: text("previous_teacher"),
+    note: text("note"),
+  },
+  (table) => [
+    detailKey("lesson", table),
+    check("lesson_kind", sql`${table.kind} = 'lesson'`),
+    check("lesson_time_ordered", sql`${table.endsAt} >= ${table.startsAt}`),
+    oneOf("lesson_change_known", table.change, timetableChangeKinds),
+    check(
+      "lesson_previous_only_when_changed",
+      sql`${table.change} IS NOT NULL OR (${table.previousSubject} IS NULL AND ${table.previousRoom} IS NULL AND ${table.previousTeacher} IS NULL AND ${table.note} IS NULL)`,
+    ),
+    check(
+      "lesson_text_length",
+      sql`char_length(${table.subject}) <= 200 AND char_length(${table.room}) <= 200 AND char_length(${table.teacher}) <= 200 AND char_length(${table.previousSubject}) <= 200 AND char_length(${table.previousRoom}) <= 200 AND char_length(${table.previousTeacher}) <= 200 AND char_length(${table.note}) <= 200`,
+    ),
+    index("lesson_starts_at_idx").on(table.startsAt, table.endsAt),
   ],
 );
 

@@ -22,7 +22,6 @@ import type {
 import { usableEntries } from "./catalogues";
 import { enabledSourceType } from "./enabled-source-type";
 import { isPollInterval } from "./poll-interval";
-import { project } from "./revisions";
 import { healthOf, type SourceHealth } from "./source-health";
 
 export type SourcesDeps = {
@@ -445,7 +444,7 @@ export function createSourceAccess(deps: SourcesDeps) {
       if (!source) return;
       const sourceType = await enabled(source.sourceTypeId);
       const context = await contextOf(source);
-      const files = await sources.remove(id, project);
+      const files = await sources.remove(id);
       await cleanup(source, sourceType, context, files);
     },
   };

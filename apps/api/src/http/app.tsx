@@ -846,14 +846,6 @@ function shownStatus(status: 200 | 400 | 413 | undefined, problems: (string | un
     return c.redirect(sourceHref(source.id), 303);
   });
 
-  // Has its messages read again with the current prompt and model (ADR-0015).
-  app.post("/admin/sources/:id/reread", async (c) => {
-    const source = await sourceOf(c.req.param("id"));
-    if (!source) return c.redirect("/admin/sources", 303);
-    await extraction.reread({ sourceId: source.id });
-    return c.redirect(sourceHref(source.id), 303);
-  });
-
   app.post("/admin/sources/:id/remove", async (c) => {
     const source = await sourceOf(c.req.param("id"));
     if (!source) return c.redirect("/admin/sources", 303);
@@ -921,12 +913,6 @@ function shownStatus(status: 200 | 400 | 413 | undefined, problems: (string | un
 
   app.get("/admin/llm", (c) => llmEndpointPage(c));
 
-  // Has every message read again with the current prompt and model (ADR-0015).
-  app.post("/admin/llm/reread", async (c) => {
-    await extraction.reread();
-    return c.redirect("/admin/llm", 303);
-  });
-
   app.post("/admin/llm", async (c) => {
     const form = await c.req.parseBody();
     const entered = { baseUrl: field(form, "baseUrl"), model: field(form, "model") };
@@ -960,6 +946,13 @@ function shownStatus(status: 200 | 400 | 413 | undefined, problems: (string | un
     if (!message) return c.notFound();
     c.header("cache-control", "no-store");
     return render(c, <MessagePage admin={c.get("admin")} message={message} timeZone={timeZone} />);
+  });
+
+  // An Admin's only correction of an Item is deleting it (ADR-0016); back to the message it came from.
+  app.post("/admin/items/:id/delete", async (c) => {
+    await messages.deleteItem(c.req.param("id") as ItemId);
+    const message = field(await c.req.parseBody(), "message");
+    return c.redirect(/^[0-9a-f-]{36}$/.test(message) ? `/admin/messages/${message}` : "/admin", 303);
   });
 
   // Downloaded, never shown inline: an attachment is a third party's file and may be HTML or a script.

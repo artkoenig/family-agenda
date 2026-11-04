@@ -8,20 +8,21 @@ import type {
   FamilyLanguages,
   FamilyMember,
   FamilyMemberId,
-  FoldableRevision,
-  FoldedItem,
+  Event,
   ItemId,
-  ItemKind,
+  Lesson,
   LocalDate,
   LocalTime,
   MultilingualText,
   OcrLanguage,
   RawMessageId,
-  RevisionAuthor,
   RunError,
   SourceFailure,
   SourceId,
   SourceTypeId,
+  StatedTask,
+  Task,
+  TimetableChange,
   Agenda,
   AgendaId,
 } from "@family-agenda/domain";
@@ -217,9 +218,15 @@ export type SourceRunContext = {
   timeZone: string;
 };
 
-/** A Revision as a plugin states it, before the core has checked its fields. */
+/**
+ * The kinds of Item a plugin still states Revisions about, until it states its Items on the
+ * Source Record (#137); a Timetable Change is stored on its Lesson, a Notice is not kept.
+ */
+export type PluginItemKind = "event" | "lesson" | "timetable-change" | "task" | "notice";
+
+/** A Revision as a plugin states it, before the core applies it to its Source Record's Item. */
 export type IngestedRevision = {
-  itemKind: ItemKind;
+  itemKind: PluginItemKind;
   itemKey: string;
   act: Act;
   fields: Record<string, unknown>;
@@ -231,12 +238,12 @@ export type IngestedAttachment = { filename: string; contentType: string; bytes:
 export type IngestedMessage = { text: string; attachments: IngestedAttachment[]; thread: string | null };
 
 /**
- * An Origin as a plugin emits it: structured Revisions, or a raw message whose Revisions
- * extraction adds later.
+ * An Origin as a plugin emits it: structured Revisions about its one Item, or a raw message whose
+ * Items extraction writes later.
  */
 export type IngestedOrigin = {
   externalId: string;
-  /** The source time of its Revisions; for a message, the time it was sent. */
+  /** When the Source received it; for a message, the time it was sent. */
   occurredAt: Date;
   attributes: Record<string, string>;
   link: string | null;
@@ -402,30 +409,26 @@ export interface SourceRepository {
   /** Assigns each Part of the Source to Family Members, replacing every Part's assignment; a Part with none is left out. */
   assignParts(id: SourceId, parts: Record<string, FamilyMemberId[]>): Promise<void>;
   /**
-   * Removes the Source in one transaction with its Origins, raw messages and Revisions, and the
-   * Items no other Source names; those another Source names are recomputed with `recompute`.
-   * Returns the BlobStore files of its raw messages, for the caller to remove.
+   * Removes the Source in one transaction with its Source Records and their Items. Returns the
+   * BlobStore files of its messages' attachments, for the caller to remove.
    */
-  remove(id: SourceId, recompute: (kind: ItemKind, revisions: FoldableRevision[]) => ItemProjection): Promise<BlobRef[]>;
+  remove(id: SourceId): Promise<BlobRef[]>;
 }
 
-/** Why a Revision was rejected automatically (ADR-0009). */
-export type Rejection = "invalid-fields" | "evidence-not-found" | "weekday-mismatch" | "no-date" | "origin-withdrawn" | "superseded";
+/**
+ * The one Item a calendar or timetable entry states, as the core worked it out from the plugin's
+ * Revisions; null when they leave no Item, such as a change to an entry not known yet.
+ */
+export type StatedItem =
+  | { kind: "event"; event: Event }
+  | { kind: "task"; task: StatedTask }
+  | { kind: "lesson"; lesson: Omit<Lesson, "cancelled">; change: StoredChange | null };
 
-/** A Revision ready to append, checked by the core. */
-export type NewRevision = {
-  itemKind: ItemKind;
-  itemKey: string;
-  act: Act;
-  fields: Record<string, unknown>;
-  sourceTime: Date;
-  /** False for a Revision rejected automatically, such as one with invalid fields. */
-  accepted: boolean;
-  /** Why it was rejected; null if it was accepted. */
-  rejection: Rejection | null;
-  /** The words of its message it was extracted from; null for a structured Source. */
-  evidence: string | null;
-};
+/** A Lesson's Timetable Change as it is stored on the Lesson. */
+export type StoredChange = Pick<TimetableChange, "change" | "previousRoom" | "previousTeacher" | "note">;
+
+/** Works out the one Item of an entry from what it was and the Revisions the plugin states now. */
+export type ApplyRevisions = (current: StatedItem | null, revisions: IngestedRevision[]) => StatedItem | null;
 
 /** A file of a raw message, kept in the BlobStore with a hash of its contents (ADR-0006). */
 export type StoredFile = { blob: BlobRef; sha256: string; size: number };
@@ -445,7 +448,7 @@ export type SourceRun = {
   at: Date;
   /** Where the plugin resumes on its next run, stored only together with the run's Origins. */
   syncCursor: string | null;
-  /** External ids of Origins the Source deleted, whose Revisions are rejected and whose messages go. */
+  /** External ids of Origins the Source deleted, whose Items are deleted and whose messages go. */
   withdrawn: string[];
   origins: {
     externalId: string;
@@ -455,7 +458,8 @@ export type SourceRun = {
     link: string | null;
     /** The Part of the Source it came from; null if it has none. */
     part: string | null;
-    revisions: NewRevision[];
+    /** What the plugin states about the entry's one Item; none for a message. */
+    revisions: IngestedRevision[];
     message: StoredMessage | null;
   }[];
 };
@@ -464,10 +468,7 @@ export type SourceRun = {
 export type PendingMessage = {
   id: RawMessageId;
   sourceId: SourceId;
-  /** The Origin's id within its Source, which keys the Items extracted from it. */
-  externalId: string;
   sentAt: Date;
-  thread: string | null;
   body: string;
   /** In the order the message has them. */
   attachments: PendingAttachment[];
@@ -494,115 +495,75 @@ export type RawMessage = {
   }[];
 };
 
-/** An Item that earlier messages of a thread stated, with the key a later one updates it by. */
-export type ThreadItem = { itemKey: string; kind: ItemKind; folded: FoldedItem | null };
+/** An Item a message states, checked and ready to write. */
+export type NewItem = { kind: "event"; event: Event } | { kind: "task"; task: StatedTask };
 
-/** What one successful extraction of a message adds, to record at once. */
+/** What one successful extraction of a message writes, to record at once. */
 export type Extraction = {
   messageId: RawMessageId;
-  sourceId: SourceId;
   at: Date;
-  revisions: NewRevision[];
+  items: NewItem[];
   /** The attachments that could not be turned into text, by position, and why. */
   attachmentProblems: AttachmentProblem[];
 };
 
 export type AttachmentProblem = { position: number; problem: string };
 
-/** What an Item's Revisions add up to, as stored next to them. */
-export type ItemProjection = {
-  folded: FoldedItem | null;
-  /** Instants certainly before and after the Item's time, to find it by; null if it has none. */
-  window: { from: Date; to: Date } | null;
-  /** Whether it waits for someone to act on it whatever its time, as an undone Task does, to find it by. */
-  outstanding: boolean;
-};
+/** An Item with what it is, by its kind. */
+export type ItemDetails =
+  | { kind: "event"; event: Event }
+  | { kind: "task"; task: Task }
+  | { kind: "lesson"; lesson: Lesson; change: TimetableChange | null };
 
-export type ProjectedItem = {
+export type ProjectedItem = ItemDetails & {
   id: ItemId;
-  kind: ItemKind;
-  folded: FoldedItem;
-  /** Where its Origins can be looked at, each with the Source Type and name of the Origin's Source. */
+  /** Where its Source Record can be looked at, with the Source Type and name of its Source. */
   links: { url: string; sourceTypeId: SourceTypeId; sourceName: string | null }[];
-  /** The raw messages it was extracted from, oldest first, each with the Source Type and name of its Source. */
+  /** The message it was extracted from, if any, with the Source Type and name of its Source. */
   messages: { id: RawMessageId; sourceTypeId: SourceTypeId; sourceName: string | null; sentAt: Date }[];
-  /** The Sources, with their Parts, of the Origins whose accepted Revisions it adds up to, which decide whom it concerns. */
+  /** The Source, with its Part, of its Source Record, which decides whom it concerns. */
   sources: { sourceId: SourceId; part: string | null }[];
 };
 
-/** A Revision by someone other than an Origin, such as one ticking a Task done. */
-export type AuthoredRevision = {
-  act: Act;
-  fields: Record<string, unknown>;
-  /** When it was made. */
-  sourceTime: Date;
-  author: Exclude<RevisionAuthor, { kind: "origin" }>;
-};
+/** An Item of a message, as an Admin sees it next to the message. */
+export type ItemOfMessage = ItemDetails & { id: ItemId };
 
-/** Items, as projections of their append-only Revisions (ADR-0009). */
+/** Items, each written from its one Source Record (ADR-0016). */
 export interface ItemRepository {
   /**
-   * Records a run in one transaction: the Origins, their Revisions unless the same Revision is
-   * already recorded, and the Source's sync cursor. An Item is found by the Source and the Revision's
-   * Item key, or created; every Item a new Revision reached is recomputed with `recompute` from all
-   * its Revisions. A withdrawn Source Record's Revisions are rejected and its message's text and
-   * attachments are removed. Arriving again, it is no longer withdrawn: its Revisions count again when the
-   * Source states them again, but its message is not recorded again.
+   * Records a run in one transaction: its Source Records, the one Item of each calendar or
+   * timetable entry worked out with `apply` from what it was, and the Source's sync cursor. A
+   * withdrawn Source Record's Items are deleted and its message's text and attachments removed.
+   * Arriving again, it is no longer withdrawn, but its message is not recorded or read again.
    * Returns the external ids of messages recorded before or withdrawn, whose new attachments the
    * caller removes, and the attachments of the withdrawn messages, for the caller to remove.
    */
-  recordRun(
-    run: SourceRun,
-    recompute: (kind: ItemKind, revisions: FoldableRevision[]) => ItemProjection,
-  ): Promise<{ knownMessages: string[]; withdrawnFiles: BlobRef[] }>;
+  recordRun(run: SourceRun, apply: ApplyRevisions): Promise<{ knownMessages: string[]; withdrawnFiles: BlobRef[] }>;
   /** Raw messages not yet extracted successfully, oldest first. */
   pendingMessages(limit: number): Promise<PendingMessage[]>;
-  /**
-   * The Items messages of a thread in a Source sent before the given one stated, in the order they
-   * were created, each folded with `recompute` from what only those messages and people stated,
-   * so that a re-read message sees neither its own Items nor those of later messages.
-   */
-  itemsOfThread(
-    sourceId: SourceId,
-    thread: string,
-    before: { messageId: RawMessageId; sentAt: Date },
-    recompute: (kind: ItemKind, revisions: FoldableRevision[]) => ItemProjection,
-  ): Promise<ThreadItem[]>;
-  /**
-   * Marks the raw messages, of one Source or of all, as not yet extracted, so that they are read
-   * again (ADR-0015). Returns how many.
-   */
-  requestRereading(scope: { sourceId?: SourceId }): Promise<number>;
   /** How many raw messages, of one Source or of all, wait for extraction. */
   pendingMessageCount(scope: { sourceId?: SourceId }): Promise<number>;
   /**
-   * Records a message's extraction in one transaction: its Revisions, appended to its Origin like
-   * those of a run, and the message as extracted, so that it is not extracted again until asked
-   * to. The Revisions the Source Record stated before are superseded first; a new
-   * one the same as one of them brings it back.
+   * Records a message's one extraction in one transaction: its Items, and the message as
+   * extracted, so that it is never read again. A message extracted already is left as it is.
    */
-  recordExtraction(
-    extraction: Extraction,
-    recompute: (kind: ItemKind, revisions: FoldableRevision[]) => ItemProjection,
-  ): Promise<void>;
+  recordExtraction(extraction: Extraction): Promise<void>;
   findMessage(id: RawMessageId): Promise<RawMessage | null>;
+  /** The Items written from a message, in the order they were. */
+  itemsOfMessage(id: RawMessageId): Promise<ItemOfMessage[]>;
   /**
-   * The Family's Items whose window overlaps the given time, with the links of their Origins; a
+   * The Family's Items that may touch the given time, with the link of their Source Record; a
    * `to` of null means all of the future. Items of a hidden Source are left out.
    */
   overlapping(from: Date, to: Date | null): Promise<ProjectedItem[]>;
-  /** The Family's outstanding Items, whatever their time, as `overlapping` gives them. */
+  /** The Family's Tasks not done yet, whatever their time, as `overlapping` gives them. */
   outstanding(): Promise<ProjectedItem[]>;
   /** The Item as `overlapping` gives it, or null if there is none or it is not shown. */
   find(id: ItemId): Promise<ProjectedItem | null>;
-  /** Appends a Revision to the Item and recomputes it with `recompute`, in one transaction. */
-  appendAuthored(
-    id: ItemId,
-    revision: AuthoredRevision,
-    recompute: (kind: ItemKind, revisions: FoldableRevision[]) => ItemProjection,
-  ): Promise<void>;
-  /** The Item's Revisions by Agendas and Admins, in the order they were made. */
-  authoredRevisions(id: ItemId): Promise<AuthoredRevision[]>;
+  /** Ticks a Task done at `at`, or takes the tick back with null. */
+  setTaskDone(id: ItemId, at: Date | null): Promise<void>;
+  /** Deletes the Item, which nothing remembers. Returns whether there was one. */
+  remove(id: ItemId): Promise<boolean>;
 }
 
 /** The one LLM endpoint of the Family, an OpenAI-compatible server. */
@@ -629,10 +590,6 @@ export interface LlmEndpointRepository {
 
 /** An Event a message states, as the model reads it; code resolves its date and checks it. */
 export type ExtractedEvent = {
-  /** The `ref` of a known Event of the thread the message changes, moves or cancels; null for a new one. */
-  updates: string | null;
-  cancelled: boolean;
-  /** Null for an update that does not rename it. */
   title: string | null;
   date: DateMention;
   /** `HH:MM`, or null if none is stated. */
@@ -643,29 +600,19 @@ export type ExtractedEvent = {
   evidence: string;
 };
 
-/** An Event earlier messages of the thread stated, which the message may update. */
-export type KnownEvent = { ref: string; title: string; when: string; place: string | null };
-
 /**
  * A Task a message states, as the model reads it: something to do or bring, a packing list being
  * one Task with its things to bring. Code resolves its Deadline and checks it.
  */
 export type ExtractedTask = {
-  /** The `ref` of a known Task of the thread the message changes or cancels; null for a new one. */
-  updates: string | null;
-  cancelled: boolean;
-  /** Null for an update that does not rename it. */
   title: string | null;
   /** The Deadline as the message words it; every part null if it states none. */
   deadline: DateMention;
-  /** The things to bring; none if it states none, or for an update that does not change them. */
+  /** The things to bring; none if it states none. */
   bring: string[];
   /** The words of the message that state it, quoted verbatim. */
   evidence: string;
 };
-
-/** A Task earlier messages of the thread stated, which the message may update. */
-export type KnownTask = { ref: string; title: string; deadline: LocalDate | null; bring: string[] };
 
 export type ExtractionRequest = {
   endpoint: LlmEndpoint;
@@ -674,8 +621,6 @@ export type ExtractionRequest = {
     /** When it was sent, on the Family's clocks, which relative dates are resolved against. */
     sent: { date: LocalDate; time: LocalTime; weekday: string };
   };
-  knownEvents: KnownEvent[];
-  knownTasks: KnownTask[];
 };
 
 /**

@@ -168,7 +168,7 @@ describe("Source health", () => {
       problem: { kind: "not-installed" },
       lastSuccessAt: new Date("2026-09-14T07:10:00Z"),
     });
-    const [items] = await instance.query("SELECT count(*)::int AS items FROM items");
+    const [items] = await instance.query("SELECT count(*)::int AS items FROM item");
     expect(items).toEqual({ items: 1 });
 
     await writeTestPluginPackage(instance.workspacePackages, { sourceTypeId: "school-portal" });

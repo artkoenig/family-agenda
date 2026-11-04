@@ -57,6 +57,13 @@
       "when": 1793534400000,
       "tag": "0007_source_record",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1793778676662,
+      "tag": "0008_items_without_revisions",
+      "breakpoints": true
     }
   ]
 }

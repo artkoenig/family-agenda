@@ -15,7 +15,7 @@ const days = 24 * 60 * minutes;
 
 /** A Source stating something about a Task, as a structured Source emits it. */
 const task = (key: string, action: PluginRevision["action"], sourceTime: string, fields: PluginRevision["fields"] = {}): Origin => ({
-  externalId: `${key}@${sourceTime}`,
+  externalId: key,
   occurredAt: new Date(sourceTime),
   attributes: {},
   content: { kind: "revisions", revisions: [{ itemKind: "task", itemKey: key, action, fields }] },
@@ -131,7 +131,7 @@ describe("Tasks", () => {
     ]);
   });
 
-  it("records each tick and untick with its time and the Agenda that made it", async () => {
+  it("keeps when a Task was last ticked done, and forgets it when the tick is taken back", async () => {
     const created = await instance.app.agendas.create({ kind: "tasks", preselected: [], horizonDays: 7 });
     if (!created.ok) throw new Error(`creating failed: ${created.problem}`);
     const list = created.id;
@@ -144,10 +144,8 @@ describe("Tasks", () => {
     instance.clock.advance(5 * minutes);
     await instance.app.tasks.tickFromAgenda(list, kit, { done: true, access: openAgendaAccess });
 
-    expect(await instance.app.tasks.ticks(kit)).toEqual([
-      { done: true, at: new Date("2026-09-14T07:15:00Z"), by: { kind: "agenda", agendaId: agenda } },
-      { done: false, at: new Date("2026-09-14T07:20:00Z"), by: { kind: "agenda", agendaId: list } },
-      { done: true, at: new Date("2026-09-14T07:25:00Z"), by: { kind: "agenda", agendaId: list } },
+    expect(await instance.query(`SELECT status, done_at FROM task WHERE item_id = '${kit}'`)).toEqual([
+      { status: "done", done_at: new Date("2026-09-14T07:25:00Z") },
     ]);
     expect((await shown()).days).toEqual({ "2026-09-16": ["Bring sports kit (done)"] });
   });
@@ -178,8 +176,9 @@ describe("Tasks", () => {
     const kit = await taskId("Bring sports kit");
 
     await instance.app.tasks.tickFromAgenda(agenda, kit, { done: true, access: openAgendaAccess });
+    instance.clock.advance(5 * minutes);
     await instance.app.tasks.tickFromAgenda(agenda, kit, { done: true, access: openAgendaAccess });
-    expect(await instance.app.tasks.ticks(kit)).toHaveLength(1);
+    expect(await instance.query(`SELECT done_at FROM task WHERE item_id = '${kit}'`)).toEqual([{ done_at: new Date("2026-09-14T07:15:00Z") }]);
 
     const refusing = { mayOpen: () => Promise.resolve(false) };
     const form = await taskId("Sign the trip form");
@@ -376,59 +375,18 @@ describe("Tasks extracted from mail", () => {
       { ...tripPacking, title: "Wrong day", deadline: { ...tripPacking.deadline, weekday: "thursday" } },
     ]);
 
-    await arrive(mail("m1", "2026-09-14T06:12:00Z", packingList));
+    const report = await arrive(mail("m1", "2026-09-14T06:12:00Z", packingList));
 
     expect(await tasks()).toEqual([]);
+    expect(report.dropped.map(({ problem }) => problem)).toEqual(["evidence-not-found", "weekday-mismatch"]);
   });
 
-  it("updates a Task when a later mail of its thread changes it, and leaves it done", async () => {
-    extractor.script("Ausflug am Freitag", [], [tripPacking]);
-    await arrive(mail("m1", "2026-09-14T06:12:00Z", packingList));
-    const [found] = (await openTimeline(instance.app, agenda, { access: openAgendaAccess }))!.days.flatMap((day) => day.tasks);
-    await instance.app.tasks.tickFromAgenda(agenda, found!.itemId, { done: true, access: openAgendaAccess });
-    extractor.script("Sonnencreme", [], [
-      extractedTask({ updates: "T1", bring: ["Regenjacke", "Brotdose", "Trinkflasche", "Sonnencreme"], evidence: "bitte auch Sonnencreme mitgeben" }),
-    ]);
+  it("does not write a Task whose fields a Task cannot have", async () => {
+    extractor.script("Ausflug", [], [{ ...tripPacking, bring: ["Regenjacke", ""] }]);
 
-    await arrive(mail("m2", "2026-09-15T10:00:00Z", "Nachtrag: bitte auch Sonnencreme mitgeben.", "m1"));
+    const report = await arrive(mail("m1", "2026-09-14T06:12:00Z", packingList));
 
-    expect(extractor.requests.at(-1)?.knownTasks).toEqual([
-      { ref: "T1", title: "Sachen für den Ausflug", deadline: "2026-09-18", bring: ["Regenjacke", "Brotdose", "Trinkflasche"] },
-    ]);
-    expect(await tasks()).toMatchObject([
-      { title: "Sachen für den Ausflug", bring: ["Regenjacke", "Brotdose", "Trinkflasche", "Sonnencreme"], status: "done", messages: 2 },
-    ]);
-  });
-
-  it("renames a Task and moves its Deadline when a later mail of its thread says so", async () => {
-    extractor.script("Ausflug am Freitag", [], [tripPacking]);
-    await arrive(mail("m1", "2026-09-14T06:12:00Z", packingList));
-    extractor.script("verschoben", [], [
-      extractedTask({ updates: "T1", title: "Sachen für den Wandertag", deadline: { day: 19, month: 9 }, evidence: "auf den 19.09. verschoben" }),
-    ]);
-
-    await arrive(mail("m2", "2026-09-15T10:00:00Z", "Der Ausflug wird auf den 19.09. verschoben.", "m1"));
-
-    expect(await tasks()).toMatchObject([{ title: "Sachen für den Wandertag", deadline: "2026-09-19", bring: ["Regenjacke", "Brotdose", "Trinkflasche"] }]);
-  });
-
-  it("adds nothing for a later mail whose Task update states nothing", async () => {
-    extractor.script("Ausflug am Freitag", [], [tripPacking]);
-    await arrive(mail("m1", "2026-09-14T06:12:00Z", packingList));
-    extractor.script("Dank", [], [extractedTask({ updates: "T1", evidence: "Danke für die Rückmeldungen" })]);
-
-    await arrive(mail("m2", "2026-09-15T10:00:00Z", "Danke für die Rückmeldungen. Dank an alle.", "m1"));
-
-    expect(await tasks()).toMatchObject([{ title: "Sachen für den Ausflug", messages: 1 }]);
-  });
-
-  it("strikes a Task through when a later mail of its thread calls it off", async () => {
-    extractor.script("Ausflug am Freitag", [], [tripPacking]);
-    await arrive(mail("m1", "2026-09-14T06:12:00Z", packingList));
-    extractor.script("fällt aus", [], [extractedTask({ updates: "T1", cancelled: true, evidence: "Der Ausflug fällt aus" })]);
-
-    await arrive(mail("m2", "2026-09-15T10:00:00Z", "Der Ausflug fällt aus.", "m1"));
-
-    expect(await tasks()).toMatchObject([{ title: "Sachen für den Ausflug", cancelled: true }]);
+    expect(await tasks()).toEqual([]);
+    expect(report.dropped).toEqual([expect.objectContaining({ problem: "invalid-fields" })]);
   });
 });

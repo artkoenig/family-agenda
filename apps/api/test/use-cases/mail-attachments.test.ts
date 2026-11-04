@@ -135,11 +135,6 @@ describe("Events extracted from PDF attachments", () => {
     expect(extractor.requests[0]?.message.text).toContain("Allgemeine Hinweise zur Klassenfahrt.");
     const message = await instance.app.messages.open(report.extracted[0]!);
     expect(message?.attachments.map((attachment) => attachment.conversionProblem)).toEqual(["OCR is switched off.", null]);
-
-    await instance.app.languages.setOcrEnabled(true);
-    await instance.app.extraction.reread();
-    await instance.app.extraction.extractPending();
-    expect(textExtractor.ocrPages).toEqual([[1]]);
   });
 
   it("rejects an Event from an attachment whose quote the attachment does not contain", async () => {

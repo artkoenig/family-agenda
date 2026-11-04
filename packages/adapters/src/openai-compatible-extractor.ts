@@ -49,10 +49,8 @@ export const extractionSchema = {
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["updates", "cancelled", "title", "date", "startTime", "endTime", "place", "evidence"],
+        required: ["title", "date", "startTime", "endTime", "place", "evidence"],
         properties: {
-          updates: nullable("string"),
-          cancelled: { type: "boolean" },
           title: nullable("string"),
           date: dateMentionSchema,
           startTime: nullable("string"),
@@ -67,10 +65,8 @@ export const extractionSchema = {
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["updates", "cancelled", "title", "deadline", "bring", "evidence"],
+        required: ["title", "deadline", "bring", "evidence"],
         properties: {
-          updates: nullable("string"),
-          cancelled: { type: "boolean" },
           title: nullable("string"),
           deadline: dateMentionSchema,
           bring: { type: "array", items: { type: "string" } },
@@ -102,7 +98,7 @@ Rules:
 - A task's "deadline" is the date by which it must be done; every part is null if the message gives none. For a month alone, as in "bis Ende November 2026", fill in "month" and "year" and leave "day" null.
 - "startTime" and "endTime" as HH:MM in 24-hour time, or null.
 - "place" as written, or null.
-- When the message changes, moves or cancels one of the known events or tasks listed below, set "updates" to its id (such as "E1" or "T1"), "cancelled" to true for a cancellation, and fill in only what changes: "title" null unless it is renamed, a new date or times if it moves, and for a task the whole new list in "bring" if it changes, else an empty list. Otherwise "updates" is null and "cancelled" false.`;
+- Do not list an event or task the message says is cancelled.`;
 
 /**
  * The `Extractor` for any OpenAI-compatible server, such as Ollama, llama.cpp, vLLM, LM Studio,
@@ -213,33 +209,9 @@ function modelIdsOf(answer: unknown): string[] {
 }
 
 function promptOf(request: ExtractionRequest): string {
-  const { message, knownEvents, knownTasks } = request;
-  const known =
-    knownEvents.length === 0
-      ? "None."
-      : knownEvents
-          .map((event) => `- ${event.ref}: ${event.title}, ${event.when}${event.place ? `, ${event.place}` : ""}`)
-          .join("\n");
-  const tasks =
-    knownTasks.length === 0
-      ? "None."
-      : knownTasks
-          .map((task) =>
-            [
-              `- ${task.ref}: ${task.title}`,
-              task.deadline ? `by ${task.deadline}` : "no deadline",
-              ...(task.bring.length > 0 ? [`bring: ${task.bring.join(", ")}`] : []),
-            ].join(", "),
-          )
-          .join("\n");
+  const { message } = request;
   return [
     `The message was sent on ${message.sent.weekday}, ${message.sent.date} at ${message.sent.time}.`,
-    "",
-    "Known events from earlier messages of its conversation:",
-    known,
-    "",
-    "Known tasks from earlier messages of its conversation:",
-    tasks,
     "",
     "The message:",
     "<<<",
@@ -289,15 +261,12 @@ function eventOf(raw: unknown): ExtractedEvent | null {
   const date = dateOf(raw.date);
   if (
     !date ||
-    typeof raw.cancelled !== "boolean" ||
     typeof raw.evidence !== "string" ||
-    ![raw.updates, raw.title, raw.startTime, raw.endTime, raw.place].every(isTextOrNull)
+    ![raw.title, raw.startTime, raw.endTime, raw.place].every(isTextOrNull)
   ) {
     return null;
   }
   return {
-    updates: raw.updates as string | null,
-    cancelled: raw.cancelled,
     title: raw.title as string | null,
     date,
     startTime: raw.startTime as string | null,
@@ -325,8 +294,6 @@ function taskOf(raw: unknown): ExtractedTask | null {
   const bring: unknown[] = raw.bring;
   if (!validTaskFields(deadline, raw, bring)) return null;
   return {
-    updates: raw.updates as string | null,
-    cancelled: raw.cancelled as boolean,
     title: raw.title as string | null,
     deadline: deadline as DateMention,
     bring: bring as string[],
@@ -340,8 +307,8 @@ function validTaskFields(
   bring: unknown[],
 ): boolean {
   if (deadline === null) return false;
-  if (typeof raw.cancelled !== "boolean" || typeof raw.evidence !== "string") return false;
-  return [raw.updates, raw.title].every(isTextOrNull) && bring.every((thing) => typeof thing === "string");
+  if (typeof raw.evidence !== "string") return false;
+  return isTextOrNull(raw.title) && bring.every((thing) => typeof thing === "string");
 }
 
 function wholeOf(value: unknown): number | null | undefined {
