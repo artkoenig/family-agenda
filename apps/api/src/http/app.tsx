@@ -359,12 +359,12 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     const endpoint = await llmEndpoint.current();
     const llmHealth = endpoint ? (await llmEndpoint.health())?.ok ? "ok" as const : "failing" as const : null;
     const language = await languages.current();
-    const allSources = await sources.list();
+    const sourceOverview = await sources.overview();
     return {
       members: (await familyMembers.list()).map((member) => member.name),
       agendas: (await agendas.list()).length,
-      sources: allSources.length,
-      failingSources: allSources.filter((source) => source.health.status === "failing").length,
+      sources: sourceOverview.count,
+      failingSources: sourceOverview.failing,
       llm: endpoint ? { model: endpoint.model, local: endpoint.local } : null,
       llmHealth,
       admins: (await admins.listAdmins()).length,
