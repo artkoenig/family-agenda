@@ -10,6 +10,7 @@ import type {
   DeclaredAttribute,
   FamilyMemberRepository,
   FamilyRepository,
+  SoleAssignment,
   LlmEndpointRepository,
   PlainConfig,
   SecretRef,
@@ -61,7 +62,7 @@ import {
   sourceRuns,
   sources,
   sourceTypes,
-  agendaPreselections,
+  agendaMembers,
   agendas,
 } from "./schema";
 
@@ -253,10 +254,42 @@ export class PostgresFamilyMemberRepository implements FamilyMemberRepository {
       .where(eq(familyMembers.id, member.id));
   }
 
-  async remove(id: FamilyMemberId): Promise<void> {
-    if (!uuidPattern.test(id)) return;
-    await this.db.delete(familyMembers).where(eq(familyMembers.id, id));
+  async remove(id: FamilyMemberId): Promise<{ removed: true } | { removed: false; blocking: SoleAssignment[] }> {
+    if (!uuidPattern.test(id)) return { removed: true };
+    try {
+      await this.db.delete(familyMembers).where(eq(familyMembers.id, id));
+      return { removed: true };
+    } catch (error) {
+      // The trigger family_member_before_delete refuses while they alone are assigned to a Source Attribute.
+      if (!isRestrictViolation(error)) throw error;
+      return { removed: false, blocking: await this.soleAssignments(id) };
+    }
   }
+
+  /** The Source Attributes assigned to the Family Member and no one else. */
+  private async soleAssignments(id: FamilyMemberId): Promise<SoleAssignment[]> {
+    const rows = await this.db
+      .select({ sourceId: sourceAttributes.sourceId, attribute: sourceAttributes.name })
+      .from(sourceAttributeMembers)
+      .innerJoin(sourceAttributes, eq(sourceAttributes.id, sourceAttributeMembers.attributeId))
+      .innerJoin(sources, eq(sources.id, sourceAttributes.sourceId))
+      .where(
+        and(
+          eq(sourceAttributeMembers.familyMemberId, id),
+          sql`NOT EXISTS (SELECT 1 FROM ${sourceAttributeMembers} AS other WHERE other.attribute_id = ${sourceAttributeMembers.attributeId} AND other.family_member_id <> ${id})`,
+        ),
+      )
+      .orderBy(asc(sources.position), asc(sourceAttributes.name));
+    return rows.map((row) => ({ sourceId: row.sourceId as SourceId, attribute: row.attribute }));
+  }
+}
+
+/** Whether the error is the schema refusing a delete that other rows depend on (`restrict_violation`). */
+function isRestrictViolation(error: unknown): boolean {
+  for (let cause: unknown = error; typeof cause === "object" && cause !== null; cause = (cause as { cause?: unknown }).cause) {
+    if ((cause as { code?: unknown }).code === "23001") return true;
+  }
+  return false;
 }
 
 function toFamilyMember(row: typeof familyMembers.$inferSelect): FamilyMember {
@@ -301,7 +334,7 @@ export class PostgresAgendaRepository implements AgendaRepository {
   async update(agenda: Agenda): Promise<void> {
     await this.db.transaction(async (tx) => {
       await tx.update(agendas).set({ kind: agenda.kind, horizonDays: agenda.horizonDays }).where(eq(agendas.id, agenda.id));
-      await tx.delete(agendaPreselections).where(eq(agendaPreselections.agendaId, agenda.id));
+      await tx.delete(agendaMembers).where(eq(agendaMembers.agendaId, agenda.id));
       await insertPreselections(tx, agenda);
     });
   }
@@ -313,10 +346,10 @@ export class PostgresAgendaRepository implements AgendaRepository {
 
   private async select(where?: SQL): Promise<Agenda[]> {
     const rows = await this.db
-      .select({ agenda: agendas, familyMemberId: agendaPreselections.familyMemberId })
+      .select({ agenda: agendas, familyMemberId: agendaMembers.familyMemberId })
       .from(agendas)
-      .leftJoin(agendaPreselections, eq(agendaPreselections.agendaId, agendas.id))
-      .leftJoin(familyMembers, eq(familyMembers.id, agendaPreselections.familyMemberId))
+      .leftJoin(agendaMembers, eq(agendaMembers.agendaId, agendas.id))
+      .leftJoin(familyMembers, eq(familyMembers.id, agendaMembers.familyMemberId))
       .where(where)
       .orderBy(asc(agendas.position), asc(familyMembers.position));
     const byId = new Map<string, Agenda>();
@@ -338,7 +371,7 @@ export class PostgresAgendaRepository implements AgendaRepository {
 async function insertPreselections(tx: Pick<Database, "insert">, agenda: Agenda): Promise<void> {
   if (agenda.preselected.length === 0) return;
   await tx
-    .insert(agendaPreselections)
+    .insert(agendaMembers)
     .values(agenda.preselected.map((familyMemberId) => ({ agendaId: agenda.id, familyMemberId })));
 }
 

@@ -18,9 +18,10 @@ export function attributionOf(assignedPerSource: readonly (readonly FamilyMember
 }
 
 /**
- * Whether the quick filter, showing some Family Members, shows an Item: if it concerns one of
- * them, and always if it concerns the whole Family.
+ * Whether an Agenda or quick filter showing some Family Members shows an Item: only if it concerns
+ * one of them. An Item that concerns the whole Family is not shown to chosen members; only an Agenda
+ * for the whole Family shows it, and that one does not filter.
  */
 export function isShownTo(attribution: Attribution, showing: readonly FamilyMemberId[]): boolean {
-  return attribution === "whole-family" || attribution.some((member) => showing.includes(member));
+  return attribution !== "whole-family" && attribution.some((member) => showing.includes(member));
 }

@@ -33,8 +33,8 @@ describe("attributionOf", () => {
 });
 
 describe("isShownTo", () => {
-  it("always shows 'whole-family' attribution", () => {
-    expect(isShownTo("whole-family", [alice])).toBe(true);
+  it("does not show 'whole-family' attribution to chosen members", () => {
+    expect(isShownTo("whole-family", [alice])).toBe(false);
   });
 
   it("shows when the member is in the attribution", () => {
@@ -53,7 +53,7 @@ describe("isShownTo", () => {
     expect(isShownTo([alice] as Attribution, [])).toBe(false);
   });
 
-  it("shows for empty showing list with whole-family", () => {
-    expect(isShownTo("whole-family", [])).toBe(true);
+  it("does not show 'whole-family' attribution for an empty showing list", () => {
+    expect(isShownTo("whole-family", [])).toBe(false);
   });
 });

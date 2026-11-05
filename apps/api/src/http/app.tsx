@@ -545,8 +545,18 @@ function shownStatus(status: 200 | 400 | 413 | undefined, problems: (string | un
   });
 
   app.post("/admin/family-members/:id/remove", async (c) => {
-    await familyMembers.remove(c.req.param("id") as FamilyMemberId);
-    return c.redirect("/admin/family-members", 303);
+    const id = c.req.param("id") as FamilyMemberId;
+    const name = (await familyMembers.list()).find((member) => member.id === id)?.name ?? "";
+    const result = await familyMembers.remove(id);
+    if (result.ok) return c.redirect("/admin/family-members", 303);
+    // Say which Source Attributes keep them, each with its Source's name.
+    const listed = await sources.list();
+    const blocking = result.blocking.map(({ sourceId, attribute }) => {
+      const source = listed.find((candidate) => candidate.id === sourceId);
+      return `${source?.name ?? (source ? c.get("translation").text(source.displayName) : "")}: ${attribute}`;
+    });
+    const { t, list } = c.get("translation");
+    return familyMembersPage(c, { problem: t.members.soleAssignee(name, list(blocking)) });
   });
 
   const agendasPage = async (

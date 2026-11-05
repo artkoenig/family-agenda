@@ -192,6 +192,9 @@ export const en = {
     replacePhoto: "Replace photo",
     removePhoto: "Remove photo",
     remove: (name: string) => `Remove ${name}`,
+    /** Why they cannot be removed yet: `blocking` are their Source Attributes, each as "Source: Attribute". */
+    soleAssignee: (name: string, blocking: string) =>
+      `${name} is the only one assigned to ${blocking}. Assign them to someone else first, or to no one for the whole Family.`,
   },
 
   agendas: {

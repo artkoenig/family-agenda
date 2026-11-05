@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { assignSource } from "../support/assign";
 import { photos } from "../support/photos";
 import { bootForTest, type TestInstance } from "../support/boot";
+import { writeTestPluginPackage } from "../support/test-source-plugin";
 
 describe("managing Family Members", () => {
   let instance: TestInstance;
@@ -48,6 +50,30 @@ describe("managing Family Members", () => {
       ok: false,
       problem: "unknown-member",
     });
+  });
+
+  it("refuses to remove a Family Member who alone is assigned to a Source Attribute, and says which", async () => {
+    await writeTestPluginPackage(instance.workspacePackages, { sourceTypeId: "calendar" });
+    await instance.restart();
+    await instance.app.sourceTypes.enable("calendar");
+    const added = await instance.app.sources.add({ sourceTypeId: "calendar", plain: { url: "https://calendar.example.org" }, secrets: {} });
+    if (!added.ok) throw new Error(`adding failed: ${added.problem}`);
+    const mia = await addMember("Mia");
+    const leo = await addMember("Leo");
+    await assignSource(instance, added.id, [mia]);
+
+    expect(await instance.app.familyMembers.remove(mia)).toEqual({
+      ok: false,
+      problem: "sole-assignee",
+      blocking: [{ sourceId: added.id, attribute: "Main" }],
+    });
+    expect((await instance.app.familyMembers.list()).map((member) => member.name)).toEqual(["Mia", "Leo"]);
+
+    // Shared with someone else, the assignment goes with them.
+    await assignSource(instance, added.id, [mia, leo]);
+    expect(await instance.app.familyMembers.remove(mia)).toEqual({ ok: true });
+    const [source] = await instance.app.sources.list();
+    expect(source?.attributes.map((attribute) => attribute.concerns)).toEqual([[leo]]);
   });
 
   it("keeps an optional photo, which can be replaced and removed", async () => {
