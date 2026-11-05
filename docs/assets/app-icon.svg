@@ -1,7 +1,104 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <linearGradient id="bg" x1="0" x2="1" y1="0" y2="0"><stop offset="0" stop-color="#e9574b"/><stop offset="0.3" stop-color="#f2993c"/><stop offset="0.5" stop-color="#f6cf4a"/><stop offset="0.75" stop-color="#7cc36b"/><stop offset="1" stop-color="#4a9bd8"/></linearGradient>
-  <rect width="512" height="512" fill="url(#bg)"/>
-  <rect x="71.7" y="71.7" width="368.6" height="368.6" rx="76.8" fill="#fffdf9"/>
+  <clipPath id="tile"><rect width="512" height="512"/></clipPath>
+  <g clip-path="url(#tile)">
+<path d="M256 256L256 -153.6L288.1 -152.3Z" fill="#e9594b"/>
+<path d="M256 256L282.8 -152.7L314.8 -149.4Z" fill="#ea5c4a"/>
+<path d="M256 256L309.5 -150.1L341.2 -144.6Z" fill="#ea6049"/>
+<path d="M256 256L335.9 -145.7L367.2 -138.2Z" fill="#eb6348"/>
+<path d="M256 256L362 -139.6L392.7 -130.1Z" fill="#eb6647"/>
+<path d="M256 256L387.7 -131.9L417.7 -120.3Z" fill="#ec6a47"/>
+<path d="M256 256L412.7 -122.4L442 -109Z" fill="#ec6d46"/>
+<path d="M256 256L437.2 -111.4L465.4 -96Z" fill="#ed7145"/>
+<path d="M256 256L460.8 -98.7L488 -81.6Z" fill="#ed7444"/>
+<path d="M256 256L483.6 -84.6L509.6 -65.7Z" fill="#ed7844"/>
+<path d="M256 256L505.3 -69L530.1 -48.4Z" fill="#ee7b43"/>
+<path d="M256 256L526.1 -52L549.4 -29.8Z" fill="#ee7f42"/>
+<path d="M256 256L545.6 -33.6L567.5 -10Z" fill="#ef8241"/>
+<path d="M256 256L564 -14.1L584.2 10.9Z" fill="#ef8540"/>
+<path d="M256 256L581 6.7L599.5 32.9Z" fill="#f08940"/>
+<path d="M256 256L596.6 28.4L613.4 55.9Z" fill="#f08c3f"/>
+<path d="M256 256L610.7 51.2L625.7 79.7Z" fill="#f1903e"/>
+<path d="M256 256L623.4 74.8L636.4 104.2Z" fill="#f1933d"/>
+<path d="M256 256L634.4 99.3L645.6 129.4Z" fill="#f2973d"/>
+<path d="M256 256L643.9 124.3L653 155.2Z" fill="#f29a3c"/>
+<path d="M256 256L651.6 150L658.7 181.4Z" fill="#f29d3d"/>
+<path d="M256 256L657.7 176.1L662.8 207.9Z" fill="#f29f3e"/>
+<path d="M256 256L662.1 202.5L665 234.6Z" fill="#f3a23e"/>
+<path d="M256 256L664.7 229.2L665.6 261.4Z" fill="#f3a53f"/>
+<path d="M256 256L665.6 256L664.3 288.1Z" fill="#f3a840"/>
+<path d="M256 256L664.7 282.8L661.4 314.8Z" fill="#f3ab41"/>
+<path d="M256 256L662.1 309.5L656.6 341.2Z" fill="#f4ae41"/>
+<path d="M256 256L657.7 335.9L650.2 367.2Z" fill="#f4b042"/>
+<path d="M256 256L651.6 362L642.1 392.7Z" fill="#f4b343"/>
+<path d="M256 256L643.9 387.7L632.3 417.7Z" fill="#f4b644"/>
+<path d="M256 256L634.4 412.7L621 442Z" fill="#f4b944"/>
+<path d="M256 256L623.4 437.2L608 465.4Z" fill="#f5bc45"/>
+<path d="M256 256L610.7 460.8L593.6 488Z" fill="#f5be46"/>
+<path d="M256 256L596.6 483.6L577.7 509.6Z" fill="#f5c146"/>
+<path d="M256 256L581 505.3L560.4 530.1Z" fill="#f5c447"/>
+<path d="M256 256L564 526.1L541.8 549.4Z" fill="#f5c748"/>
+<path d="M256 256L545.6 545.6L522 567.5Z" fill="#f6ca49"/>
+<path d="M256 256L526.1 564L501.1 584.2Z" fill="#f6cc49"/>
+<path d="M256 256L505.3 581L479.1 599.5Z" fill="#f5cf4a"/>
+<path d="M256 256L483.6 596.6L456.1 613.4Z" fill="#efce4c"/>
+<path d="M256 256L460.8 610.7L432.3 625.7Z" fill="#e9ce4e"/>
+<path d="M256 256L437.2 623.4L407.8 636.4Z" fill="#e2cd4f"/>
+<path d="M256 256L412.7 634.4L382.6 645.6Z" fill="#dccc51"/>
+<path d="M256 256L387.7 643.9L356.8 653Z" fill="#d6cc53"/>
+<path d="M256 256L362 651.6L330.6 658.7Z" fill="#cfcb54"/>
+<path d="M256 256L335.9 657.7L304.1 662.8Z" fill="#c9cb56"/>
+<path d="M256 256L309.5 662.1L277.4 665Z" fill="#c3ca58"/>
+<path d="M256 256L282.8 664.7L250.6 665.6Z" fill="#bcc95a"/>
+<path d="M256 256L256 665.6L223.9 664.3Z" fill="#b6c95b"/>
+<path d="M256 256L229.2 664.7L197.2 661.4Z" fill="#afc85d"/>
+<path d="M256 256L202.5 662.1L170.8 656.6Z" fill="#a9c75f"/>
+<path d="M256 256L176.1 657.7L144.8 650.2Z" fill="#a3c761"/>
+<path d="M256 256L150 651.6L119.3 642.1Z" fill="#9cc662"/>
+<path d="M256 256L124.3 643.9L94.3 632.3Z" fill="#96c664"/>
+<path d="M256 256L99.3 634.4L70 621Z" fill="#90c566"/>
+<path d="M256 256L74.8 623.4L46.6 608Z" fill="#89c467"/>
+<path d="M256 256L51.2 610.7L24 593.6Z" fill="#83c469"/>
+<path d="M256 256L28.4 596.6L2.4 577.7Z" fill="#7dc36b"/>
+<path d="M256 256L6.7 581L-18.1 560.4Z" fill="#7ac170"/>
+<path d="M256 256L-14.1 564L-37.4 541.8Z" fill="#77bf76"/>
+<path d="M256 256L-33.6 545.6L-55.5 522Z" fill="#74bd7b"/>
+<path d="M256 256L-52 526.1L-72.2 501.1Z" fill="#72bb81"/>
+<path d="M256 256L-69 505.3L-87.5 479.1Z" fill="#6fb987"/>
+<path d="M256 256L-84.6 483.6L-101.4 456.1Z" fill="#6db78c"/>
+<path d="M256 256L-98.7 460.8L-113.7 432.3Z" fill="#6ab592"/>
+<path d="M256 256L-111.4 437.2L-124.4 407.8Z" fill="#67b398"/>
+<path d="M256 256L-122.4 412.7L-133.6 382.6Z" fill="#65b09e"/>
+<path d="M256 256L-131.9 387.7L-141 356.8Z" fill="#62aea3"/>
+<path d="M256 256L-139.6 362L-146.7 330.6Z" fill="#60aca9"/>
+<path d="M256 256L-145.7 335.9L-150.8 304.1Z" fill="#5daaaf"/>
+<path d="M256 256L-150.1 309.5L-153 277.4Z" fill="#5aa8b4"/>
+<path d="M256 256L-152.7 282.8L-153.6 250.6Z" fill="#58a6ba"/>
+<path d="M256 256L-153.6 256L-152.3 223.9Z" fill="#55a4c0"/>
+<path d="M256 256L-152.7 229.2L-149.4 197.2Z" fill="#53a2c5"/>
+<path d="M256 256L-150.1 202.5L-144.6 170.8Z" fill="#50a0cb"/>
+<path d="M256 256L-145.7 176.1L-138.2 144.8Z" fill="#4d9ed1"/>
+<path d="M256 256L-139.6 150L-130.1 119.3Z" fill="#4b9cd6"/>
+<path d="M256 256L-131.9 124.3L-120.3 94.3Z" fill="#4f96d5"/>
+<path d="M256 256L-122.4 99.3L-109 70Z" fill="#5690d2"/>
+<path d="M256 256L-111.4 74.8L-96 46.6Z" fill="#5d89ce"/>
+<path d="M256 256L-98.7 51.2L-81.6 24Z" fill="#6482cb"/>
+<path d="M256 256L-84.6 28.4L-65.7 2.4Z" fill="#6b7cc7"/>
+<path d="M256 256L-69 6.7L-48.4 -18.1Z" fill="#7275c3"/>
+<path d="M256 256L-52 -14.1L-29.8 -37.4Z" fill="#796ec0"/>
+<path d="M256 256L-33.6 -33.6L-10 -55.5Z" fill="#8168bc"/>
+<path d="M256 256L-14.1 -52L10.9 -72.2Z" fill="#8861b8"/>
+<path d="M256 256L6.7 -69L32.9 -87.5Z" fill="#8f5bb4"/>
+<path d="M256 256L28.4 -84.6L55.9 -101.4Z" fill="#985ba9"/>
+<path d="M256 256L51.2 -98.7L79.7 -113.7Z" fill="#a25a9e"/>
+<path d="M256 256L74.8 -111.4L104.2 -124.4Z" fill="#ab5a93"/>
+<path d="M256 256L99.3 -122.4L129.4 -133.6Z" fill="#b55988"/>
+<path d="M256 256L124.3 -131.9L155.2 -141Z" fill="#be597d"/>
+<path d="M256 256L150 -139.6L181.4 -146.7Z" fill="#c85872"/>
+<path d="M256 256L176.1 -145.7L207.9 -150.8Z" fill="#d15867"/>
+<path d="M256 256L202.5 -150.1L234.6 -153Z" fill="#db585c"/>
+<path d="M256 256L229.2 -152.7L261.4 -153.6Z" fill="#e45751"/>
+  </g>
+  <circle cx="256" cy="256" r="189.4" fill="#fffdf9"/>
   <circle cx="184.3" cy="184.3" r="28.2" fill="#f0933a"/>
   <rect x="148.5" y="220.2" width="71.7" height="117.8" rx="30.7" fill="#f0933a"/>
   <circle cx="327.7" cy="184.3" r="28.2" fill="#3f8fd2"/>
