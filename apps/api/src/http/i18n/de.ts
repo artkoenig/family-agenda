@@ -355,6 +355,7 @@ export const de: Catalogue = {
     title: "Nachricht",
     description: "Das Original, aus dem seine Einträge gelesen wurden. Nur Admins öffnen es.",
     sent: "Gesendet",
+    purged: "Der Inhalt dieser Nachricht wird nicht mehr aufbewahrt.",
     sender: "Von",
     subject: "Betreff",
     attributes: "Betrifft",

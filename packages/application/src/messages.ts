@@ -9,6 +9,8 @@ export type MessageDetails = {
   /** The names of the Source Attributes it belongs to, such as a mail folder. */
   attributes: string[];
   text: string;
+  /** When its content was deleted; null while it is kept. The Admin area then says it is no longer kept. */
+  purgedAt: Date | null;
   /** Each with its place among the attachments, and why it could not be turned into text for extraction, or null. */
   attachments: { position: number; filename: string; contentType: string; size: number; conversionProblem: string | null }[];
   /** The Items written from it, which an Admin can delete. */
@@ -29,6 +31,7 @@ export function createMessageAccess(deps: { items: ItemRepository; blobs: BlobSt
         subject: message.subject,
         attributes: message.attributes,
         text: message.body,
+        purgedAt: message.purgedAt,
         attachments: message.attachments.map(({ position, filename, contentType, size, conversionProblem }) => ({
           position,
           filename,

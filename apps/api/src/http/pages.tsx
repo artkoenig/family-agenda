@@ -2549,7 +2549,7 @@ export function MessagePage(props: { admin: SignedInAdmin; message: MessageDetai
           </>
         ) : null}
       </dl>
-      <pre class="fam-message">{message.text}</pre>
+      {message.purgedAt !== null ? <p>{m.purged}</p> : <pre class="fam-message">{message.text}</pre>}
       {message.attachments.length > 0 ? (
         <>
           <h2>{m.attachments}</h2>

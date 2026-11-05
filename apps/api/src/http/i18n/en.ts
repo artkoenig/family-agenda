@@ -370,6 +370,7 @@ export const en = {
     title: "Message",
     description: "The original its Items were read from. Only Admins open it.",
     sent: "Sent",
+    purged: "The content of this message is no longer kept.",
     sender: "From",
     subject: "Subject",
     attributes: "Concerns",

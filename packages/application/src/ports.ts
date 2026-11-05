@@ -474,6 +474,8 @@ export type SourceRun = {
   at: Date;
   /** Where the plugin resumes on its next run, stored only together with the run's Origins. */
   syncCursor: string | null;
+  /** Messages received before this are ignored, whatever the Source delivers: they are past retention. */
+  retainedSince: Date;
   /** External ids of Origins the Source deleted, whose Items are deleted and whose messages go. */
   withdrawn: string[];
   origins: {
@@ -525,7 +527,10 @@ export type RawMessage = {
   subject: string | null;
   /** The names of its Source Attributes. */
   attributes: string[];
+  /** Empty once purged. */
   body: string;
+  /** When its content was deleted after the retention period or because nothing needed it; null while it is kept. */
+  purgedAt: Date | null;
   attachments: {
     position: number;
     filename: string;
@@ -589,6 +594,13 @@ export interface ItemRepository {
    * Source Attributes moves to it without being read again; one with an empty list is withdrawn.
    */
   recordRun(run: SourceRun, read: ReadStated): Promise<RunRecorded>;
+  /**
+   * Deletes the text and attachments of messages nothing needs any more, or that arrived before
+   * `retainedSince`, leaving a tombstone, and deletes the rows of those older than that without
+   * an Item. A message not extracted yet is kept until it is older than `retainedSince`. Returns
+   * the files of the removed attachments, for the caller to remove.
+   */
+  purgeMessages(now: Date, retainedSince: Date): Promise<{ files: BlobRef[]; purged: number; deleted: number }>;
   /** Raw messages not yet extracted successfully, oldest first. */
   pendingMessages(limit: number): Promise<PendingMessage[]>;
   /** How many raw messages, of one Source or of all, wait for extraction. */
