@@ -765,7 +765,7 @@ function TickForm(props: { row: TimelineTask; page: AgendaPage | TaskListPage })
       hx-trigger="change"
       hx-target="#agenda"
       hx-swap="outerHTML"
-      hx-include={page.kind === "timeline" ? "#shown-from, #shown-until" : undefined}
+      hx-include={page.layout === "timeline" ? "#shown-from, #shown-until" : undefined}
     >
       <input type="hidden" name="show" value={page.showing === "all" ? "all" : page.showing.join(",")} />
       <label class="fam-task__tick">

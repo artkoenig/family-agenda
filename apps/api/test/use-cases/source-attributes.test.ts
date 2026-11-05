@@ -47,7 +47,7 @@ describe("Source Attributes", () => {
     const member = await instance.app.familyMembers.add({ name: "Mia" });
     if (!member.ok) throw new Error(`adding failed: ${member.problem}`);
     mia = member.id;
-    const created = await instance.app.agendas.create({ preselected: [], horizonDays: 7 });
+    const created = await instance.app.agendas.create({ memberIds: [], horizonDays: 7 });
     if (!created.ok) throw new Error(`creating failed: ${created.problem}`);
     agenda = created.id;
   });

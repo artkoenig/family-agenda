@@ -251,7 +251,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     c.header("vary", "HX-Request");
     // htmx asks for the whole page when it restores history it has not cached.
     const fragment = c.req.header("hx-request") === "true" && !c.req.header("hx-history-restore-request");
-    if (page.kind === "tasks") return render(c, fragment ? <TaskList page={page} /> : <TaskListDocument page={page} />);
+    if (page.layout === "task_list") return render(c, fragment ? <TaskList page={page} /> : <TaskListDocument page={page} />);
     return render(c, fragment ? <AgendaTimeline page={page} /> : <AgendaPageDocument page={page} />);
   });
 
@@ -268,7 +268,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
       ...days,
     });
     // A Task List has no days to scroll to.
-    if (!page || page.kind === "tasks") return c.notFound();
+    if (!page || page.layout === "task_list") return c.notFound();
     c.header("cache-control", "no-store");
     // The page's refresh asks for the loaded days too, so the side they extend moves with them.
     const earlier = then === "earlier";
@@ -312,7 +312,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     });
     if (!page) return c.notFound();
     c.header("cache-control", "no-store");
-    return render(c, page.kind === "tasks" ? <TaskList page={page} /> : <AgendaTimeline page={page} />);
+    return render(c, page.layout === "task_list" ? <TaskList page={page} /> : <AgendaTimeline page={page} />);
   });
 
   // An Agenda's feed follows the Agenda's access, so that calendar apps can subscribe without a session.
@@ -579,11 +579,11 @@ function shownStatus(status: 200 | 400 | 413 | undefined, problems: (string | un
 
   const agendaSettingsOf = async (c: Context<Env>) => {
     const form = await c.req.parseBody({ all: true });
-    const preselected = form.preselected;
-    const kind = field(form, "kind");
+    const memberIds = form.memberIds;
+    const layout = field(form, "layout");
     return {
-      ...(kind ? { kind } : {}),
-      preselected: (Array.isArray(preselected) ? preselected : [preselected])
+      ...(layout ? { layout } : {}),
+      memberIds: (Array.isArray(memberIds) ? memberIds : [memberIds])
         .filter((id): id is string => typeof id === "string")
         .map((id) => id as FamilyMemberId),
       horizonDays: Number(field(form, "horizonDays")),

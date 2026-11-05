@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: proposed, partly superseded by ADR-0016
 ---
 
 # The schema holds its own invariants

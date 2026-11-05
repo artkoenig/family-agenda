@@ -35,7 +35,7 @@ describe("calendar Events on the timeline", () => {
       secrets: { password: "hunter2" },
     });
     if (!added.ok) throw new Error(`adding failed: ${added.problem}`);
-    const created = await instance.app.agendas.create({ preselected: [], horizonDays: 7 });
+    const created = await instance.app.agendas.create({ memberIds: [], horizonDays: 7 });
     if (!created.ok) throw new Error(`creating failed: ${created.problem}`);
     agenda = created.id;
   });
@@ -61,7 +61,7 @@ describe("calendar Events on the timeline", () => {
   };
 
   it("shows an Event on every Agenda", async () => {
-    const other = await instance.app.agendas.create({ preselected: [], horizonDays: 3 });
+    const other = await instance.app.agendas.create({ memberIds: [], horizonDays: 3 });
     if (!other.ok) throw new Error("creating failed");
 
     await arrive(entry("piano", { title: "Piano lesson", span: timed("2026-09-15T14:00:00Z", "2026-09-15T15:00:00Z"), place: "Music school" }));
@@ -316,7 +316,7 @@ describe("polling Sources", () => {
 
   it("fails a run whose Origins are invalid, without recording any of them", async () => {
     const school = await add("school-cal");
-    const created = await instance.app.agendas.create({ preselected: [], horizonDays: 7 });
+    const created = await instance.app.agendas.create({ memberIds: [], horizonDays: 7 });
     if (!created.ok) throw new Error("creating failed");
     testPluginControls.emit("school-cal", [
       entry("ok", { title: "Fine", span: timed("2026-09-15T14:00:00Z", "2026-09-15T15:00:00Z") }),

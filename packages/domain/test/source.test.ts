@@ -8,7 +8,7 @@ describe("sourceStatus", () => {
     const result = sourceStatus({
       failure: null,
       silentApplies: false,
-      lastNewOriginAt: now,
+      lastNewRecordAt: now,
       createdAt: new Date("2026-01-01T00:00:00Z"),
       now,
     });
@@ -20,7 +20,7 @@ describe("sourceStatus", () => {
     const result = sourceStatus({
       failure,
       silentApplies: false,
-      lastNewOriginAt: now,
+      lastNewRecordAt: now,
       createdAt: new Date("2026-01-01T00:00:00Z"),
       now,
     });
@@ -33,7 +33,7 @@ describe("sourceStatus", () => {
     const result = sourceStatus({
       failure,
       silentApplies: false,
-      lastNewOriginAt: now,
+      lastNewRecordAt: now,
       createdAt: new Date("2026-01-01T00:00:00Z"),
       now,
     });
@@ -46,7 +46,7 @@ describe("sourceStatus", () => {
     const result = sourceStatus({
       failure,
       silentApplies: false,
-      lastNewOriginAt: now,
+      lastNewRecordAt: now,
       createdAt: new Date("2026-01-01T00:00:00Z"),
       now,
     });
@@ -59,7 +59,7 @@ describe("sourceStatus", () => {
     const result = sourceStatus({
       failure,
       silentApplies: false,
-      lastNewOriginAt: now,
+      lastNewRecordAt: now,
       createdAt: new Date("2026-01-01T00:00:00Z"),
       now,
     });
@@ -71,7 +71,7 @@ describe("sourceStatus", () => {
     const result = sourceStatus({
       failure: null,
       silentApplies: true,
-      lastNewOriginAt: null,
+      lastNewRecordAt: null,
       createdAt,
       now,
     });
@@ -79,23 +79,23 @@ describe("sourceStatus", () => {
   });
 
   it("returns 'ok' when silentApplies but last origin is recent", () => {
-    const lastNewOriginAt = new Date(now.getTime() - 1000);
+    const lastNewRecordAt = new Date(now.getTime() - 1000);
     const result = sourceStatus({
       failure: null,
       silentApplies: true,
-      lastNewOriginAt,
+      lastNewRecordAt,
       createdAt: new Date("2026-01-01T00:00:00Z"),
       now,
     });
     expect(result).toBe("ok");
   });
 
-  it("falls back to createdAt when lastNewOriginAt is null", () => {
+  it("falls back to createdAt when lastNewRecordAt is null", () => {
     const createdAt = new Date(now.getTime() - 1000);
     const result = sourceStatus({
       failure: null,
       silentApplies: true,
-      lastNewOriginAt: null,
+      lastNewRecordAt: null,
       createdAt,
       now,
     });
@@ -107,7 +107,7 @@ describe("sourceStatus", () => {
     const result = sourceStatus({
       failure: null,
       silentApplies: false,
-      lastNewOriginAt: null,
+      lastNewRecordAt: null,
       createdAt,
       now,
     });
@@ -125,11 +125,11 @@ describe("source thresholds", () => {
   });
 
   it("returns 'silent' when exactly silentAfterMs has elapsed since last origin", () => {
-    const lastNewOriginAt = new Date(now.getTime() - silentAfterMs);
+    const lastNewRecordAt = new Date(now.getTime() - silentAfterMs);
     const result = sourceStatus({
       failure: null,
       silentApplies: true,
-      lastNewOriginAt,
+      lastNewRecordAt,
       createdAt: new Date("2026-01-01T00:00:00Z"),
       now,
     });

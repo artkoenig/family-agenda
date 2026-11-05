@@ -47,6 +47,14 @@ The sweep is what makes this correct. A missed direct removal costs only disk sp
 
 An Agenda filters only on Family Members (`agenda_member`). Its `layout` (`timeline` or `task_list`) fixes the kinds it shows, and `horizon_days` how far ahead it reaches. An Agenda with no members shows every Item. One with members shows only the Items that concern at least one of them, so Items that concern the whole Family are not shown there. This reverses the earlier behaviour. The unstored Quick Filter follows the same rule. Deleting a Family Member deletes the Agendas left with no member, so none silently widens to the whole Family.
 
+## Migrations
+
+The migration history is squashed into one initial migration, `packages/adapters/drizzle/0000_initial.sql`: the tables drizzle-kit generates from `schema.ts`, plus the helper function, the triggers and the one `family` row that it cannot express. [`docs/schema.sql`](../schema.sql) stays the readable reference, and a test applies the migration to an empty database and fails on any difference from it. Later schema changes are new migrations, and the document changes with them.
+
+An Instance whose database was created before the rebuild is detected by the hash of its first applied migration and refused at start with a message telling the Admin to start over, instead of failing on a half-applied schema. The release notes (`RELEASE_NOTES.md`) say what to note down first and which volumes to remove. The Recovery Kit stays valid for the Source credentials entered afterwards only if the master key is kept.
+
+Where the first drafts of the schema document and the code differed, the implementation settled it: a Source Record has an optional `link` to the original; attachments have a `position` and a `conversion_problem`; a Source's `name` may be empty, and the Admin area then derives one; and an Agenda's `layout` replaces its `kind`.
+
 ## Amendments
 
 - **ADR-0006**: files and secrets that nothing refers to are swept (see Files and secrets), so a deleted row never leaves its file behind for good.

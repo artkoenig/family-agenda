@@ -5,7 +5,7 @@ import { testPluginControls } from "../support/test-source-plugin";
 
 const minutes = 60 * 1000;
 
-const notice = (externalId: string, title = "Parents' evening"): Origin => ({
+const announcement = (externalId: string, title = "Parents' evening"): Origin => ({
   externalId,
   sender: "School", attributes: ["main"],
   content: { kind: "stated", stated: { kind: "event", title, span: { allDay: true, firstDay: "2026-09-20", lastDay: "2026-09-20" }, place: null, cancelled: false } },
@@ -63,7 +63,7 @@ describe("A Source's run", () => {
   it("does not advance the sync cursor when its Origins are not recorded", async () => {
     await tick();
     await execute(failing("source_record", "INSERT"));
-    testPluginControls.emit("school-portal", [notice("evening")]);
+    testPluginControls.emit("school-portal", [announcement("evening")]);
 
     await tick();
 
@@ -77,7 +77,7 @@ describe("A Source's run", () => {
   it("does not record its Origins when the sync cursor is not advanced", async () => {
     await tick();
     await execute(failing("source_run", "UPDATE"));
-    testPluginControls.emit("school-portal", [notice("evening")]);
+    testPluginControls.emit("school-portal", [announcement("evening")]);
 
     await tick();
 
@@ -88,7 +88,7 @@ describe("A Source's run", () => {
 
   it("records the rest of the run when a stated Item fails a check of the schema, and warns of it", async () => {
     await execute(["ALTER TABLE event ADD CONSTRAINT event_title_not_secret CHECK (title <> 'Secret')"]);
-    testPluginControls.emit("school-portal", [notice("secret", "Secret"), notice("evening")]);
+    testPluginControls.emit("school-portal", [announcement("secret", "Secret"), announcement("evening")]);
 
     instance.clock.advance(10 * minutes);
     const report = await instance.app.polling.pollDue();
@@ -103,7 +103,7 @@ describe("A Source's run", () => {
 
   it("fails the run on any other error writing a stated Item", async () => {
     await execute(failing("event", "INSERT"));
-    testPluginControls.emit("school-portal", [notice("evening")]);
+    testPluginControls.emit("school-portal", [announcement("evening")]);
 
     instance.clock.advance(10 * minutes);
     await expect(instance.app.polling.pollDue()).rejects.toThrow();

@@ -137,7 +137,7 @@ describe("dates in the Family Language", () => {
   });
 
   it("are formatted in its locale on an Agenda", async () => {
-    const created = await instance.app.agendas.create({ preselected: [], horizonDays: 3 });
+    const created = await instance.app.agendas.create({ memberIds: [], horizonDays: 3 });
     if (!created.ok) throw new Error("creating failed");
 
     const page = await (await instance.get(`/agendas/${created.id}`)).text();
@@ -161,7 +161,7 @@ describe("the Theme of a browser", () => {
   });
 
   it("is applied before the stylesheets load, and switched by a button on every Agenda", async () => {
-    const created = await instance.app.agendas.create({ preselected: [], horizonDays: 3 });
+    const created = await instance.app.agendas.create({ memberIds: [], horizonDays: 3 });
     if (!created.ok) throw new Error("creating failed");
 
     const page = await (await instance.get(`/agendas/${created.id}`)).text();
