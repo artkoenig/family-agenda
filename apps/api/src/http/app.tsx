@@ -132,6 +132,13 @@ const stylesheets: Record<string, typeof htmx> = {
 };
 
 /** The font files `tokens.css` names, from their packages: the Instance serves them itself, as it runs offline. */
+/** The placeholder icons of an Agenda on a home screen (`design/icons/`), until the final ones. */
+const icons: Record<string, typeof htmx> = Object.fromEntries(
+  ["icon-192.png", "icon-512.png", "apple-touch-icon.png"].map(
+    (file) => [file, readFileSync(new URL(`./design/icons/${file}`, import.meta.url))] as const,
+  ),
+);
+
 const fonts: Record<string, typeof htmx> = Object.fromEntries(
   ["atkinson-hyperlegible-next", "atkinson-hyperlegible-mono"].flatMap((family) =>
     (family.endsWith("next") ? ["normal", "italic"] : ["normal"]).flatMap((style) =>
@@ -212,6 +219,12 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     return c.body(css, 200, { "content-type": "text/css; charset=utf-8", "cache-control": "public, max-age=86400" });
   });
 
+  app.get("/static/icons/:file", (c) => {
+    const icon = icons[c.req.param("file")];
+    if (!icon) return c.notFound();
+    return c.body(icon, 200, { "content-type": "image/png", "cache-control": "public, max-age=86400" });
+  });
+
   app.get("/static/fonts/:file", (c) => {
     const font = fonts[c.req.param("file")];
     if (!font) return c.notFound();
@@ -283,6 +296,36 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     const fragment = c.req.header("hx-request") === "true" && !c.req.header("hx-history-restore-request");
     if (page.layout === "task_list") return render(c, fragment ? <TaskList page={page} /> : <TaskListDocument page={page} />);
     return render(c, fragment ? <AgendaTimeline page={page} /> : <AgendaPageDocument page={page} />);
+  });
+
+  // What puts an Agenda on a home screen as an app that opens fullscreen. Its addresses come from the path
+  // it was asked at, so that they stay right whatever address an Agenda is opened at.
+  app.get("/agendas/:id/manifest.webmanifest", async (c) => {
+    const page = await agendas.open(c.req.param("id") as AgendaId, { access: options.agendaAccess });
+    if (!page) return c.notFound();
+    const { t } = c.get("translation");
+    const who = page.choices.map((member) => member.name).join(", ") || t.agendas.everyone;
+    const name = page.layout === "task_list" ? t.agendas.taskListEntry(who) : who;
+    const address = c.req.path.replace(/\/manifest\.webmanifest$/, "");
+    return c.body(
+      JSON.stringify({
+        id: address,
+        name,
+        short_name: name,
+        start_url: address,
+        scope: address,
+        display: "standalone",
+        display_override: ["fullscreen", "standalone"],
+        background_color: "#faf6f0",
+        theme_color: "#faf6f0",
+        icons: [
+          { src: "/static/icons/icon-192.png", sizes: "192x192", type: "image/png" },
+          { src: "/static/icons/icon-512.png", sizes: "512x512", type: "image/png" },
+        ],
+      }),
+      200,
+      { "content-type": "application/manifest+json; charset=utf-8", "cache-control": "no-store" },
+    );
   });
 
   // More days of a timeline, as htmx loads them while scrolling into the past or the future.
