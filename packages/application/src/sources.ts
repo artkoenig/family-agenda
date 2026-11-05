@@ -55,8 +55,11 @@ export type SourceSummary = {
   /** Its Source Attributes as its plugin reported them, each with the Family Members assigned to it. */
   attributes: SourceAttribute[];
   health: SourceHealth;
-  /** The values each choice field offers, such as the chats of a linked account, by field key. */
-  choices: Record<string, KnownValue[]>;
+  /**
+   * The values each choice field offers, such as the chats of a linked account, by field key. Only
+   * `find` has them: asking a plugin may reach a mailbox or a homeserver, which a list should not.
+   */
+  choices?: Record<string, KnownValue[]>;
 };
 
 /** What the Admin area renders a Source's form from, for an enabled Source Type. */
@@ -220,6 +223,22 @@ export function createSourceAccess(deps: SourcesDeps) {
   }
 
 
+  async function summaryOf(source: Source): Promise<SourceSummary> {
+    const installed = registry.installed();
+    return {
+      id: source.id,
+      sourceTypeId: source.sourceTypeId,
+      displayName: installed.find((type) => type.id === source.sourceTypeId)?.displayName ?? source.sourceTypeId,
+      plain: source.plain,
+      storedSecrets: Object.keys(source.secrets).sort(),
+      pollIntervalSeconds: source.pollIntervalSeconds,
+      shown: source.shown,
+      name: source.name,
+      attributes: source.attributes,
+      health: await healthOf(source, { clock, registry, sourceTypes, sources }),
+    };
+  }
+
   /** The values each choice field of a Source offers; none while its Source Type is not enabled. */
   async function choicesOf(source: Source): Promise<Record<string, KnownValue[]>> {
     const sourceType = await enabled(source.sourceTypeId);
@@ -254,39 +273,16 @@ export function createSourceAccess(deps: SourcesDeps) {
 
   return {
     async list(): Promise<SourceSummary[]> {
-      const installed = registry.installed();
       const all = await sources.list();
       const summaries: SourceSummary[] = [];
-      for (const source of all) {
-        summaries.push({
-          id: source.id,
-          sourceTypeId: source.sourceTypeId,
-          displayName: installed.find((type) => type.id === source.sourceTypeId)?.displayName ?? source.sourceTypeId,
-          plain: source.plain,
-          storedSecrets: Object.keys(source.secrets).sort(),
-          pollIntervalSeconds: source.pollIntervalSeconds,
-          shown: source.shown,
-          name: source.name,
-          attributes: source.attributes,
-          health: await healthOf(source, { clock, registry, sourceTypes, sources }),
-          choices: await choicesOf(source),
-        });
-      }
+      for (const source of all) summaries.push(await summaryOf(source));
       return summaries;
     },
 
-    /**
-     * How many Sources there are and how many fail, for the Admin area's settings list. Unlike
-     * `list`, it does not ask the plugins for their choice fields' values, which may reach a
-     * mailbox or a homeserver.
-     */
-    async overview(): Promise<{ count: number; failing: number }> {
-      const all = await sources.list();
-      let failing = 0;
-      for (const source of all) {
-        if ((await healthOf(source, { clock, registry, sourceTypes, sources })).status === "failing") failing++;
-      }
-      return { count: all.length, failing };
+    /** A Source with the values its choice fields offer, as its own page shows them; null if there is none. */
+    async find(id: SourceId): Promise<SourceSummary | null> {
+      const source = await sources.findById(id);
+      return source && { ...(await summaryOf(source)), choices: await choicesOf(source) };
     },
 
     /**

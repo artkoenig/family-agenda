@@ -74,8 +74,8 @@ describe("WhatsApp chats read through the Matrix bridge", () => {
     classGroup = homeserver.createRoom("Klasse 5b Eltern", { [teacher]: "Frau Berger (WA)" });
     homeserver.invite(classGroup, user);
     await run();
-    const [listed] = await instance.app.sources.list();
-    expect(listed?.choices.chats).toContainEqual({ value: classGroup, label: "Klasse 5b Eltern" });
+    const listed = await instance.app.sources.find(source);
+    expect(listed?.choices?.chats).toContainEqual({ value: classGroup, label: "Klasse 5b Eltern" });
     expect(await instance.app.sources.edit(source, { plain: { chats: [classGroup] }, secrets: {} })).toEqual({ ok: true });
     await run();
   });
