@@ -144,9 +144,14 @@ export const agendas = pgTable(
   ],
 );
 
-/** An Agenda's preselected Family Members; removing a Family Member removes them here too. */
-export const agendaPreselections = pgTable(
-  "agenda_preselection",
+/**
+ * The Family Members an Agenda is for. No rows: it is for the whole Family and shows every Item.
+ * With rows: it shows only the Items that concern at least one of them. Removing a Family Member
+ * removes them here too, and the trigger `family_member_before_delete` first deletes the Agendas
+ * they were the only member of, so none silently widens to the whole Family.
+ */
+export const agendaMembers = pgTable(
+  "agenda_member",
   {
     agendaId: uuid("agenda_id")
       .notNull()
@@ -157,7 +162,7 @@ export const agendaPreselections = pgTable(
   },
   (table) => [
     primaryKey({ columns: [table.agendaId, table.familyMemberId] }),
-    index("agenda_preselection_family_member_id_idx").on(table.familyMemberId),
+    index("agenda_member_family_member_id_idx").on(table.familyMemberId),
   ],
 );
 

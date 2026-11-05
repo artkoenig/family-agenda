@@ -78,6 +78,13 @@
       "when": 1793789986089,
       "tag": "0010_source_attributes",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1793866864022,
+      "tag": "0011_agenda_members",
+      "breakpoints": true
     }
   ]
 }

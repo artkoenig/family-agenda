@@ -9,7 +9,7 @@ import {
   type Photo,
   type PhotoType,
 } from "@family-agenda/domain";
-import type { BlobStore, Clock, FamilyMemberRepository } from "./ports";
+import type { BlobStore, Clock, FamilyMemberRepository, SoleAssignment } from "./ports";
 
 export type FamilyMembersDeps = {
   clock: Clock;
@@ -26,6 +26,9 @@ export type FamilyMemberSummary = {
 };
 
 export type FamilyMemberProblem = "invalid-name" | "invalid-photo" | "photo-too-large";
+
+/** Removing is refused while a Source Attribute is assigned to the Family Member alone; `blocking` names them. */
+export type RemoveResult = { ok: true } | { ok: false; problem: "sole-assignee"; blocking: SoleAssignment[] };
 
 export type EditResult =
   | { ok: true }
@@ -97,11 +100,17 @@ export function createFamilyMemberAccess(deps: FamilyMembersDeps) {
       return { ok: true };
     },
 
-    async remove(id: FamilyMemberId): Promise<void> {
+    /**
+     * Removes the Family Member, also from the Agendas they are a member of: those with no one else
+     * are removed with them, so that none widens to the whole Family.
+     */
+    async remove(id: FamilyMemberId): Promise<RemoveResult> {
       const member = await members.findById(id);
-      if (!member) return;
-      await members.remove(id);
+      if (!member) return { ok: true };
+      const removed = await members.remove(id);
+      if (!removed.removed) return { ok: false, problem: "sole-assignee", blocking: removed.blocking };
       if (member.photo) await blobs.remove(member.photo.blob);
+      return { ok: true };
     },
 
     /** The Family Member's photo, or null if they have none. */

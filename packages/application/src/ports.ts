@@ -67,8 +67,16 @@ export interface FamilyMemberRepository {
   findById(id: FamilyMemberId): Promise<FamilyMember | null>;
   /** Stores a changed Family Member that was found before. */
   update(member: FamilyMember): Promise<void>;
-  remove(id: FamilyMemberId): Promise<void>;
+  /**
+   * Removes the Family Member, and with them the Agendas they were the only member of, and their
+   * share of the Source Attributes assigned to others too. The schema refuses while a Source
+   * Attribute is assigned to them alone; the result then names those, in the order of their Sources.
+   */
+  remove(id: FamilyMemberId): Promise<{ removed: true } | { removed: false; blocking: SoleAssignment[] }>;
 }
+
+/** A Source Attribute assigned to one Family Member alone. */
+export type SoleAssignment = { sourceId: SourceId; attribute: string };
 
 export interface AgendaRepository {
   add(agenda: Agenda): Promise<void>;

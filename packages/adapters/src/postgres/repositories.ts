@@ -10,6 +10,7 @@ import type {
   DeclaredAttribute,
   FamilyMemberRepository,
   FamilyRepository,
+  SoleAssignment,
   LlmEndpointRepository,
   PlainConfig,
   SecretRef,
@@ -61,7 +62,7 @@ import {
   sourceRuns,
   sources,
   sourceTypes,
-  agendaPreselections,
+  agendaMembers,
   agendas,
 } from "./schema";
 
@@ -253,9 +254,32 @@ export class PostgresFamilyMemberRepository implements FamilyMemberRepository {
       .where(eq(familyMembers.id, member.id));
   }
 
-  async remove(id: FamilyMemberId): Promise<void> {
-    if (!uuidPattern.test(id)) return;
+  async remove(id: FamilyMemberId): Promise<{ removed: true } | { removed: false; blocking: SoleAssignment[] }> {
+    if (!uuidPattern.test(id)) return { removed: true };
+    const blocking = await this.soleAssignments(id);
+    if (blocking.length > 0) return { removed: false, blocking };
+    // The trigger family_member_before_delete is what guarantees the rule; the check above only
+    // names the Source Attributes. Should one be assigned to them alone in between, the trigger's
+    // error surfaces as it is rather than as a message that names nothing.
     await this.db.delete(familyMembers).where(eq(familyMembers.id, id));
+    return { removed: true };
+  }
+
+  /** The Source Attributes assigned to the Family Member and no one else. */
+  private async soleAssignments(id: FamilyMemberId): Promise<SoleAssignment[]> {
+    const rows = await this.db
+      .select({ sourceId: sourceAttributes.sourceId, attribute: sourceAttributes.name })
+      .from(sourceAttributeMembers)
+      .innerJoin(sourceAttributes, eq(sourceAttributes.id, sourceAttributeMembers.attributeId))
+      .innerJoin(sources, eq(sources.id, sourceAttributes.sourceId))
+      .where(
+        and(
+          eq(sourceAttributeMembers.familyMemberId, id),
+          sql`NOT EXISTS (SELECT 1 FROM ${sourceAttributeMembers} AS other WHERE other.attribute_id = ${sourceAttributeMembers.attributeId} AND other.family_member_id <> ${id})`,
+        ),
+      )
+      .orderBy(asc(sources.position), asc(sourceAttributes.name));
+    return rows.map((row) => ({ sourceId: row.sourceId as SourceId, attribute: row.attribute }));
   }
 }
 
@@ -301,7 +325,7 @@ export class PostgresAgendaRepository implements AgendaRepository {
   async update(agenda: Agenda): Promise<void> {
     await this.db.transaction(async (tx) => {
       await tx.update(agendas).set({ kind: agenda.kind, horizonDays: agenda.horizonDays }).where(eq(agendas.id, agenda.id));
-      await tx.delete(agendaPreselections).where(eq(agendaPreselections.agendaId, agenda.id));
+      await tx.delete(agendaMembers).where(eq(agendaMembers.agendaId, agenda.id));
       await insertPreselections(tx, agenda);
     });
   }
@@ -313,10 +337,10 @@ export class PostgresAgendaRepository implements AgendaRepository {
 
   private async select(where?: SQL): Promise<Agenda[]> {
     const rows = await this.db
-      .select({ agenda: agendas, familyMemberId: agendaPreselections.familyMemberId })
+      .select({ agenda: agendas, familyMemberId: agendaMembers.familyMemberId })
       .from(agendas)
-      .leftJoin(agendaPreselections, eq(agendaPreselections.agendaId, agendas.id))
-      .leftJoin(familyMembers, eq(familyMembers.id, agendaPreselections.familyMemberId))
+      .leftJoin(agendaMembers, eq(agendaMembers.agendaId, agendas.id))
+      .leftJoin(familyMembers, eq(familyMembers.id, agendaMembers.familyMemberId))
       .where(where)
       .orderBy(asc(agendas.position), asc(familyMembers.position));
     const byId = new Map<string, Agenda>();
@@ -338,7 +362,7 @@ export class PostgresAgendaRepository implements AgendaRepository {
 async function insertPreselections(tx: Pick<Database, "insert">, agenda: Agenda): Promise<void> {
   if (agenda.preselected.length === 0) return;
   await tx
-    .insert(agendaPreselections)
+    .insert(agendaMembers)
     .values(agenda.preselected.map((familyMemberId) => ({ agendaId: agenda.id, familyMemberId })));
 }
 

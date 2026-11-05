@@ -91,14 +91,32 @@ describe("configuring Agendas", () => {
     });
   });
 
-  it("drops a removed Family Member from the Agendas that preselect them", async () => {
+  it("drops a removed Family Member from the Agendas that list them with others", async () => {
     const agenda = await createAgenda({ preselected: [mia, leo], horizonDays: 7 });
 
-    await instance.app.familyMembers.remove(mia);
+    expect(await instance.app.familyMembers.remove(mia)).toEqual({ ok: true });
 
     expect(await instance.app.agendas.list()).toEqual([
       { id: agenda, kind: "timeline", preselected: [leo], horizonDays: 7 },
     ]);
+  });
+
+  it("deletes the Agendas whose only member is a removed Family Member, so none widens to the whole Family", async () => {
+    await createAgenda({ preselected: [mia], horizonDays: 7 });
+    const wholeFamily = await createAgenda({ preselected: [], horizonDays: 7 });
+    const shared = await createAgenda({ preselected: [mia, leo], horizonDays: 3 });
+
+    await instance.app.familyMembers.remove(mia);
+
+    expect((await instance.app.agendas.list()).map((listed) => listed.id)).toEqual([wholeFamily, shared]);
+  });
+
+  it("keeps an Agenda that an edit leaves without members as a whole-Family Agenda", async () => {
+    const agenda = await createAgenda({ preselected: [mia], horizonDays: 7 });
+
+    expect(await instance.app.agendas.edit(agenda, { preselected: [], horizonDays: 7 })).toEqual({ ok: true });
+
+    expect(await instance.app.agendas.list()).toEqual([{ id: agenda, kind: "timeline", preselected: [], horizonDays: 7 }]);
   });
 
   it("opens an Agenda as one day per day of its horizon, starting today in the Family's time zone", async () => {
