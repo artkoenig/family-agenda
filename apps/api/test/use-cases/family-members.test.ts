@@ -76,6 +76,24 @@ describe("managing Family Members", () => {
     expect(source?.attributes.map((attribute) => attribute.concerns)).toEqual([[leo]]);
   });
 
+  it("holds the rule in the schema: even a plain DELETE is refused for the only assignee, and deletes their sole Agendas", async () => {
+    await writeTestPluginPackage(instance.workspacePackages, { sourceTypeId: "calendar" });
+    await instance.restart();
+    await instance.app.sourceTypes.enable("calendar");
+    const added = await instance.app.sources.add({ sourceTypeId: "calendar", plain: { url: "https://calendar.example.org" }, secrets: {} });
+    if (!added.ok) throw new Error(`adding failed: ${added.problem}`);
+    const mia = await addMember("Mia");
+    const leo = await addMember("Leo");
+    await assignSource(instance, added.id, [mia]);
+
+    await expect(instance.query(`DELETE FROM family_member WHERE id = '${mia}'`)).rejects.toThrow(/only assignee/);
+
+    const own = await instance.app.agendas.create({ preselected: [leo], horizonDays: 7 });
+    if (!own.ok) throw new Error(`creating failed: ${own.problem}`);
+    await instance.query(`DELETE FROM family_member WHERE id = '${leo}'`);
+    expect(await instance.app.agendas.list()).toEqual([]);
+  });
+
   it("keeps an optional photo, which can be replaced and removed", async () => {
     const added = await instance.app.familyMembers.add({ name: "Mia", photo: photos.png });
     if (!added.ok) throw new Error("adding failed");

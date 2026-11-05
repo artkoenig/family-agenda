@@ -256,14 +256,13 @@ export class PostgresFamilyMemberRepository implements FamilyMemberRepository {
 
   async remove(id: FamilyMemberId): Promise<{ removed: true } | { removed: false; blocking: SoleAssignment[] }> {
     if (!uuidPattern.test(id)) return { removed: true };
-    try {
-      await this.db.delete(familyMembers).where(eq(familyMembers.id, id));
-      return { removed: true };
-    } catch (error) {
-      // The trigger family_member_before_delete refuses while they alone are assigned to a Source Attribute.
-      if (!isRestrictViolation(error)) throw error;
-      return { removed: false, blocking: await this.soleAssignments(id) };
-    }
+    const blocking = await this.soleAssignments(id);
+    if (blocking.length > 0) return { removed: false, blocking };
+    // The trigger family_member_before_delete is what guarantees the rule; the check above only
+    // names the Source Attributes. Should one be assigned to them alone in between, the trigger's
+    // error surfaces as it is rather than as a message that names nothing.
+    await this.db.delete(familyMembers).where(eq(familyMembers.id, id));
+    return { removed: true };
   }
 
   /** The Source Attributes assigned to the Family Member and no one else. */
@@ -282,14 +281,6 @@ export class PostgresFamilyMemberRepository implements FamilyMemberRepository {
       .orderBy(asc(sources.position), asc(sourceAttributes.name));
     return rows.map((row) => ({ sourceId: row.sourceId as SourceId, attribute: row.attribute }));
   }
-}
-
-/** Whether the error is the schema refusing a delete that other rows depend on (`restrict_violation`). */
-function isRestrictViolation(error: unknown): boolean {
-  for (let cause: unknown = error; typeof cause === "object" && cause !== null; cause = (cause as { cause?: unknown }).cause) {
-    if ((cause as { code?: unknown }).code === "23001") return true;
-  }
-  return false;
 }
 
 function toFamilyMember(row: typeof familyMembers.$inferSelect): FamilyMember {
