@@ -690,6 +690,12 @@ html[data-theme-mode="dark"] .fam-theme__icon--dark { display: block; }
   .fam-page.fam-agenda { font-size: 19px; line-height: 28px; }
   .fam-agenda .fam-bar { padding-top: 10px; padding-bottom: 11px; }
   .fam-agenda .fam-bar > * { max-width: var(--content-width-wall); }
+  /* The dividing line is as wide as the content below it, not as the window. */
+  .fam-agenda .fam-bar { border-bottom: 0; }
+  .fam-agenda .fam-bar::after {
+    content: ""; position: absolute; bottom: 0; left: 50%; height: 1px; background: var(--line);
+    width: min(var(--content-width-wall), 100% - 2 * var(--space-4)); transform: translateX(-50%);
+  }
   .fam-agenda .fam-days { max-width: calc(var(--content-width-wall) + 2 * var(--space-4)); }
   /* The clock, the title in the middle and the Theme switch in one row; under them the hint, and the small filter. */
   .fam-agenda .fam-bar__inner {
