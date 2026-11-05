@@ -70,7 +70,7 @@ function manifestTexts(packageJson: unknown): [string, PluginText][] {
 }
 
 /** A `SourceAttributes` that remembers what a plugin declared, as the Instance would for a Source. */
-export function recordingAttributes(): SourceAttributes & { active(): string[] } {
+export function recordingAttributes(): SourceAttributes & { active(): string[]; names(): Record<string, string> } {
   const names = new Map<string, string>();
   const archived = new Set<string>();
   return {
@@ -87,6 +87,8 @@ export function recordingAttributes(): SourceAttributes & { active(): string[] }
     },
     /** The ids declared and not archived since. */
     active: () => [...names.keys()].filter((id) => !archived.has(id)),
+    /** The names of those, by id, as declared last. */
+    names: () => Object.fromEntries([...names].filter(([id]) => !archived.has(id))),
   };
 }
 

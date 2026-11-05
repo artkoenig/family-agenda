@@ -37,27 +37,6 @@ const poll = (
   return of.ingestion.poll({ config, syncCursor, now: at, timeZone: "Europe/Berlin", attributes });
 };
 
-/** The Source Attributes of a Source as the Instance keeps them: names by id, and which are archived. */
-function sourceAttributes(): SourceAttributes & { names(): Record<string, string>; archived(): string[] } {
-  const names = new Map<string, string>();
-  const archived = new Set<string>();
-  return {
-    declare(declarations) {
-      for (const { externalId, name } of declarations) {
-        names.set(externalId, name);
-        archived.delete(externalId);
-      }
-      return Promise.resolve();
-    },
-    archive(externalId) {
-      if (names.has(externalId)) archived.add(externalId);
-      return Promise.resolve();
-    },
-    names: () => Object.fromEntries([...names].filter(([id]) => !archived.has(id))),
-    archived: () => [...archived],
-  };
-}
-
 const allowListing = (config: RunContext["config"], ...chats: string[]): RunContext["config"] => ({
   ...config,
   plain: { ...config.plain, chats },
@@ -490,7 +469,7 @@ describe("chats as Source Attributes", () => {
   });
 
   it("declares an allow-listed group by its JID, named as the bridge names it, and a message names it", async () => {
-    const attributes = sourceAttributes();
+    const attributes = recordingAttributes();
     const first = await poll(allowListing(config, jid), null, plugin(), now, attributes);
     homeserver.text(room, sender, "Wandertag am Freitag.", now);
 
@@ -502,7 +481,7 @@ describe("chats as Source Attributes", () => {
   });
 
   it("declares nothing for a group the Admin has not added", async () => {
-    const attributes = sourceAttributes();
+    const attributes = recordingAttributes();
     homeserver.createRoom("FC Eltern U11");
 
     await poll(config, null, plugin(), now, attributes);
@@ -511,7 +490,7 @@ describe("chats as Source Attributes", () => {
   });
 
   it("keeps the same Source Attribute when the group is renamed, with its new name", async () => {
-    const attributes = sourceAttributes();
+    const attributes = recordingAttributes();
     const first = await poll(allowListing(config, jid), null, plugin(), now, attributes);
     homeserver.rename(room, "Klasse 5b Eltern 2026", now);
 
@@ -521,7 +500,7 @@ describe("chats as Source Attributes", () => {
   });
 
   it("maps a portal room the bridge created again for the same group to the same Source Attribute", async () => {
-    const attributes = sourceAttributes();
+    const attributes = recordingAttributes();
     const first = await poll(allowListing(config, jid), null, plugin(), now, attributes);
     // The chat is deleted on the phone and the group joined again: the bridge deletes the room and creates a new one.
     homeserver.leave(room, userOf(config));
@@ -538,20 +517,18 @@ describe("chats as Source Attributes", () => {
   });
 
   it("archives a group that leaves the allow-list, and revives it when it is added again", async () => {
-    const attributes = sourceAttributes();
+    const attributes = recordingAttributes();
     const first = await poll(allowListing(config, jid), null, plugin(), now, attributes);
 
     const second = await poll(allowListing(config), first.syncCursor, plugin(), now, attributes);
     expect(attributes.names()).toEqual({});
-    expect(attributes.archived()).toEqual([jid]);
 
     await poll(allowListing(config, jid), second.syncCursor, plugin(), now, attributes);
     expect(attributes.names()).toEqual({ [jid]: "Klasse 5b Eltern" });
-    expect(attributes.archived()).toEqual([]);
   });
 
   it("keeps a group declared while its room is not there, as long as it is on the allow-list", async () => {
-    const attributes = sourceAttributes();
+    const attributes = recordingAttributes();
     const first = await poll(allowListing(config, jid), null, plugin(), now, attributes);
     homeserver.leave(room, userOf(config));
 
@@ -561,7 +538,7 @@ describe("chats as Source Attributes", () => {
   });
 
   it("still allow-lists a group by the room id an Admin chose before groups were told apart by their JID", async () => {
-    const attributes = sourceAttributes();
+    const attributes = recordingAttributes();
     const first = await poll(allowListing(config, room), null, plugin(), now, attributes);
     homeserver.text(room, sender, "Wandertag am Freitag.", now);
 
@@ -572,7 +549,7 @@ describe("chats as Source Attributes", () => {
   });
 
   it("archives the one Source Attribute a Source declared for its whole account before groups were Source Attributes", async () => {
-    const attributes = sourceAttributes();
+    const attributes = recordingAttributes();
     await attributes.declare([{ externalId: "account", name: "WhatsApp" }]);
     const first = await poll(allowListing(config, jid), null, plugin(), now, attributes);
     // A sync cursor written before groups were Source Attributes.
@@ -582,7 +559,6 @@ describe("chats as Source Attributes", () => {
 
     await poll(allowListing(config, jid), JSON.stringify(older), plugin(), now, attributes);
 
-    expect(attributes.archived()).toEqual(["account"]);
     expect(attributes.names()).toEqual({ [jid]: "Klasse 5b Eltern" });
   });
 
