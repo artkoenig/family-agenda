@@ -112,7 +112,14 @@ syncThemeSwitches();
  * `/static/tokens.css` and `/static/design.css` (`design/`). An Agenda is the Family's timeline; every
  * other page belongs to the Admin area, `narrow` for signing in.
  */
-export function Layout(props: { title: string; surface?: "agenda" | "admin"; narrow?: boolean; children: Child }) {
+export function Layout(props: {
+  title: string;
+  surface?: "agenda" | "admin";
+  narrow?: boolean;
+  /** Where the web app manifest of an Agenda is, so that it can be put on a home screen. */
+  manifest?: string;
+  children: Child;
+}) {
   const agenda = props.surface === "agenda";
   const { language } = useTranslation();
   return (
@@ -121,8 +128,19 @@ export function Layout(props: { title: string; surface?: "agenda" | "admin"; nar
       <html lang={language}>
         <head>
           <meta charset="utf-8" />
-          <meta name="viewport" content="width=device-width, initial-scale=1" />
+          {/* An Agenda fills the screen of an installed app, notch included; its bar pads for the safe area. */}
+          <meta name="viewport" content={agenda ? "width=device-width, initial-scale=1, viewport-fit=cover" : "width=device-width, initial-scale=1"} />
           <meta name="color-scheme" content="light dark" />
+          {props.manifest ? (
+            <>
+              <link rel="manifest" href={props.manifest} />
+              <meta name="theme-color" content="#faf6f0" media="(prefers-color-scheme: light)" />
+              <meta name="theme-color" content="#1c1814" media="(prefers-color-scheme: dark)" />
+              <meta name="apple-mobile-web-app-capable" content="yes" />
+              <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+              <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png" />
+            </>
+          ) : null}
           <script>{raw(themeBoot)}</script>
           <title>{props.title} · Family Agenda</title>
           <link rel="stylesheet" href="/static/tokens.css" />
