@@ -1,14 +1,20 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" fill="#bb4f29"/>
-  <rect x="122.9" y="138.2" width="266.2" height="245.8" rx="25.6" fill="#faf6f0"/>
-  <clipPath id="card"><rect x="122.9" y="138.2" width="266.2" height="245.8" rx="25.6"/></clipPath>
-  <rect x="122.9" y="138.2" width="266.2" height="61.4" fill="#2b221b" clip-path="url(#card)"/>
-  <rect x="174.1" y="107.5" width="25.6" height="51.2" rx="12.8" fill="#2b221b"/>
-  <rect x="312.3" y="107.5" width="25.6" height="51.2" rx="12.8" fill="#2b221b"/>
-  <circle cx="184.3" cy="256" r="20.5" fill="#bb4f29"/>
-  <circle cx="256" cy="256" r="20.5" fill="#6f8f63"/>
-  <circle cx="327.7" cy="256" r="20.5" fill="#7b4d85"/>
-  <circle cx="184.3" cy="327.7" r="20.5" fill="#2c6b74"/>
-  <circle cx="256" cy="327.7" r="20.5" fill="#a8720f"/>
-  <circle cx="327.7" cy="327.7" r="20.5" fill="#4c5c91"/>
+  <clipPath id="card"><rect x="87" y="122.9" width="337.9" height="286.7" rx="25.6"/></clipPath>
+  <rect width="512" height="512" fill="#f7eddd"/>
+  <rect x="87" y="122.9" width="337.9" height="286.7" rx="25.6" fill="#fffdf9"/>
+  <rect x="87" y="122.9" width="337.9" height="61.4" fill="#e0604e" clip-path="url(#card)"/>
+  <rect x="147.5" y="92.2" width="12.3" height="46.1" rx="6.1" fill="#9a9088"/>
+  <rect x="178.2" y="92.2" width="12.3" height="46.1" rx="6.1" fill="#9a9088"/>
+  <rect x="208.9" y="92.2" width="12.3" height="46.1" rx="6.1" fill="#9a9088"/>
+  <rect x="290.8" y="92.2" width="12.3" height="46.1" rx="6.1" fill="#9a9088"/>
+  <rect x="321.5" y="92.2" width="12.3" height="46.1" rx="6.1" fill="#9a9088"/>
+  <rect x="352.3" y="92.2" width="12.3" height="46.1" rx="6.1" fill="#9a9088"/>
+  <rect x="112.6" y="209.9" width="81.9" height="51.2" rx="7.7" fill="#bfe3b4"/>
+  <rect x="204.8" y="209.9" width="81.9" height="51.2" rx="7.7" fill="#f6d98a"/>
+  <rect x="297" y="209.9" width="81.9" height="51.2" rx="7.7" fill="#bcd6f0"/>
+  <rect x="112.6" y="281.6" width="81.9" height="51.2" rx="7.7" fill="#d8c8ee"/>
+  <rect x="297" y="353.3" width="81.9" height="51.2" rx="7.7" fill="#f6d98a"/>
+  <rect x="204.8" y="353.3" width="81.9" height="51.2" rx="7.7" fill="#bfe3b4"/>
+  <line x1="307.2" y1="307.2" x2="330.2" y2="330.2" stroke="#3e9a52" stroke-width="14.3" stroke-linecap="round"/>
+  <line x1="330.2" y1="330.2" x2="368.6" y2="284.2" stroke="#3e9a52" stroke-width="14.3" stroke-linecap="round"/>
 </svg>
