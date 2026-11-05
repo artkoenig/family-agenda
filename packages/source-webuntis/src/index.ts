@@ -4,7 +4,6 @@ import {
   sdkVersion,
   SourceError,
   statedTextLimits,
-  type Choice,
   type Origin,
   type IngestContext,
   type RunContext,
@@ -26,10 +25,11 @@ const daysAhead = 14;
 type SeenLesson = { day: string; lesson: StatedLesson };
 
 /**
- * The sync cursor: the children of the account, and the day of every Lesson of the days read, by
- * key, to notice those that go.
+ * The sync cursor: the ids of the children declared as Source Attributes, and the day of every
+ * Lesson of the days read, by key, to notice those that go. A cursor from before the children were
+ * Source Attributes has no `declared`.
  */
-type State = { children: Choice[]; known: Record<string, string> };
+type State = { declared: string[] | null; known: Record<string, string> };
 
 type Json = Record<string, unknown>;
 
@@ -37,7 +37,12 @@ type Child = { id: number; name: string };
 
 /**
  * Reads the Timetables of the children of a WebUntis parent account through the endpoints of the
- * Untis Mobile app, which authenticate each request with a one-time password from the key the
+ * Untis Mobile app. The account is one Source and each child one Source Attribute, declared under
+ * the child's Untis id, which an Admin assigns to a Family Member; every run compares the children
+ * with those declared, declaring new ones and archiving those that are gone. Unverified: whether
+ * the ids stay the same over the school-year rollover. If they change, the children appear as new
+ * Source Attributes to assign, and the old ones are archived.
+ * It authenticates each request with a one-time password from the key the
  * account shares with Untis Mobile (research in #2). One login lists the children; each child's
  * Timetable is then read as a STUDENT's. Each run states every Lesson of the days read whole, with
  * how it deviates from the Timetable as the Untis flags tell, keyed by child and the id Untis gives
@@ -104,16 +109,18 @@ export function createWebUntisPlugin(options: WebUntisPluginOptions = {}): Sourc
 
   async function poll(context: IngestContext) {
     const previous = parseState(context.syncCursor);
-    // One Source Attribute for the account until the children become Source Attributes of their own.
-    await context.attributes.declare([{ externalId: accountAttribute, name: connectionOf(context).school }]);
-    const children = await childrenOf(context);
-    const ticked = ticksOf(context.config.plain.children);
-    const read = ticked.length > 0 ? children.filter((child) => ticked.includes(String(child.id))) : children;
+    const read = await childrenOf(context);
+    const current = read.map((child) => String(child.id));
+    await context.attributes.declare(read.map((child) => ({ externalId: String(child.id), name: child.name })));
+    // A child that is gone is archived, and so is the one Source Attribute a Source from before
+    // the children were Source Attributes declared for the account.
+    for (const id of previous.declared ?? [legacyAttribute]) {
+      if (!current.includes(id)) await context.attributes.archive(id);
+    }
     const today = localDate(context.now, context.timeZone);
     const lastDay = addDays(today, daysAhead - 1);
 
     const origins: Origin[] = [];
-    const withdrawn: string[] = [];
     const known: Record<string, string> = {};
     for (const child of read) {
       const result = await call(context, "getTimetable2017", {
@@ -128,21 +135,11 @@ export function createWebUntisPlugin(options: WebUntisPluginOptions = {}): Sourc
       for (const [lessonId, seen] of seenIn(result, context.timeZone)) {
         const key = `${child.id}/${lessonId}`;
         known[key] = seen.day;
-        origins.push({ externalId: key, attributes: [accountAttribute], content: { kind: "stated", stated: seen.lesson } });
+        origins.push({ externalId: key, attributes: [String(child.id)], content: { kind: "stated", stated: seen.lesson } });
       }
     }
-    // A Lesson of the days read that has gone from the Timetable, or whose child is no longer
-    // read, is withdrawn: the school no longer plans it, which is not a cancellation. One of a day
-    // that has passed is forgotten and stays as it was.
-    const isWithdrawn = (key: string, day: string): boolean => {
-      if (key in known || day < today) return false;
-      const childRead = read.some((child) => key.startsWith(`${child.id}/`));
-      return !childRead || day <= lastDay;
-    };
-    for (const [key, day] of Object.entries(previous.known)) {
-      if (isWithdrawn(key, day)) withdrawn.push(key);
-    }
-    const state: State = { children: children.map((child) => ({ value: String(child.id), label: child.name })), known };
+    const withdrawn = goneFrom(previous.known, known, today);
+    const state: State = { declared: current.toSorted(), known };
     return { origins, syncCursor: JSON.stringify(state), withdrawn };
   }
 
@@ -188,17 +185,6 @@ export function createWebUntisPlugin(options: WebUntisPluginOptions = {}): Sourc
             de: "Der Schlüssel unter dem QR-Code von „Zugriff über Untis Mobile“ im WebUntis-Profil. Wer ihn kennt, kann das Konto lesen; ein dort neu erzeugter Schlüssel widerruft ihn.",
           },
         },
-        {
-          key: "children",
-          label: { en: "Children to read", de: "Zu lesende Kinder" },
-          secret: false,
-          required: false,
-          description: {
-            en: "Without a tick, every child of the account is read. Tick one per Source to assign each child's Timetable to its Family Member.",
-            de: "Ohne Haken werden alle Kinder des Kontos gelesen. Hake je Quelle eines an, um den Stundenplan jedes Kindes seinem Familienmitglied zuzuordnen.",
-          },
-          choices: (context) => Promise.resolve(parseState(context.syncCursor).children),
-        },
       ],
     },
     setupSteps: [],
@@ -211,8 +197,17 @@ export function createWebUntisPlugin(options: WebUntisPluginOptions = {}): Sourc
 
 export default createWebUntisPlugin();
 
-/** The one Source Attribute of a WebUntis account. */
-const accountAttribute = "account";
+/**
+ * The coming Lessons that were known and are not any more: the school no longer plans them, or
+ * their child has gone from the account, which is not a cancellation. One of a day that has passed
+ * is forgotten and stays as it was.
+ */
+function goneFrom(before: Record<string, string>, now: Record<string, string>, today: string): string[] {
+  return Object.entries(before).flatMap(([key, day]) => (!(key in now) && day >= today ? [key] : []));
+}
+
+/** The one Source Attribute a Source declared for its account before the children were Source Attributes. */
+const legacyAttribute = "account";
 
 function connectionOf(context: RunContext): { server: string; school: string; user: string } {
   const text = (key: string) => {
@@ -312,17 +307,13 @@ const clip = (value: string): string => clipped(value, statedTextLimits.lesson);
 const clipOrNull = (value: string | null): string | null => (value === null ? null : clip(value));
 
 function parseState(state: string | null): State {
-  if (state === null) return { children: [], known: {} };
+  if (state === null) return { declared: [], known: {} };
   try {
     const parsed = JSON.parse(state) as Partial<State>;
-    return { children: parsed.children ?? [], known: isObject(parsed.known) ? parsed.known : {} };
+    return { declared: Array.isArray(parsed.declared) ? parsed.declared : null, known: isObject(parsed.known) ? parsed.known : {} };
   } catch {
-    return { children: [], known: {} };
+    return { declared: [], known: {} };
   }
-}
-
-function ticksOf(value: unknown): string[] {
-  return Array.isArray(value) ? value.filter((child): child is string => typeof child === "string") : [];
 }
 
 /**
