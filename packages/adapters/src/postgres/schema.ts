@@ -69,7 +69,9 @@ export const family = pgTable(
 export const admins = pgTable("admin", {
   id: uuid("id").primaryKey().defaultRandom(),
   email: text("email").notNull().unique(),
-  passwordHash: text("password_hash").notNull(),
+  passwordHash: text("password_hash"),
+  /** The Identity Provider's `sub` for this Admin; null until they sign in through it. */
+  identitySubject: text("identity_subject").unique(),
   createdAt: timestamptz("created_at").notNull().defaultNow(),
 });
 
@@ -570,6 +572,22 @@ export const llmEndpoints = pgTable(
     savedAt: timestamptz("saved_at").notNull(),
   },
   (table) => [singleRow("llm_endpoint", table.id)],
+);
+
+/** The Family's one OIDC Identity Provider that Admins may sign in through; its client secret is in the SecretStore. */
+export const identityProviders = pgTable(
+  "identity_provider",
+  {
+    id: singleRowId(),
+    enabled: boolean("enabled").notNull(),
+    issuerUrl: text("issuer_url").notNull(),
+    clientId: text("client_id").notNull(),
+    clientSecretRef: text("client_secret_ref"),
+    requiredGroup: text("required_group").notNull(),
+    publicBaseUrl: text("public_base_url").notNull(),
+    savedAt: timestamptz("saved_at").notNull(),
+  },
+  (table) => [singleRow("identity_provider", table.id)],
 );
 
 /** What the worker is busy with, one row while it is; read by the api for the Agendas. */

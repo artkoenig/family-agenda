@@ -19,3 +19,5 @@ Without an internet-facing origin, a PWA buys little and costs HTTPS on the LAN.
 - **A React/Vite PWA**: offline use and Web Push, but only over HTTPS, which a LAN install doesn't have by default.
 
 _Amended by ADR-0005: with Remote Access, requests from outside the home network arrive on a separate listener, where an Agenda opens only through its Agenda Link. Open Agendas as described here apply to the local listener only._
+
+_Amended by ADR-0017: Admins can also sign in through an OIDC Identity Provider, such as Pocket ID with passkeys, alongside the password. v1 no longer excludes OIDC._

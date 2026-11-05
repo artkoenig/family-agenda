@@ -10,6 +10,7 @@ import type {
   DeclaredAttribute,
   FamilyMemberRepository,
   FamilyRepository,
+  IdentityProviderRepository,
   SoleAssignment,
   LlmEndpointRepository,
   PlainConfig,
@@ -20,6 +21,7 @@ import type {
   SourceRepository,
   SourceTypeRecord,
   SourceTypeRepository,
+  StoredIdentityProvider,
   StoredLlmEndpoint,
   AgendaRepository,
 } from "@family-agenda/application";
@@ -53,6 +55,7 @@ import {
   catalogueEntries,
   family,
   familyMembers,
+  identityProviders,
   llmEndpoints,
   signInFailures,
   sourceAttributeMembers,
@@ -148,6 +151,21 @@ export class PostgresAdminRepository implements AdminRepository {
     return row ? toAdmin(row) : null;
   }
 
+  async findByIdentitySubject(subject: string): Promise<Admin | null> {
+    const [row] = await this.db
+      .select()
+      .from(admins)
+      .where(eq(admins.identitySubject, subject));
+    return row ? toAdmin(row) : null;
+  }
+
+  async setIdentitySubject(id: AdminId, subject: string): Promise<void> {
+    await this.db
+      .update(admins)
+      .set({ identitySubject: subject })
+      .where(eq(admins.id, id));
+  }
+
   async list(): Promise<Admin[]> {
     const rows = await this.db
       .select()
@@ -166,6 +184,7 @@ function toAdmin(row: typeof admins.$inferSelect): Admin {
     id: row.id as AdminId,
     email: row.email as Email,
     passwordHash: row.passwordHash,
+    identitySubject: row.identitySubject,
     createdAt: row.createdAt,
   };
 }
@@ -687,6 +706,40 @@ export class PostgresLlmEndpointRepository implements LlmEndpointRepository {
       .insert(llmEndpoints)
       .values(values)
       .onConflictDoUpdate({ target: llmEndpoints.id, set: values });
+  }
+}
+
+export class PostgresIdentityProviderRepository implements IdentityProviderRepository {
+  constructor(private readonly db: Database) {}
+
+  async find(): Promise<StoredIdentityProvider | null> {
+    const [row] = await this.db.select().from(identityProviders);
+    if (!row) return null;
+    return {
+      enabled: row.enabled,
+      issuerUrl: row.issuerUrl,
+      clientId: row.clientId,
+      clientSecret: row.clientSecretRef as SecretRef | null,
+      requiredGroup: row.requiredGroup,
+      publicBaseUrl: row.publicBaseUrl,
+      savedAt: row.savedAt,
+    };
+  }
+
+  async save(provider: StoredIdentityProvider): Promise<void> {
+    const values = {
+      enabled: provider.enabled,
+      issuerUrl: provider.issuerUrl,
+      clientId: provider.clientId,
+      clientSecretRef: provider.clientSecret,
+      requiredGroup: provider.requiredGroup,
+      publicBaseUrl: provider.publicBaseUrl,
+      savedAt: provider.savedAt,
+    };
+    await this.db
+      .insert(identityProviders)
+      .values(values)
+      .onConflictDoUpdate({ target: identityProviders.id, set: values });
   }
 }
 

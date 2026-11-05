@@ -32,7 +32,10 @@ import { bodyLimit } from "hono/body-limit";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { csrf } from "hono/csrf";
 import { createMiddleware } from "hono/factory";
-import { sessionLifetimeMs } from "@family-agenda/application";
+import {
+  sessionLifetimeMs,
+  type PendingSignIn,
+} from "@family-agenda/application";
 import type { Application } from "../composition-root";
 import type { Catalogue } from "./i18n/en";
 import { TranslationContext, translationFor, type Translation } from "./i18n/translation";
@@ -43,6 +46,7 @@ import {
   DisplayPage,
   LiveStepProgress,
   LlmEndpointPage,
+  SingleSignOnPage,
   MessagePage,
   RecoveryKitPage,
   recoveryKitText,
@@ -97,6 +101,26 @@ const problemIn = (c: Context<Env>, problem: ProblemKey): string => c.get("trans
 
 const sessionCookie = "fb_session";
 
+type SingleSignOnFormValues = NonNullable<
+  Parameters<typeof SingleSignOnPage>[0]["entered"]
+>;
+
+/** What the single sign-on cookie holds, or null if it is missing or not what `/sso/start` set. */
+function pendingSignInOf(cookie: string | undefined): PendingSignIn | null {
+  try {
+    const parsed: unknown = JSON.parse(cookie ?? "");
+    if (typeof parsed !== "object" || parsed === null) return null;
+    const { state, nonce, codeVerifier } = parsed as Record<string, unknown>;
+    return typeof state === "string" &&
+      typeof nonce === "string" &&
+      typeof codeVerifier === "string"
+      ? { state, nonce, codeVerifier }
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 const htmx = readFileSync(createRequire(import.meta.url).resolve("htmx.org/dist/htmx.min.js"));
 
 const resolve = createRequire(import.meta.url).resolve;
@@ -131,6 +155,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     catalogues,
     sources,
     llmEndpoint,
+    singleSignOn,
     extraction,
     messages,
     timeZone,
@@ -148,7 +173,12 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     new URL(c.req.url).host;
 
   /** Where the Family reaches the Instance: `PUBLIC_URL`, else the scheme and host of the request. */
-  const originOf = (c: Context) => options.publicUrl ?? `${isHttps(c) ? "https" : "http"}://${hostOf(c)}`;
+  const originOf = (c: Context) => options.publicUrl ?? requestOriginOf(c);
+
+  /** The origin the request itself came to, whatever `PUBLIC_URL` says. */
+  function requestOriginOf(c: Context): string {
+    return `${isHttps(c) ? "https" : "http"}://${hostOf(c)}`;
+  }
 
   /** The address the request came from; behind a trusted proxy, the one the proxy saw. */
   const clientOf = (c: Context<Env>) => {
@@ -336,7 +366,55 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     });
   });
 
-  app.get("/admin/sign-in", (c) => render(c, <SignInPage />));
+  app.get("/admin/sign-in", async (c) =>
+    render(
+      c,
+      <SignInPage
+        singleSignOn={await singleSignOn.isOfferedAt(requestOriginOf(c))}
+      />,
+    ),
+  );
+
+  const singleSignOnCookie = "fb_sso";
+
+  // Sends the Admin to the Identity Provider, remembering state, nonce and PKCE verifier in a short-lived cookie.
+  app.get("/sso/start", async (c) => {
+    const begun = await singleSignOn.begin(requestOriginOf(c));
+    if (!begun) return c.notFound();
+    setCookie(c, singleSignOnCookie, JSON.stringify(begun.pending), {
+      path: "/sso",
+      httpOnly: true,
+      // Lax, so that the cookie comes back with the redirect from the Identity Provider.
+      sameSite: "Lax",
+      secure: isHttps(c),
+      maxAge: 10 * 60,
+    });
+    return c.redirect(begun.authorizationUrl, 303);
+  });
+
+  app.get("/sso/callback", async (c) => {
+    const origin = requestOriginOf(c);
+    const pending = pendingSignInOf(getCookie(c, singleSignOnCookie));
+    deleteCookie(c, singleSignOnCookie, { path: "/sso" });
+    const offered = await singleSignOn.isOfferedAt(origin);
+    if (!offered) return c.notFound();
+    const result = pending
+      ? await singleSignOn.complete({
+          origin,
+          query: new URL(c.req.url).search,
+          pending,
+        })
+      : ({ ok: false, problem: "sso-failed" } as const);
+    if (!result.ok) {
+      return render(
+        c,
+        <SignInPage problem={problemIn(c, result.problem)} singleSignOn />,
+        401,
+      );
+    }
+    startSession(c, result.sessionToken);
+    return c.redirect("/admin", 303);
+  });
 
   app.post("/admin/sign-in", async (c) => {
     const form = await c.req.parseBody();
@@ -368,6 +446,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
       llm: endpoint ? { model: endpoint.model, local: endpoint.local } : null,
       llmHealth,
       admins: (await admins.listAdmins()).length,
+      singleSignOn: (await singleSignOn.current())?.enabled ?? false,
       kitSaved: await recoveryKit.isConfirmed(),
       family: language.language,
       ocr: {
@@ -872,6 +951,45 @@ function shownStatus(status: 200 | 400 | 413 | undefined, problems: (string | un
     const page = <DisplayPage admin={c.get("admin")} family={await languages.familyLanguage()} {...(problem ? { problem } : {})} />;
     return render(c, page, problem ? 400 : 200);
   };
+
+  const singleSignOnPage = async (
+    c: Context<Env>,
+    extra: { problem?: string; entered?: SingleSignOnFormValues } = {},
+  ) => {
+    const page = (
+      <SingleSignOnPage
+        admin={c.get("admin")}
+        current={await singleSignOn.current()}
+        suggestedBaseUrl={requestOriginOf(c)}
+        {...(extra.problem ? { problem: extra.problem } : {})}
+        {...(extra.entered ? { entered: extra.entered } : {})}
+      />
+    );
+    return render(c, page, extra.problem ? 400 : 200);
+  };
+
+  app.get("/admin/sso", (c) => singleSignOnPage(c));
+
+  app.post("/admin/sso", async (c) => {
+    const form = await c.req.parseBody();
+    const entered = {
+      enabled: field(form, "enabled") === "yes",
+      issuerUrl: field(form, "issuerUrl"),
+      clientId: field(form, "clientId"),
+      requiredGroup: field(form, "requiredGroup"),
+      publicBaseUrl: field(form, "publicBaseUrl"),
+    };
+    const result = await singleSignOn.save({
+      ...entered,
+      clientSecret: field(form, "clientSecret"),
+    });
+    if (result.ok) return c.redirect("/admin/sso", 303);
+    const problem =
+      result.problem === "discovery-failed"
+        ? c.get("translation").t.problemsWith.discoveryFailed(result.message)
+        : problemIn(c, result.problem);
+    return singleSignOnPage(c, { problem, entered });
+  });
 
   app.get("/admin/display", (c) => displayPage(c));
 
