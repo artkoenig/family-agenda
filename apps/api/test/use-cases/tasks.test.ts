@@ -30,7 +30,7 @@ describe("Tasks", () => {
     await instance.app.sourceTypes.enable("school");
     const added = await instance.app.sources.add({ sourceTypeId: "school", plain: { url: "https://school.example.org" }, secrets: {} });
     if (!added.ok) throw new Error(`adding failed: ${added.problem}`);
-    const created = await instance.app.agendas.create({ preselected: [], horizonDays: 7 });
+    const created = await instance.app.agendas.create({ memberIds: [], horizonDays: 7 });
     if (!created.ok) throw new Error(`creating failed: ${created.problem}`);
     agenda = created.id;
   });
@@ -122,7 +122,7 @@ describe("Tasks", () => {
   });
 
   it("keeps when a Task was last ticked done, and forgets it when the tick is taken back", async () => {
-    const created = await instance.app.agendas.create({ kind: "tasks", preselected: [], horizonDays: 7 });
+    const created = await instance.app.agendas.create({ layout: "task_list", memberIds: [], horizonDays: 7 });
     if (!created.ok) throw new Error(`creating failed: ${created.problem}`);
     const list = created.id;
     await arrive(sportsKit);
@@ -141,7 +141,7 @@ describe("Tasks", () => {
   });
 
   it("lists in a Task List those Due first, then those not Due yet, then those done in the last 30 days", async () => {
-    const created = await instance.app.agendas.create({ kind: "tasks", preselected: [], horizonDays: 7 });
+    const created = await instance.app.agendas.create({ layout: "task_list", memberIds: [], horizonDays: 7 });
     if (!created.ok) throw new Error(`creating failed: ${created.problem}`);
     await arrive(
       sportsKit,
@@ -153,7 +153,7 @@ describe("Tasks", () => {
     await instance.app.tasks.tickFromAgenda(created.id, await taskId("Return the library book"), { done: true, access: openAgendaAccess });
 
     const page = await instance.app.agendas.open(created.id, { access: openAgendaAccess });
-    if (page?.kind !== "tasks") throw new Error("not a Task List");
+    if (page?.layout !== "task_list") throw new Error("not a Task List");
     const titles = (rows: { title: string; status: string }[]) => rows.map((row) => `${row.title} (${row.status})`);
 
     expect(titles(page.due)).toEqual(["Sign the trip form (overdue)"]);
@@ -259,11 +259,11 @@ describe("Tasks", () => {
 });
 
 /** A school mail as a mailbox Source emits it, sent at `sentAt`. */
-const mail = (id: string, sentAt: string, text: string, thread = id): Origin => ({
+const mail = (id: string, sentAt: string, text: string): Origin => ({
   externalId: id,
   occurredAt: new Date(sentAt),
   sender: "klasse5b@schule.example.org", attributes: ["main"],
-  content: { kind: "raw-message", text, attachments: [], thread },
+  content: { kind: "raw-message", text, attachments: [] },
 });
 
 const packingList =
@@ -291,7 +291,7 @@ describe("Tasks extracted from mail", () => {
     if (!added.ok) throw new Error(`adding failed: ${added.problem}`);
     const saved = await instance.app.llmEndpoint.save({ baseUrl: "http://ollama:11434/v1", model: "qwen3.5:9b", apiKey: "" });
     if (!saved.ok) throw new Error(`saving failed: ${saved.problem}`);
-    const created = await instance.app.agendas.create({ preselected: [], horizonDays: 7 });
+    const created = await instance.app.agendas.create({ memberIds: [], horizonDays: 7 });
     if (!created.ok) throw new Error(`creating failed: ${created.problem}`);
     agenda = created.id;
   });

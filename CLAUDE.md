@@ -15,7 +15,7 @@ The `api` project uses an in-process Postgres (migrated once via `apps/api/test/
 
 ### Issue tracker
 
-Issues live in GitHub Issues of `artkoenig/family-buttler`. See `docs/agents/issue-tracker.md`.
+Issues live in GitHub Issues of `artkoenig/family-agenda`. See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 

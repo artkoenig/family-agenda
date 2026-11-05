@@ -11,7 +11,7 @@ const minutes = 60 * 1000;
 const hours = 60 * minutes;
 const days = 24 * hours;
 
-const notice = (externalId: string): Origin => ({
+const announcement = (externalId: string): Origin => ({
   externalId,
   sender: "School", attributes: ["main"],
   content: { kind: "stated", stated: { kind: "event", title: "Parents' evening", span: { allDay: true, firstDay: "2026-09-20", lastDay: "2026-09-20" }, place: null, cancelled: false } },
@@ -117,17 +117,17 @@ describe("Source health", () => {
   });
 
   it("is Silent after 14 days without a new Origin, and OK again once one comes", async () => {
-    testPluginControls.emit("school-portal", [notice("evening")]);
+    testPluginControls.emit("school-portal", [announcement("evening")]);
     await tick();
 
     await tick(14 * days - 1 * minutes);
     expect((await health())?.status).toBe("ok");
 
-    testPluginControls.emit("school-portal", [notice("evening")]);
+    testPluginControls.emit("school-portal", [announcement("evening")]);
     await tick(1 * minutes);
     expect((await health())?.status, "an Origin seen before is not new").toBe("silent");
 
-    testPluginControls.emit("school-portal", [notice("trip")]);
+    testPluginControls.emit("school-portal", [announcement("trip")]);
     await tick();
     expect((await health())?.status).toBe("ok");
   });
@@ -152,7 +152,7 @@ describe("Source health", () => {
   });
 
   it("is Failing while its plugin is not installed, keeping its Items, and resumes from its sync cursor once reinstalled", async () => {
-    testPluginControls.emit("school-portal", [notice("evening")]);
+    testPluginControls.emit("school-portal", [announcement("evening")]);
     await tick();
     expect(testPluginControls.runs("school-portal").at(-1)?.syncCursor).toBeNull();
 
@@ -179,7 +179,7 @@ describe("Source health", () => {
   });
 
   it("tells every Agenda it may be out of date while a Source is Failing, and only then", async () => {
-    const created = await instance.app.agendas.create({ preselected: [], horizonDays: 7 });
+    const created = await instance.app.agendas.create({ memberIds: [], horizonDays: 7 });
     if (!created.ok) throw new Error("creating failed");
     const outOfDate = async () => (await instance.app.agendas.open(created.id, { access: openAgendaAccess }))?.mayBeOutOfDate;
 

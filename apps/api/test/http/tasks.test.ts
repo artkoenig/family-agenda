@@ -17,7 +17,7 @@ describe("Tasks over HTTP", () => {
     await instance.app.recoveryKit.confirm();
     await instance.app.sourceTypes.enable("school");
     await instance.app.sources.add({ sourceTypeId: "school", plain: { url: "https://school.example.org" }, secrets: {} });
-    const created = await instance.app.agendas.create({ preselected: [], horizonDays: 3 });
+    const created = await instance.app.agendas.create({ memberIds: [], horizonDays: 3 });
     if (!created.ok) throw new Error("creating failed");
     path = `/agendas/${created.id}`;
     await seedTasks(
@@ -101,7 +101,7 @@ describe("Tasks over HTTP", () => {
   });
 
   it("lists the Tasks in a Task List Agenda, ticks them there, and says nothing of who ticked them", async () => {
-    const created = await instance.app.agendas.create({ kind: "tasks", preselected: [], horizonDays: 7 });
+    const created = await instance.app.agendas.create({ layout: "task_list", memberIds: [], horizonDays: 7 });
     if (!created.ok) throw new Error("creating failed");
     const list = `/agendas/${created.id}`;
     await instance.post(tickOf(rowOf(pinnedOf(await (await instance.get(path)).text()), "Sign the trip form")), {});

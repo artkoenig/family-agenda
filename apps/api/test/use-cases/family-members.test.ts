@@ -88,7 +88,7 @@ describe("managing Family Members", () => {
 
     await expect(instance.query(`DELETE FROM family_member WHERE id = '${mia}'`)).rejects.toThrow(/only assignee/);
 
-    const own = await instance.app.agendas.create({ preselected: [leo], horizonDays: 7 });
+    const own = await instance.app.agendas.create({ memberIds: [leo], horizonDays: 7 });
     if (!own.ok) throw new Error(`creating failed: ${own.problem}`);
     await instance.query(`DELETE FROM family_member WHERE id = '${leo}'`);
     expect(await instance.app.agendas.list()).toEqual([]);

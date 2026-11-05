@@ -260,11 +260,6 @@ export type Origin = {
         kind: "raw-message";
         text: string;
         attachments: Attachment[];
-        /**
-         * The conversation it belongs to within the Source, such as a mail thread, so that a later
-         * message can update the Items an earlier one stated.
-         */
-        thread?: string;
       }
     | {
         /**

@@ -75,7 +75,7 @@ describe("the pages in the Family Language", () => {
       },
     ]);
     await instance.app.polling.pollDue();
-    const created = await instance.app.agendas.create({ preselected: [], horizonDays: 3 });
+    const created = await instance.app.agendas.create({ memberIds: [], horizonDays: 3 });
     if (!created.ok) throw new Error("creating failed");
 
     const page = await (await instance.get(`/agendas/${created.id}`)).text();
@@ -102,12 +102,12 @@ describe("the pages in the Family Language", () => {
     await setUp(language);
     const agendas = language === "de" ? "Agenden" : "Agendas";
 
-    await instance.app.agendas.create({ preselected: [], horizonDays: 1 });
+    await instance.app.agendas.create({ memberIds: [], horizonDays: 1 });
     let page = await get("/admin/agendas");
     expect(entryOf(page, agendas)).toContain(one);
     expect(page).toContain(day);
 
-    await instance.app.agendas.create({ preselected: [], horizonDays: 2 });
+    await instance.app.agendas.create({ memberIds: [], horizonDays: 2 });
     page = await get("/admin/agendas");
     expect(entryOf(page, agendas)).toContain(two);
     expect(page).toContain(days);

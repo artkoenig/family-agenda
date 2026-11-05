@@ -48,7 +48,7 @@ export async function healthOf(source: Source, deps: SourceHealthDeps): Promise<
   const status = sourceStatus({
     failure,
     silentApplies: loaded.silentApplies,
-    lastNewOriginAt: source.lastNewOriginAt,
+    lastNewRecordAt: source.lastNewRecordAt,
     createdAt: source.createdAt,
     now: deps.clock.now(),
   });

@@ -22,7 +22,6 @@ const mail: Origin = {
     kind: "raw-message",
     text: "Liebe Eltern, im Anhang der Elternbrief.",
     attachments: [{ filename: "elternbrief.pdf", contentType: "application/pdf", bytes: letter }],
-    thread: "<m1@schule.example.org>",
   },
 };
 
@@ -96,7 +95,7 @@ describe("Source Records, as what a Source delivered is stored", () => {
   });
 
   it("shows a withdrawn calendar entry again once it arrives again", async () => {
-    const created = await instance.app.agendas.create({ preselected: [], horizonDays: 7 });
+    const created = await instance.app.agendas.create({ memberIds: [], horizonDays: 7 });
     if (!created.ok) throw new Error(`creating failed: ${created.problem}`);
     const titles = async () => {
       const page = await openTimeline(instance.app, created.id, { access: openAgendaAccess });

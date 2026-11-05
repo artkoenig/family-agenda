@@ -21,7 +21,7 @@ const mail = (id: string, text: string, attachments: Attachment[]): Origin => ({
   externalId: id,
   occurredAt: new Date("2026-09-14T06:12:00Z"),
   sender: "klasse5b@schule.example.org", attributes: ["main"],
-  content: { kind: "raw-message", text, attachments, thread: id },
+  content: { kind: "raw-message", text, attachments },
 });
 
 const pdf = (filename: string, bytes: Uint8Array): Attachment => ({ filename, contentType: "application/pdf", bytes });
@@ -56,7 +56,7 @@ describe("Events extracted from PDF attachments", () => {
     const added = await instance.app.sources.add({ sourceTypeId: "mailbox", plain: { url: "imap.example.org" }, secrets: {} });
     if (!added.ok) throw new Error(`adding failed: ${added.problem}`);
     await saveEndpoint();
-    const created = await instance.app.agendas.create({ preselected: [], horizonDays: 14 });
+    const created = await instance.app.agendas.create({ memberIds: [], horizonDays: 14 });
     if (!created.ok) throw new Error(`creating failed: ${created.problem}`);
     agenda = created.id;
   });

@@ -44,7 +44,7 @@ describe("Attribution by Source Attribute", () => {
     };
     mia = await member("Mia");
     leo = await member("Leo");
-    const created = await instance.app.agendas.create({ preselected: [], horizonDays: 7 });
+    const created = await instance.app.agendas.create({ memberIds: [], horizonDays: 7 });
     if (!created.ok) throw new Error(`creating failed: ${created.problem}`);
     agenda = created.id;
   });
@@ -125,8 +125,8 @@ describe("Attribution by Source Attribute", () => {
   it("carries in an Agenda's feed the Items concerning its members, not the whole-Family ones", async () => {
     await arrive({ calendar: [entry("Piano lesson")], club: [entry("Football")] });
     await assign(calendar, "main", [mia]);
-    const titles = async (preselected: FamilyMemberId[]) => {
-      const created = await instance.app.agendas.create({ preselected, horizonDays: 7 });
+    const titles = async (memberIds: FamilyMemberId[]) => {
+      const created = await instance.app.agendas.create({ memberIds, horizonDays: 7 });
       if (!created.ok) throw new Error(`creating failed: ${created.problem}`);
       const feed = await instance.app.agendas.feed(created.id, { access: openAgendaAccess });
       return feed?.events.map((event) => event.title).sort();

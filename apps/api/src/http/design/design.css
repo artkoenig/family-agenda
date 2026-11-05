@@ -382,8 +382,8 @@ html[data-theme-mode="dark"] .fam-theme__icon--dark { display: block; }
 .fam-choice:has(input:checked) { background: var(--hearth-tint); }
 .fam-choice input { margin: 0; }
 /* An Agenda's kind: two tiles, each with a line on what the Agenda shows; a Task List has no horizon. */
-.fam-choice--kind { align-items: flex-start; }
-.fam-choice--kind input { margin-top: 2px; }
+.fam-choice--layout { align-items: flex-start; }
+.fam-choice--layout input { margin-top: 2px; }
 .fam-choice__text { display: flex; flex-direction: column; }
 .fam-choice__label { font-weight: 600; }
 .fam-choice__hint { font-size: 14px; line-height: 20px; color: var(--ink-muted); }

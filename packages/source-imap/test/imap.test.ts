@@ -104,7 +104,6 @@ describe("the IMAP plugin", () => {
     expect(origin?.link).toBeUndefined();
     const content = message(origin);
     expect(content.text).toBe("Subject: Elternabend 5b\n\nLiebe Eltern,\n\nder Elternabend findet am Donnerstag, 17.09., um 19:30 Uhr statt.");
-    expect(content.thread).toBe("<elternabend-1@schule.example.org>");
     expect(content.attachments).toEqual([
       { filename: "einladung.pdf", contentType: "application/pdf", bytes: new Uint8Array(Buffer.from("%PDF-1.4\n")) },
     ]);
@@ -126,7 +125,7 @@ Bitte Turnbeutel mitbringen.
     expect(origins.map((origin) => origin.occurredAt)).toEqual([new Date("2026-09-14T06:30:00Z")]);
   });
 
-  it("reads later mails after the last UID it saw, and puts a reply into the thread it answers", async () => {
+  it("reads later mails after the last UID it saw", async () => {
     const first = await poll();
     server.deliver("Schule", moved, new Date("2026-09-15T10:00:00Z"));
 
@@ -134,7 +133,6 @@ Bitte Turnbeutel mitbringen.
 
     expect(origins.map((origin) => origin.externalId)).toEqual(["<elternabend-2@schule.example.org>"]);
     const content = message(origins[0]);
-    expect(content.thread).toBe("<elternabend-1@schule.example.org>");
     expect(content.text).toContain("Der Elternabend wird auf 16 Uhr verlegt.");
     expect((await poll({ syncCursor })).origins).toEqual([]);
   });

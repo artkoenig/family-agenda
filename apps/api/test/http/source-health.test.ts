@@ -117,7 +117,7 @@ describe("Source health in the Admin area and on Agendas", () => {
   });
 
   it("shows one generic out-of-date line on every Agenda while a Source is Failing", async () => {
-    const created = await instance.app.agendas.create({ preselected: [], horizonDays: 7 });
+    const created = await instance.app.agendas.create({ memberIds: [], horizonDays: 7 });
     if (!created.ok) throw new Error("creating failed");
     const agenda = async () => (await instance.get(`/agendas/${created.id}`)).text();
     const line =

@@ -75,7 +75,6 @@ export function createSourcePolling(deps: PollingDeps) {
       subject: origin.subject,
       body: message.text,
       attachments,
-      thread: message.thread,
     };
   }
 

@@ -81,8 +81,8 @@ export type SoleAssignment = { sourceId: SourceId; attribute: string };
 export interface AgendaRepository {
   add(agenda: Agenda): Promise<void>;
   /**
-   * In the order they were created, each with its preselected Family Members in the order
-   * those were added; Family Members removed since are no longer preselected.
+   * In the order they were created, each with its Family Members in the order
+   * those were added; Family Members removed since are no longer among them.
    */
   list(): Promise<Agenda[]>;
   findById(id: AgendaId): Promise<Agenda | null>;
@@ -230,7 +230,7 @@ export type StatedJson = Record<string, unknown>;
 export type IngestedAttachment = { filename: string; contentType: string; bytes: Uint8Array };
 
 /** A message to extract Items from, as a plugin emits it. */
-export type IngestedMessage = { text: string; attachments: IngestedAttachment[]; thread: string | null };
+export type IngestedMessage = { text: string; attachments: IngestedAttachment[] };
 
 /**
  * An Origin as a plugin emits it: an entry stating its one Item, or a raw message whose Items
@@ -381,7 +381,7 @@ export type Source = {
   /** Its failed runs since the last successful one; null if the last run succeeded. */
   failure: SourceFailure | null;
   /** When its last Origin not seen before came; null before the first. */
-  lastNewOriginAt: Date | null;
+  lastNewRecordAt: Date | null;
   /** The external ids of its Source Records whose stated Item was invalid, so that none was written. */
   invalidRecords: string[];
   /** The Source Attribute ids that Source Records named without their being declared, or after they were archived. */
@@ -465,7 +465,6 @@ export type StoredMessage = {
   subject: string | null;
   body: string;
   attachments: (StoredFile & { filename: string; contentType: string })[];
-  thread: string | null;
 };
 
 /** One successful run of a Source, to record at once. */

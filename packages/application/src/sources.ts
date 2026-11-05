@@ -367,7 +367,7 @@ export function createSourceAccess(deps: SourcesDeps) {
         lastRunAt: null,
         lastSuccessAt: null,
         failure: null,
-        lastNewOriginAt: null,
+        lastNewRecordAt: null,
         invalidRecords: [],
         unknownAttributes: [],
         createdAt: clock.now(),
