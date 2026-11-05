@@ -10,7 +10,18 @@ export const installedPrograms: MatrixPrograms = { synapse: process.execPath, br
 
 type StoredEvent = { position: number; roomId: string; event: MatrixEvent };
 
-type Room = { name: string; direct: boolean; members: Map<string, { membership: "invite" | "join"; inviter: string; displayname: string; since: number }> };
+type Room = {
+  name: string;
+  /** Every name the room had, with the position of the event that gave it, oldest first. */
+  names: { position: number; name: string }[];
+  direct: boolean;
+  /** The WhatsApp chat the bridge says the room is the portal of, in its `m.bridge` event. */
+  jid: string;
+  members: Map<string, { membership: "invite" | "join" | "leave"; inviter: string; displayname: string; since: number }>;
+};
+
+/** The rooms of a `/sync` response, each kind present. */
+type SyncRooms = Required<NonNullable<SyncResponse["rooms"]>>;
 
 type User = { token: string | null; replay: SyncResponse[] };
 
@@ -90,13 +101,39 @@ export class FakeHomeserver {
     return `@whatsappbot:${this.serverName}`;
   }
 
-  /** A portal room of the bridge, with its ghosts as members; a group chat unless `direct`. */
-  createRoom(name: string, ghosts: Record<string, string> = {}, options: { direct?: boolean } = {}): string {
+  /**
+   * A portal room of the bridge, with its ghosts as members; a group chat unless `direct`. The
+   * bridge names the chat by its WhatsApp JID, which is the `jid` given, or a new one. A room the
+   * bridge creates again for a chat has a new id and the same JID.
+   */
+  createRoom(name: string, ghosts: Record<string, string> = {}, options: { direct?: boolean; jid?: string } = {}): string {
     const roomId = `!${randomBytes(6).toString("hex")}:${this.serverName}`;
-    const room: Room = { name, direct: options.direct ?? false, members: new Map() };
+    const direct = options.direct ?? false;
+    const jid = options.jid ?? `${randomBytes(9).toString("hex")}@${direct ? "lid" : "g.us"}`;
+    const room: Room = { name, names: [{ position: 0, name }], direct, jid, members: new Map() };
     for (const [userId, displayname] of Object.entries(ghosts)) room.members.set(userId, { membership: "join", inviter: this.bot, displayname, since: 0 });
     this.rooms.set(roomId, room);
     return roomId;
+  }
+
+  /** The WhatsApp JID the bridge gives a room in its `m.bridge` event. */
+  jidOf(roomId: string): string {
+    return this.roomOf(roomId).jid;
+  }
+
+  /** A chat is renamed on the phone; the bridge changes the name of its room. */
+  rename(roomId: string, name: string, at: Date): void {
+    const room = this.roomOf(roomId);
+    room.name = name;
+    this.append(roomId, { type: "m.room.name", sender: this.bot, state_key: "", content: { name }, origin_server_ts: at.getTime() });
+    room.names.push({ position: this.position, name });
+  }
+
+  /** The bridge removes a user from a room, as it does when it deletes the portal room of a chat. */
+  leave(roomId: string, userId: string): void {
+    this.position += 1;
+    const member = this.roomOf(roomId).members.get(userId);
+    if (member) Object.assign(member, { membership: "leave", since: this.position });
   }
 
   /** The bridge, or anyone else, invites a user to a room. */
@@ -209,18 +246,19 @@ export class FakeHomeserver {
       .slice(0, limit);
   }
 
-  /** The room's name, the bridge's description of it and its members, as state events. */
-  private stateOf(roomId: string): MatrixEvent[] {
+  /** The room's name, the bridge's description of it and its members, as state events, with the name it had at that position. */
+  private stateOf(roomId: string, position = this.position): MatrixEvent[] {
     const room = this.roomOf(roomId);
+    const name = room.names.findLast((named) => named.position <= position)?.name ?? room.name;
     return [
-      { type: "m.room.name", sender: this.bot, state_key: "", content: { name: room.name } },
+      { type: "m.room.name", sender: this.bot, state_key: "", content: { name } },
       {
         type: "m.bridge",
         sender: this.bot,
         state_key: `${this.serverName}/whatsapp`,
-        content: { bridgebot: this.bot, channel: { id: roomId }, ...(room.direct ? { "com.beeper.room_type": "dm" } : {}) },
+        content: { bridgebot: this.bot, channel: { id: room.jid }, ...(room.direct ? { "com.beeper.room_type": "dm" } : {}) },
       },
-      ...[...room.members].map(([userId, member]) => ({
+      ...[...room.members].filter(([, member]) => member.membership !== "leave").map(([userId, member]) => ({
         type: "m.room.member",
         sender: member.membership === "invite" ? member.inviter : userId,
         state_key: userId,
@@ -231,17 +269,23 @@ export class FakeHomeserver {
 
   private sync(userId: string, since: string | null, limit: number): SyncResponse {
     const after = since ? Number(since.slice(1)) : 0;
-    const join: NonNullable<SyncResponse["rooms"]>["join"] = {};
-    const invite: NonNullable<SyncResponse["rooms"]>["invite"] = {};
-    for (const [roomId, room] of this.rooms) {
-      const member = room.members.get(userId);
-      if (member?.membership === "invite" && member.since > after) {
-        invite[roomId] = { invite_state: { events: this.stateOf(roomId).filter((event) => event.type === "m.room.name" || event.state_key === userId) } };
-      }
-      if (member?.membership !== "join") continue;
-      join[roomId] = this.roomSync(roomId, since, after, limit);
-    }
-    return { next_batch: `s${this.position}`, rooms: { join, invite, leave: {} } };
+    const rooms: SyncRooms = { join: {}, invite: {}, leave: {} };
+    for (const roomId of this.rooms.keys()) this.syncRoomFor(rooms, roomId, userId, { since, after, limit });
+    return { next_batch: `s${this.position}`, rooms };
+  }
+
+  /** What `/sync` says about one room to a user: an invitation, the room joined, or that the user left it. */
+  private syncRoomFor(rooms: SyncRooms, roomId: string, userId: string, window: { since: string | null; after: number; limit: number }): void {
+    const member = this.roomOf(roomId).members.get(userId);
+    if (!member) return;
+    if (member.membership === "join") rooms.join[roomId] = this.roomSync(roomId, window.since, window.after, window.limit);
+    else if (member.since > window.after) rooms[member.membership][roomId] = this.membershipChange(roomId, userId, member.membership);
+  }
+
+  /** The part of a `/sync` response for a room the user was invited to or left. */
+  private membershipChange(roomId: string, userId: string, membership: "invite" | "leave"): object {
+    if (membership === "leave") return {};
+    return { invite_state: { events: this.stateOf(roomId).filter((event) => event.type === "m.room.name" || event.state_key === userId) } };
   }
 
   /** Like Synapse, an incremental `/sync` names an invitation only once, in the first one after it. */
@@ -249,8 +293,9 @@ export class FakeHomeserver {
     const fresh = this.events.filter((stored) => stored.roomId === roomId && (since === null || stored.position > after));
     const shown = fresh.slice(-limit);
     const first = shown[0]?.position ?? this.position + 1;
+    // Like Synapse, `state` is the room before the timeline, so a rename comes only in the timeline.
     return {
-      state: { events: this.stateOf(roomId) },
+      state: { events: this.stateOf(roomId, first - 1) },
       timeline: { events: shown.map((stored) => stored.event), limited: fresh.length > shown.length, prev_batch: `s${first - 1}` },
     };
   }
