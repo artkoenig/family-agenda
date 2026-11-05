@@ -23,7 +23,7 @@ A person in the Family whom Items can concern, child or adult.
 _Avoid_: User, profile, kid
 
 **Admin**:
-A parent who signs in with their own account to manage settings and Sources, and to delete Items that should not be there.
+A parent who signs in with their own account, by password or through the Identity Provider, to manage settings and Sources, and to delete Items that should not be there. One who signs in only through the Identity Provider has no password until another Admin or the CLI sets one.
 _Avoid_: Owner, superuser, parent account
 
 **Agenda**:
@@ -127,6 +127,14 @@ _Avoid_: Server, deployment, tenant
 **Recovery Kit**:
 What an Admin prints or saves at first start to recover the Instance; without it, a backup cannot restore Source credentials.
 _Avoid_: Recovery key, master key (for the document), backup code
+
+**Single sign-on**:
+Signing in as an Admin through the Identity Provider instead of the password. Offered only at the public base URL; the Family Agenda session that follows is its own.
+_Avoid_: SSO login, passkey login
+
+**Identity Provider**:
+The OIDC server, such as Pocket ID, that an Admin may sign in through instead of a password. Only members of its required group may.
+_Avoid_: SSO server, login provider
 
 **Agenda Link**:
 A secret, revocable link that opens one Agenda from outside the home network.

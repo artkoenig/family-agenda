@@ -2,6 +2,7 @@ export * from "./argon2-password-hasher";
 export * from "./command-line-text-extractor";
 export * from "./file-blob-store";
 export * from "./file-master-key";
+export * from "./oidc-identity-provider-client";
 export * from "./openai-compatible-extractor";
 export * from "./pg-boss-job-queue";
 export * from "./postgres/database";

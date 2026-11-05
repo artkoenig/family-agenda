@@ -6,7 +6,10 @@ export type Email = string & { readonly __brand: "Email" };
 export type Admin = {
   id: AdminId;
   email: Email;
-  passwordHash: string;
+  /** Null for an Admin who signs in only through the Identity Provider, until a password is set. */
+  passwordHash: string | null;
+  /** The Identity Provider's stable id (`sub`) for this Admin, once they have signed in through it. */
+  identitySubject: string | null;
   createdAt: Date;
 };
 

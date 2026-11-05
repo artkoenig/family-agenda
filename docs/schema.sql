@@ -14,7 +14,7 @@
 --
 -- Files and secrets outside Postgres (ADR-0016). They are referred to only by:
 --   files:   source_record_attachment.blob, family_member.photo_blob;
---   secrets: source.secret_refs (its values), llm_endpoint.api_key_ref.
+--   secrets: source.secret_refs (its values), llm_endpoint.api_key_ref, identity_provider.client_secret_ref.
 -- No foreign key or trigger follows them. A transaction that drops such a reference, also through
 -- a cascade (e.g. deleting a source), returns the references it read before deleting, and the
 -- caller removes the files and secrets after the commit. The worker's sweep, at start and daily,
@@ -50,7 +50,8 @@ INSERT INTO family DEFAULT VALUES;
 CREATE TABLE admin (
   id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   email          TEXT NOT NULL CONSTRAINT admin_email_unique UNIQUE,
-  password_hash  TEXT NOT NULL,
+  password_hash  TEXT,                     -- null: signs in only through the Identity Provider
+  identity_subject TEXT CONSTRAINT admin_identity_subject_unique UNIQUE, -- the IdP `sub`
   created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -76,6 +77,18 @@ CREATE TABLE secret (
   wrapped_data_key  BYTEA NOT NULL,
   ciphertext        BYTEA NOT NULL,
   created_at        TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE identity_provider (
+  id                BOOLEAN PRIMARY KEY DEFAULT true,
+  enabled           BOOLEAN NOT NULL,
+  issuer_url        TEXT NOT NULL,
+  client_id         TEXT NOT NULL,
+  client_secret_ref TEXT,                    -- a secret.id
+  required_group    TEXT NOT NULL,
+  public_base_url   TEXT NOT NULL,
+  saved_at          TIMESTAMPTZ NOT NULL,
+  CONSTRAINT identity_provider_single_row CHECK (id)
 );
 
 CREATE TABLE llm_endpoint (

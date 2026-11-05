@@ -47,6 +47,10 @@ export type SignInResult =
   | { ok: true; sessionToken: string }
   | { ok: false; problem: "invalid-credentials" | "rate-limited" };
 
+export type IdentitySignInResult =
+  | { ok: true; sessionToken: string }
+  | { ok: false; problem: "identity-email-unverified" | "identity-conflict" };
+
 export type PasswordResetResult =
   | { ok: true }
   | { ok: false; problem: "password-too-short" | "own-account" | "unknown-admin" };
@@ -55,6 +59,17 @@ export function createAdminAccess(deps: AdminAccessDeps) {
   const { clock, passwordHasher, families, admins, sessions, signInFailures } = deps;
   // Verified against when an email is unknown, so that the answer takes as long as for a known one.
   const unknownAccountHash = passwordHasher.hash(randomBytes(16).toString("hex"));
+
+  /** An Admin already tied to another identity is not this one. */
+  async function linkAndSignIn(
+    admin: Admin,
+    subject: string,
+  ): Promise<IdentitySignInResult> {
+    if (admin.identitySubject !== null)
+      return { ok: false, problem: "identity-conflict" };
+    await admins.setIdentitySubject(admin.id, subject);
+    return { ok: true, sessionToken: await startSession(admin.id) };
+  }
 
   async function startSession(adminId: AdminId): Promise<string> {
     const token = randomBytes(32).toString("base64url");
@@ -77,6 +92,7 @@ export function createAdminAccess(deps: AdminAccessDeps) {
       id: randomUUID() as AdminId,
       email,
       passwordHash: await passwordHasher.hash(password),
+      identitySubject: null,
       createdAt: clock.now(),
     };
     return { ok: true, admin };
@@ -153,6 +169,36 @@ export function createAdminAccess(deps: AdminAccessDeps) {
       await signInFailures.forget(attempt);
       await signInFailures.clear(accountKey);
       return { ok: true, sessionToken: await startSession(verified.id) };
+    },
+
+    /**
+     * Signs in the Admin the Identity Provider vouches for, who must already be in the required
+     * group. The Admin with this `sub` signs in; else the one with the same verified email is
+     * linked to it; else a new Admin without a password is created.
+     */
+    async signInThroughIdentityProvider(identity: {
+      subject: string;
+      email: string | null;
+      emailVerified: boolean;
+    }): Promise<IdentitySignInResult> {
+      const known = await admins.findByIdentitySubject(identity.subject);
+      if (known)
+        return { ok: true, sessionToken: await startSession(known.id) };
+      const email = parseEmail(identity.email ?? "");
+      if (!email || !identity.emailVerified)
+        return { ok: false, problem: "identity-email-unverified" };
+      const sameEmail = await admins.findByEmail(email);
+      if (sameEmail) return linkAndSignIn(sameEmail, identity.subject);
+      const admin: Admin = {
+        id: randomUUID() as AdminId,
+        email,
+        passwordHash: null,
+        identitySubject: identity.subject,
+        createdAt: clock.now(),
+      };
+      if (!(await admins.add(admin)))
+        return { ok: false, problem: "identity-conflict" };
+      return { ok: true, sessionToken: await startSession(admin.id) };
     },
 
     async signOut(sessionToken: string): Promise<void> {

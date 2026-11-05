@@ -2,8 +2,18 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { TessdataCatalog } from "@family-agenda/adapters";
-import type { BlobStore, Extractor, SecretStore, TextExtractor } from "@family-agenda/application";
-import { bootApplication, type Application, type ApplicationConfig } from "../../src/composition-root";
+import type {
+  BlobStore,
+  Extractor,
+  IdentityProviderClient,
+  SecretStore,
+  TextExtractor,
+} from "@family-agenda/application";
+import {
+  bootApplication,
+  type Application,
+  type ApplicationConfig,
+} from "../../src/composition-root";
 import { FakeClock } from "./fake-clock";
 import { acquirePostgres } from "./in-process-postgres";
 import { writeTestPluginPackage, type TestPluginPackage } from "./test-source-plugin";
@@ -19,6 +29,8 @@ export type TestOptions = {
   textExtractor?: TextExtractor;
   /** Replaces downloading Tesseract models, such as with a `FakeTessdataCatalog`. */
   tessdataCatalog?: TessdataCatalog;
+  /** Replaces the OIDC client, such as with a `ScriptedIdentityProviderClient`. */
+  identityProviderClient?: IdentityProviderClient;
   /** Test plugins installed as workspace packages before the first boot. */
   sourcePlugins?: TestPluginPackage[];
 };

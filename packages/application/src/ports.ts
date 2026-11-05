@@ -56,8 +56,11 @@ export interface AdminRepository {
   add(admin: Admin): Promise<boolean>;
   findById(id: AdminId): Promise<Admin | null>;
   findByEmail(email: Email): Promise<Admin | null>;
+  findByIdentitySubject(subject: string): Promise<Admin | null>;
   list(): Promise<Admin[]>;
   setPasswordHash(id: AdminId, passwordHash: string): Promise<void>;
+  /** Links the Admin to the Identity Provider's `sub`, which no other Admin may have. */
+  setIdentitySubject(id: AdminId, subject: string): Promise<void>;
 }
 
 export interface FamilyMemberRepository {
@@ -628,6 +631,64 @@ export type StoredLlmEndpoint = {
 export interface LlmEndpointRepository {
   find(): Promise<StoredLlmEndpoint | null>;
   save(endpoint: StoredLlmEndpoint): Promise<void>;
+}
+
+/** The Identity Provider as stored, its client secret in the SecretStore. */
+export type StoredIdentityProvider = {
+  enabled: boolean;
+  issuerUrl: string;
+  clientId: string;
+  clientSecret: SecretRef | null;
+  requiredGroup: string;
+  /** The origin Admins reach the Instance at for single sign-on, such as `https://agenda.example.ts.net`. */
+  publicBaseUrl: string;
+  savedAt: Date;
+};
+
+export interface IdentityProviderRepository {
+  find(): Promise<StoredIdentityProvider | null>;
+  save(provider: StoredIdentityProvider): Promise<void>;
+}
+
+/** What it takes to talk to an OIDC Identity Provider as the Instance's client. */
+export type IdentityProviderConnection = {
+  issuerUrl: string;
+  clientId: string;
+  clientSecret: string;
+};
+
+/** What the Instance remembers between sending an Admin to the Identity Provider and their return. */
+export type PendingSignIn = {
+  state: string;
+  nonce: string;
+  codeVerifier: string;
+};
+
+/** Who the Identity Provider says has signed in. */
+export type VerifiedIdentity = {
+  subject: string;
+  email: string | null;
+  emailVerified: boolean;
+  groups: string[];
+};
+
+/** An OIDC client: authorization code flow with PKCE, scopes `openid email profile groups`. */
+export interface IdentityProviderClient {
+  /** Fetches the provider's discovery document. */
+  discover(
+    issuerUrl: string,
+  ): Promise<{ ok: true } | { ok: false; message: string }>;
+  begin(
+    connection: IdentityProviderConnection,
+    redirectUri: string,
+  ): Promise<{ authorizationUrl: string; pending: PendingSignIn }>;
+  /** The verified identity for the URL the provider sent the Admin back to, or null if it does not check out. */
+  complete(
+    connection: IdentityProviderConnection,
+    redirectUri: string,
+    callbackUrl: string,
+    pending: PendingSignIn,
+  ): Promise<VerifiedIdentity | null>;
 }
 
 /** An Event a message states, as the model reads it; code resolves its date and checks it. */

@@ -14,6 +14,7 @@ export * from "./polling";
 export * from "./ports";
 export * from "./recovery-kit";
 export * from "./secret-sweep";
+export * from "./single-sign-on";
 export * from "./services";
 export * from "./source-health";
 export * from "./source-types";
