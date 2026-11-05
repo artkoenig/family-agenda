@@ -171,19 +171,31 @@ describe("a Source Type's catalogue and the Sources that use it", () => {
     expect(await instance.app.sources.list()).toEqual([]);
   });
 
-  it("counts its Sources and the failing ones without asking for any choice field's values", async () => {
-    await addWhatsApp();
+  it("lists its Sources without asking their plugins for choice values, which only a Source's own page needs", async () => {
+    const { id } = await addWhatsApp();
     const asked = testPluginControls.choicesAsked("bridged");
 
-    expect(await instance.app.sources.overview()).toEqual({ count: 1, failing: 0 });
+    expect((await instance.app.sources.list())[0]?.choices).toBeUndefined();
     expect(testPluginControls.choicesAsked("bridged")).toBe(asked);
+
+    await instance.app.sources.find(id);
+    expect(testPluginControls.choicesAsked("bridged")).toBeGreaterThan(asked);
+  });
+
+  it("lists the Sources of a Source Type with the values their choice fields offer, for the labels on the Source Type's page", async () => {
+    await addWhatsApp();
+    testPluginControls.knowValues("bridged", [{ value: "!class:local", label: "Klasse 5b" }]);
+
+    const [source] = await instance.app.sources.listOfType("bridged");
+    expect(source?.choices).toEqual({ chats: [{ value: "!class:local", label: "Klasse 5b" }] });
+    expect(await instance.app.sources.listOfType("other")).toEqual([]);
   });
 
   it("offers a choice field's values per Source and stores what was chosen as a list", async () => {
     const { id } = await addWhatsApp();
     testPluginControls.knowValues("bridged", [{ value: "!class:local", label: "Klasse 5b" }]);
 
-    expect((await instance.app.sources.list())[0]?.choices).toEqual({ chats: [{ value: "!class:local", label: "Klasse 5b" }] });
+    expect((await instance.app.sources.find(id))?.choices).toEqual({ chats: [{ value: "!class:local", label: "Klasse 5b" }] });
     expect(await instance.app.sources.edit(id, { plain: { chats: "!class:local" }, secrets: {} })).toEqual({
       ok: false,
       problem: "invalid-config",
