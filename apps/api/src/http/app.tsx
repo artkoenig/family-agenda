@@ -1,3 +1,4 @@
+import { iconUrl, icons } from "./design/icons.js";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import {
@@ -132,13 +133,6 @@ const stylesheets: Record<string, typeof htmx> = {
 };
 
 /** The font files `tokens.css` names, from their packages: the Instance serves them itself, as it runs offline. */
-/** The placeholder icons of an Agenda on a home screen (`design/icons/`), until the final ones. */
-const icons: Record<string, typeof htmx> = Object.fromEntries(
-  ["icon-192.png", "icon-512.png", "apple-touch-icon.png"].map(
-    (file) => [file, readFileSync(new URL(`./design/icons/${file}`, import.meta.url))] as const,
-  ),
-);
-
 const fonts: Record<string, typeof htmx> = Object.fromEntries(
   ["atkinson-hyperlegible-next", "atkinson-hyperlegible-mono"].flatMap((family) =>
     (family.endsWith("next") ? ["normal", "italic"] : ["normal"]).flatMap((style) =>
@@ -316,8 +310,8 @@ export function createHttpApp(application: Application, options: HttpOptions) {
         background_color: "#faf6f0",
         theme_color: "#faf6f0",
         icons: [
-          { src: "/static/icons/icon-192.png", sizes: "192x192", type: "image/png" },
-          { src: "/static/icons/icon-512.png", sizes: "512x512", type: "image/png" },
+          { src: iconUrl("icon-192.png"), sizes: "192x192", type: "image/png" },
+          { src: iconUrl("icon-512.png"), sizes: "512x512", type: "image/png" },
         ],
       }),
       200,
