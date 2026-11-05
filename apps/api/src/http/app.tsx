@@ -312,6 +312,9 @@ export function createHttpApp(application: Application, options: HttpOptions) {
         icons: [
           { src: iconUrl("icon-192.png"), sizes: "192x192", type: "image/png" },
           { src: iconUrl("icon-512.png"), sizes: "512x512", type: "image/png" },
+          // Full-bleed art with the content inside the safe zone: Android masks it to its own shape instead of putting it on white.
+          { src: iconUrl("icon-192.png"), sizes: "192x192", type: "image/png", purpose: "maskable" },
+          { src: iconUrl("icon-512.png"), sizes: "512x512", type: "image/png", purpose: "maskable" },
         ],
       }),
       200,

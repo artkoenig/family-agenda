@@ -46,9 +46,11 @@ describe("an Agenda as an app on the home screen", () => {
       start_url: `/agendas/${agenda}`,
       scope: `/agendas/${agenda}`,
       display: "standalone",
-            icons: [
+      icons: [
         { src: versioned("icon-192.png"), sizes: "192x192", type: "image/png" },
         { src: versioned("icon-512.png"), sizes: "512x512", type: "image/png" },
+        { src: versioned("icon-192.png"), sizes: "192x192", type: "image/png", purpose: "maskable" },
+        { src: versioned("icon-512.png"), sizes: "512x512", type: "image/png", purpose: "maskable" },
       ],
     });
   });
