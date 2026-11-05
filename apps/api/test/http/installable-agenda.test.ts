@@ -2,6 +2,9 @@ import type { AgendaId, FamilyMemberId } from "@family-agenda/domain";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { bootHttpForTest, type HttpTestInstance } from "../support/http";
 
+const versioned = (file: string): string =>
+  expect.stringMatching(new RegExp(`^/static/icons/${file.replace(".", "\\.")}\\?v=[0-9a-f]{8}$`)) as string;
+
 describe("an Agenda as an app on the home screen", () => {
   let instance: HttpTestInstance;
   let mia: FamilyMemberId;
@@ -43,9 +46,11 @@ describe("an Agenda as an app on the home screen", () => {
       start_url: `/agendas/${agenda}`,
       scope: `/agendas/${agenda}`,
       display: "standalone",
-            icons: [
-        { src: "/static/icons/icon-192.png", sizes: "192x192", type: "image/png" },
-        { src: "/static/icons/icon-512.png", sizes: "512x512", type: "image/png" },
+      icons: [
+        { src: versioned("icon-192.png"), sizes: "192x192", type: "image/png" },
+        { src: versioned("icon-512.png"), sizes: "512x512", type: "image/png" },
+        { src: versioned("icon-192.png"), sizes: "192x192", type: "image/png", purpose: "maskable" },
+        { src: versioned("icon-512.png"), sizes: "512x512", type: "image/png", purpose: "maskable" },
       ],
     });
   });
@@ -83,7 +88,7 @@ describe("an Agenda as an app on the home screen", () => {
       expect(page).toContain(`<link rel="manifest" href="/agendas/${agenda}/manifest.webmanifest"`);
       expect(page).toContain('<meta name="apple-mobile-web-app-capable" content="yes"');
       expect(page).toContain('<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"');
-      expect(page).toContain('<link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png"');
+      expect(page).toMatch(/<link rel="apple-touch-icon" href="\/static\/icons\/apple-touch-icon\.png\?v=[0-9a-f]{8}"/);
       expect(page).toContain('<meta name="theme-color"');
       expect(page).toContain("viewport-fit=cover");
     }
