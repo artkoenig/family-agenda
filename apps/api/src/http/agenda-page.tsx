@@ -22,10 +22,13 @@ import { Layout } from "./layout";
 // The Agenda layouts (ADR-0003): a vertical timeline, or a Task List, that works on a phone, a
 // desktop and a wall tablet, in the Family Agenda design system (`design/design.css`).
 
+/** Where the manifest of an Agenda is. */
+const manifestOf = (page: { id: string }) => `/agendas/${page.id}/manifest.webmanifest`;
+
 export function AgendaPageDocument(props: { page: AgendaPage }) {
   const { t } = useTranslation();
   return (
-    <Layout title={t.agenda.title} surface="agenda">
+    <Layout title={t.agenda.title} surface="agenda" manifest={manifestOf(props.page)}>
       <AgendaTimeline page={props.page} />
       <button type="button" id="back-to-today" class="fam-button fam-button--primary fam-button--pill fam-back-to-today" hidden>
         <span class="fam-back-to-today__arrow" aria-hidden="true">↑</span>
@@ -183,7 +186,7 @@ export function AgendaTimeline(props: { page: AgendaPage }) {
 export function TaskListDocument(props: { page: TaskListPage }) {
   const { t } = useTranslation();
   return (
-    <Layout title={t.agenda.taskList.title} surface="agenda">
+    <Layout title={t.agenda.taskList.title} surface="agenda" manifest={manifestOf(props.page)}>
       <TaskList page={props.page} />
       <script>{raw(agendaBar)}</script>
     </Layout>
