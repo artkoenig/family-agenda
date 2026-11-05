@@ -38,25 +38,24 @@ describe("an Agenda as an app on the home screen", () => {
     expect(response.headers.get("content-type")).toBe("application/manifest+json; charset=utf-8");
     expect(await response.json()).toMatchObject({
       id: `/agendas/${agenda}`,
-      name: "Mia, Leo",
-      short_name: "Mia, Leo",
+      name: "Agenda",
+      short_name: "Agenda",
       start_url: `/agendas/${agenda}`,
       scope: `/agendas/${agenda}`,
       display: "standalone",
-      display_override: ["fullscreen", "standalone"],
-      icons: [
+            icons: [
         { src: "/static/icons/icon-192.png", sizes: "192x192", type: "image/png" },
         { src: "/static/icons/icon-512.png", sizes: "512x512", type: "image/png" },
       ],
     });
   });
 
-  it("names a Task List as such, and everyone's Agenda by everyone", async () => {
+  it("names a Task List Todos and a timeline Agenda", async () => {
     const tasks = await createAgenda([mia], "task_list");
 
     const manifest = (await (await instance.get(`/agendas/${tasks}/manifest.webmanifest`)).json()) as { name: string };
 
-    expect(manifest.name).toBe("Task List · Mia");
+    expect(manifest.name).toBe("Todos");
   });
 
   it("derives its addresses from the path it was opened at", async () => {

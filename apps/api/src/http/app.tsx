@@ -303,9 +303,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
   app.get("/agendas/:id/manifest.webmanifest", async (c) => {
     const page = await agendas.open(c.req.param("id") as AgendaId, { access: options.agendaAccess });
     if (!page) return c.notFound();
-    const { t } = c.get("translation");
-    const who = page.choices.map((member) => member.name).join(", ") || t.agendas.everyone;
-    const name = page.layout === "task_list" ? t.agendas.taskListEntry(who) : who;
+    const name = page.layout === "task_list" ? "Todos" : "Agenda";
     const address = c.req.path.replace(/\/manifest\.webmanifest$/, "");
     return c.body(
       JSON.stringify({
@@ -315,7 +313,6 @@ export function createHttpApp(application: Application, options: HttpOptions) {
         start_url: address,
         scope: address,
         display: "standalone",
-        display_override: ["fullscreen", "standalone"],
         background_color: "#faf6f0",
         theme_color: "#faf6f0",
         icons: [
