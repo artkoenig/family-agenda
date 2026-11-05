@@ -624,7 +624,7 @@ function shownStatus(status: 200 | 400 | 413 | undefined, problems: (string | un
     shown: { problem?: string; adding?: SourceAdding; settingUp?: SourceSummary } = {},
   ) => {
     const sourceType = (await sourceTypes.list()).find((type) => type.id === id) ?? null;
-    const ofType = (await sources.list()).filter((source) => source.sourceTypeId === id);
+    const ofType = await sources.listOfType(id);
     const displayName = sourceType?.displayName ?? ofType[0]?.displayName;
     if (!displayName) return c.redirect("/admin/sources");
     const page = await sourceTypePageElement(c, id, sourceType, displayName, ofType, shown);

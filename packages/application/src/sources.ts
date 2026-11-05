@@ -57,7 +57,8 @@ export type SourceSummary = {
   health: SourceHealth;
   /**
    * The values each choice field offers, such as the chats of a linked account, by field key. Only
-   * `find` has them: asking a plugin may reach a mailbox or a homeserver, which a list should not.
+   * `find` and `listOfType` have them: asking a plugin may reach a mailbox or a homeserver, which
+   * the list of all Sources should not.
    */
   choices?: Record<string, KnownValue[]>;
 };
@@ -276,6 +277,17 @@ export function createSourceAccess(deps: SourcesDeps) {
       const all = await sources.list();
       const summaries: SourceSummary[] = [];
       for (const source of all) summaries.push(await summaryOf(source));
+      return summaries;
+    },
+
+    /**
+     * The Sources of one Source Type, each with the values its choice fields offer, so that the
+     * Source Type's page can name what an Admin chose, such as a chat, instead of its id.
+     */
+    async listOfType(sourceTypeId: string): Promise<SourceSummary[]> {
+      const ofType = (await sources.list()).filter((source) => source.sourceTypeId === sourceTypeId);
+      const summaries: SourceSummary[] = [];
+      for (const source of ofType) summaries.push({ ...(await summaryOf(source)), choices: await choicesOf(source) });
       return summaries;
     },
 

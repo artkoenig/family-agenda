@@ -182,6 +182,15 @@ describe("a Source Type's catalogue and the Sources that use it", () => {
     expect(testPluginControls.choicesAsked("bridged")).toBeGreaterThan(asked);
   });
 
+  it("lists the Sources of a Source Type with the values their choice fields offer, for the labels on the Source Type's page", async () => {
+    await addWhatsApp();
+    testPluginControls.knowValues("bridged", [{ value: "!class:local", label: "Klasse 5b" }]);
+
+    const [source] = await instance.app.sources.listOfType("bridged");
+    expect(source?.choices).toEqual({ chats: [{ value: "!class:local", label: "Klasse 5b" }] });
+    expect(await instance.app.sources.listOfType("other")).toEqual([]);
+  });
+
   it("offers a choice field's values per Source and stores what was chosen as a list", async () => {
     const { id } = await addWhatsApp();
     testPluginControls.knowValues("bridged", [{ value: "!class:local", label: "Klasse 5b" }]);
