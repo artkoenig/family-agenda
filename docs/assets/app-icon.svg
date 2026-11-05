@@ -1,20 +1,13 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <clipPath id="card"><rect x="87" y="122.9" width="337.9" height="286.7" rx="25.6"/></clipPath>
-  <rect width="512" height="512" fill="#f7eddd"/>
-  <rect x="87" y="122.9" width="337.9" height="286.7" rx="25.6" fill="#fffdf9"/>
-  <rect x="87" y="122.9" width="337.9" height="61.4" fill="#e0604e" clip-path="url(#card)"/>
-  <rect x="147.5" y="92.2" width="12.3" height="46.1" rx="6.1" fill="#9a9088"/>
-  <rect x="178.2" y="92.2" width="12.3" height="46.1" rx="6.1" fill="#9a9088"/>
-  <rect x="208.9" y="92.2" width="12.3" height="46.1" rx="6.1" fill="#9a9088"/>
-  <rect x="290.8" y="92.2" width="12.3" height="46.1" rx="6.1" fill="#9a9088"/>
-  <rect x="321.5" y="92.2" width="12.3" height="46.1" rx="6.1" fill="#9a9088"/>
-  <rect x="352.3" y="92.2" width="12.3" height="46.1" rx="6.1" fill="#9a9088"/>
-  <rect x="112.6" y="209.9" width="81.9" height="51.2" rx="7.7" fill="#bfe3b4"/>
-  <rect x="204.8" y="209.9" width="81.9" height="51.2" rx="7.7" fill="#f6d98a"/>
-  <rect x="297" y="209.9" width="81.9" height="51.2" rx="7.7" fill="#bcd6f0"/>
-  <rect x="112.6" y="281.6" width="81.9" height="51.2" rx="7.7" fill="#d8c8ee"/>
-  <rect x="297" y="353.3" width="81.9" height="51.2" rx="7.7" fill="#f6d98a"/>
-  <rect x="204.8" y="353.3" width="81.9" height="51.2" rx="7.7" fill="#bfe3b4"/>
-  <line x1="307.2" y1="307.2" x2="330.2" y2="330.2" stroke="#3e9a52" stroke-width="14.3" stroke-linecap="round"/>
-  <line x1="330.2" y1="330.2" x2="368.6" y2="284.2" stroke="#3e9a52" stroke-width="14.3" stroke-linecap="round"/>
+  <linearGradient id="bg" x1="0" x2="1" y1="0" y2="0"><stop offset="0" stop-color="#e9574b"/><stop offset="0.3" stop-color="#f2993c"/><stop offset="0.5" stop-color="#f6cf4a"/><stop offset="0.75" stop-color="#7cc36b"/><stop offset="1" stop-color="#4a9bd8"/></linearGradient>
+  <rect width="512" height="512" fill="url(#bg)"/>
+  <rect x="71.7" y="71.7" width="368.6" height="368.6" rx="76.8" fill="#fffdf9"/>
+  <circle cx="184.3" cy="184.3" r="28.2" fill="#f0933a"/>
+  <rect x="148.5" y="220.2" width="71.7" height="117.8" rx="30.7" fill="#f0933a"/>
+  <circle cx="327.7" cy="184.3" r="28.2" fill="#3f8fd2"/>
+  <rect x="291.8" y="220.2" width="71.7" height="117.8" rx="30.7" fill="#3f8fd2"/>
+  <circle cx="256" cy="248.3" r="30.7" fill="#fffdf9"/>
+  <rect x="217.6" y="276.5" width="76.8" height="102.4" rx="35.8" fill="#fffdf9"/>
+  <circle cx="256" cy="248.3" r="24.1" fill="#8e5bb5"/>
+  <rect x="222.7" y="279" width="66.6" height="61.4" rx="28.2" fill="#8e5bb5"/>
 </svg>
