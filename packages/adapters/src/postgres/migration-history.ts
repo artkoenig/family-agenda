@@ -10,7 +10,7 @@ export class OldMigrationHistoryError extends Error {
     super(
       "This database was created by a version of Family Agenda before the data model was rebuilt (ADR-0016), " +
         "and cannot be upgraded: there is no data migration. Start over: stop the Instance, " +
-        "remove its database and files (the Postgres volume and the blob volume), then start it again and set it up as new. " +
+        "remove its data volumes as the release notes (RELEASE_NOTES.md) list them, then start it again and set it up as new. " +
         "Keep the master key if you want to enter the Source credentials from your Recovery Kit again.",
     );
     this.name = "OldMigrationHistoryError";

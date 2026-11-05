@@ -119,7 +119,7 @@ export function createImapPlugin(options: ImapPluginOptions = {}): SourcePlugin 
       migrations: {
         // The single folder became a list of folders.
         1: ({ folder, ...rest }) => (typeof folder === "string" && folder !== "" ? { ...rest, folders: [folder] } : rest),
-        // The folders are typed as a list in one field, as Parts no longer exist.
+        // The folders are typed as a list in one field, as Source Attributes replace the per-Source folder choice.
         2: ({ folders, ...rest }) =>
           Array.isArray(folders) && folders.length > 0 ? { ...rest, folders: folders.filter((name) => typeof name === "string").join(", ") } : rest,
         // The folders are chosen among those the server has, so they are a list again.

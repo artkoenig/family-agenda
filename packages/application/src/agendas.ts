@@ -171,11 +171,11 @@ type AgendaBarPage = {
   /** Everyone in the Family, for the avatars of whom an Event concerns. */
   members: FamilyMemberSummary[];
   /**
-   * Whom the quick filter offers: those the Agenda preselects, or everyone if it preselects no one.
+   * Whom the quick filter offers: those the Agenda is for, or everyone if it is for no one.
    * With only one, there is nothing to filter.
    */
   choices: FamilyMemberSummary[];
-  /** Whom the Agenda shows, always some of `choices`, or "all" if the Agenda preselects no one. */
+  /** Whom the Agenda shows, always some of `choices`, or "all" if the Agenda is for no one. */
   showing: Showing;
   /** What the worker is busy with, such as reading messages; null when it is idle. */
   activity: CurrentActivity | null;
@@ -223,7 +223,7 @@ export type TimelineDay = {
 /** Days of a timeline, from `first` to `last`, both included. */
 export type TimelineDays = { first: LocalDate; last: LocalDate };
 
-/** An Event in an Agenda's feed, which carries those concerning someone its Agenda preselects. */
+/** An Event in an Agenda's feed, which carries those concerning someone its Agenda is for. */
 export type FeedEvent = {
   itemId: ItemId;
   title: string;
@@ -511,7 +511,7 @@ export function createAgendaAccess(deps: AgendasDeps) {
       : { allDay: false, start: localDateTime(span.start, timeZone), end: localDateTime(span.end, timeZone) };
   }
 
-  /** The settings with the memberIds Family Members in the Family's order, or a problem. */
+  /** The settings with its Family Members in the Family's order, or a problem. */
   async function checkSettings(
     settings: AgendaSettingsInput,
     defaultLayout: AgendaLayout,
@@ -626,8 +626,8 @@ export function createAgendaAccess(deps: AgendasDeps) {
     /**
      * The Agenda as its timeline or its Task List, by its layout, or null if there is no such Agenda or
      * `access` refuses it. `show` is what the quick filter was set to, of those the Agenda
-     * preselects; without it, or with none of them, it shows all of them, or everyone if the Agenda
-     * preselects no one. `days` are those a timeline scrolled to, into the past or the future;
+     * is for; without it, or with none of them, it shows all of them, or everyone if the Agenda
+     * is for no one. `days` are those a timeline scrolled to, into the past or the future;
      * without them, it shows the horizon from today. They must pass `isAcceptableTimelineRange`,
      * and a Task List leaves them aside.
      */
@@ -664,7 +664,7 @@ export function createAgendaAccess(deps: AgendasDeps) {
     /**
      * The Agenda as a calendar feed, or null if there is no such Agenda or `access` refuses it: the
      * Events, school days and undone Tasks of the last 30 days and all of the future, cancelled
-     * ones included, whatever the Agenda's horizon, that concern someone the Agenda preselects, or all if it preselects no one.
+     * ones included, whatever the Agenda's horizon, that concern someone the Agenda is for, or all if it is for no one.
      */
     async feed(id: AgendaId, input: { access: AgendaAccessPolicy }): Promise<AgendaFeed | null> {
       const agenda = await agendas.findById(id);

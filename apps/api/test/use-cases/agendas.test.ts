@@ -31,7 +31,7 @@ describe("configuring Agendas", () => {
   const open = (id: AgendaId, access: AgendaAccessPolicy = openAgendaAccess) =>
     instance.app.agendas.open(id, { access });
 
-  it("creates Agendas with memberIds Family Members and a horizon", async () => {
+  it("creates Agendas for chosen Family Members and a horizon", async () => {
     const forMia = await createAgenda({ memberIds: [mia], horizonDays: 7 });
     const kitchen = await createAgenda({ memberIds: [leo, mia], horizonDays: 3 });
 
@@ -138,7 +138,7 @@ describe("configuring Agendas", () => {
     expect(page?.members.map((member) => member.name)).toEqual(["Mia", "Leo"]);
   });
 
-  it("offers in the quick filter only the memberIds Family Members, and combines any of them", async () => {
+  it("offers in the quick filter only the Family Members the Agenda is for, and combines any of them", async () => {
     const kitchen = await createAgenda({ memberIds: [leo, mia], horizonDays: 1 });
     const everyone = await createAgenda({ memberIds: [], horizonDays: 1 });
 
@@ -160,7 +160,7 @@ describe("configuring Agendas", () => {
     expect(await showing(everyone, [stranger, leo])).toEqual([leo]);
   });
 
-  it("shows only the memberIds Family Member, whom the quick filter cannot leave", async () => {
+  it("shows only the Family Member the Agenda is for, whom the quick filter cannot leave", async () => {
     const forMia = await createAgenda({ memberIds: [mia], horizonDays: 1 });
 
     const page = await instance.app.agendas.open(forMia, { access: openAgendaAccess, show: [leo] });

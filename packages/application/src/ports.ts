@@ -81,8 +81,8 @@ export type SoleAssignment = { sourceId: SourceId; attribute: string };
 export interface AgendaRepository {
   add(agenda: Agenda): Promise<void>;
   /**
-   * In the order they were created, each with its memberIds Family Members in the order
-   * those were added; Family Members removed since are no longer memberIds.
+   * In the order they were created, each with its Family Members in the order
+   * those were added; Family Members removed since are no longer among them.
    */
   list(): Promise<Agenda[]>;
   findById(id: AgendaId): Promise<Agenda | null>;
