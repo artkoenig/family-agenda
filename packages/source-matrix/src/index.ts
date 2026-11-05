@@ -45,15 +45,18 @@ export type MatrixPluginOptions = {
 
 /**
  * The sync cursor: where `/sync` resumes, the names of the joined rooms and of the senders seen,
- * whether each joined room is a group chat, the bridge's invitations not accepted yet, which
- * `/sync` names only once, the allow-listed rooms read so far, so that a room
- * allow-listed later is read back first, and the edits of each message read, which go with it
- * when it is redacted.
+ * whether each joined room is a group chat, the WhatsApp JID the bridge gives each room, the
+ * bridge's invitations not accepted yet, which `/sync` names only once, the allow-listed rooms
+ * read so far, so that a room allow-listed later is read back first, the groups declared as
+ * Source Attributes by their JID, and the edits of each message read, which go with it when it is
+ * redacted.
  */
 type State = {
   since: string;
   rooms: Record<string, string>;
   groups: Record<string, boolean>;
+  jids: Record<string, string>;
+  declared: string[];
   invites: Record<string, string>;
   names: Record<string, string>;
   read: string[];
@@ -89,10 +92,11 @@ type LoginSession = { qrCode: string | null; outcome: "waiting" | "done" | { fai
 
 
 /** The fields of the sync cursor carried over, each spread so the run mutates its own copy. */
-function previousFields(previous: (Omit<State, "invites"> & { invites: Record<string, string> | null }) | null) {
+function previousFields(previous: Previous | null) {
   return {
     rooms: { ...previous?.rooms },
     groups: { ...previous?.groups },
+    jids: { ...previous?.jids },
     invites: { ...previous?.invites },
     names: { ...previous?.names },
     edits: { ...previous?.edits },
@@ -104,12 +108,13 @@ function pruneLeft(state: State, sync: SyncResponse): Set<string> {
   const left = new Set(Object.keys(sync.rooms?.leave ?? {}));
   state.rooms = Object.fromEntries(Object.entries(state.rooms).filter(([roomId]) => !left.has(roomId)));
   state.groups = Object.fromEntries(Object.entries(state.groups).filter(([roomId]) => !left.has(roomId)));
+  state.jids = Object.fromEntries(Object.entries(state.jids).filter(([roomId]) => !left.has(roomId)));
   return left;
 }
 
 /** A sync cursor from before invitations were kept does not know those /sync named back then. */
 async function fetchInvitations(
-  previous: (Omit<State, "invites"> & { invites: Record<string, string> | null }) | null,
+  previous: Previous | null,
   homeserver: HomeserverClient,
   token: string,
 ): Promise<Invites> {
@@ -124,7 +129,7 @@ async function syncInvitations(
   bridge: { userId: string; messenger: Messenger; serverName: string },
   sync: SyncResponse,
   left: Set<string>,
-  previous: (Omit<State, "invites"> & { invites: Record<string, string> | null }) | null,
+  previous: Previous | null,
 ): Promise<void> {
   const fetched = await fetchInvitations(previous, homeserver, token);
   Object.assign(state.invites, invitationsOf(fetched, bridge), invitationsOf(sync.rooms?.invite ?? {}, bridge));
@@ -134,7 +139,7 @@ async function syncInvitations(
   await acceptInvitations(state, homeserver, token, pending);
 }
 
-/** Learns names and group status from the state events of each room joined since the last run. */
+/** Learns names, group status and JIDs from the state events and the timeline of each room joined since the last run. */
 function syncJoined(state: State, sync: SyncResponse): void {
   for (const [roomId, room] of Object.entries(sync.rooms?.join ?? {})) {
     learnRoom(state, roomId, room);
@@ -142,7 +147,8 @@ function syncJoined(state: State, sync: SyncResponse): void {
 }
 
 function learnRoom(state: State, roomId: string, room: JoinedRoom): void {
-  for (const event of room.state?.events ?? []) learn(state, roomId, event);
+  // A rename arrives in the timeline, after the state the room had before it.
+  for (const event of [...(room.state?.events ?? []), ...(room.timeline?.events ?? [])]) learn(state, roomId, event);
   state.rooms[roomId] ??= roomId;
 }
 
@@ -228,8 +234,6 @@ export function createMatrixPlugin(options: MatrixPluginOptions = {}): SourcePlu
 
   async function poll(context: IngestContext) {
     const { homeserver, messenger, bridge, instance } = await connectionOf(context.config.plain);
-    // One Source Attribute for the account until its chats become Source Attributes of their own.
-    await context.attributes.declare([{ externalId: accountAttribute, name: messenger.attributeValue }]);
     const { userId, token } = accountOf(context);
     await checkLogin(bridge, messenger, userId);
     const previous = parseState(context.syncCursor);
@@ -237,14 +241,16 @@ export function createMatrixPlugin(options: MatrixPluginOptions = {}): SourcePlu
 
     try {
       const sync = await homeserver.sync(token, previous?.since ?? null);
-      const state: State = { since: sync.next_batch, ...previousFields(previous), read: [] };
+      const state: State = { since: sync.next_batch, ...previousFields(previous), declared: [], read: [] };
       const left = pruneLeft(state, sync);
       const bridge = { userId, messenger, serverName: instance.homeserver.serverName };
       await syncInvitations(state, homeserver, token, bridge, sync, left, previous);
       syncJoined(state, sync);
       await classify(state, homeserver, token);
       // Only group chats are read: a direct chat is never one to read, even when allow-listed before.
-      const allowListed = new Set(chatsOf(context.config.plain.chats).filter((roomId) => state.groups[roomId] === true));
+      const allowedJids = allowedJidsOf(chatsOf(context.config.plain.chats), state);
+      const allowListed = new Set(Object.keys(state.rooms).filter((roomId) => state.groups[roomId] === true && allowedJids.has(state.jids[roomId] ?? "")));
+      await declareChats(context, state, previous, allowedJids, allowListed);
 
       const { withdrawn, events } = await collectEvents(state, homeserver, token, sync, previous, allowListed, backfillStart);
 
@@ -520,21 +526,85 @@ function isGroup(events: MatrixEvent[]): boolean {
   return events.some((event) => event.type === "m.bridge" && !nonGroupRoomTypes.has(String(event.content["com.beeper.room_type"])));
 }
 
-/** Finds out whether the joined rooms not known yet are group chats; a room that cannot be read now is tried again on the next run. */
+/**
+ * The WhatsApp JID of the chat a room is the portal of, from the bridge's `m.bridge` state event.
+ * The bridge deletes the room when the chat is deleted on the phone and creates a new one for the
+ * same group, so the room id does not identify the group; the JID does.
+ */
+function jidOf(events: MatrixEvent[]): string | undefined {
+  for (const event of events) {
+    const channel = event.type === "m.bridge" ? event.content.channel : undefined;
+    const id = isObject(channel) ? channel.id : undefined;
+    if (typeof id === "string" && id !== "") return id;
+  }
+  return undefined;
+}
+
+/** Remembers from the bridge's state events whether a room is a group chat and which chat it is the portal of. */
+function learnBridge(state: State, roomId: string, events: MatrixEvent[]): void {
+  state.groups[roomId] = isGroup(events);
+  const jid = jidOf(events);
+  if (jid !== undefined) state.jids[roomId] = jid;
+}
+
+/**
+ * The JIDs of the chats an Admin allow-listed: the entries of `chats`, and the chats of the rooms
+ * an Admin chose by their id before groups were told apart by their JID.
+ */
+function allowedJidsOf(chats: string[], state: State): Set<string> {
+  const allowed = new Set(chats);
+  for (const chat of chats) {
+    const jid = state.jids[chat];
+    if (jid !== undefined) allowed.add(jid);
+  }
+  return allowed;
+}
+
+/**
+ * Declares the allow-listed groups as Source Attributes by their JID, named as the bridge names
+ * their rooms, and archives those that left the allow-list. A group stays declared while its room
+ * is missing, such as between the bridge deleting it and creating it again.
+ */
+async function declareChats(
+  context: IngestContext,
+  state: State,
+  previous: Previous | null,
+  allowedJids: Set<string>,
+  allowListed: Set<string>,
+): Promise<void> {
+  const names = namesByJid(state, allowListed);
+  await context.attributes.declare([...names].map(([externalId, name]) => ({ externalId, name })));
+  // A Source from before groups were Source Attributes declared one for the whole account.
+  const before = previous?.declared ?? [legacyAttribute];
+  state.declared = [...new Set([...before.filter((jid) => allowedJids.has(jid)), ...names.keys()])].sort();
+  for (const jid of before) if (!state.declared.includes(jid)) await context.attributes.archive(jid);
+}
+
+/** The names of the rooms by the JID of their group; a group with several rooms has the name of the last. */
+function namesByJid(state: Pick<State, "rooms" | "jids">, rooms: Set<string>): Map<string, string> {
+  const names = new Map<string, string>();
+  for (const [roomId, name] of Object.entries(state.rooms)) {
+    const jid = state.jids[roomId];
+    if (rooms.has(roomId) && jid !== undefined) names.set(jid, name);
+  }
+  return names;
+}
+
+/** Finds out whether the joined rooms not known yet are group chats, and the JID of each group not known yet; a room that cannot be read now is tried again on the next run. */
 async function classify(state: State, homeserver: HomeserverClient, token: string): Promise<void> {
   for (const roomId of Object.keys(state.rooms)) {
-    if (roomId in state.groups) continue;
+    if (roomId in state.groups && (state.groups[roomId] !== true || roomId in state.jids)) continue;
     try {
-      state.groups[roomId] = isGroup(await homeserver.state(token, roomId));
+      learnBridge(state, roomId, await homeserver.state(token, roomId));
     } catch {
       continue;
     }
   }
 }
 
-/** Remembers room names, whether rooms are group chats, and the display names of senders from state events. */
+/** Remembers room names, whether rooms are group chats and their JIDs, and the display names of senders from state events. */
 function learn(state: State, roomId: string, event: MatrixEvent): void {
-  if (event.type === "m.bridge") state.groups[roomId] = isGroup([event]);
+  if (event.type === "m.bridge") learnBridge(state, roomId, [event]);
   if (event.type === "m.room.name" && typeof event.content.name === "string" && event.content.name.trim() !== "") {
     state.rooms[roomId] = event.content.name.trim();
   }
@@ -618,7 +688,7 @@ async function collectEvents(
   homeserver: HomeserverClient,
   token: string,
   sync: SyncResponse,
-  previous: (Omit<State, "invites"> & { invites: Record<string, string> | null }) | null,
+  previous: Previous | null,
   allowListed: Set<string>,
   backfillStart: number,
 ): Promise<{ withdrawn: Set<string>; events: Map<string, { roomId: string; event: MatrixEvent }> }> {
@@ -648,7 +718,7 @@ async function collectJoinedEvents(
   homeserver: HomeserverClient,
   token: string,
   sync: SyncResponse,
-  previous: (Omit<State, "invites"> & { invites: Record<string, string> | null }) | null,
+  previous: Previous | null,
   allowListed: Set<string>,
   backfillStart: number,
   take: (roomId: string, list: MatrixEvent[]) => void,
@@ -663,7 +733,7 @@ async function collectRoomEvents(
   token: string,
   roomId: string,
   room: JoinedRoom,
-  previous: (Omit<State, "invites"> & { invites: Record<string, string> | null }) | null,
+  previous: Previous | null,
   allowListed: Set<string>,
   backfillStart: number,
   take: (roomId: string, list: MatrixEvent[]) => void,
@@ -681,7 +751,7 @@ async function collectNewlyAllowListed(
   homeserver: HomeserverClient,
   token: string,
   sync: SyncResponse,
-  previous: (Omit<State, "invites"> & { invites: Record<string, string> | null }) | null,
+  previous: Previous | null,
   allowListed: Set<string>,
   backfillStart: number,
   take: (roomId: string, list: MatrixEvent[]) => void,
@@ -762,14 +832,19 @@ async function originOf(
   const { content, body } = contentOf(event, relation);
   const { text, attachments } = await originContent(content, body, context);
   if (text === "" && attachments.length === 0) return null;
-  const thread = originThread(relation, eventId);
   return {
     externalId: eventId,
     occurredAt: new Date(event.origin_server_ts ?? Date.now()),
-    attributes: [accountAttribute],
+    attributes: attributesOf(context.state, roomId),
     ...describedBy(event, roomId, context.state),
-    content: { kind: "raw-message", text, attachments, ...(thread ? { thread } : {}) },
+    content: { kind: "raw-message", text, attachments },
   };
+}
+
+/** The Source Attribute a message of a room names: the group the room is the portal of. */
+function attributesOf(state: State, roomId: string): string[] {
+  const jid = state.jids[roomId];
+  return jid === undefined ? [] : [jid];
 }
 
 /** Who sent a message, and in which chat, as the Admin area shows it with the message. */
@@ -777,8 +852,8 @@ function describedBy(event: MatrixEvent, roomId: string, state: State): { sender
   return { sender: state.names[event.sender] ?? event.sender, subject: state.rooms[roomId] ?? roomId };
 }
 
-/** The one Source Attribute of a Messenger account. */
-const accountAttribute = "account";
+/** The Source Attribute the whole account was one before its groups became Source Attributes. */
+const legacyAttribute = "account";
 
 function isReadable(
   event: MatrixEvent,
@@ -817,15 +892,6 @@ async function originContent(
   return { text, attachments };
 }
 
-/** The thread a message belongs to: the event it edits or replies to, or itself. */
-function originThread(
-  relation: { rel_type?: string; event_id?: string; "m.in_reply_to"?: { event_id?: string } } | undefined,
-  eventId: string,
-): string | undefined {
-  if (relation?.rel_type === "m.replace" || relation?.rel_type === "m.thread") return relation.event_id;
-  return relation?.["m.in_reply_to"]?.event_id ?? eventId;
-}
-
 /** The message an edit changes; none for any other event. */
 function editedBy(event: MatrixEvent): string | null {
   const relation = event.content["m.relates_to"];
@@ -833,13 +899,12 @@ function editedBy(event: MatrixEvent): string | null {
   return typeof relation.event_id === "string" ? relation.event_id : null;
 }
 
-/** The joined group chats a Source can allow-list, by name. */
+/** The joined group chats a Source can allow-list, by name; a group is chosen by its JID, so it is offered once however many rooms it has had. */
 function chatChoices(context: RunContext): Choice[] {
   const state = parseState(context.syncCursor);
-  return Object.entries(state?.rooms ?? {})
-    .filter(([roomId]) => state?.groups[roomId] === true)
-    .map(([value, label]) => ({ value, label }))
-    .sort((a, b) => a.label.localeCompare(b.label));
+  const groups = new Set(Object.keys(state?.groups ?? {}).filter((roomId) => state?.groups[roomId] === true));
+  const byJid = state ? namesByJid(state, groups) : new Map<string, string>();
+  return [...byJid].map(([value, label]) => ({ value, label })).sort((a, b) => a.label.localeCompare(b.label));
 }
 
 function chatsOf(value: unknown): string[] {
@@ -851,8 +916,10 @@ function recordOf<T>(value: Record<string, T> | undefined): Record<string, T> {
   return isObject(value) ? value : {};
 }
 
-/** A sync cursor as read; `invites` is null in one written before invitations were kept. */
-function parseState(state: string | null): (Omit<State, "invites"> & { invites: Record<string, string> | null }) | null {
+/** A sync cursor as read; `invites` is null in one written before invitations were kept, `declared` in one written before groups were Source Attributes. */
+type Previous = Omit<State, "invites" | "declared"> & { invites: Record<string, string> | null; declared: string[] | null };
+
+function parseState(state: string | null): Previous | null {
   if (!state) return null;
   try {
     const parsed = JSON.parse(state) as Partial<State>;
@@ -861,6 +928,8 @@ function parseState(state: string | null): (Omit<State, "invites"> & { invites: 
       since: parsed.since,
       rooms: recordOf(parsed.rooms),
       groups: recordOf(parsed.groups),
+      jids: recordOf(parsed.jids),
+      declared: Array.isArray(parsed.declared) ? chatsOf(parsed.declared) : null,
       invites: isObject(parsed.invites) ? parsed.invites : null,
       names: recordOf(parsed.names),
       read: chatsOf(parsed.read),

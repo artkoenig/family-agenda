@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: proposed, partly superseded by ADR-0016
 ---
 
 # An Instance is one Family, without Family ids in the data model

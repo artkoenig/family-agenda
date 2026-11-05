@@ -13,7 +13,7 @@ const mail = (id: string, text: string): Origin => ({
   externalId: id,
   occurredAt: new Date("2026-09-14T06:00:00Z"),
   attributes: ["main"],
-  content: { kind: "raw-message", text, attachments: [], thread: id },
+  content: { kind: "raw-message", text, attachments: [] },
 });
 
 /** A ScriptedExtractor that runs `during` while it reads each message, as an Agenda opened meanwhile would. */
@@ -38,7 +38,7 @@ describe("The worker's activity on an Agenda", () => {
     await instance.app.sourceTypes.enable("mailbox");
     await instance.app.sources.add({ sourceTypeId: "mailbox", plain: { url: "imap.example.org" }, secrets: {} });
     await instance.app.llmEndpoint.save({ baseUrl: "http://ollama:11434/v1", model: "qwen3.5:9b", apiKey: "" });
-    const created = await instance.app.agendas.create({ preselected: [], horizonDays: 7 });
+    const created = await instance.app.agendas.create({ memberIds: [], horizonDays: 7 });
     if (!created.ok) throw new Error(`creating failed: ${created.problem}`);
     agenda = created.id;
   });

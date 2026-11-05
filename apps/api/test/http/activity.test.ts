@@ -8,7 +8,7 @@ describe("The worker's activity on an Agenda over HTTP", () => {
     // The clock starts on Monday 2026-09-14 at 09:00 in Berlin.
     instance = await bootHttpForTest();
     await instance.post("/setup", { email: "anna@example.org", password: "correct horse battery" });
-    const created = await instance.app.agendas.create({ preselected: [], horizonDays: 3 });
+    const created = await instance.app.agendas.create({ memberIds: [], horizonDays: 3 });
     if (!created.ok) throw new Error("creating failed");
     path = `/agendas/${created.id}`;
   });

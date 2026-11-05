@@ -28,8 +28,8 @@ import {
   type TimetableChangeKind,
   type Agenda,
   type AgendaId,
-  type AgendaKind,
-  isAgendaKind,
+  type AgendaLayout,
+  isAgendaLayout,
   type FamilyMember,
 } from "@family-agenda/domain";
 import type { ActivityLog, CurrentActivity } from "./activity";
@@ -61,14 +61,14 @@ export type AgendasDeps = {
   sourceHealth: SourceHealthCheck;
 };
 
-export type AgendaSettings = { kind: AgendaKind; preselected: FamilyMemberId[]; horizonDays: number };
+export type AgendaSettings = { layout: AgendaLayout; memberIds: FamilyMemberId[]; horizonDays: number };
 
-/** The settings as an Admin enters them; without a kind, a new Agenda is a timeline and an edited one keeps its own. */
-export type AgendaSettingsInput = Omit<AgendaSettings, "kind"> & { kind?: string };
+/** The settings as an Admin enters them; without a layout, a new Agenda is a timeline and an edited one keeps its own. */
+export type AgendaSettingsInput = Omit<AgendaSettings, "layout"> & { layout?: string };
 
 export type AgendaSummary = AgendaSettings & { id: AgendaId };
 
-export type AgendaProblem = "unknown-kind" | "invalid-horizon" | "unknown-member";
+export type AgendaProblem = "unknown-layout" | "invalid-horizon" | "unknown-member";
 
 /** Whom the quick filter shows: some Family Members, or everyone. */
 export type Showing = FamilyMemberId[] | "all";
@@ -162,7 +162,7 @@ export type TimelineTask = {
   concerns: Attribution;
 };
 
-/** What an Agenda's top bar shows, whatever its kind. */
+/** What an Agenda's top bar shows, whatever its layout. */
 type AgendaBarPage = {
   id: AgendaId;
   /** The Family Language, which dates are formatted in. */
@@ -171,11 +171,11 @@ type AgendaBarPage = {
   /** Everyone in the Family, for the avatars of whom an Event concerns. */
   members: FamilyMemberSummary[];
   /**
-   * Whom the quick filter offers: those the Agenda preselects, or everyone if it preselects no one.
+   * Whom the quick filter offers: those the Agenda is for, or everyone if it is for no one.
    * With only one, there is nothing to filter.
    */
   choices: FamilyMemberSummary[];
-  /** Whom the Agenda shows, always some of `choices`, or "all" if the Agenda preselects no one. */
+  /** Whom the Agenda shows, always some of `choices`, or "all" if the Agenda is for no one. */
   showing: Showing;
   /** What the worker is busy with, such as reading messages; null when it is idle. */
   activity: CurrentActivity | null;
@@ -183,9 +183,9 @@ type AgendaBarPage = {
   mayBeOutOfDate: boolean;
 };
 
-/** An Agenda of the timeline kind, as it shows its days. */
+/** An Agenda with the timeline layout, as it shows its days. */
 export type AgendaPage = AgendaBarPage & {
-  kind: "timeline";
+  layout: "timeline";
   /** How many days one step of scrolling loads: the Agenda's horizon. */
   horizonDays: number;
   /** The Tasks Due or Overdue that concern someone it shows, oldest Deadline first, those without one last. */
@@ -202,7 +202,7 @@ export type AgendaPage = AgendaBarPage & {
  * not Due yet, then those done, of the last 30 days and all of the future.
  */
 export type TaskListPage = AgendaBarPage & {
-  kind: "tasks";
+  layout: "task_list";
   /** Those pinned in a timeline, oldest Deadline first, those without one last. */
   due: TimelineTask[];
   /** Those not Due yet, by Deadline. */
@@ -223,7 +223,7 @@ export type TimelineDay = {
 /** Days of a timeline, from `first` to `last`, both included. */
 export type TimelineDays = { first: LocalDate; last: LocalDate };
 
-/** An Event in an Agenda's feed, which carries those concerning someone its Agenda preselects. */
+/** An Event in an Agenda's feed, which carries those concerning someone its Agenda is for. */
 export type FeedEvent = {
   itemId: ItemId;
   title: string;
@@ -511,26 +511,26 @@ export function createAgendaAccess(deps: AgendasDeps) {
       : { allDay: false, start: localDateTime(span.start, timeZone), end: localDateTime(span.end, timeZone) };
   }
 
-  /** The settings with the preselected Family Members in the Family's order, or a problem. */
+  /** The settings with its Family Members in the Family's order, or a problem. */
   async function checkSettings(
     settings: AgendaSettingsInput,
-    defaultKind: AgendaKind,
+    defaultLayout: AgendaLayout,
   ): Promise<{ ok: true; settings: AgendaSettings } | { ok: false; problem: AgendaProblem }> {
-    const kind = settings.kind ?? defaultKind;
-    if (!isAgendaKind(kind)) return { ok: false, problem: "unknown-kind" };
+    const layout = settings.layout ?? defaultLayout;
+    if (!isAgendaLayout(layout)) return { ok: false, problem: "unknown-layout" };
     if (!isAcceptableHorizon(settings.horizonDays)) return { ok: false, problem: "invalid-horizon" };
     const known = (await members.list()).map((member) => member.id);
-    if (!settings.preselected.every((id) => known.includes(id))) {
+    if (!settings.memberIds.every((id) => known.includes(id))) {
       return { ok: false, problem: "unknown-member" };
     }
-    const preselected = known.filter((id) => settings.preselected.includes(id));
-    return { ok: true, settings: { kind, preselected, horizonDays: settings.horizonDays } };
+    const memberIds = known.filter((id) => settings.memberIds.includes(id));
+    return { ok: true, settings: { layout, memberIds, horizonDays: settings.horizonDays } };
   }
 
-  function resolveShowing(show: Showing | undefined, choices: { id: FamilyMemberId }[], preselected: FamilyMemberId[]): Showing {
+  function resolveShowing(show: Showing | undefined, choices: { id: FamilyMemberId }[], memberIds: FamilyMemberId[]): Showing {
     const resolved = show ?? "all";
     const chosen = resolved === "all" ? [] : choices.map((member) => member.id).filter((memberId) => resolved.includes(memberId));
-    return chosen.length > 0 ? chosen : preselected.length > 0 ? choices.map((member) => member.id) : "all";
+    return chosen.length > 0 ? chosen : memberIds.length > 0 ? choices.map((member) => member.id) : "all";
   }
 
   async function barOf(agenda: Agenda, family: FamilyMember[], choices: FamilyMember[], showing: Showing, instant: Date): Promise<AgendaBarPage> {
@@ -590,7 +590,7 @@ export function createAgendaAccess(deps: AgendasDeps) {
 
     async list(): Promise<AgendaSummary[]> {
       const all = await agendas.list();
-      return all.map(({ id, kind, preselected, horizonDays }) => ({ id, kind, preselected, horizonDays }));
+      return all.map(({ id, layout, memberIds, horizonDays }) => ({ id, layout, memberIds, horizonDays }));
     },
 
     async create(
@@ -613,7 +613,7 @@ export function createAgendaAccess(deps: AgendasDeps) {
     ): Promise<{ ok: true } | { ok: false; problem: AgendaProblem | "unknown-agenda" }> {
       const agenda = await agendas.findById(id);
       if (!agenda) return { ok: false, problem: "unknown-agenda" };
-      const checked = await checkSettings(input, agenda.kind);
+      const checked = await checkSettings(input, agenda.layout);
       if (!checked.ok) return checked;
       await agendas.update({ ...agenda, ...checked.settings });
       return { ok: true };
@@ -624,10 +624,10 @@ export function createAgendaAccess(deps: AgendasDeps) {
     },
 
     /**
-     * The Agenda as its timeline or its Task List, by its kind, or null if there is no such Agenda or
+     * The Agenda as its timeline or its Task List, by its layout, or null if there is no such Agenda or
      * `access` refuses it. `show` is what the quick filter was set to, of those the Agenda
-     * preselects; without it, or with none of them, it shows all of them, or everyone if the Agenda
-     * preselects no one. `days` are those a timeline scrolled to, into the past or the future;
+     * is for; without it, or with none of them, it shows all of them, or everyone if the Agenda
+     * is for no one. `days` are those a timeline scrolled to, into the past or the future;
      * without them, it shows the horizon from today. They must pass `isAcceptableTimelineRange`,
      * and a Task List leaves them aside.
      */
@@ -641,14 +641,14 @@ export function createAgendaAccess(deps: AgendasDeps) {
       const agenda = await agendas.findById(id);
       if (!agenda || !(await input.access.mayOpen(agenda.id))) return null;
       const family = await members.list();
-      const choices = agenda.preselected.length > 0 ? family.filter((member) => agenda.preselected.includes(member.id)) : family;
-      const showing = resolveShowing(input.show, choices, agenda.preselected);
+      const choices = agenda.memberIds.length > 0 ? family.filter((member) => agenda.memberIds.includes(member.id)) : family;
+      const showing = resolveShowing(input.show, choices, agenda.memberIds);
       const instant = clock.now();
       const bar = await barOf(agenda, family, choices, showing, instant);
       const now = localDateTime(instant, timeZone);
-      if (agenda.kind === "tasks") return { ...bar, kind: "tasks", ...(await taskListOf(now.date, showing)) };
+      if (agenda.layout === "task_list") return { ...bar, layout: "task_list", ...(await taskListOf(now.date, showing)) };
       const dates = timelineDates(input.days, now.date, agenda.horizonDays);
-      return { ...bar, kind: "timeline", horizonDays: agenda.horizonDays, ...(await timelineOf(dates, showing, instant)) };
+      return { ...bar, layout: "timeline", horizonDays: agenda.horizonDays, ...(await timelineOf(dates, showing, instant)) };
     },
 
     /**
@@ -664,14 +664,14 @@ export function createAgendaAccess(deps: AgendasDeps) {
     /**
      * The Agenda as a calendar feed, or null if there is no such Agenda or `access` refuses it: the
      * Events, school days and undone Tasks of the last 30 days and all of the future, cancelled
-     * ones included, whatever the Agenda's horizon, that concern someone the Agenda preselects, or all if it preselects no one.
+     * ones included, whatever the Agenda's horizon, that concern someone the Agenda is for, or all if it is for no one.
      */
     async feed(id: AgendaId, input: { access: AgendaAccessPolicy }): Promise<AgendaFeed | null> {
       const agenda = await agendas.findById(id);
       if (!agenda || !(await input.access.mayOpen(agenda.id))) return null;
       const generatedAt = clock.now();
       const firstDay = addDays(localDateTime(generatedAt, timeZone).date, -feedDaysBack);
-      const showing: Showing = agenda.preselected.length > 0 ? agenda.preselected : "all";
+      const showing: Showing = agenda.memberIds.length > 0 ? agenda.memberIds : "all";
       const around = await itemsAround(firstDay, null, showing);
       const events = around.events.flatMap(({ id: itemId, event }) => {
         if (lastDayOf(event.span, timeZone) < firstDay) return [];
@@ -680,7 +680,7 @@ export function createAgendaAccess(deps: AgendasDeps) {
       });
       const family = await members.list();
       const named = (concerns: Attribution) =>
-        concerns === "whole-family" || agenda.preselected.length === 1 ? [] : family.filter((member) => concerns.includes(member.id));
+        concerns === "whole-family" || agenda.memberIds.length === 1 ? [] : family.filter((member) => concerns.includes(member.id));
       const dates = [...new Set(around.lessons.map(({ lesson }) => dayOf(lesson.span)))].filter((date) => date >= firstDay).sort();
       const schoolDays = dates.flatMap((date) =>
         schoolDaysOn(date, around, generatedAt)

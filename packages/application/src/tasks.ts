@@ -30,7 +30,7 @@ export function createTaskAccess(deps: TasksDeps) {
   return {
     /**
      * Ticks a Task done in an Agenda, or takes the tick back. Only a Task the Agenda shows can be:
-     * one that concerns someone it preselects, or the whole Family.
+     * one that concerns someone it is for; an Agenda for the whole Family shows every Task.
      */
     async tickFromAgenda(
       agendaId: AgendaId,
@@ -39,7 +39,7 @@ export function createTaskAccess(deps: TasksDeps) {
     ): Promise<{ ok: true } | { ok: false; problem: TickProblem }> {
       const agenda = await agendas.findById(agendaId);
       if (!agenda || !(await input.access.mayOpen(agenda.id))) return { ok: false, problem: "unknown-agenda" };
-      return tick(id, input.done, (item) => agenda.preselected.length === 0 || isShownTo(concernsOf(item), agenda.preselected));
+      return tick(id, input.done, (item) => agenda.memberIds.length === 0 || isShownTo(concernsOf(item), agenda.memberIds));
     },
   };
 }

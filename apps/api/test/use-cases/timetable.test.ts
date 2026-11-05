@@ -66,7 +66,7 @@ describe("Timetables on the timeline and in the feed", () => {
     if (!member.ok) throw new Error(`adding failed: ${member.problem}`);
     mia = member.id;
     await assignSource(instance, untis, [mia]);
-    const created = await instance.app.agendas.create({ preselected: [], horizonDays: 7 });
+    const created = await instance.app.agendas.create({ memberIds: [], horizonDays: 7 });
     if (!created.ok) throw new Error(`creating failed: ${created.problem}`);
     agenda = created.id;
   });
@@ -256,7 +256,7 @@ describe("Timetables on the timeline and in the feed", () => {
     });
 
     it("names no one in the titles of a feed for one Family Member, and leaves out the others", async () => {
-      const created = await instance.app.agendas.create({ preselected: [mia], horizonDays: 7 });
+      const created = await instance.app.agendas.create({ memberIds: [mia], horizonDays: 7 });
       if (!created.ok) throw new Error(`creating failed: ${created.problem}`);
       await arrive(maths());
       await arriveForLeo(timetableLesson("art", lesson("Art", at("2026-09-15", "08:00", "09:35"))));

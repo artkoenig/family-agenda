@@ -22,7 +22,7 @@ describe("configuring Agendas", () => {
     return added.id;
   };
 
-  const createAgenda = async (input: { kind?: string; preselected: FamilyMemberId[]; horizonDays: number }) => {
+  const createAgenda = async (input: { layout?: string; memberIds: FamilyMemberId[]; horizonDays: number }) => {
     const created = await instance.app.agendas.create(input);
     if (!created.ok) throw new Error(`creating failed: ${created.problem}`);
     return created.id;
@@ -31,37 +31,37 @@ describe("configuring Agendas", () => {
   const open = (id: AgendaId, access: AgendaAccessPolicy = openAgendaAccess) =>
     instance.app.agendas.open(id, { access });
 
-  it("creates Agendas with preselected Family Members and a horizon", async () => {
-    const forMia = await createAgenda({ preselected: [mia], horizonDays: 7 });
-    const kitchen = await createAgenda({ preselected: [leo, mia], horizonDays: 3 });
+  it("creates Agendas for chosen Family Members and a horizon", async () => {
+    const forMia = await createAgenda({ memberIds: [mia], horizonDays: 7 });
+    const kitchen = await createAgenda({ memberIds: [leo, mia], horizonDays: 3 });
 
     expect(await instance.app.agendas.list()).toEqual([
-      { id: forMia, kind: "timeline", preselected: [mia], horizonDays: 7 },
-      { id: kitchen, kind: "timeline", preselected: [mia, leo], horizonDays: 3 },
+      { id: forMia, layout: "timeline", memberIds: [mia], horizonDays: 7 },
+      { id: kitchen, layout: "timeline", memberIds: [mia, leo], horizonDays: 3 },
     ]);
   });
 
-  it("makes an Agenda a Task List, keeps its kind when an edit names none, and refuses a kind it does not know", async () => {
-    const list = await createAgenda({ kind: "tasks", preselected: [mia], horizonDays: 7 });
+  it("makes an Agenda a Task List, keeps its layout when an edit names none, and refuses a layout it does not know", async () => {
+    const list = await createAgenda({ layout: "task_list", memberIds: [mia], horizonDays: 7 });
 
-    expect(await instance.app.agendas.edit(list, { preselected: [mia, leo], horizonDays: 7 })).toEqual({ ok: true });
-    expect(await instance.app.agendas.list()).toEqual([{ id: list, kind: "tasks", preselected: [mia, leo], horizonDays: 7 }]);
-    expect((await open(list))?.kind).toBe("tasks");
-    expect(await instance.app.agendas.create({ kind: "unknown", preselected: [], horizonDays: 7 })).toEqual({ ok: false, problem: "unknown-kind" });
-    expect(await instance.app.agendas.edit(list, { kind: "timeline", preselected: [], horizonDays: 7 })).toEqual({ ok: true });
-    expect((await open(list))?.kind).toBe("timeline");
+    expect(await instance.app.agendas.edit(list, { memberIds: [mia, leo], horizonDays: 7 })).toEqual({ ok: true });
+    expect(await instance.app.agendas.list()).toEqual([{ id: list, layout: "task_list", memberIds: [mia, leo], horizonDays: 7 }]);
+    expect((await open(list))?.layout).toBe("task_list");
+    expect(await instance.app.agendas.create({ layout: "unknown", memberIds: [], horizonDays: 7 })).toEqual({ ok: false, problem: "unknown-layout" });
+    expect(await instance.app.agendas.edit(list, { layout: "timeline", memberIds: [], horizonDays: 7 })).toEqual({ ok: true });
+    expect((await open(list))?.layout).toBe("timeline");
   });
 
   it("refuses a horizon outside 1 to 31 days, and Family Members it does not know", async () => {
     for (const horizonDays of [0, 32, 2.5]) {
-      expect(await instance.app.agendas.create({ preselected: [], horizonDays })).toEqual({
+      expect(await instance.app.agendas.create({ memberIds: [], horizonDays })).toEqual({
         ok: false,
         problem: "invalid-horizon",
       });
     }
     expect(
       await instance.app.agendas.create({
-        preselected: ["3f0b2a52-0000-4000-8000-000000000000" as FamilyMemberId],
+        memberIds: ["3f0b2a52-0000-4000-8000-000000000000" as FamilyMemberId],
         horizonDays: 7,
       }),
     ).toEqual({ ok: false, problem: "unknown-member" });
@@ -69,42 +69,60 @@ describe("configuring Agendas", () => {
   });
 
   it("edits and removes Agendas", async () => {
-    const agenda = await createAgenda({ preselected: [mia], horizonDays: 7 });
+    const agenda = await createAgenda({ memberIds: [mia], horizonDays: 7 });
 
-    expect(await instance.app.agendas.edit(agenda, { preselected: [leo], horizonDays: 14 })).toEqual({
+    expect(await instance.app.agendas.edit(agenda, { memberIds: [leo], horizonDays: 14 })).toEqual({
       ok: true,
     });
-    expect(await instance.app.agendas.edit(agenda, { preselected: [], horizonDays: 0 })).toEqual({
+    expect(await instance.app.agendas.edit(agenda, { memberIds: [], horizonDays: 0 })).toEqual({
       ok: false,
       problem: "invalid-horizon",
     });
     expect(await instance.app.agendas.list()).toEqual([
-      { id: agenda, kind: "timeline", preselected: [leo], horizonDays: 14 },
+      { id: agenda, layout: "timeline", memberIds: [leo], horizonDays: 14 },
     ]);
 
     await instance.app.agendas.remove(agenda);
     expect(await instance.app.agendas.list()).toEqual([]);
     expect(await open(agenda)).toBeNull();
-    expect(await instance.app.agendas.edit(agenda, { preselected: [], horizonDays: 7 })).toEqual({
+    expect(await instance.app.agendas.edit(agenda, { memberIds: [], horizonDays: 7 })).toEqual({
       ok: false,
       problem: "unknown-agenda",
     });
   });
 
-  it("drops a removed Family Member from the Agendas that preselect them", async () => {
-    const agenda = await createAgenda({ preselected: [mia, leo], horizonDays: 7 });
+  it("drops a removed Family Member from the Agendas that list them with others", async () => {
+    const agenda = await createAgenda({ memberIds: [mia, leo], horizonDays: 7 });
+
+    expect(await instance.app.familyMembers.remove(mia)).toEqual({ ok: true });
+
+    expect(await instance.app.agendas.list()).toEqual([
+      { id: agenda, layout: "timeline", memberIds: [leo], horizonDays: 7 },
+    ]);
+  });
+
+  it("deletes the Agendas whose only member is a removed Family Member, so none widens to the whole Family", async () => {
+    await createAgenda({ memberIds: [mia], horizonDays: 7 });
+    const wholeFamily = await createAgenda({ memberIds: [], horizonDays: 7 });
+    const shared = await createAgenda({ memberIds: [mia, leo], horizonDays: 3 });
 
     await instance.app.familyMembers.remove(mia);
 
-    expect(await instance.app.agendas.list()).toEqual([
-      { id: agenda, kind: "timeline", preselected: [leo], horizonDays: 7 },
-    ]);
+    expect((await instance.app.agendas.list()).map((listed) => listed.id)).toEqual([wholeFamily, shared]);
+  });
+
+  it("keeps an Agenda that an edit leaves without members as a whole-Family Agenda", async () => {
+    const agenda = await createAgenda({ memberIds: [mia], horizonDays: 7 });
+
+    expect(await instance.app.agendas.edit(agenda, { memberIds: [], horizonDays: 7 })).toEqual({ ok: true });
+
+    expect(await instance.app.agendas.list()).toEqual([{ id: agenda, layout: "timeline", memberIds: [], horizonDays: 7 }]);
   });
 
   it("opens an Agenda as one day per day of its horizon, starting today in the Family's time zone", async () => {
     // 22:30 UTC is already the next day in Berlin.
     instance.clock.advance(15.5 * 60 * 60 * 1000);
-    const agenda = await createAgenda({ preselected: [mia], horizonDays: 3 });
+    const agenda = await createAgenda({ memberIds: [mia], horizonDays: 3 });
 
     const page = await open(agenda);
 
@@ -120,9 +138,9 @@ describe("configuring Agendas", () => {
     expect(page?.members.map((member) => member.name)).toEqual(["Mia", "Leo"]);
   });
 
-  it("offers in the quick filter only the preselected Family Members, and combines any of them", async () => {
-    const kitchen = await createAgenda({ preselected: [leo, mia], horizonDays: 1 });
-    const everyone = await createAgenda({ preselected: [], horizonDays: 1 });
+  it("offers in the quick filter only the Family Members the Agenda is for, and combines any of them", async () => {
+    const kitchen = await createAgenda({ memberIds: [leo, mia], horizonDays: 1 });
+    const everyone = await createAgenda({ memberIds: [], horizonDays: 1 });
 
     const kitchenPage = await open(kitchen);
     expect(kitchenPage?.choices.map((member) => member.name)).toEqual(["Mia", "Leo"]);
@@ -142,8 +160,8 @@ describe("configuring Agendas", () => {
     expect(await showing(everyone, [stranger, leo])).toEqual([leo]);
   });
 
-  it("shows only the preselected Family Member, whom the quick filter cannot leave", async () => {
-    const forMia = await createAgenda({ preselected: [mia], horizonDays: 1 });
+  it("shows only the Family Member the Agenda is for, whom the quick filter cannot leave", async () => {
+    const forMia = await createAgenda({ memberIds: [mia], horizonDays: 1 });
 
     const page = await instance.app.agendas.open(forMia, { access: openAgendaAccess, show: [leo] });
 
@@ -152,7 +170,7 @@ describe("configuring Agendas", () => {
   });
 
   it("opens no Agenda that its access policy refuses", async () => {
-    const agenda = await createAgenda({ preselected: [], horizonDays: 7 });
+    const agenda = await createAgenda({ memberIds: [], horizonDays: 7 });
     const closed: AgendaAccessPolicy = { mayOpen: () => Promise.resolve(false) };
 
     expect(await open(agenda, closed)).toBeNull();

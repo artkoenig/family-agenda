@@ -59,7 +59,7 @@ describe("WhatsApp chats read through the Matrix bridge", () => {
     await instance.app.sourceTypes.enable("matrix");
     expect(await instance.app.catalogues.enable("matrix", "whatsapp", { riskAcknowledged: true })).toEqual({ ok: true });
     await instance.app.llmEndpoint.save({ baseUrl: "http://ollama:11434/v1", model: "qwen3.5:9b", apiKey: "" });
-    const created = await instance.app.agendas.create({ preselected: [], horizonDays: 7 });
+    const created = await instance.app.agendas.create({ memberIds: [], horizonDays: 7 });
     if (!created.ok) throw new Error(`creating failed: ${created.problem}`);
     agenda = created.id;
 
@@ -75,8 +75,10 @@ describe("WhatsApp chats read through the Matrix bridge", () => {
     homeserver.invite(classGroup, user);
     await run();
     const listed = await instance.app.sources.find(source);
-    expect(listed?.choices?.chats).toContainEqual({ value: classGroup, label: "Klasse 5b Eltern" });
-    expect(await instance.app.sources.edit(source, { plain: { chats: [classGroup] }, secrets: {} })).toEqual({ ok: true });
+    // A chat is allow-listed by its WhatsApp JID, which outlives the bridge's room.
+    const classChat = homeserver.jidOf(classGroup);
+    expect(listed?.choices?.chats).toContainEqual({ value: classChat, label: "Klasse 5b Eltern" });
+    expect(await instance.app.sources.edit(source, { plain: { chats: [classChat] }, secrets: {} })).toEqual({ ok: true });
     await run();
   });
   afterEach(async () => {
@@ -102,7 +104,7 @@ describe("WhatsApp chats read through the Matrix bridge", () => {
     expect(await titles()).toEqual(["Wandertag 5b"]);
     const page = await openTimeline(instance.app, agenda, { access: openAgendaAccess });
     const message = await instance.app.messages.open(page!.days.flatMap((day) => day.items)[0]!.messages[0]!.id);
-    expect(message).toMatchObject({ attributes: ["WhatsApp"], subject: "Klasse 5b Eltern", sender: "Frau Berger (WA)" });
+    expect(message).toMatchObject({ attributes: ["Klasse 5b Eltern"], subject: "Klasse 5b Eltern", sender: "Frau Berger (WA)" });
   });
 
   it("ignores messages in chats that are not allow-listed", async () => {

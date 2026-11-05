@@ -11,11 +11,11 @@ import { openTimeline } from "../support/timeline";
 const minutes = 60 * 1000;
 
 /** A school mail as a mailbox Source emits it, sent at `sentAt`. */
-const mail = (id: string, sentAt: string, text: string, thread = id): Origin => ({
+const mail = (id: string, sentAt: string, text: string): Origin => ({
   externalId: id,
   occurredAt: new Date(sentAt),
   sender: "klasse5b@schule.example.org", attributes: ["main"],
-  content: { kind: "raw-message", text, attachments: [], thread },
+  content: { kind: "raw-message", text, attachments: [] },
 });
 
 const invitation =
@@ -44,7 +44,7 @@ describe("Events extracted from mail", () => {
     if (!added.ok) throw new Error(`adding failed: ${added.problem}`);
     const saved = await instance.app.llmEndpoint.save({ baseUrl: "http://ollama:11434/v1", model: "qwen3.5:9b", apiKey: "" });
     if (!saved.ok) throw new Error(`saving failed: ${saved.problem}`);
-    const created = await instance.app.agendas.create({ preselected: [], horizonDays: 7 });
+    const created = await instance.app.agendas.create({ memberIds: [], horizonDays: 7 });
     if (!created.ok) throw new Error(`creating failed: ${created.problem}`);
     agenda = created.id;
   });
@@ -236,7 +236,7 @@ describe("Events extracted from mail", () => {
       await fresh.app.llmEndpoint.save({ baseUrl: "http://localhost:11434/v1", model: "qwen3.5:9b", apiKey: "" });
       testPluginControls.emit("inbox", [mail("m1", "2026-09-14T06:12:00Z", invitation)]);
       await fresh.app.polling.pollDue();
-      await fresh.query("UPDATE source_record SET body = NULL");
+      await fresh.query("UPDATE source_record SET sender = NULL, subject = NULL, body = NULL, purged_at = now()");
       const before = extractor.requests.length;
 
       expect((await fresh.app.extraction.extractPending()).extracted).toHaveLength(0);
@@ -259,7 +259,6 @@ describe("Events extracted from mail", () => {
         content: {
           kind: "raw-message",
           text: invitation,
-          thread: "m1",
           attachments: [{ filename: "brief.pdf", contentType: "application/pdf", bytes: new Uint8Array([37, 80, 68, 70]) }],
         },
       };

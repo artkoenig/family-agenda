@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: proposed, partly superseded by ADR-0016
 ---
 
 # Source Types are plugins that register themselves at startup and are enabled by an Admin

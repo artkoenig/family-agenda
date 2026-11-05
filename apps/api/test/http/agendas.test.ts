@@ -1,7 +1,9 @@
 import type { FamilyMemberId, AgendaId } from "@family-agenda/domain";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { bootHttpForTest, sessionCookieOf, type HttpTestInstance } from "../support/http";
+import { assignSource } from "../support/assign";
 import { photos } from "../support/photos";
+import { writeTestPluginPackage } from "../support/test-source-plugin";
 
 const password = "correct horse battery";
 
@@ -26,8 +28,8 @@ describe("Agendas over HTTP", () => {
     return added.id;
   };
 
-  const createAgenda = async (preselected: FamilyMemberId[]) => {
-    const created = await instance.app.agendas.create({ preselected, horizonDays: 2 });
+  const createAgenda = async (memberIds: FamilyMemberId[]) => {
+    const created = await instance.app.agendas.create({ memberIds, horizonDays: 2 });
     if (!created.ok) throw new Error("creating failed");
     return created.id;
   };
@@ -137,12 +139,12 @@ describe("Agendas over HTTP", () => {
 
     const created = await instance.post(
       "/admin/agendas",
-      { preselected: ella!.id, horizonDays: "5" },
+      { memberIds: ella!.id, horizonDays: "5" },
       { cookie },
     );
     expect(created.status).toBe(303);
     const [agenda] = await instance.app.agendas.list();
-    expect(agenda).toMatchObject({ preselected: [ella!.id], horizonDays: 5 });
+    expect(agenda).toMatchObject({ memberIds: [ella!.id], horizonDays: 5 });
 
     // Its row opens its dialog, which tells where it and its feed are.
     const agendas = await (await instance.get("/admin/agendas", { cookie })).text();
@@ -170,18 +172,18 @@ describe("Agendas over HTTP", () => {
   it("lets an Admin choose a Task List for an Agenda, which its row and dialog name", async () => {
     const cookie = await signIn();
     const blank = await (await instance.get("/admin/agendas/new", { cookie })).text();
-    expect(blank).toMatch(/<input type="radio" name="kind" value="timeline" checked=""/);
+    expect(blank).toMatch(/<input type="radio" name="layout" value="timeline" checked=""/);
     expect(blank).toContain('class="fam-field fam-agenda-horizon"');
 
-    const created = await instance.post("/admin/agendas", { kind: "tasks", horizonDays: "7" }, { cookie });
+    const created = await instance.post("/admin/agendas", { layout: "task_list", horizonDays: "7" }, { cookie });
     expect(created.status).toBe(303);
     const [agenda] = await instance.app.agendas.list();
-    expect(agenda).toMatchObject({ kind: "tasks", preselected: [] });
+    expect(agenda).toMatchObject({ layout: "task_list", memberIds: [] });
 
     expect(await (await instance.get("/admin/agendas", { cookie })).text()).toContain("Task List · Everyone");
     const dialog = await (await instance.get(`/admin/agendas/${agenda!.id}`, { cookie })).text();
-    expect(dialog).toMatch(/<input type="radio" name="kind" value="tasks" checked=""/);
-    const refused = await instance.post(`/admin/agendas/${agenda!.id}`, { kind: "unknown", horizonDays: "7" }, { cookie });
+    expect(dialog).toMatch(/<input type="radio" name="layout" value="task_list" checked=""/);
+    const refused = await instance.post(`/admin/agendas/${agenda!.id}`, { layout: "unknown", horizonDays: "7" }, { cookie });
     expect(refused.status).toBe(400);
     expect(await refused.text()).toContain("Choose what the Agenda shows");
   });
@@ -205,7 +207,7 @@ describe("Agendas over HTTP", () => {
     expect(await farAhead.text()).toContain("between 1 and 31 days");
     // A change that is refused shows why in the dialog of what was changed.
     const mia = await instance.app.familyMembers.add({ name: "Mia" });
-    const agenda = await instance.app.agendas.create({ preselected: [], horizonDays: 7 });
+    const agenda = await instance.app.agendas.create({ memberIds: [], horizonDays: 7 });
     if (!mia.ok || !agenda.ok) throw new Error("adding failed");
     const renamed = await instance.post(`/admin/family-members/${mia.id}`, { name: " " }, { cookie });
     expect(renamed.status).toBe(400);
@@ -223,6 +225,26 @@ describe("Agendas over HTTP", () => {
     const farAheadPage = await farAheadAgain.text();
     expect(farAheadPage).toContain('aria-labelledby="edit-agenda-title"');
     expect(farAheadPage).toContain("between 1 and 31 days");
+  });
+
+  it("tells an Admin which Source Attributes keep a Family Member from being removed", async () => {
+    const cookie = await signIn();
+    await writeTestPluginPackage(instance.workspacePackages, { sourceTypeId: "calendar" });
+    await instance.restart();
+    await instance.app.sourceTypes.enable("calendar");
+    const added = await instance.app.sources.add({ sourceTypeId: "calendar", plain: { url: "https://calendar.example.org" }, secrets: {} });
+    if (!added.ok) throw new Error(`adding failed: ${added.problem}`);
+    await instance.app.sources.rename(added.id, "School calendar");
+    await assignSource(instance, added.id, [mia]);
+
+    const refused = await instance.post(`/admin/family-members/${mia}/remove`, {}, { cookie });
+
+    expect(refused.status).toBe(400);
+    const page = await refused.text();
+    expect(page).toContain("Mia is the only one assigned to");
+    expect(page).toContain("School calendar: Main");
+    expect((await instance.app.familyMembers.list()).map((member) => member.name)).toEqual(["Mia", "Leo"]);
+    expect((await instance.post(`/admin/family-members/${leo}/remove`, {}, { cookie })).status).toBe(303);
   });
 
   it("keeps the Family Member and Agenda pages to signed-in Admins", async () => {

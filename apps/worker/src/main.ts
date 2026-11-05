@@ -14,6 +14,17 @@ worker.secretSweep.sweep().catch((error: unknown) => {
   console.error("Removing secrets nothing refers to failed:", error);
 });
 
+/** How often the worker deletes messages past their retention. */
+const retentionTickMs = 60 * 60 * 1000;
+
+const purge = () => {
+  worker.retention.purge().catch((error: unknown) => {
+    console.error("Purging messages past their retention failed:", error);
+  });
+};
+purge();
+const retentionTimer = setInterval(purge, retentionTickMs);
+
 let polling: Promise<void> | null = null;
 const poll = () => {
   // A tick that finds the last one still running skips, rather than polling a Source twice.
@@ -77,6 +88,7 @@ const servicesTimer = setInterval(reconcile, servicesTickMs);
 const shutdown = () => {
   clearInterval(timer);
   clearInterval(servicesTimer);
+  clearInterval(retentionTimer);
   void Promise.all([polling, reconciling])
     .then(() => worker.services.stop())
     .then(() => worker.close())

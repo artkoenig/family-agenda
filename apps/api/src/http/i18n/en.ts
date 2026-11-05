@@ -6,7 +6,7 @@ import {
   minimumPasswordLength,
   photoTypes,
   type FamilyLanguage,
-  type AgendaKind,
+  type AgendaLayout,
 } from "@family-agenda/domain";
 import type { Child } from "hono/jsx";
 import { plurals } from "./plurals";
@@ -58,7 +58,7 @@ export const en = {
     "invalid-photo": `The photo must be one of ${photoFormats}.`,
     "photo-too-large": `The photo must be at most ${maximumPhotoBytes / 1024 / 1024} MB.`,
     "unknown-member": "This Family Member does not exist.",
-    "unknown-kind": "Choose what the Agenda shows: a timeline or a Task List.",
+    "unknown-layout": "Choose what the Agenda shows: a timeline or a Task List.",
     "invalid-horizon": `The horizon must be between ${horizonDaysRange.min} and ${horizonDaysRange.max} days.`,
     "unknown-agenda": "This Agenda does not exist.",
     "unknown-source-type": "This Source Type is not installed.",
@@ -236,6 +236,9 @@ export const en = {
     replacePhoto: "Replace photo",
     removePhoto: "Remove photo",
     remove: (name: string) => `Remove ${name}`,
+    /** Why they cannot be removed yet: `blocking` are their Source Attributes, each as "Source: Attribute". */
+    soleAssignee: (name: string, blocking: string) =>
+      `${name} is the only one assigned to ${blocking}. Assign them to someone else first, or to no one for the whole Family.`,
   },
 
   agendas: {
@@ -254,13 +257,13 @@ export const en = {
     feed: "Calendar feed",
     copy: "Copy",
     copied: "Copied",
-    kind: "Shows",
-    kinds: {
+    layout: "Shows",
+    layouts: {
       timeline: { label: "Timeline", hint: "Events, school days and Tasks, day by day" },
-      tasks: { label: "Task List", hint: "Only Tasks: to do, coming up, done" },
-    } satisfies Record<AgendaKind, { label: string; hint: string }>,
-    preselected: "Preselected Family Members",
-    preselectedHint: "The Agenda shows only them, and its quick filter offers only them; none means everyone.",
+      task_list: { label: "Task List", hint: "Only Tasks: to do, coming up, done" },
+    } satisfies Record<AgendaLayout, { label: string; hint: string }>,
+    memberIds: "Family Members",
+    memberIdsHint: "The Agenda shows only them, and its quick filter offers only them; none means everyone.",
     noMembers: "No Family Members yet.",
     horizon: "Horizon in days",
     horizonHint: `How many days it shows at a time, today included: ${horizonDaysRange.min} to ${horizonDaysRange.max}.`,
@@ -411,6 +414,7 @@ export const en = {
     title: "Message",
     description: "The original its Items were read from. Only Admins open it.",
     sent: "Sent",
+    purged: "The content of this message is no longer kept.",
     sender: "From",
     subject: "Subject",
     attributes: "Concerns",

@@ -34,7 +34,7 @@ describe("Timetables in an Agenda over HTTP", () => {
     const mia = await instance.app.familyMembers.add({ name: "Mia" });
     if (!mia.ok) throw new Error("adding failed");
     await assignSource(instance, added.id, [mia.id]);
-    const created = await instance.app.agendas.create({ preselected: [], horizonDays: 3 });
+    const created = await instance.app.agendas.create({ memberIds: [], horizonDays: 3 });
     if (!created.ok) throw new Error("creating failed");
     path = `/agendas/${created.id}`;
     testPluginControls.emit("untis-test", [

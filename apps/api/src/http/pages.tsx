@@ -27,7 +27,7 @@ import {
   minimumPasswordLength,
   photoTypes,
   silentAfterMs,
-  agendaKinds,
+  agendaLayouts,
   type AdminId,
   type FamilyLanguage,
   type FamilyMemberId,
@@ -813,13 +813,13 @@ export function AgendasPage(props: {
   const { t } = useTranslation();
   const v = t.agendas;
   const namesOf = (agenda: AgendaSummary) => {
-    const names = agenda.preselected.flatMap((id) => memberOf(id)?.name ?? []);
+    const names = agenda.memberIds.flatMap((id) => memberOf(id)?.name ?? []);
     return names.length > 0 ? names.join(", ") : null;
   };
   /** A timeline by whom it shows and its horizon, a Task List by whom it shows. */
   const entryOf = (agenda: AgendaSummary) => {
     const who = namesOf(agenda) ?? v.everyone;
-    return agenda.kind === "tasks" ? v.taskListEntry(who) : v.entry(who, agenda.horizonDays);
+    return agenda.layout === "task_list" ? v.taskListEntry(who) : v.entry(who, agenda.horizonDays);
   };
   const edited = editing ? props.agendas.find((agenda) => agenda.id === editing.id) : undefined;
   const address = edited ? `${props.origin}${agendaUrl(edited.id)}` : "";
@@ -863,15 +863,15 @@ export function AgendasPage(props: {
         <section class="fam-sheet">
           <ul class="fam-rows">
             {props.agendas.map((agenda) => {
-              const preselected = agenda.preselected.map(memberOf).filter((member) => member !== undefined);
+              const shown = agenda.memberIds.map(memberOf).filter((member) => member !== undefined);
               const names = namesOf(agenda);
               return (
                 <ListRow
                   href={`/admin/agendas/${agenda.id}`}
                   lead={
-                    preselected.length > 0 ? (
+                    shown.length > 0 ? (
                       <span class="fam-avatars">
-                        {preselected.map((member) => (
+                        {shown.map((member) => (
                           <Avatar member={member} size="sm" />
                         ))}
                       </span>
@@ -894,35 +894,35 @@ export function AgendasPage(props: {
 function AgendaSettingsFields(props: { members: FamilyMemberSummary[]; agenda?: AgendaSummary; idSuffix: string }) {
   const id = (name: string) => `${name}-${props.idSuffix}`;
   const { t } = useTranslation();
-  const kind = props.agenda?.kind ?? "timeline";
+  const layout = props.agenda?.layout ?? "timeline";
   return (
     <>
       <fieldset>
-        <legend>{t.agendas.kind}</legend>
+        <legend>{t.agendas.layout}</legend>
         <div class="fam-choices">
-          {agendaKinds.map((value) => (
-            <label class="fam-choice fam-choice--kind">
-              <input type="radio" name="kind" value={value} checked={kind === value} />
+          {agendaLayouts.map((value) => (
+            <label class="fam-choice fam-choice--layout">
+              <input type="radio" name="layout" value={value} checked={layout === value} />
               <span class="fam-choice__text">
-                <span class="fam-choice__label">{t.agendas.kinds[value].label}</span>
-                <span class="fam-choice__hint">{t.agendas.kinds[value].hint}</span>
+                <span class="fam-choice__label">{t.agendas.layouts[value].label}</span>
+                <span class="fam-choice__hint">{t.agendas.layouts[value].hint}</span>
               </span>
             </label>
           ))}
         </div>
       </fieldset>
       <fieldset>
-        <legend>{t.agendas.preselected}</legend>
-        <small>{t.agendas.preselectedHint}</small>
+        <legend>{t.agendas.memberIds}</legend>
+        <small>{t.agendas.memberIdsHint}</small>
         {props.members.length === 0 ? <p>{t.agendas.noMembers}</p> : null}
         <div class="fam-choices fam-choices--members">
           {props.members.map((member) => (
             <label class="fam-pillswitch" title={member.name}>
               <input
                 type="checkbox"
-                name="preselected"
+                name="memberIds"
                 value={member.id}
-                checked={props.agenda?.preselected.includes(member.id) ?? false}
+                checked={props.agenda?.memberIds.includes(member.id) ?? false}
               />
               <Avatar member={member} size="sm" />
               <span class="fam-pillswitch__name">{member.name}</span>
@@ -1348,7 +1348,6 @@ function editableOf(form: SourceForm | undefined, suggestedSeconds: number | nul
   return form !== undefined && (form.fields.length > 0 || suggestedSeconds !== null);
 }
 
-/** Whom its Items concern is then set Part by Part, with the fields. */
 /** The catalogue entry it uses, such as its Messenger, which cannot change. */
 function entryOf(form: SourceForm | undefined, source: SourceSummary) {
   const entryKey = form?.catalogue?.configKey;
@@ -2716,7 +2715,7 @@ export function MessagePage(props: { admin: SignedInAdmin; message: MessageDetai
           </>
         ) : null}
       </dl>
-      <pre class="fam-message">{message.text}</pre>
+      {message.purgedAt !== null ? <p>{m.purged}</p> : <pre class="fam-message">{message.text}</pre>}
       {message.attachments.length > 0 ? (
         <>
           <h2>{m.attachments}</h2>

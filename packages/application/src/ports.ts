@@ -70,14 +70,22 @@ export interface FamilyMemberRepository {
   findById(id: FamilyMemberId): Promise<FamilyMember | null>;
   /** Stores a changed Family Member that was found before. */
   update(member: FamilyMember): Promise<void>;
-  remove(id: FamilyMemberId): Promise<void>;
+  /**
+   * Removes the Family Member, and with them the Agendas they were the only member of, and their
+   * share of the Source Attributes assigned to others too. The schema refuses while a Source
+   * Attribute is assigned to them alone; the result then names those, in the order of their Sources.
+   */
+  remove(id: FamilyMemberId): Promise<{ removed: true } | { removed: false; blocking: SoleAssignment[] }>;
 }
+
+/** A Source Attribute assigned to one Family Member alone. */
+export type SoleAssignment = { sourceId: SourceId; attribute: string };
 
 export interface AgendaRepository {
   add(agenda: Agenda): Promise<void>;
   /**
-   * In the order they were created, each with its preselected Family Members in the order
-   * those were added; Family Members removed since are no longer preselected.
+   * In the order they were created, each with its Family Members in the order
+   * those were added; Family Members removed since are no longer among them.
    */
   list(): Promise<Agenda[]>;
   findById(id: AgendaId): Promise<Agenda | null>;
@@ -225,7 +233,7 @@ export type StatedJson = Record<string, unknown>;
 export type IngestedAttachment = { filename: string; contentType: string; bytes: Uint8Array };
 
 /** A message to extract Items from, as a plugin emits it. */
-export type IngestedMessage = { text: string; attachments: IngestedAttachment[]; thread: string | null };
+export type IngestedMessage = { text: string; attachments: IngestedAttachment[] };
 
 /**
  * An Origin as a plugin emits it: an entry stating its one Item, or a raw message whose Items
@@ -376,7 +384,7 @@ export type Source = {
   /** Its failed runs since the last successful one; null if the last run succeeded. */
   failure: SourceFailure | null;
   /** When its last Origin not seen before came; null before the first. */
-  lastNewOriginAt: Date | null;
+  lastNewRecordAt: Date | null;
   /** The external ids of its Source Records whose stated Item was invalid, so that none was written. */
   invalidRecords: string[];
   /** The Source Attribute ids that Source Records named without their being declared, or after they were archived. */
@@ -460,7 +468,6 @@ export type StoredMessage = {
   subject: string | null;
   body: string;
   attachments: (StoredFile & { filename: string; contentType: string })[];
-  thread: string | null;
 };
 
 /** One successful run of a Source, to record at once. */
@@ -469,6 +476,8 @@ export type SourceRun = {
   at: Date;
   /** Where the plugin resumes on its next run, stored only together with the run's Origins. */
   syncCursor: string | null;
+  /** Messages received before this are ignored, whatever the Source delivers: they are past retention. */
+  retainedSince: Date;
   /** External ids of Origins the Source deleted, whose Items are deleted and whose messages go. */
   withdrawn: string[];
   origins: {
@@ -520,7 +529,10 @@ export type RawMessage = {
   subject: string | null;
   /** The names of its Source Attributes. */
   attributes: string[];
+  /** Empty once purged. */
   body: string;
+  /** When its content was deleted after the retention period or because nothing needed it; null while it is kept. */
+  purgedAt: Date | null;
   attachments: {
     position: number;
     filename: string;
@@ -584,6 +596,13 @@ export interface ItemRepository {
    * Source Attributes moves to it without being read again; one with an empty list is withdrawn.
    */
   recordRun(run: SourceRun, read: ReadStated): Promise<RunRecorded>;
+  /**
+   * Deletes the text and attachments of messages nothing needs any more, or that arrived before
+   * `retainedSince`, leaving a tombstone, and deletes the rows of those older than that without
+   * an Item. A message not extracted yet is kept until it is older than `retainedSince`. Returns
+   * the files of the removed attachments, for the caller to remove.
+   */
+  purgeMessages(now: Date, retainedSince: Date): Promise<{ files: BlobRef[]; purged: number; deleted: number }>;
   /** Raw messages not yet extracted successfully, oldest first. */
   pendingMessages(limit: number): Promise<PendingMessage[]>;
   /** How many raw messages, of one Source or of all, wait for extraction. */

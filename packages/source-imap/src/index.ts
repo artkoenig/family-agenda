@@ -119,7 +119,7 @@ export function createImapPlugin(options: ImapPluginOptions = {}): SourcePlugin 
       migrations: {
         // The single folder became a list of folders.
         1: ({ folder, ...rest }) => (typeof folder === "string" && folder !== "" ? { ...rest, folders: [folder] } : rest),
-        // The folders are typed as a list in one field, as Parts no longer exist.
+        // The folders are typed as a list in one field, as Source Attributes replace the per-Source folder choice.
         2: ({ folders, ...rest }) =>
           Array.isArray(folders) && folders.length > 0 ? { ...rest, folders: folders.filter((name) => typeof name === "string").join(", ") } : rest,
         // The folders are chosen among those the server has, so they are a list again.
@@ -453,7 +453,6 @@ function highestUid(client: ImapFlow): number {
 async function originOf(mail: FetchMessageObject, uidValidity: string, now: Date): Promise<Origin> {
   const parsed = await simpleParser(mail.source ?? Buffer.alloc(0));
   const sender = senderOf(parsed);
-  const thread = threadOf(parsed);
   return {
     externalId: parsed.messageId?.trim() || `uid:${uidValidity}:${mail.uid}`,
     occurredAt: receivedAt(mail, parsed, now),
@@ -463,7 +462,6 @@ async function originOf(mail: FetchMessageObject, uidValidity: string, now: Date
       kind: "raw-message",
       text: textOf(parsed),
       attachments: attachmentsOf(parsed),
-      ...(thread ? { thread } : {}),
     },
   };
 }
@@ -492,18 +490,6 @@ function attachmentsOf(parsed: ParsedMail): Attachment[] {
 }
 
 /** The first mail of the conversation, by `References` or `In-Reply-To`, or the mail itself. */
-function threadOf(parsed: ParsedMail): string | undefined {
-  const references = typeof parsed.references === "string" ? [parsed.references] : (parsed.references ?? []);
-  return firstOf(references[0]?.trim(), parsed.inReplyTo?.trim(), parsed.messageId?.trim());
-}
-
-function firstOf(...values: (string | undefined)[]): string | undefined {
-  for (const value of values) {
-    if (value) return value;
-  }
-  return undefined;
-}
-
 function senderOf(parsed: ParsedMail): string | null {
   const from: AddressObject | undefined = Array.isArray(parsed.from) ? (parsed.from as AddressObject[])[0] : parsed.from;
   return from?.value[0]?.address?.toLowerCase() ?? null;

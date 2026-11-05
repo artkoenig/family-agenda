@@ -13,6 +13,7 @@ export * from "./poll-interval";
 export * from "./polling";
 export * from "./ports";
 export * from "./recovery-kit";
+export * from "./retention";
 export * from "./secret-sweep";
 export * from "./single-sign-on";
 export * from "./services";

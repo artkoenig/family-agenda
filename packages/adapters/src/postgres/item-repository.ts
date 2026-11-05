@@ -14,7 +14,7 @@ import type {
   StoredMessage,
 } from "@family-agenda/application";
 import type { BlobRef, Event, FamilyMemberId, ItemId, StatedTask, LocalDate, RawMessageId, SourceId, SourceTypeId, TimeSpan, TimetableChangeKind } from "@family-agenda/domain";
-import { and, asc, eq, gte, inArray, isNotNull, isNull, lte, sql, type SQL, type SQLWrapper } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, isNotNull, isNull, lt, lte, or, sql, type SQL, type SQLWrapper } from "drizzle-orm";
 import { uuidPattern } from "../uuid";
 import type { Database } from "./database";
 import { cursorToJson, failureColumns } from "./repositories";
@@ -45,6 +45,28 @@ type KnownAttributes = Map<string, { id: string; archived: boolean }>;
 
 /** A message, with its text, waiting for its one successful extraction. */
 const pendingMessage = and(isNull(sourceRecords.processedAt), isNotNull(sourceRecords.body), isNull(sourceRecords.withdrawnAt));
+
+/**
+ * Whether a message's Source Record has an Item that still needs its content at `now`: an Event or
+ * Lesson that has not ended, or a Task not done whose Deadline has not passed (one without a
+ * Deadline until it is done). Days are read as widely as for `windowTo`.
+ */
+const neededAt = (instant: Date) => {
+  const now = sql`${instant.toISOString()}::timestamptz`;
+  return sql`EXISTS (
+  SELECT 1 FROM item
+  LEFT JOIN event ON event.item_id = item.id
+  LEFT JOIN lesson ON lesson.item_id = item.id
+  LEFT JOIN task ON task.item_id = item.id
+  WHERE item.record_id = ${sourceRecords.id}
+    AND coalesce(
+      event.ends_at >= ${now},
+      (((event.last_day + 1)::timestamp AT TIME ZONE 'UTC' + interval '1 day') >= ${now}),
+      lesson.ends_at >= ${now},
+      task.status = 'open' AND (task.deadline IS NULL OR (((task.deadline + 1)::timestamp AT TIME ZONE 'UTC' + interval '1 day') >= ${now}))
+    )
+)`;
+};
 
 /** Instants certainly before and after a day, whatever the Family's time zone. */
 const dayFrom = (day: SQLWrapper) => sql`((${day})::timestamp AT TIME ZONE 'UTC' - interval '1 day')`;
@@ -105,10 +127,14 @@ export class PostgresItemRepository implements ItemRepository {
         const attributeIds = resolved(known, origin.attributes, refused);
         if (attributeIds === null) continue;
         if (origin.stated) await recordStated(tx, run, origin, origin.stated, attributeIds, read, outcome);
-        else if (origin.message && (await recordMessage(tx, run, origin, origin.message, attributeIds))) knownMessages.push(origin.externalId);
+        else if (origin.message) {
+          // A message past retention is ignored, so the caller removes the attachments it stored for it, as for a known one.
+          const ignored = origin.occurredAt !== null && origin.occurredAt < run.retainedSince;
+          if (ignored || (await recordMessage(tx, run, origin, origin.message, attributeIds))) knownMessages.push(origin.externalId);
+        }
       }
       const withdrawnFiles = await this.withdraw(tx, run, withdrawn);
-      const lastNewOrigin = tx
+      const lastNewRecord = tx
         .select({ at: sql`max(${sourceRecords.createdAt})` })
         .from(sourceRecords)
         .where(eq(sourceRecords.sourceId, run.sourceId));
@@ -119,7 +145,7 @@ export class PostgresItemRepository implements ItemRepository {
           lastRunAt: run.at,
           lastSuccessAt: run.at,
           ...failureColumns(null),
-          lastNewOriginAt: sql`(${lastNewOrigin})`,
+          lastNewRecordAt: sql`(${lastNewRecord})`,
           ...(await invalidColumns(tx, run, outcome, withdrawn)),
           ...(await unknownColumns(tx, run, [...refused])),
         })
@@ -136,7 +162,7 @@ export class PostgresItemRepository implements ItemRepository {
     if (externalIds.length === 0) return [];
     const withdrawn = await tx
       .update(sourceRecords)
-      .set({ withdrawnAt: run.at, sender: null, subject: null, body: null })
+      .set({ withdrawnAt: run.at, purgedAt: sql`(CASE WHEN ${sourceRecords.stated} IS NULL THEN ${run.at.toISOString()}::timestamptz END)`, sender: null, subject: null, body: null })
       .where(
         and(eq(sourceRecords.sourceId, run.sourceId), inArray(sourceRecords.externalId, externalIds), isNull(sourceRecords.withdrawnAt)),
       )
@@ -147,6 +173,33 @@ export class PostgresItemRepository implements ItemRepository {
       .where(inArray(sourceRecordAttachments.recordId, withdrawn.map((row) => row.id)))
       .returning({ blob: sourceRecordAttachments.blob });
     return attachments.map((row) => row.blob as BlobRef);
+  }
+
+  async purgeMessages(now: Date, retainedSince: Date): Promise<{ files: BlobRef[]; purged: number; deleted: number }> {
+    return this.db.transaction(async (tx) => {
+      const message = and(isNull(sourceRecords.stated), isNull(sourceRecords.purgedAt));
+      // Past retention, or read and with no Item that still needs it. A message not read yet may still be retried.
+      const unneeded = and(isNotNull(sourceRecords.processedAt), sql`NOT ${neededAt(now)}`);
+      const purged = await tx
+        .update(sourceRecords)
+        .set({ purgedAt: now, sender: null, subject: null, body: null })
+        .where(and(message, or(lt(sourceRecords.occurredAt, retainedSince), unneeded)))
+        .returning({ id: sourceRecords.id });
+      const files =
+        purged.length === 0
+          ? []
+          : await tx
+              .delete(sourceRecordAttachments)
+              .where(inArray(sourceRecordAttachments.recordId, purged.map((row) => row.id)))
+              .returning({ blob: sourceRecordAttachments.blob });
+      const deleted = await tx
+        .delete(sourceRecords)
+        .where(
+          and(isNull(sourceRecords.stated), lt(sourceRecords.occurredAt, retainedSince), sql`NOT EXISTS (SELECT 1 FROM item WHERE item.record_id = ${sourceRecords.id})`),
+        )
+        .returning({ id: sourceRecords.id });
+      return { files: files.map((row) => row.blob as BlobRef), purged: purged.length, deleted: deleted.length };
+    });
   }
 
   async pendingMessages(limit: number): Promise<PendingMessage[]> {
@@ -208,8 +261,8 @@ export class PostgresItemRepository implements ItemRepository {
   async findMessage(id: RawMessageId): Promise<RawMessage | null> {
     if (!uuidPattern.test(id)) return null;
     const [row] = await this.db.select().from(sourceRecords).where(eq(sourceRecords.id, id));
-    // A record without a body is no message, or one withdrawn.
-    if (!row || row.body === null) return null;
+    // A record that is no message, or was withdrawn, has nothing to show; a purged one is a tombstone.
+    if (!row || row.stated !== null || row.withdrawnAt !== null) return null;
     const attachments = await this.db
       .select()
       .from(sourceRecordAttachments)
@@ -228,7 +281,8 @@ export class PostgresItemRepository implements ItemRepository {
       sender: row.sender,
       subject: row.subject,
       attributes: attributes.map((attribute) => attribute.name),
-      body: row.body,
+      body: row.body ?? "",
+      purgedAt: row.purgedAt,
       attachments: attachments.map(({ position, filename, mediaType, size, blob, conversionProblem }) => ({
         position,
         filename,
@@ -348,7 +402,6 @@ async function recordMessage(tx: Transaction, run: SourceRun, origin: RunOrigin,
       body: message.body,
       createdAt: run.at,
       link: origin.link,
-      thread: message.thread,
     })
     .onConflictDoUpdate({
       target: [sourceRecords.sourceId, sourceRecords.externalId],

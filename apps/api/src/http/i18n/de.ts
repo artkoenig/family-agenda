@@ -44,7 +44,7 @@ export const de: Catalogue = {
     "invalid-photo": `Das Foto muss eines dieser Formate haben: ${photoFormats}.`,
     "photo-too-large": `Das Foto darf höchstens ${maximumPhotoBytes / 1024 / 1024} MB groß sein.`,
     "unknown-member": "Dieses Familienmitglied gibt es nicht.",
-    "unknown-kind": "Wähle, was die Agenda zeigt: eine Zeitleiste oder eine Aufgabenliste.",
+    "unknown-layout": "Wähle, was die Agenda zeigt: eine Zeitleiste oder eine Aufgabenliste.",
     "invalid-horizon": `Der Zeitraum muss zwischen ${horizonDaysRange.min} und ${horizonDaysRange.max} Tagen liegen.`,
     "unknown-agenda": "Diese Agenda gibt es nicht.",
     "unknown-source-type": "Dieser Quellentyp ist nicht installiert.",
@@ -222,6 +222,8 @@ export const de: Catalogue = {
     replacePhoto: "Foto ersetzen",
     removePhoto: "Foto entfernen",
     remove: (name) => `${name} entfernen`,
+    soleAssignee: (name, blocking) =>
+      `${name} ist als Einzige oder Einziger zugewiesen: ${blocking}. Weise zuerst jemand anderen zu, oder niemanden für die ganze Familie.`,
   },
 
   agendas: {
@@ -241,13 +243,13 @@ export const de: Catalogue = {
     feed: "Kalender-Feed",
     copy: "Kopieren",
     copied: "Kopiert",
-    kind: "Zeigt",
-    kinds: {
+    layout: "Zeigt",
+    layouts: {
       timeline: { label: "Zeitleiste", hint: "Termine, Schultage und Aufgaben Tag für Tag" },
-      tasks: { label: "Aufgabenliste", hint: "Nur Aufgaben: zu erledigen, demnächst, erledigt" },
+      task_list: { label: "Aufgabenliste", hint: "Nur Aufgaben: zu erledigen, demnächst, erledigt" },
     },
-    preselected: "Vorausgewählte Familienmitglieder",
-    preselectedHint: "Die Agenda zeigt nur sie, und ihr Schnellfilter bietet nur sie an; ohne Auswahl alle.",
+    memberIds: "Familienmitglieder",
+    memberIdsHint: "Die Agenda zeigt nur sie, und ihr Schnellfilter bietet nur sie an; ohne Auswahl alle.",
     noMembers: "Noch keine Familienmitglieder.",
     horizon: "Zeitraum in Tagen",
     horizonHint: `Wie viele Tage sie auf einmal zeigt, heute eingeschlossen: ${horizonDaysRange.min} bis ${horizonDaysRange.max}.`,
@@ -399,6 +401,7 @@ export const de: Catalogue = {
     title: "Nachricht",
     description: "Das Original, aus dem seine Einträge gelesen wurden. Nur Admins öffnen es.",
     sent: "Gesendet",
+    purged: "Der Inhalt dieser Nachricht wird nicht mehr aufbewahrt.",
     sender: "Von",
     subject: "Betreff",
     attributes: "Betrifft",

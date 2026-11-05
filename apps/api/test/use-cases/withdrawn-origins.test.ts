@@ -10,11 +10,11 @@ import { openTimeline } from "../support/timeline";
 
 const minutes = 60 * 1000;
 
-const message = (id: string, text: string, thread?: string): Origin => ({
+const message = (id: string, text: string): Origin => ({
   externalId: id,
   occurredAt: new Date("2026-09-14T06:12:00Z"),
   sender: "Frau Berger", attributes: ["main"],
-  content: { kind: "raw-message", text, attachments: [], ...(thread ? { thread } : {}) },
+  content: { kind: "raw-message", text, attachments: [] },
 });
 
 const trip = "Am Freitag, 18.09., ist der Wandertag der 5b.";
@@ -37,7 +37,7 @@ describe("Origins a Source withdraws, such as deleted chat messages", () => {
     const added = await instance.app.sources.add({ sourceTypeId: "chat", plain: { url: "chat.example.org" }, secrets: {} });
     if (!added.ok) throw new Error(`adding failed: ${added.problem}`);
     await instance.app.llmEndpoint.save({ baseUrl: "http://ollama:11434/v1", model: "qwen3.5:9b", apiKey: "" });
-    const created = await instance.app.agendas.create({ preselected: [], horizonDays: 7 });
+    const created = await instance.app.agendas.create({ memberIds: [], horizonDays: 7 });
     if (!created.ok) throw new Error(`creating failed: ${created.problem}`);
     agenda = created.id;
   });

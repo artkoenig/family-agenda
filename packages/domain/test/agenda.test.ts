@@ -1,26 +1,26 @@
 import { describe, it, expect } from "vitest";
-import { isAgendaKind, isAcceptableHorizon, isAcceptableTimelineRange } from "../src/agenda";
+import { isAgendaLayout, isAcceptableHorizon, isAcceptableTimelineRange } from "../src/agenda";
 import type { LocalDate } from "../src/calendar";
 
-describe("isAgendaKind", () => {
+describe("isAgendaLayout", () => {
   it("accepts 'timeline'", () => {
-    expect(isAgendaKind("timeline")).toBe(true);
+    expect(isAgendaLayout("timeline")).toBe(true);
   });
 
-  it("accepts 'tasks'", () => {
-    expect(isAgendaKind("tasks")).toBe(true);
+  it("accepts 'task_list'", () => {
+    expect(isAgendaLayout("task_list")).toBe(true);
   });
 
   it("rejects other strings", () => {
-    expect(isAgendaKind("calendar")).toBe(false);
+    expect(isAgendaLayout("calendar")).toBe(false);
   });
 
   it("rejects empty string", () => {
-    expect(isAgendaKind("")).toBe(false);
+    expect(isAgendaLayout("")).toBe(false);
   });
 
   it("rejects case variants", () => {
-    expect(isAgendaKind("Timeline")).toBe(false);
+    expect(isAgendaLayout("Timeline")).toBe(false);
   });
 });
 
