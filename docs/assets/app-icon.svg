@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" fill="#bb4f29"/>
+  <rect x="122.9" y="138.2" width="266.2" height="245.8" rx="25.6" fill="#faf6f0"/>
+  <clipPath id="card"><rect x="122.9" y="138.2" width="266.2" height="245.8" rx="25.6"/></clipPath>
+  <rect x="122.9" y="138.2" width="266.2" height="61.4" fill="#2b221b" clip-path="url(#card)"/>
+  <rect x="174.1" y="107.5" width="25.6" height="51.2" rx="12.8" fill="#2b221b"/>
+  <rect x="312.3" y="107.5" width="25.6" height="51.2" rx="12.8" fill="#2b221b"/>
+  <circle cx="184.3" cy="256" r="20.5" fill="#bb4f29"/>
+  <circle cx="256" cy="256" r="20.5" fill="#6f8f63"/>
+  <circle cx="327.7" cy="256" r="20.5" fill="#7b4d85"/>
+  <circle cx="184.3" cy="327.7" r="20.5" fill="#2c6b74"/>
+  <circle cx="256" cy="327.7" r="20.5" fill="#a8720f"/>
+  <circle cx="327.7" cy="327.7" r="20.5" fill="#4c5c91"/>
+</svg>
