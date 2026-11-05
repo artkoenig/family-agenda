@@ -17,7 +17,9 @@ import {
   PostgresFamilyMemberRepository,
   PostgresFamilyRepository,
   PostgresItemRepository,
+  PostgresIdentityProviderRepository,
   PostgresLlmEndpointRepository,
+  OidcIdentityProviderClient,
   PostgresSignInFailureLog,
   PostgresSourceRepository,
   PostgresSourceTypeRepository,
@@ -38,6 +40,7 @@ import {
   createFamilyMemberAccess,
   createLanguageAccess,
   createLlmEndpointAccess,
+  createSingleSignOn,
   createMessageAccess,
   createRecoveryKitAccess,
   createRetention,
@@ -59,7 +62,9 @@ import {
   type Clock,
   type LanguageAccess,
   type JobQueue,
+  type IdentityProviderClient,
   type LlmEndpointAccess,
+  type SingleSignOn,
   type MessageAccess,
   type RecoveryKitAccess,
   type SecretStore,
@@ -110,6 +115,8 @@ export type ApplicationConfig = DatabaseConfig & {
   extractor?: Extractor;
   /** Replaces the poppler and Tesseract command-line tools, such as with a fake. */
   textExtractor?: TextExtractor;
+  /** Replaces the OIDC client that talks to the Identity Provider, such as with a scripted one. */
+  identityProviderClient?: IdentityProviderClient;
 };
 
 export type Application = {
@@ -138,6 +145,8 @@ export type Application = {
   /** Starts and stops the programs of Source Types, such as a homeserver; only the worker does. */
   services: ServiceSupervision;
   llmEndpoint: LlmEndpointAccess;
+  /** Signing in through the Identity Provider, alongside the password. */
+  singleSignOn: SingleSignOn;
   /** Extracts Items from the raw messages that wait for it; the worker does on each tick. */
   extraction: ExtractionAccess;
   messages: MessageAccess;
@@ -282,9 +291,28 @@ export async function bootApplication(config: ApplicationConfig): Promise<Applic
   });
   const services = createServiceSupervision({ registry, sourceTypes: sourceTypeRepository, catalogues: catalogueRepository });
   const endpoints = new PostgresLlmEndpointRepository(postgres.db);
-  const llmEndpoint = createLlmEndpointAccess({ clock, endpoints, secrets, extractor });
+  const llmEndpoint = createLlmEndpointAccess({
+    clock,
+    endpoints,
+    secrets,
+    extractor,
+  });
+  const identityProvider = new PostgresIdentityProviderRepository(postgres.db);
+  const singleSignOn = createSingleSignOn({
+    clock,
+    provider: identityProvider,
+    secrets,
+    client: config.identityProviderClient ?? new OidcIdentityProviderClient(),
+    admins,
+  });
   const retention = createRetention({ clock, items, blobs });
-  const secretSweep = createSecretSweep({ clock, secrets, sources: sourceRepository, endpoints });
+  const secretSweep = createSecretSweep({
+    clock,
+    secrets,
+    sources: sourceRepository,
+    endpoints,
+    identityProvider,
+  });
   const extraction = createExtraction({
     clock,
     timeZone,
@@ -321,6 +349,7 @@ export async function bootApplication(config: ApplicationConfig): Promise<Applic
     polling,
     services,
     llmEndpoint,
+    singleSignOn,
     extraction,
     messages,
     close: () => postgres.close(),

@@ -61,14 +61,35 @@ export const de: Catalogue = {
     "unknown-ocr-language": "Diese OCR-Sprache gibt es nicht, oder sie steht nicht in der Liste.",
     "unknown-attribute": "Diesen Teil der Quelle gibt es nicht.",
     "unknown-entry": "Diesen Eintrag gibt es im Katalog nicht.",
-    "not-installed": "Das ist auf der Instanz nicht installiert. Es braucht ein Image von Family Agenda, das es enthält.",
-    "entry-in-use": "Entferne die Quellen, die es nutzen, bevor du es deaktivierst.",
+    "not-installed":
+      "Das ist auf der Instanz nicht installiert. Es braucht ein Image von Family Agenda, das es enthält.",
+    "entry-in-use":
+      "Entferne die Quellen, die es nutzen, bevor du es deaktivierst.",
+    "invalid-issuer-url":
+      "Gib die Issuer-URL als http- oder https-Adresse an, etwa https://id.example.ts.net.",
+    "invalid-client-id": "Gib die Client-ID an.",
+    "invalid-required-group": "Gib den Namen der erforderlichen Gruppe an.",
+    "invalid-public-url":
+      "Gib die öffentliche Basis-URL als http- oder https-Adresse ohne Pfad an, etwa https://agenda.example.ts.net.",
+    "client-secret-missing": "Gib das Client-Secret an.",
+    "sso-failed":
+      "Die Anmeldung über den Identity Provider hat nicht geklappt. Versuche es noch einmal.",
+    "sso-not-in-group":
+      "Dein Konto beim Identity Provider gehört nicht zur Gruppe, die sich hier anmelden darf.",
+    "sso-email-unverified":
+      "Der Identity Provider hat keine E-Mail-Adresse für dein Konto bestätigt.",
+    "sso-conflict":
+      "Ein Admin mit dieser E-Mail-Adresse ist bereits mit einem anderen Konto beim Identity Provider verknüpft.",
     "invalid-interval": `Das Abrufintervall muss zwischen ${pollIntervalRange.minSeconds / 60} Minute und ${pollIntervalRange.maxSeconds / 86_400} Tagen liegen.`,
   },
   problemsWith: {
     invalidConfig: (fields) => `Prüfe ${fields}.`,
-    setupFailed: (message) => `Die Quelle konnte nicht eingerichtet werden: ${message}`,
-    downloadFailed: (message) => `Das Modell konnte nicht heruntergeladen werden. ${message}`,
+    setupFailed: (message) =>
+      `Die Quelle konnte nicht eingerichtet werden: ${message}`,
+    downloadFailed: (message) =>
+      `Das Modell konnte nicht heruntergeladen werden. ${message}`,
+    discoveryFailed: (message) =>
+      `Der Identity Provider war nicht erreichbar, daher wurde nichts gespeichert. ${message}`,
   },
 
   common: {
@@ -96,6 +117,30 @@ export const de: Catalogue = {
   signIn: {
     title: "Anmelden",
     submit: "Anmelden",
+    singleSignOn: "Mit Passkey anmelden",
+  },
+
+  sso: {
+    title: "Single Sign-on",
+    description:
+      "Admins können sich über einen OIDC-Identity-Provider anmelden, etwa Pocket ID mit Passkeys, zusätzlich zum Passwort. Beim Speichern wird geprüft, ob der Provider erreichbar ist.",
+    enabled: "Admins dürfen sich über den Identity Provider anmelden",
+    issuerUrl: "Issuer-URL",
+    issuerUrlHint:
+      "Die Adresse des Identity Providers; den Rest findet Family Agenda per Discovery.",
+    clientId: "Client-ID",
+    clientSecret: "Client-Secret",
+    requiredGroup: "Erforderliche Gruppe",
+    requiredGroupHint:
+      "Nur Mitglieder dieser Gruppe dürfen sich anmelden. Das wird bei jeder Anmeldung geprüft.",
+    publicBaseUrl: "Öffentliche Basis-URL",
+    publicBaseUrlHint:
+      "Die Adresse, unter der Admins Family Agenda für die Anmeldung über den Identity Provider erreichen. Die Schaltfläche erscheint nur dort.",
+    redirectUri: "Redirect-URI",
+    redirectUriHint:
+      "Trage diese Adresse beim Identity Provider als Redirect-URI des Clients ein.",
+    scopes: "Scopes",
+    off: "Aus",
   },
 
   settings: {
@@ -118,6 +163,7 @@ export const de: Catalogue = {
     notSetUp: "Nicht eingerichtet",
     admins: (count) => plural(count, { one: `${count} Admin`, other: `${count} Admins` }),
     saved: "Gespeichert",
+    on: "An",
     notSavedYet: "Noch nicht gespeichert",
   },
 

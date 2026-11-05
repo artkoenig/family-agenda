@@ -36,9 +36,9 @@ async function describeSchema(postgres: PGlite): Promise<string[]> {
 }
 
 describe("the initial migration", () => {
-  it("is the only migration, and applying it to an empty database yields the target schema", async () => {
-    const migrations = (await readdir(migrationsFolder)).filter((file) => file.endsWith(".sql"));
-    expect(migrations).toEqual(["0000_initial.sql"]);
+  it("starts the history, and applying the migrations to an empty database yields the target schema", async () => {
+    const migrations = (await readdir(migrationsFolder)).filter((file) => file.endsWith(".sql")).sort();
+    expect(migrations[0]).toBe("0000_initial.sql");
     const migrated = await emptyDatabase();
     await migrate(drizzle(migrated), { migrationsFolder });
     const target = await emptyDatabase();
