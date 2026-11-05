@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: proposed, partly superseded by ADR-0016
 ---
 
 # Source credentials are encrypted at rest, and raw messages live in files
