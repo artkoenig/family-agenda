@@ -81,12 +81,12 @@ describe("Attribution by Source Attribute", () => {
     if (!result.ok) throw new Error(`assigning failed: ${result.problem}`);
   };
 
-  it("lets the Items of a Source Attribute assigned to no one concern the whole Family, under every quick filter", async () => {
+  it("lets the Items of a Source Attribute assigned to no one concern the whole Family, shown only without a quick filter", async () => {
     await arrive({ calendar: [entry("Piano lesson")] });
 
     expect(await tuesday()).toEqual(["Piano lesson: Family"]);
-    expect(await tuesday([mia])).toEqual(["Piano lesson: Family"]);
-    expect(await tuesday([leo])).toEqual(["Piano lesson: Family"]);
+    expect(await tuesday([mia])).toEqual([]);
+    expect(await tuesday([leo])).toEqual([]);
   });
 
   it("attributes the Items that came before their Source Attribute was assigned", async () => {
@@ -96,8 +96,8 @@ describe("Attribution by Source Attribute", () => {
     await assign(calendar, "school", [leo]);
 
     expect(await tuesday()).toEqual(["Football: Family", "Holiday: Leo", "Piano lesson: Mia"]);
-    expect(await tuesday([mia]), "whole-Family Items show always").toEqual(["Football: Family", "Piano lesson: Mia"]);
-    expect(await tuesday([leo])).toEqual(["Football: Family", "Holiday: Leo"]);
+    expect(await tuesday([mia]), "whole-Family Items are not shown to chosen members").toEqual(["Piano lesson: Mia"]);
+    expect(await tuesday([leo])).toEqual(["Holiday: Leo"]);
   });
 
   it("attributes Items anew when a Source Attribute is assigned to others or to no one", async () => {
@@ -122,7 +122,7 @@ describe("Attribution by Source Attribute", () => {
     expect(await tuesday()).toEqual(["Class trip: Family"]);
   });
 
-  it("carries in an Agenda's feed the Items concerning its preselected Family Members, and whole-Family ones", async () => {
+  it("carries in an Agenda's feed the Items concerning its members, not the whole-Family ones", async () => {
     await arrive({ calendar: [entry("Piano lesson")], club: [entry("Football")] });
     await assign(calendar, "main", [mia]);
     const titles = async (preselected: FamilyMemberId[]) => {
@@ -132,13 +132,14 @@ describe("Attribution by Source Attribute", () => {
       return feed?.events.map((event) => event.title).sort();
     };
 
-    expect(await titles([mia])).toEqual(["Football", "Piano lesson"]);
-    expect(await titles([leo])).toEqual(["Football"]);
-    await assign(club, "main", [leo]);
     expect(await titles([mia])).toEqual(["Piano lesson"]);
+    expect(await titles([leo])).toEqual([]);
+    expect(await titles([])).toEqual(["Football", "Piano lesson"]);
+    await assign(club, "main", [leo]);
+    expect(await titles([leo])).toEqual(["Football"]);
   });
 
-  it("lists a Source with its Source Attributes and whom each concerns, and forgets removed Family Members", async () => {
+  it("lists a Source with its Source Attributes and whom each concerns, forgets removed Family Members, and keeps the one who is alone on a Source Attribute", async () => {
     await arrive({ calendar: [entry("Piano lesson", ["music", "school"])] });
     await assign(calendar, "music", [leo, mia]);
     const concerns = async () => (await attributesOf(calendar)).map(({ name, concerns }) => [name, concerns]);
@@ -147,9 +148,10 @@ describe("Attribution by Source Attribute", () => {
 
     await instance.app.familyMembers.remove(mia);
     expect(await concerns()).toEqual([["music", [leo]], ["school", []]]);
-    await instance.app.familyMembers.remove(leo);
-    expect(await concerns()).toEqual([["music", []], ["school", []]]);
-    expect(await tuesday(), "a Source Attribute left without anyone concerns the whole Family").toEqual(["Piano lesson: Family"]);
+    expect(await instance.app.familyMembers.remove(leo), "a Source Attribute never silently widens to the whole Family").toMatchObject({ ok: false, problem: "sole-assignee" });
+    expect(await concerns()).toEqual([["music", [leo]], ["school", []]]);
+    await assign(calendar, "music", []);
+    expect(await instance.app.familyMembers.remove(leo)).toEqual({ ok: true });
   });
 
   it("refuses to assign an unknown Source Attribute or Family Member", async () => {

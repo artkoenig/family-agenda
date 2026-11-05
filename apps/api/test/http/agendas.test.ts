@@ -1,7 +1,9 @@
 import type { FamilyMemberId, AgendaId } from "@family-agenda/domain";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { bootHttpForTest, sessionCookieOf, type HttpTestInstance } from "../support/http";
+import { assignSource } from "../support/assign";
 import { photos } from "../support/photos";
+import { writeTestPluginPackage } from "../support/test-source-plugin";
 
 const password = "correct horse battery";
 
@@ -223,6 +225,26 @@ describe("Agendas over HTTP", () => {
     const farAheadPage = await farAheadAgain.text();
     expect(farAheadPage).toContain('aria-labelledby="edit-agenda-title"');
     expect(farAheadPage).toContain("between 1 and 31 days");
+  });
+
+  it("tells an Admin which Source Attributes keep a Family Member from being removed", async () => {
+    const cookie = await signIn();
+    await writeTestPluginPackage(instance.workspacePackages, { sourceTypeId: "calendar" });
+    await instance.restart();
+    await instance.app.sourceTypes.enable("calendar");
+    const added = await instance.app.sources.add({ sourceTypeId: "calendar", plain: { url: "https://calendar.example.org" }, secrets: {} });
+    if (!added.ok) throw new Error(`adding failed: ${added.problem}`);
+    await instance.app.sources.rename(added.id, "School calendar");
+    await assignSource(instance, added.id, [mia]);
+
+    const refused = await instance.post(`/admin/family-members/${mia}/remove`, {}, { cookie });
+
+    expect(refused.status).toBe(400);
+    const page = await refused.text();
+    expect(page).toContain("Mia is the only one assigned to");
+    expect(page).toContain("School calendar: Main");
+    expect((await instance.app.familyMembers.list()).map((member) => member.name)).toEqual(["Mia", "Leo"]);
+    expect((await instance.post(`/admin/family-members/${leo}/remove`, {}, { cookie })).status).toBe(303);
   });
 
   it("keeps the Family Member and Agenda pages to signed-in Admins", async () => {

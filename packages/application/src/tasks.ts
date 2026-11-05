@@ -30,7 +30,7 @@ export function createTaskAccess(deps: TasksDeps) {
   return {
     /**
      * Ticks a Task done in an Agenda, or takes the tick back. Only a Task the Agenda shows can be:
-     * one that concerns someone it preselects, or the whole Family.
+     * one that concerns someone it is for; an Agenda for the whole Family shows every Task.
      */
     async tickFromAgenda(
       agendaId: AgendaId,

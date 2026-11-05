@@ -176,6 +176,8 @@ export const de: Catalogue = {
     replacePhoto: "Foto ersetzen",
     removePhoto: "Foto entfernen",
     remove: (name) => `${name} entfernen`,
+    soleAssignee: (name, blocking) =>
+      `${name} ist als Einzige oder Einziger zugewiesen: ${blocking}. Weise zuerst jemand anderen zu, oder niemanden für die ganze Familie.`,
   },
 
   agendas: {
