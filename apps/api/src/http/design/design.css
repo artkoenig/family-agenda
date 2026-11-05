@@ -698,7 +698,7 @@ html[data-theme-mode="dark"] .fam-theme__icon--dark { display: block; }
   }
   /* The activity line sits on the dividing line, so it is as wide as that. */
   .fam-agenda .fam-activity progress {
-    left: 50%; right: auto; width: min(var(--content-width-wall), 100% - 2 * var(--space-4)); transform: translateX(-50%);
+    left: 50%; right: auto; z-index: 1; width: min(var(--content-width-wall), 100% - 2 * var(--space-4)); transform: translateX(-50%);
   }
   .fam-agenda .fam-days { max-width: calc(var(--content-width-wall) + 2 * var(--space-4)); }
   /* The clock, the title in the middle and the Theme switch in one row; under them the hint, and the small filter. */
