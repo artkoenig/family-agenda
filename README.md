@@ -19,6 +19,10 @@ Open `http://localhost:8080`, create the first Admin, keep the Recovery Kit safe
 Upgrading from a version before the data model was rebuilt (ADR-0016)? Instances start over: see [RELEASE_NOTES.md](RELEASE_NOTES.md).
 
 
+## Configuration
+
+Container variables, the address the Family opens, HTTPS behind a proxy and single sign-on for Admins: see [docs/configuration.md](docs/configuration.md).
+
 ## Hardware
 
 - 64-bit host running Docker, always on: Raspberry Pi, NAS, mini PC or server. Linux needed for `family-agenda.local` (mDNS).
