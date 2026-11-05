@@ -40,7 +40,7 @@ describe("first Admin over HTTP", () => {
     ).toBe(404);
   });
 
-  it("asks for the Family Language, preselected from the browser's languages", async () => {
+  it("asks for the Family Language, memberIds from the browser's languages", async () => {
     const selected = async (acceptLanguage?: string) => {
       const page = await (await instance.get("/setup", acceptLanguage ? { headers: { "accept-language": acceptLanguage } } : {})).text();
       return /<option value="(\w+)" selected=""/.exec(page)?.[1];

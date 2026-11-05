@@ -832,13 +832,12 @@ async function originOf(
   const { content, body } = contentOf(event, relation);
   const { text, attachments } = await originContent(content, body, context);
   if (text === "" && attachments.length === 0) return null;
-  const thread = originThread(relation, eventId);
   return {
     externalId: eventId,
     occurredAt: new Date(event.origin_server_ts ?? Date.now()),
     attributes: attributesOf(context.state, roomId),
     ...describedBy(event, roomId, context.state),
-    content: { kind: "raw-message", text, attachments, ...(thread ? { thread } : {}) },
+    content: { kind: "raw-message", text, attachments },
   };
 }
 
@@ -891,15 +890,6 @@ async function originContent(
     attachments.push(...file.attachments);
   }
   return { text, attachments };
-}
-
-/** The thread a message belongs to: the event it edits or replies to, or itself. */
-function originThread(
-  relation: { rel_type?: string; event_id?: string; "m.in_reply_to"?: { event_id?: string } } | undefined,
-  eventId: string,
-): string | undefined {
-  if (relation?.rel_type === "m.replace" || relation?.rel_type === "m.thread") return relation.event_id;
-  return relation?.["m.in_reply_to"]?.event_id ?? eventId;
 }
 
 /** The message an edit changes; none for any other event. */

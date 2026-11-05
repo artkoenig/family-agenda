@@ -38,7 +38,7 @@ describe("the ICS feed of an Agenda", () => {
       secrets: {},
     });
     if (!added.ok) throw new Error(`adding failed: ${added.problem}`);
-    const created = await instance.app.agendas.create({ preselected: [], horizonDays: 3 });
+    const created = await instance.app.agendas.create({ memberIds: [], horizonDays: 3 });
     if (!created.ok) throw new Error(`creating failed: ${created.problem}`);
     agenda = created.id;
   });
@@ -157,7 +157,7 @@ describe("the ICS feed of an Agenda", () => {
   it("leaves Items concerning the whole Family out of a feed for chosen Family Members, and keeps them in a whole-Family feed", async () => {
     const mia = await instance.app.familyMembers.add({ name: "Mia" });
     if (!mia.ok) throw new Error("adding failed");
-    const forMia = await instance.app.agendas.create({ preselected: [mia.id], horizonDays: 3 });
+    const forMia = await instance.app.agendas.create({ memberIds: [mia.id], horizonDays: 3 });
     if (!forMia.ok) throw new Error("creating failed");
     await arrive(piano);
 

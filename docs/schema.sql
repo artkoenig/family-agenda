@@ -144,7 +144,7 @@ CREATE TABLE source (
   id                     UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   position               BIGINT NOT NULL GENERATED ALWAYS AS IDENTITY,
   source_type_id         TEXT NOT NULL REFERENCES source_type(id),
-  name                   TEXT NOT NULL,
+  name                   TEXT,                         -- as an Admin named it; NULL: the Admin area derives one
   config                 JSONB NOT NULL DEFAULT '{}',
   config_version         INT NOT NULL,
   secret_refs            JSONB NOT NULL DEFAULT '{}',  -- field name -> secret.id
@@ -261,6 +261,7 @@ CREATE TABLE source_record (
   subject       TEXT,
   body          TEXT,
   stated        JSONB,
+  link          TEXT,                      -- an http(s) address of the original, if there is one
   processed_at  TIMESTAMPTZ,
   withdrawn_at  TIMESTAMPTZ,
   purged_at     TIMESTAMPTZ,
@@ -280,8 +281,8 @@ CREATE TABLE source_record (
   CONSTRAINT source_record_purged_is_cleared
     CHECK (purged_at IS NULL OR (sender IS NULL AND subject IS NULL AND body IS NULL))
 );
--- Messages waiting for extraction.
-CREATE INDEX source_record_pending_idx ON source_record (occurred_at)
+-- Messages waiting for extraction, oldest first.
+CREATE INDEX source_record_pending_idx ON source_record (created_at)
   WHERE processed_at IS NULL AND stated IS NULL AND withdrawn_at IS NULL AND purged_at IS NULL;
 -- Retention runs over messages by age.
 CREATE INDEX source_record_message_occurred_at_idx ON source_record (occurred_at)
@@ -291,14 +292,17 @@ CREATE INDEX source_record_message_occurred_at_idx ON source_record (occurred_at
 CREATE TABLE source_record_attachment (
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   record_id   UUID NOT NULL REFERENCES source_record(id) ON DELETE CASCADE,
+  position    INT NOT NULL,                  -- its place among the message's attachments
   filename    TEXT NOT NULL,
   media_type  TEXT NOT NULL,
   blob        TEXT NOT NULL,                 -- BlobStore reference
   sha256      TEXT NOT NULL,
   size        INT NOT NULL,
-  CONSTRAINT source_record_attachment_size_not_negative CHECK (size >= 0)
+  conversion_problem  TEXT,                  -- why it could not be turned into text; NULL if it could, or was not read
+  CONSTRAINT source_record_attachment_position_not_negative CHECK (position >= 0),
+  CONSTRAINT source_record_attachment_size_not_negative CHECK (size >= 0),
+  CONSTRAINT source_record_attachment_position_unique UNIQUE (record_id, position)
 );
-CREATE INDEX source_record_attachment_record_id_idx ON source_record_attachment (record_id);
 
 -- The Source Attributes a Source Record carries (a mail under two allow-listed labels has two).
 -- Re-emitting a Source Record with another list replaces its rows without reading it again; who its

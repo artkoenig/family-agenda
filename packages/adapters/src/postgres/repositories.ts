@@ -40,7 +40,7 @@ import type {
   SourceTypeId,
   Agenda,
   AgendaId,
-  AgendaKind,
+  AgendaLayout,
 } from "@family-agenda/domain";
 import { defaultFamilyLanguage, isFamilyLanguage } from "@family-agenda/domain";
 import { and, asc, eq, gt, inArray, lt, lte, sql, type SQL } from "drizzle-orm";
@@ -308,7 +308,7 @@ export class PostgresAgendaRepository implements AgendaRepository {
   async add(agenda: Agenda): Promise<void> {
     await this.db.transaction(async (tx) => {
       await tx.insert(agendas).values(agenda);
-      await insertPreselections(tx, agenda);
+      await insertMembers(tx, agenda);
     });
   }
 
@@ -324,9 +324,9 @@ export class PostgresAgendaRepository implements AgendaRepository {
 
   async update(agenda: Agenda): Promise<void> {
     await this.db.transaction(async (tx) => {
-      await tx.update(agendas).set({ kind: agenda.kind, horizonDays: agenda.horizonDays }).where(eq(agendas.id, agenda.id));
+      await tx.update(agendas).set({ layout: agenda.layout, horizonDays: agenda.horizonDays }).where(eq(agendas.id, agenda.id));
       await tx.delete(agendaMembers).where(eq(agendaMembers.agendaId, agenda.id));
-      await insertPreselections(tx, agenda);
+      await insertMembers(tx, agenda);
     });
   }
 
@@ -347,23 +347,23 @@ export class PostgresAgendaRepository implements AgendaRepository {
     for (const { agenda, familyMemberId } of rows) {
       const found = byId.get(agenda.id) ?? {
         id: agenda.id as AgendaId,
-        kind: agenda.kind as AgendaKind,
-        preselected: [],
+        layout: agenda.layout as AgendaLayout,
+        memberIds: [],
         horizonDays: agenda.horizonDays,
         createdAt: agenda.createdAt,
       };
-      if (familyMemberId) found.preselected.push(familyMemberId as FamilyMemberId);
+      if (familyMemberId) found.memberIds.push(familyMemberId as FamilyMemberId);
       byId.set(agenda.id, found);
     }
     return [...byId.values()];
   }
 }
 
-async function insertPreselections(tx: Pick<Database, "insert">, agenda: Agenda): Promise<void> {
-  if (agenda.preselected.length === 0) return;
+async function insertMembers(tx: Pick<Database, "insert">, agenda: Agenda): Promise<void> {
+  if (agenda.memberIds.length === 0) return;
   await tx
     .insert(agendaMembers)
-    .values(agenda.preselected.map((familyMemberId) => ({ agendaId: agenda.id, familyMemberId })));
+    .values(agenda.memberIds.map((familyMemberId) => ({ agendaId: agenda.id, familyMemberId })));
 }
 
 export class PostgresSourceTypeRepository implements SourceTypeRepository {
@@ -464,7 +464,7 @@ export class PostgresSourceRepository implements SourceRepository {
         lastRunAt: source.lastRunAt,
         lastSuccessAt: source.lastSuccessAt,
         ...failureColumns(source.failure),
-        lastNewOriginAt: source.lastNewOriginAt,
+        lastNewRecordAt: source.lastNewRecordAt,
       });
     });
   }
@@ -611,7 +611,7 @@ export class PostgresSourceRepository implements SourceRepository {
         run.failingSince && run.lastError !== null
           ? { kind: run.lastErrorKind === "definite" ? "definite" : "temporary", message: run.lastError, since: run.failingSince }
           : null,
-      lastNewOriginAt: run.lastNewOriginAt,
+      lastNewRecordAt: run.lastNewRecordAt,
       invalidRecords: run.invalidRecords,
       unknownAttributes: run.unknownAttributes,
       createdAt: source.createdAt,

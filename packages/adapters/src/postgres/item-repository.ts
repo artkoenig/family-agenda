@@ -134,7 +134,7 @@ export class PostgresItemRepository implements ItemRepository {
         }
       }
       const withdrawnFiles = await this.withdraw(tx, run, withdrawn);
-      const lastNewOrigin = tx
+      const lastNewRecord = tx
         .select({ at: sql`max(${sourceRecords.createdAt})` })
         .from(sourceRecords)
         .where(eq(sourceRecords.sourceId, run.sourceId));
@@ -145,7 +145,7 @@ export class PostgresItemRepository implements ItemRepository {
           lastRunAt: run.at,
           lastSuccessAt: run.at,
           ...failureColumns(null),
-          lastNewOriginAt: sql`(${lastNewOrigin})`,
+          lastNewRecordAt: sql`(${lastNewRecord})`,
           ...(await invalidColumns(tx, run, outcome, withdrawn)),
           ...(await unknownColumns(tx, run, [...refused])),
         })
@@ -402,7 +402,6 @@ async function recordMessage(tx: Transaction, run: SourceRun, origin: RunOrigin,
       body: message.body,
       createdAt: run.at,
       link: origin.link,
-      thread: message.thread,
     })
     .onConflictDoUpdate({
       target: [sourceRecords.sourceId, sourceRecords.externalId],

@@ -1,5 +1,5 @@
 import type { ActivityKind } from "@family-agenda/application";
-import { statedItemKinds, familyLanguages, horizonDaysRange, itemKinds, photoTypes, agendaKinds, timetableChangeKinds, type RunError } from "@family-agenda/domain";
+import { statedItemKinds, familyLanguages, horizonDaysRange, itemKinds, photoTypes, agendaLayouts, timetableChangeKinds, type RunError } from "@family-agenda/domain";
 import { sql, type SQL } from "drizzle-orm";
 import {
   bigint,
@@ -131,12 +131,12 @@ export const agendas = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     position: bigint("position", { mode: "number" }).notNull().generatedAlwaysAsIdentity(),
-    kind: text("kind").notNull().default("timeline"),
+    layout: text("layout").notNull().default("timeline"),
     horizonDays: integer("horizon_days").notNull(),
     createdAt: timestamptz("created_at").notNull().defaultNow(),
   },
   (table) => [
-    oneOf("agenda_kind_known", table.kind, agendaKinds),
+    oneOf("agenda_layout_known", table.layout, agendaLayouts),
     check(
       "agenda_horizon_days_in_range",
       sql`${table.horizonDays} BETWEEN ${sql.raw(String(horizonDaysRange.min))} AND ${sql.raw(String(horizonDaysRange.max))}`,
@@ -256,7 +256,7 @@ export const sourceRuns = pgTable(
     /** The message of the last error; null with `failingSince`. */
     lastError: text("last_error"),
     /** When its last Origin not seen before was recorded, for the Silent status. */
-    lastNewOriginAt: timestamptz("last_new_origin_at"),
+    lastNewRecordAt: timestamptz("last_new_record_at"),
     /**
      * A warning beside the Source Status: the external ids of Source Records whose stated Item
      * failed a check, so that no Item was written. An id leaves when its Source Record writes its
@@ -367,15 +367,12 @@ export const sourceRecords = pgTable(
     createdAt: timestamptz("created_at").notNull().defaultNow(),
     /** Where the Family can look at the original, if anywhere. */
     link: text("link"),
-    /** The conversation within the Source a message belongs to, such as a mail thread, which extraction reads it in. */
-    thread: text("thread"),
   },
   (table) => [
     unique("source_record_external_id_unique").on(table.sourceId, table.externalId),
     index("source_record_pending_idx")
       .on(table.createdAt)
-      .where(sql`${table.processedAt} IS NULL AND ${table.body} IS NOT NULL AND ${table.withdrawnAt} IS NULL`),
-    index("source_record_thread_idx").on(table.sourceId, table.thread),
+      .where(sql`${table.processedAt} IS NULL AND ${table.stated} IS NULL AND ${table.withdrawnAt} IS NULL AND ${table.purgedAt} IS NULL`),
     check(
       "source_record_stated_kind_known",
       sql`${table.stated} IS NULL OR ${table.stated}->>'kind' IN (${sql.raw(statedItemKinds.map((kind) => `'${kind}'`).join(", "))})`,
@@ -383,7 +380,7 @@ export const sourceRecords = pgTable(
     // A stated Source Record carries nothing of a message; a message needs the time it came.
     check(
       "source_record_stated_is_no_message",
-      sql`${table.stated} IS NULL OR (${table.sender} IS NULL AND ${table.subject} IS NULL AND ${table.body} IS NULL AND ${table.occurredAt} IS NULL)`,
+      sql`${table.stated} IS NULL OR (${table.sender} IS NULL AND ${table.subject} IS NULL AND ${table.body} IS NULL AND ${table.purgedAt} IS NULL AND ${table.occurredAt} IS NULL)`,
     ),
     check("source_record_message_occurred", sql`${table.stated} IS NOT NULL OR ${table.occurredAt} IS NOT NULL`),
     // A message has its text exactly until it is purged.
@@ -392,7 +389,6 @@ export const sourceRecords = pgTable(
       "source_record_purged_is_cleared",
       sql`${table.purgedAt} IS NULL OR (${table.sender} IS NULL AND ${table.subject} IS NULL AND ${table.body} IS NULL)`,
     ),
-    check("source_record_stated_is_not_purged", sql`${table.stated} IS NULL OR ${table.purgedAt} IS NULL`),
     // Retention runs over messages by age.
     index("source_record_message_occurred_at_idx").on(table.occurredAt).where(sql`${table.stated} IS NULL`),
   ],

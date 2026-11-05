@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { PGlite } from "@electric-sql/pglite";
-import { migrationsFolder, postgresSchema, type PostgresConnection } from "@family-agenda/adapters";
+import { migrationsFolder, postgresSchema, refuseOldMigrationHistory, type PostgresConnection } from "@family-agenda/adapters";
 import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
 import { inject } from "vitest";
@@ -26,7 +26,10 @@ export async function acquirePostgres(): Promise<InProcessPostgres> {
       const db = drizzle(postgres, { schema: postgresSchema });
       return {
         db,
-        migrate: () => migrate(db, { migrationsFolder }),
+        migrate: async () => {
+          await refuseOldMigrationHistory(db, migrationsFolder);
+          await migrate(db, { migrationsFolder });
+        },
         close: () => Promise.resolve(),
       };
     },

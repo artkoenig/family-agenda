@@ -92,7 +92,7 @@ describe("the LLM endpoint and mail over HTTP", () => {
     await instance.app.sourceTypes.enable("school-mail");
     await instance.app.sources.add({ sourceTypeId: "school-mail", plain: { url: "imap.example.org" }, secrets: {} });
     await instance.app.llmEndpoint.save({ baseUrl: "http://ollama:11434/v1", model: "qwen3.5:9b", apiKey: "" });
-    const created = await instance.app.agendas.create({ preselected: [], horizonDays: 3 });
+    const created = await instance.app.agendas.create({ memberIds: [], horizonDays: 3 });
     if (!created.ok) throw new Error("creating failed");
     extractor.script("Wandertag", [
       extracted({ title: "Wandertag", date: { daysAfter: 1 }, startTime: "08:00", evidence: "Morgen ist Wandertag, Treffpunkt 8 Uhr" }),
@@ -124,7 +124,7 @@ describe("the LLM endpoint and mail over HTTP", () => {
     await instance.app.sourceTypes.enable("school-mail");
     await instance.app.sources.add({ sourceTypeId: "school-mail", plain: { url: "imap.example.org" }, secrets: {} });
     await instance.app.llmEndpoint.save({ baseUrl: "http://ollama:11434/v1", model: "qwen3.5:9b", apiKey: "" });
-    const created = await instance.app.agendas.create({ preselected: [], horizonDays: 3 });
+    const created = await instance.app.agendas.create({ memberIds: [], horizonDays: 3 });
     if (!created.ok) throw new Error("creating failed");
     const text = "Subject: Wandertag\n\nMorgen ist Wandertag, Treffpunkt 8 Uhr <am Bahnhof>.";
     extractor.script("Wandertag", [
@@ -160,7 +160,7 @@ describe("the LLM endpoint and mail over HTTP", () => {
     await instance.app.sourceTypes.enable("school-mail");
     await instance.app.sources.add({ sourceTypeId: "school-mail", plain: { url: "imap.example.org" }, secrets: {} });
     await instance.app.llmEndpoint.save({ baseUrl: "http://ollama:11434/v1", model: "qwen3.5:9b", apiKey: "" });
-    const created = await instance.app.agendas.create({ preselected: [], horizonDays: 3 });
+    const created = await instance.app.agendas.create({ memberIds: [], horizonDays: 3 });
     if (!created.ok) throw new Error("creating failed");
     extractor.script("Elternabend", [extracted({ title: "Elternabend", date: { daysAfter: 1 }, evidence: "Morgen ist Elternabend" })]);
     testPluginControls.emit("school-mail", [
@@ -210,7 +210,7 @@ describe("the LLM endpoint and mail over HTTP", () => {
     await instance.app.sourceTypes.enable("school-mail");
     await instance.app.sources.add({ sourceTypeId: "school-mail", plain: { url: "imap.example.org" }, secrets: {} });
     await instance.app.llmEndpoint.save({ baseUrl: "http://ollama:11434/v1", model: "qwen3.5:9b", apiKey: "" });
-    const created = await instance.app.agendas.create({ preselected: [], horizonDays: 3 });
+    const created = await instance.app.agendas.create({ memberIds: [], horizonDays: 3 });
     if (!created.ok) throw new Error("creating failed");
     extractor.script("Naturauftrag", [], [extractedTask({ title: "Naturauftrag", evidence: "Bringt drei Blätter mit" })]);
     testPluginControls.emit("school-mail", [

@@ -35,7 +35,7 @@ export const silentAfterMs = 14 * 24 * 60 * 60 * 1000;
 export function sourceStatus(source: {
   failure: SourceFailure | null;
   silentApplies: boolean;
-  lastNewOriginAt: Date | null;
+  lastNewRecordAt: Date | null;
   createdAt: Date;
   now: Date;
 }): SourceStatus {
@@ -43,7 +43,7 @@ export function sourceStatus(source: {
   if (failure) {
     if (failure.kind === "definite" || now.getTime() - failure.since.getTime() >= failingAfterMs) return "failing";
   }
-  const lastNewOrigin = source.lastNewOriginAt ?? source.createdAt;
-  if (source.silentApplies && now.getTime() - lastNewOrigin.getTime() >= silentAfterMs) return "silent";
+  const lastNewRecord = source.lastNewRecordAt ?? source.createdAt;
+  if (source.silentApplies && now.getTime() - lastNewRecord.getTime() >= silentAfterMs) return "silent";
   return "ok";
 }

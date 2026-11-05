@@ -59,7 +59,7 @@ describe("WhatsApp chats read through the Matrix bridge", () => {
     await instance.app.sourceTypes.enable("matrix");
     expect(await instance.app.catalogues.enable("matrix", "whatsapp", { riskAcknowledged: true })).toEqual({ ok: true });
     await instance.app.llmEndpoint.save({ baseUrl: "http://ollama:11434/v1", model: "qwen3.5:9b", apiKey: "" });
-    const created = await instance.app.agendas.create({ preselected: [], horizonDays: 7 });
+    const created = await instance.app.agendas.create({ memberIds: [], horizonDays: 7 });
     if (!created.ok) throw new Error(`creating failed: ${created.problem}`);
     agenda = created.id;
 

@@ -102,15 +102,12 @@ describe("recorded /sync responses", () => {
         kind: "raw-message",
         text: "Liebe Eltern, am Freitag, 18.09., ist Wandertag. Treffpunkt 8:00 Uhr am Schultor.",
         attachments: [],
-        thread: "$WnDtrip5bfriday0aTreffpunktSchultor8Uhr0001",
       },
     });
     expect(origins[1]?.content).toMatchObject({
       text: "Hier die Einverständniserklärung, bitte bis Mittwoch zurück.",
       attachments: [{ filename: "einverstaendnis.pdf", contentType: "application/pdf", bytes: new TextEncoder().encode("%PDF-1.4\n") }],
     });
-    // A reply belongs to the conversation of the message it answers.
-    expect(origins[2]?.content).toMatchObject({ thread: "$WnDtrip5bfriday0aTreffpunktSchultor8Uhr0001" });
     expect(origins[2]?.sender).toBe("Jonas' Papa (WA)");
   });
 
@@ -323,10 +320,7 @@ describe("chats", () => {
 
     const { origins } = await poll(allowListing(config, jid), first.syncCursor);
 
-    expect(origins.map((origin) => [textOf(origin), origin.content.kind === "raw-message" ? origin.content.thread : null])).toEqual([
-      ["Elternabend um 19 Uhr", original],
-      ["Elternabend um 19:30 Uhr", original],
-    ]);
+    expect(origins.map(textOf)).toEqual(["Elternabend um 19 Uhr", "Elternabend um 19:30 Uhr"]);
   });
 
   it("keep the files of file messages, with their captions", async () => {

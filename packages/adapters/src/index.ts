@@ -5,6 +5,7 @@ export * from "./file-master-key";
 export * from "./openai-compatible-extractor";
 export * from "./pg-boss-job-queue";
 export * from "./postgres/database";
+export * from "./postgres/migration-history";
 export * from "./postgres/envelope-secret-store";
 export * from "./postgres/repositories";
 export * from "./postgres/item-repository";

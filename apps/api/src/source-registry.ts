@@ -291,7 +291,7 @@ async function run(ingest: () => Promise<IngestResult>): Promise<SourceRunResult
       stated: origin.content.kind === "stated" ? (origin.content.stated as Record<string, unknown>) : null,
       message:
         origin.content.kind === "raw-message"
-          ? { text: origin.content.text, attachments: origin.content.attachments, thread: origin.content.thread ?? null }
+          ? { text: origin.content.text, attachments: origin.content.attachments }
           : null,
     })),
   };

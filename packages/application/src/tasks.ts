@@ -39,7 +39,7 @@ export function createTaskAccess(deps: TasksDeps) {
     ): Promise<{ ok: true } | { ok: false; problem: TickProblem }> {
       const agenda = await agendas.findById(agendaId);
       if (!agenda || !(await input.access.mayOpen(agenda.id))) return { ok: false, problem: "unknown-agenda" };
-      return tick(id, input.done, (item) => agenda.preselected.length === 0 || isShownTo(concernsOf(item), agenda.preselected));
+      return tick(id, input.done, (item) => agenda.memberIds.length === 0 || isShownTo(concernsOf(item), agenda.memberIds));
     },
   };
 }
