@@ -177,7 +177,6 @@ describe("Sources", () => {
         shown: true,
         name: null,
         health: { status: "ok", problem: null, lastSuccessAt: null, invalidRecords: [], unknownAttributes: [] },
-        choices: {},
         attributes: [],
       },
     ]);

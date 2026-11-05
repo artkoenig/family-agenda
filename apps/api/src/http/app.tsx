@@ -359,12 +359,12 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     const endpoint = await llmEndpoint.current();
     const llmHealth = endpoint ? (await llmEndpoint.health())?.ok ? "ok" as const : "failing" as const : null;
     const language = await languages.current();
-    const sourceOverview = await sources.overview();
+    const allSources = await sources.list();
     return {
       members: (await familyMembers.list()).map((member) => member.name),
       agendas: (await agendas.list()).length,
-      sources: sourceOverview.count,
-      failingSources: sourceOverview.failing,
+      sources: allSources.length,
+      failingSources: allSources.filter((source) => source.health.status === "failing").length,
       llm: endpoint ? { model: endpoint.model, local: endpoint.local } : null,
       llmHealth,
       admins: (await admins.listAdmins()).length,
@@ -624,7 +624,7 @@ function shownStatus(status: 200 | 400 | 413 | undefined, problems: (string | un
     shown: { problem?: string; adding?: SourceAdding; settingUp?: SourceSummary } = {},
   ) => {
     const sourceType = (await sourceTypes.list()).find((type) => type.id === id) ?? null;
-    const ofType = (await sources.list()).filter((source) => source.sourceTypeId === id);
+    const ofType = await sources.listOfType(id);
     const displayName = sourceType?.displayName ?? ofType[0]?.displayName;
     if (!displayName) return c.redirect("/admin/sources");
     const page = await sourceTypePageElement(c, id, sourceType, displayName, ofType, shown);
@@ -761,7 +761,7 @@ function shownStatus(status: 200 | 400 | 413 | undefined, problems: (string | un
 
   // A Source with live setup steps, such as a QR code login, goes through them once added.
   app.get("/admin/sources/:id/setup", async (c) => {
-    const settingUp = await sourceOf(c.req.param("id"));
+    const settingUp = await sources.find(c.req.param("id") as SourceId);
     if (!settingUp) return c.redirect("/admin/sources");
     return sourceTypePage(c, settingUp.sourceTypeId, { settingUp });
   });
@@ -774,7 +774,9 @@ function shownStatus(status: 200 | 400 | 413 | undefined, problems: (string | un
   });
 
   /** A Source's page, with its Fix dialog over it once its Fix button is pressed. */
-  const sourcePage = async (c: Context<Env>, source: SourceSummary, shown: { problem?: string; fixing?: boolean } = {}) => {
+  const sourcePage = async (c: Context<Env>, listed: SourceSummary, shown: { problem?: string; fixing?: boolean } = {}) => {
+    // Its own page is where the values its choice fields offer are asked for.
+    const source = (await sources.find(listed.id)) ?? listed;
     const page = (
       <SourcePage
         admin={c.get("admin")}
