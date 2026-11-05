@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
 import { describeSourcePluginContract, recordingAttributes } from "@family-agenda/source-sdk/testing";
-import { SourceError, type IngestResult, type Origin, type RunContext, type SetupProgress, type SourcePlugin } from "@family-agenda/source-sdk";
+import { SourceError, type IngestResult, type Origin, type RunContext, type SetupProgress, type SourceAttributes, type SourcePlugin } from "@family-agenda/source-sdk";
 import { createMatrixPlugin } from "../src";
 import { FakeHomeserver, installedPrograms } from "../src/testing";
 
@@ -26,10 +26,37 @@ async function addSource(of: SourcePlugin = plugin()): Promise<RunContext["confi
 
 const userOf = (config: RunContext["config"]) => config.plain.userId as string;
 
-const poll = (config: RunContext["config"], syncCursor: string | null = null, of: SourcePlugin = plugin(), at = now): Promise<IngestResult> => {
+const poll = (
+  config: RunContext["config"],
+  syncCursor: string | null = null,
+  of: SourcePlugin = plugin(),
+  at = now,
+  attributes: SourceAttributes = recordingAttributes(),
+): Promise<IngestResult> => {
   if (of.ingestion.mode !== "polling") throw new Error("the Matrix plugin polls");
-  return of.ingestion.poll({ config, syncCursor, now: at, timeZone: "Europe/Berlin", attributes: recordingAttributes() });
+  return of.ingestion.poll({ config, syncCursor, now: at, timeZone: "Europe/Berlin", attributes });
 };
+
+/** The Source Attributes of a Source as the Instance keeps them: names by id, and which are archived. */
+function sourceAttributes(): SourceAttributes & { names(): Record<string, string>; archived(): string[] } {
+  const names = new Map<string, string>();
+  const archived = new Set<string>();
+  return {
+    declare(declarations) {
+      for (const { externalId, name } of declarations) {
+        names.set(externalId, name);
+        archived.delete(externalId);
+      }
+      return Promise.resolve();
+    },
+    archive(externalId) {
+      if (names.has(externalId)) archived.add(externalId);
+      return Promise.resolve();
+    },
+    names: () => Object.fromEntries([...names].filter(([id]) => !archived.has(id))),
+    archived: () => [...archived],
+  };
+}
 
 const allowListing = (config: RunContext["config"], ...chats: string[]): RunContext["config"] => ({
   ...config,
@@ -58,18 +85,20 @@ homeserver.addMember(contractRoom, userOf(contractConfig));
 homeserver.text(contractRoom, homeserver.ghost("4917612345678"), "Elternabend am Donnerstag um 19:30 Uhr.", new Date("2026-09-14T06:00:00Z"));
 
 describeSourcePluginContract(plugin, {
-  config: allowListing(contractConfig, contractRoom),
+  config: allowListing(contractConfig, homeserver.jidOf(contractRoom)),
   now,
   languages: ["de"],
   packageJson: JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")),
 });
 
 describe("recorded /sync responses", () => {
-  const klasse = "!kTWfeGdLqDbHpZoRsX:family-agenda.local";
   const club = "!nEwClubRoomFussball:family-agenda.local";
+  // The groups' WhatsApp JIDs, as the bridge's `m.bridge` events give them.
+  const klasseJid = "120363187638819327@g.us";
+  const clubJid = "120363408179389935@g.us";
   let config: RunContext["config"];
   beforeEach(async () => {
-    config = allowListing(await addSource(), klasse, club);
+    config = allowListing(await addSource(), klasseJid, clubJid);
     homeserver.setLogin(userOf(config), "CONNECTED");
   });
 
@@ -87,7 +116,7 @@ describe("recorded /sync responses", () => {
     expect(origins[0]).toEqual({
       externalId: "$WnDtrip5bfriday0aTreffpunktSchultor8Uhr0001",
       occurredAt: new Date("2026-09-14T06:12:00Z"),
-      attributes: ["account"],
+      attributes: [klasseJid],
       sender: "Frau Berger (WA)",
       subject: "Klasse 5b Eltern",
       content: {
@@ -139,8 +168,8 @@ describe("recorded /sync responses", () => {
     // The chats a Source can allow-list are the group chats, named as the bridge names them.
     const choices = await plugin().configuration.fields.find((field) => field.key === "chats")!.choices!({ config, syncCursor, now, timeZone: "Europe/Berlin" });
     expect(choices).toEqual([
-      { value: club, label: "FC Eltern U11" },
-      { value: klasse, label: "Klasse 5b Eltern" },
+      { value: clubJid, label: "FC Eltern U11" },
+      { value: klasseJid, label: "Klasse 5b Eltern" },
     ]);
   });
 });
@@ -263,11 +292,13 @@ describe("linking the account by QR code", () => {
 describe("chats", () => {
   let config: RunContext["config"];
   let room: string;
+  let jid: string;
   const sender = homeserver.ghost("4917612345678");
   beforeEach(async () => {
     config = await addSource();
     homeserver.setLogin(userOf(config), "CONNECTED");
     room = homeserver.createRoom("Klasse 5b Eltern", { [sender]: "Frau Berger (WA)" });
+    jid = homeserver.jidOf(room);
     homeserver.invite(room, userOf(config));
   });
 
@@ -278,26 +309,26 @@ describe("chats", () => {
     expect(first.origins).toEqual([]);
     expect(homeserver.isMember(room, userOf(config))).toBe(true);
 
-    const second = await poll(allowListing(config, room), first.syncCursor);
+    const second = await poll(allowListing(config, jid), first.syncCursor);
 
     expect(second.origins.map(textOf)).toEqual(["Vor einer Woche: Wandertag am Freitag."]);
-    const third = await poll(allowListing(config, room), second.syncCursor);
+    const third = await poll(allowListing(config, jid), second.syncCursor);
     expect(third.origins).toEqual([]);
   });
 
   it("are read back when the timeline since the last run was cut short", async () => {
-    const first = await poll(allowListing(config, room));
+    const first = await poll(allowListing(config, jid));
     for (let message = 1; message <= 60; message++) {
       homeserver.text(room, sender, `Nachricht ${message}`, new Date(now.getTime() - 60_000 + message * 1000));
     }
 
-    const { origins } = await poll(allowListing(config, room), first.syncCursor);
+    const { origins } = await poll(allowListing(config, jid), first.syncCursor);
 
     expect(origins.map(textOf)).toEqual(Array.from({ length: 60 }, (_, index) => `Nachricht ${index + 1}`));
   });
 
   it("keep an edit as a message of its own in the edited message's conversation", async () => {
-    const first = await poll(allowListing(config, room));
+    const first = await poll(allowListing(config, jid));
     const original = homeserver.text(room, sender, "Elternabend um 19 Uhr", now);
     homeserver.send(
       room,
@@ -311,7 +342,7 @@ describe("chats", () => {
       now,
     );
 
-    const { origins } = await poll(allowListing(config, room), first.syncCursor);
+    const { origins } = await poll(allowListing(config, jid), first.syncCursor);
 
     expect(origins.map((origin) => [textOf(origin), origin.content.kind === "raw-message" ? origin.content.thread : null])).toEqual([
       ["Elternabend um 19 Uhr", original],
@@ -320,14 +351,14 @@ describe("chats", () => {
   });
 
   it("keep the files of file messages, with their captions", async () => {
-    const first = await poll(allowListing(config, room));
+    const first = await poll(allowListing(config, jid));
     const bytes = new TextEncoder().encode("%PDF-1.4\n");
     const url = homeserver.upload(bytes);
     homeserver.send(room, sender, { msgtype: "m.file", body: "Bitte bis Mittwoch.", filename: "zettel.pdf", url, info: { mimetype: "application/pdf", size: bytes.length } }, now);
     homeserver.send(room, sender, { msgtype: "m.image", body: "plan.png", url: homeserver.upload(bytes) }, now);
     homeserver.send(room, sender, { msgtype: "m.file", body: "", url: homeserver.upload(bytes), info: { size: "big" } }, now);
 
-    const { origins } = await poll(allowListing(config, room), first.syncCursor);
+    const { origins } = await poll(allowListing(config, jid), first.syncCursor);
 
     expect(origins.map((origin) => origin.content)).toMatchObject([
       { text: "Bitte bis Mittwoch.", attachments: [{ filename: "zettel.pdf", contentType: "application/pdf", bytes }] },
@@ -337,14 +368,14 @@ describe("chats", () => {
   });
 
   it("skip files that are too large, unknown or without an address, and messages of other kinds", async () => {
-    const first = await poll(allowListing(config, room));
+    const first = await poll(allowListing(config, jid));
     const bytes = new TextEncoder().encode("x");
     homeserver.send(room, sender, { msgtype: "m.file", body: "Video", filename: "video.mp4", url: homeserver.upload(bytes), info: { size: 26 * 1024 * 1024 } }, now);
     homeserver.send(room, sender, { msgtype: "m.file", body: "Weg", filename: "weg.pdf", url: "mxc://family-agenda.local/missing" }, now);
     homeserver.send(room, sender, { msgtype: "m.file", body: "Ohne Adresse", filename: "x.pdf" }, now);
     homeserver.send(room, sender, { msgtype: "m.location", body: "geo:52,13" }, now);
 
-    const { origins } = await poll(allowListing(config, room), first.syncCursor);
+    const { origins } = await poll(allowListing(config, jid), first.syncCursor);
 
     expect(origins.map((origin) => origin.content)).toMatchObject([
       { text: "Video", attachments: [] },
@@ -354,7 +385,7 @@ describe("chats", () => {
   });
 
   it("withdraw the edits of a message deleted for everyone along with it", async () => {
-    const first = await poll(allowListing(config, room));
+    const first = await poll(allowListing(config, jid));
     const original = homeserver.text(room, sender, "Elternabend um 19 Uhr", now);
     const edit = homeserver.send(
       room,
@@ -362,22 +393,23 @@ describe("chats", () => {
       { msgtype: "m.text", body: "* um 19:30", "m.new_content": { msgtype: "m.text", body: "Elternabend um 19:30 Uhr" }, "m.relates_to": { rel_type: "m.replace", event_id: original } },
       now,
     );
-    const second = await poll(allowListing(config, room), first.syncCursor);
+    const second = await poll(allowListing(config, jid), first.syncCursor);
     homeserver.redact(room, original, now);
 
-    const third = await poll(allowListing(config, room), second.syncCursor);
+    const third = await poll(allowListing(config, jid), second.syncCursor);
 
     expect(third.withdrawn).toEqual([original, edit]);
   });
 
   it("are read back once joined when they were allow-listed before", async () => {
     const later = homeserver.createRoom("FC Eltern U11", { [sender]: "Trainer Klaus (WA)" });
+    const laterJid = homeserver.jidOf(later);
     homeserver.text(later, sender, "Turnier am Samstag.", new Date(now.getTime() - 2 * days));
-    const first = await poll(allowListing(config, room, later));
+    const first = await poll(allowListing(config, jid, laterJid));
     homeserver.invite(later, userOf(config));
-    const second = await poll(allowListing(config, room, later), first.syncCursor);
+    const second = await poll(allowListing(config, jid, laterJid), first.syncCursor);
 
-    const third = await poll(allowListing(config, room, later), second.syncCursor);
+    const third = await poll(allowListing(config, jid, laterJid), second.syncCursor);
 
     expect([...second.origins, ...third.origins].map(textOf)).toEqual(["Turnier am Samstag."]);
   });
@@ -388,10 +420,10 @@ describe("chats", () => {
     const first = await poll(config);
     homeserver.text(direct, sender, "Kommt ihr Sonntag zum Kaffee?", now);
 
-    const { origins } = await poll(allowListing(config, room, direct), first.syncCursor);
+    const { origins } = await poll(allowListing(config, jid, homeserver.jidOf(direct)), first.syncCursor);
 
     expect(origins).toEqual([]);
-    expect(await choicesOf(config, first.syncCursor)).toEqual([{ value: room, label: "Klasse 5b Eltern" }]);
+    expect(await choicesOf(config, first.syncCursor)).toEqual([{ value: jid, label: "Klasse 5b Eltern" }]);
   });
 
   it("are told apart as groups or direct chats when joined before they were", async () => {
@@ -404,7 +436,7 @@ describe("chats", () => {
 
     const second = await poll(config, JSON.stringify(older));
 
-    expect(await choicesOf(config, second.syncCursor)).toEqual([{ value: room, label: "Klasse 5b Eltern" }]);
+    expect(await choicesOf(config, second.syncCursor)).toEqual([{ value: jid, label: "Klasse 5b Eltern" }]);
   });
 
   it("are joined on a later run when the homeserver refused to at first", async () => {
@@ -415,7 +447,7 @@ describe("chats", () => {
     const second = await poll(config, first.syncCursor);
 
     expect(homeserver.isMember(room, userOf(config))).toBe(true);
-    expect(await choicesOf(config, second.syncCursor)).toEqual([{ value: room, label: "Klasse 5b Eltern" }]);
+    expect(await choicesOf(config, second.syncCursor)).toEqual([{ value: jid, label: "Klasse 5b Eltern" }]);
   });
 
   it("are joined when invited before the sync cursor kept invitations", async () => {
@@ -428,19 +460,136 @@ describe("chats", () => {
     const second = await poll(config, JSON.stringify(older));
 
     expect(homeserver.isMember(room, userOf(config))).toBe(true);
-    expect(await choicesOf(config, second.syncCursor)).toEqual([{ value: room, label: "Klasse 5b Eltern" }]);
+    expect(await choicesOf(config, second.syncCursor)).toEqual([{ value: jid, label: "Klasse 5b Eltern" }]);
   });
 
   it("are never written to, marked read or shown as typing, and nobody else's invitation is accepted", async () => {
     const stranger = homeserver.createRoom("Gewinnspiel");
     homeserver.invite(stranger, userOf(config), "@spam:other.example");
-    const first = await poll(allowListing(config, room));
+    const first = await poll(allowListing(config, jid));
     homeserver.text(room, sender, "Bitte bestätigen!", now);
-    await poll(allowListing(config, room), first.syncCursor);
+    await poll(allowListing(config, jid), first.syncCursor);
 
     expect(homeserver.isMember(stranger, userOf(config))).toBe(false);
     const writes = homeserver.requests.filter((request) => /\/(send|receipt|read_markers|typing|presence|state)\//.test(request));
     expect(writes).toEqual([]);
+  });
+});
+
+describe("chats as Source Attributes", () => {
+  let config: RunContext["config"];
+  let room: string;
+  let jid: string;
+  const sender = homeserver.ghost("4917612345678");
+  beforeEach(async () => {
+    config = await addSource();
+    homeserver.setLogin(userOf(config), "CONNECTED");
+    room = homeserver.createRoom("Klasse 5b Eltern", { [sender]: "Frau Berger (WA)" });
+    jid = homeserver.jidOf(room);
+    homeserver.invite(room, userOf(config));
+  });
+
+  it("declares an allow-listed group by its JID, named as the bridge names it, and a message names it", async () => {
+    const attributes = sourceAttributes();
+    const first = await poll(allowListing(config, jid), null, plugin(), now, attributes);
+    homeserver.text(room, sender, "Wandertag am Freitag.", now);
+
+    const second = await poll(allowListing(config, jid), first.syncCursor, plugin(), now, attributes);
+
+    expect(attributes.names()).toEqual({ [jid]: "Klasse 5b Eltern" });
+    expect(jid).toMatch(/@g\.us$/);
+    expect(second.origins.map((origin) => origin.attributes)).toEqual([[jid]]);
+  });
+
+  it("declares nothing for a group the Admin has not added", async () => {
+    const attributes = sourceAttributes();
+    homeserver.createRoom("FC Eltern U11");
+
+    await poll(config, null, plugin(), now, attributes);
+
+    expect(attributes.names()).toEqual({});
+  });
+
+  it("keeps the same Source Attribute when the group is renamed, with its new name", async () => {
+    const attributes = sourceAttributes();
+    const first = await poll(allowListing(config, jid), null, plugin(), now, attributes);
+    homeserver.rename(room, "Klasse 5b Eltern 2026", now);
+
+    await poll(allowListing(config, jid), first.syncCursor, plugin(), now, attributes);
+
+    expect(attributes.names()).toEqual({ [jid]: "Klasse 5b Eltern 2026" });
+  });
+
+  it("maps a portal room the bridge created again for the same group to the same Source Attribute", async () => {
+    const attributes = sourceAttributes();
+    const first = await poll(allowListing(config, jid), null, plugin(), now, attributes);
+    // The chat is deleted on the phone and the group joined again: the bridge deletes the room and creates a new one.
+    homeserver.leave(room, userOf(config));
+    const recreated = homeserver.createRoom("Klasse 5b Eltern", { [sender]: "Frau Berger (WA)" }, { jid });
+    homeserver.invite(recreated, userOf(config));
+    const second = await poll(allowListing(config, jid), first.syncCursor, plugin(), now, attributes);
+    homeserver.text(recreated, sender, "Elternabend am Donnerstag.", now);
+
+    const third = await poll(allowListing(config, jid), second.syncCursor, plugin(), now, attributes);
+
+    expect(recreated).not.toBe(room);
+    expect(attributes.names()).toEqual({ [jid]: "Klasse 5b Eltern" });
+    expect(third.origins.map((origin) => [textOf(origin), origin.attributes])).toEqual([["Elternabend am Donnerstag.", [jid]]]);
+  });
+
+  it("archives a group that leaves the allow-list, and revives it when it is added again", async () => {
+    const attributes = sourceAttributes();
+    const first = await poll(allowListing(config, jid), null, plugin(), now, attributes);
+
+    const second = await poll(allowListing(config), first.syncCursor, plugin(), now, attributes);
+    expect(attributes.names()).toEqual({});
+    expect(attributes.archived()).toEqual([jid]);
+
+    await poll(allowListing(config, jid), second.syncCursor, plugin(), now, attributes);
+    expect(attributes.names()).toEqual({ [jid]: "Klasse 5b Eltern" });
+    expect(attributes.archived()).toEqual([]);
+  });
+
+  it("keeps a group declared while its room is not there, as long as it is on the allow-list", async () => {
+    const attributes = sourceAttributes();
+    const first = await poll(allowListing(config, jid), null, plugin(), now, attributes);
+    homeserver.leave(room, userOf(config));
+
+    await poll(allowListing(config, jid), first.syncCursor, plugin(), now, attributes);
+
+    expect(attributes.names()).toEqual({ [jid]: "Klasse 5b Eltern" });
+  });
+
+  it("still allow-lists a group by the room id an Admin chose before groups were told apart by their JID", async () => {
+    const attributes = sourceAttributes();
+    const first = await poll(allowListing(config, room), null, plugin(), now, attributes);
+    homeserver.text(room, sender, "Wandertag am Freitag.", now);
+
+    const second = await poll(allowListing(config, room), first.syncCursor, plugin(), now, attributes);
+
+    expect(attributes.names()).toEqual({ [jid]: "Klasse 5b Eltern" });
+    expect(second.origins.map((origin) => origin.attributes)).toEqual([[jid]]);
+  });
+
+  it("archives the one Source Attribute a Source declared for its whole account before groups were Source Attributes", async () => {
+    const attributes = sourceAttributes();
+    await attributes.declare([{ externalId: "account", name: "WhatsApp" }]);
+    const first = await poll(allowListing(config, jid), null, plugin(), now, attributes);
+    // A sync cursor written before groups were Source Attributes.
+    const older = JSON.parse(first.syncCursor ?? "{}") as Record<string, unknown>;
+    delete older.declared;
+    delete older.jids;
+
+    await poll(allowListing(config, jid), JSON.stringify(older), plugin(), now, attributes);
+
+    expect(attributes.archived()).toEqual(["account"]);
+    expect(attributes.names()).toEqual({ [jid]: "Klasse 5b Eltern" });
+  });
+
+  it("offers the groups by their JID", async () => {
+    const first = await poll(config);
+
+    expect(await choicesOf(config, first.syncCursor)).toEqual([{ value: jid, label: "Klasse 5b Eltern" }]);
   });
 });
 

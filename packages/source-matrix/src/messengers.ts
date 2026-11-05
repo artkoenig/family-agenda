@@ -14,7 +14,7 @@ export type Messenger = {
   qrLoginFlow: string;
   /** What to do with the QR code the bridge shows. */
   scanHint: PluginText;
-  /** The Messenger's name in every language, such as on its Origins and in messages. */
+  /** The Messenger's name in every language, such as in the messages shown to the Admin. */
   attributeValue: string;
 };
 
