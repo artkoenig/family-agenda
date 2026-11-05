@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { describeSourcePluginContract, recordingAttributes } from "@family-agenda/source-sdk/testing";
-import type { IngestResult, Origin, RunContext, SourcePlugin } from "@family-agenda/source-sdk";
+import type { IngestContext, IngestResult, Origin, SourcePlugin } from "@family-agenda/source-sdk";
 import { createWebUntisPlugin } from "../src";
 
 type Json = Record<string, unknown>;
@@ -41,9 +41,26 @@ function server(timetables: Record<number, Json> = { 1201: fixture("timetable-mi
   return { fetch, requests, answers, timetables };
 }
 
-const poll = (plugin: SourcePlugin, context: Partial<RunContext> = {}): Promise<IngestResult> => {
+const poll = (plugin: SourcePlugin, context: Partial<IngestContext> = {}): Promise<IngestResult> => {
   if (plugin.ingestion.mode !== "polling") throw new Error("the WebUntis plugin polls");
   return plugin.ingestion.poll({ config, syncCursor: null, now, timeZone: "Europe/Berlin", attributes: recordingAttributes(), ...context });
+};
+
+/** A Source Attribute declaration as the recording port keeps it. */
+const declaring = () => {
+  const attributes = recordingAttributes();
+  const declared = new Map<string, string>();
+  return {
+    attributes: {
+      declare: (list: { externalId: string; name: string }[]) => {
+        for (const { externalId, name } of list) declared.set(externalId, name);
+        return attributes.declare(list);
+      },
+      archive: (id: string) => attributes.archive(id),
+    },
+    active: () => attributes.active(),
+    names: () => Object.fromEntries(declared),
+  };
 };
 
 /** Each Origin as its key and the Lesson it states. */
@@ -154,7 +171,13 @@ describe("the WebUntis plugin", () => {
         ...asPlanned,
       },
     ]);
-    expect(origins.map((origin) => [origin.externalId, origin.attributes])).toContainEqual(["1202/91001", ["account"]]);
+    expect(origins.map((origin) => [origin.externalId, origin.attributes])).toEqual([
+      ["1201/90001", ["1201"]],
+      ["1201/90002", ["1201"]],
+      ["1201/90003", ["1201"]],
+      ["1201/90004", ["1201"]],
+      ["1202/91001", ["1202"]],
+    ]);
     expect(origins.every((origin) => origin.occurredAt === undefined)).toBe(true);
   });
 
@@ -210,7 +233,7 @@ describe("the WebUntis plugin", () => {
     const plugin = createWebUntisPlugin({ fetch: server().fetch });
 
     expect((await poll(plugin, { syncCursor: "not json" })).withdrawn).toEqual([]);
-    expect((await poll(plugin, { syncCursor: JSON.stringify({ children: [], known: "nonsense" }) })).withdrawn).toEqual([]);
+    expect((await poll(plugin, { syncCursor: JSON.stringify({ declared: [], known: "nonsense" }) })).withdrawn).toEqual([]);
   });
 
   it("forgets past Lessons without cancelling them", async () => {
@@ -226,29 +249,67 @@ describe("the WebUntis plugin", () => {
     expect(withdrawn).toEqual([]);
   });
 
-  it("reads only the children ticked on the Source, and offers the children of the account to tick", async () => {
-    const untis = server();
-    const plugin = createWebUntisPlugin({ fetch: untis.fetch });
-    const leoOnly = { ...config, plain: { ...config.plain, children: ["1202"] } };
+  it("declares each child of the account as a Source Attribute named by first and last name", async () => {
+    const port = declaring();
 
-    const { origins, syncCursor } = await poll(plugin, { config: leoOnly });
+    await poll(createWebUntisPlugin({ fetch: server().fetch }), { attributes: port.attributes });
 
-    expect(new Set(origins.map((origin) => origin.externalId.split("/")[0]))).toEqual(new Set(["1202"]));
-    const field = plugin.configuration.fields.find((candidate) => candidate.key === "children");
-    expect(await field?.choices?.({ config: leoOnly, syncCursor, now, timeZone: "Europe/Berlin" })).toEqual([
-      { value: "1201", label: "Mia König" },
-      { value: "1202", label: "Leo König" },
-    ]);
+    expect(port.names()).toEqual({ "1201": "Mia König", "1202": "Leo König" });
+    expect(port.active()).toEqual(["1201", "1202"]);
   });
 
-  it("withdraws the coming Lessons of a child no longer ticked", async () => {
+  it("asks no longer which child to read: every child is read, and setup has no field for it", async () => {
     const plugin = createWebUntisPlugin({ fetch: server().fetch });
-    const first = await poll(plugin);
 
-    const { origins, withdrawn } = await poll(plugin, { config: { ...config, plain: { ...config.plain, children: ["1201"] } }, syncCursor: first.syncCursor });
+    const { origins } = await poll(plugin, { config: { ...config, plain: { ...config.plain, children: ["1202"] } } });
 
+    expect(new Set(origins.map((origin) => origin.externalId.split("/")[0]))).toEqual(new Set(["1201", "1202"]));
+    expect(plugin.configuration.fields.map((field) => field.key)).toEqual(["server", "school", "user", "secret"]);
+  });
+
+  it("archives a child that vanished from the account and withdraws its coming Lessons", async () => {
+    const untis = server();
+    const plugin = createWebUntisPlugin({ fetch: untis.fetch });
+    const port = declaring();
+    const first = await poll(plugin, { attributes: port.attributes });
+    const userData = fixture("user-data.json");
+    const children = ((userData.result as Json).userData as { children: Json[] }).children;
+    ((userData.result as Json).userData as Json).children = children.filter((child) => child.id === 1201);
+    untis.answers.userData = userData;
+
+    const { origins, withdrawn } = await poll(plugin, { attributes: port.attributes, syncCursor: first.syncCursor });
+
+    expect(port.active()).toEqual(["1201"]);
     expect(new Set(origins.map((origin) => origin.externalId.split("/")[0]))).toEqual(new Set(["1201"]));
     expect(withdrawn).toEqual(["1202/91001"]);
+  });
+
+  it("declares a child that joined the account", async () => {
+    const untis = server();
+    const plugin = createWebUntisPlugin({ fetch: untis.fetch });
+    const port = declaring();
+    const full = fixture("user-data.json");
+    const both = ((full.result as Json).userData as { children: Json[] }).children;
+    const onlyMia = fixture("user-data.json");
+    ((onlyMia.result as Json).userData as Json).children = both.filter((child) => child.id === 1201);
+    untis.answers.userData = onlyMia;
+    const first = await poll(plugin, { attributes: port.attributes });
+    expect(port.active()).toEqual(["1201"]);
+
+    untis.answers.userData = full;
+    await poll(plugin, { attributes: port.attributes, syncCursor: first.syncCursor });
+
+    expect(port.active()).toEqual(["1201", "1202"]);
+  });
+
+  it("archives the account's constant Source Attribute of a Source from before the children were Source Attributes", async () => {
+    const port = declaring();
+    await port.attributes.declare([{ externalId: "account", name: "gym-am-park" }]);
+    const legacyCursor = JSON.stringify({ children: [], known: { "1202/91001": "2026-09-15" } });
+
+    await poll(createWebUntisPlugin({ fetch: server().fetch }), { attributes: port.attributes, syncCursor: legacyCursor });
+
+    expect(port.active()).toEqual(["1201", "1202"]);
   });
 
   it("fails definitely when WebUntis refuses the login, and temporarily when it cannot be reached", async () => {
