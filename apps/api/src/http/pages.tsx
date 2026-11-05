@@ -1999,7 +1999,7 @@ function chosenLabels(source: SourceSummary, fields: SourceForm["fields"] | unde
     .map((field) => {
       const stored = source.plain[field.key];
       const values = Array.isArray(stored) ? stored.filter((value) => typeof value === "string") : [];
-      const labels = values.map((value) => source.choices[field.key]?.find((choice) => choice.value === value)?.label ?? value);
+      const labels = values.map((value) => source.choices?.[field.key]?.find((choice) => choice.value === value)?.label ?? value);
       return `${text(field.label)}: ${labels.length > 0 ? labels.join(", ") : t.sources.noneChosen}`;
     });
 }
@@ -2146,7 +2146,7 @@ function chosenOf(source: SourceSummary, key: string): string[] {
 }
 
 function optionsOf(source: SourceSummary, key: string, chosen: string[]): { value: string; label: string }[] {
-  const offered = source.choices[key] ?? [];
+  const offered = source.choices?.[key] ?? [];
   return [
     ...offered,
     ...chosen.filter((value) => !offered.some((choice) => choice.value === value)).map((value) => ({ value, label: value })),

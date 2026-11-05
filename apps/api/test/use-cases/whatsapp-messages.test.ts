@@ -74,10 +74,10 @@ describe("WhatsApp chats read through the Matrix bridge", () => {
     classGroup = homeserver.createRoom("Klasse 5b Eltern", { [teacher]: "Frau Berger (WA)" });
     homeserver.invite(classGroup, user);
     await run();
-    const [listed] = await instance.app.sources.list();
+    const listed = await instance.app.sources.find(source);
     // A chat is allow-listed by its WhatsApp JID, which outlives the bridge's room.
     const classChat = homeserver.jidOf(classGroup);
-    expect(listed?.choices.chats).toContainEqual({ value: classChat, label: "Klasse 5b Eltern" });
+    expect(listed?.choices?.chats).toContainEqual({ value: classChat, label: "Klasse 5b Eltern" });
     expect(await instance.app.sources.edit(source, { plain: { chats: [classChat] }, secrets: {} })).toEqual({ ok: true });
     await run();
   });
