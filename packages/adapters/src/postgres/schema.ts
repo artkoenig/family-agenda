@@ -359,6 +359,11 @@ export const sourceRecords = pgTable(
      * and its message's text and attachments are gone. Arriving again clears it.
      */
     withdrawnAt: timestamptz("withdrawn_at"),
+    /**
+     * When a message's text and attachments were deleted, by withdrawal or by retention: the row
+     * stays as a tombstone with `sender`, `subject` and `body` cleared. Null for a stated one.
+     */
+    purgedAt: timestamptz("purged_at"),
     createdAt: timestamptz("created_at").notNull().defaultNow(),
     /** Where the Family can look at the original, if anywhere. */
     link: text("link"),
@@ -381,6 +386,15 @@ export const sourceRecords = pgTable(
       sql`${table.stated} IS NULL OR (${table.sender} IS NULL AND ${table.subject} IS NULL AND ${table.body} IS NULL AND ${table.occurredAt} IS NULL)`,
     ),
     check("source_record_message_occurred", sql`${table.stated} IS NOT NULL OR ${table.occurredAt} IS NOT NULL`),
+    // A message has its text exactly until it is purged.
+    check("source_record_message_has_body", sql`${table.stated} IS NOT NULL OR (${table.body} IS NULL) = (${table.purgedAt} IS NOT NULL)`),
+    check(
+      "source_record_purged_is_cleared",
+      sql`${table.purgedAt} IS NULL OR (${table.sender} IS NULL AND ${table.subject} IS NULL AND ${table.body} IS NULL)`,
+    ),
+    check("source_record_stated_is_not_purged", sql`${table.stated} IS NULL OR ${table.purgedAt} IS NULL`),
+    // Retention runs over messages by age.
+    index("source_record_message_occurred_at_idx").on(table.occurredAt).where(sql`${table.stated} IS NULL`),
   ],
 );
 

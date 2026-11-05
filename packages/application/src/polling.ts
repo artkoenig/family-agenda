@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type { SourceId, SourceTypeId } from "@family-agenda/domain";
 import type { ActivityLog } from "./activity";
+import { retainedSince } from "./retention";
 import type {
   BlobStore,
   CatalogueRepository,
@@ -101,7 +102,7 @@ export function createSourcePolling(deps: PollingDeps) {
     let refused;
     try {
       ({ knownMessages: known, withdrawnFiles, invalid, refused } = await items.recordRun(
-        { sourceId: source.id, at: now, syncCursor: result.syncCursor, withdrawn: result.withdrawn, origins },
+        { sourceId: source.id, at: now, retainedSince: retainedSince(now), syncCursor: result.syncCursor, withdrawn: result.withdrawn, origins },
         readStated,
       ));
     } catch (error) {

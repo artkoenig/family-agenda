@@ -40,6 +40,7 @@ import {
   createLlmEndpointAccess,
   createMessageAccess,
   createRecoveryKitAccess,
+  createRetention,
   createSecretSweep,
   createSourceAccess,
   createSourceHealth,
@@ -62,6 +63,7 @@ import {
   type MessageAccess,
   type RecoveryKitAccess,
   type SecretStore,
+  type Retention,
   type SecretSweep,
   type SourceAccess,
   type ServiceSupervision,
@@ -117,6 +119,8 @@ export type Application = {
   secrets: SecretStore;
   /** Removes the secrets nothing refers to any more; the worker does when it starts. */
   secretSweep: SecretSweep;
+  /** Deletes messages' text and attachments after their retention; the worker does it in the background. */
+  retention: Retention;
   recoveryKit: RecoveryKitAccess;
   familyMembers: FamilyMemberAccess;
   /** The Family Language and the OCR languages. */
@@ -279,6 +283,7 @@ export async function bootApplication(config: ApplicationConfig): Promise<Applic
   const services = createServiceSupervision({ registry, sourceTypes: sourceTypeRepository, catalogues: catalogueRepository });
   const endpoints = new PostgresLlmEndpointRepository(postgres.db);
   const llmEndpoint = createLlmEndpointAccess({ clock, endpoints, secrets, extractor });
+  const retention = createRetention({ clock, items, blobs });
   const secretSweep = createSecretSweep({ clock, secrets, sources: sourceRepository, endpoints });
   const extraction = createExtraction({
     clock,
@@ -304,6 +309,7 @@ export async function bootApplication(config: ApplicationConfig): Promise<Applic
     admins,
     secrets,
     secretSweep,
+    retention,
     recoveryKit,
     familyMembers,
     languages,
