@@ -1,0 +1,222 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" width="1600" height="900" font-family="'Nunito','Avenir Next','Trebuchet MS','Segoe UI',Helvetica,Arial,sans-serif">
+  <defs>
+    <filter id="sh" x="-10%" y="-10%" width="125%" height="135%">
+      <feDropShadow dx="0" dy="5" stdDeviation="7" flood-color="#2b3a4a" flood-opacity="0.13"/>
+    </filter>
+    <marker id="ar" viewBox="0 0 12 12" refX="9" refY="6" markerWidth="16" markerHeight="16" markerUnits="userSpaceOnUse" orient="auto">
+      <path d="M1,1 L10,6 L1,11 Z" fill="#7d8ea3"/>
+    </marker>
+    <marker id="arb" viewBox="0 0 12 12" refX="9" refY="6" markerWidth="16" markerHeight="16" markerUnits="userSpaceOnUse" orient="auto">
+      <path d="M1,1 L10,6 L1,11 Z" fill="#4a7fb5"/>
+    </marker>
+    <style>
+      .t { fill:#2b3a4a; font-weight:800; }
+      .s { fill:#6b7c90; font-weight:600; }
+      .card { fill:#fff; stroke:#e1e7ef; stroke-width:2; filter:url(#sh); }
+      .flow { fill:none; stroke:#7d8ea3; stroke-width:4; stroke-linecap:round; stroke-dasharray:2 12; }
+    </style>
+  </defs>
+
+  <rect width="1600" height="900" fill="#fff"/>
+
+  <!-- floating confetti, like the intro animation -->
+  <g opacity=".9">
+    <path d="M60 60 l6 -12 l6 12 l12 6 l-12 6 l-6 12 l-6 -12 l-12 -6z" fill="#f2c14e" transform="translate(10 -10) scale(.9)"/>
+    <circle cx="1540" cy="70" r="9" fill="#f2c14e"/>
+    <circle cx="1490" cy="40" r="5" fill="#8fc6f0"/>
+    <circle cx="120" cy="860" r="7" fill="#8fc6f0"/>
+    <circle cx="1480" cy="860" r="7" fill="#9ad9a5"/>
+  </g>
+
+  <!-- title -->
+  <text x="800" y="72" text-anchor="middle" font-size="46" class="t">From information chaos to one calm agenda</text>
+  <text x="800" y="108" text-anchor="middle" font-size="24" class="s">Everything the family needs to know, gathered on your own server</text>
+
+  <!-- section labels -->
+  <text x="230" y="150" text-anchor="middle" font-size="22" class="s" letter-spacing="3">SOURCES</text>
+  <text x="800" y="150" text-anchor="middle" font-size="22" class="s" letter-spacing="3">YOUR SERVER</text>
+  <text x="1370" y="150" text-anchor="middle" font-size="22" class="s" letter-spacing="3">CLIENTS</text>
+
+  <!-- ===== SOURCES ===== -->
+  <!-- WebUntis -->
+  <g transform="translate(40 170)">
+    <rect class="card" width="380" height="140" rx="26"/>
+    <g transform="translate(26 26)">
+      <rect width="88" height="88" rx="14" fill="#eaf3fb" stroke="#b8d3ec" stroke-width="2"/>
+      <g stroke="#fff" stroke-width="2">
+        <rect x="8" y="8" width="23" height="17" rx="3" fill="#4a7fb5"/><rect x="33" y="8" width="23" height="17" rx="3" fill="#9ad9a5"/><rect x="58" y="8" width="23" height="17" rx="3" fill="#f2c14e"/>
+        <rect x="8" y="28" width="23" height="17" rx="3" fill="#f2c14e"/><rect x="33" y="28" width="23" height="17" rx="3" fill="#e8978f"/><rect x="58" y="28" width="23" height="17" rx="3" fill="#4a7fb5"/>
+        <rect x="8" y="48" width="23" height="17" rx="3" fill="#9ad9a5"/><rect x="33" y="48" width="23" height="17" rx="3" fill="#4a7fb5"/><rect x="58" y="48" width="23" height="17" rx="3" fill="#9ad9a5"/>
+      </g>
+      <rect x="8" y="68" width="40" height="8" rx="4" fill="#b8d3ec"/>
+    </g>
+    <text x="134" y="68" font-size="30" class="t">Timetable</text>
+    <text x="134" y="102" font-size="21" class="s">WebUntis · lessons</text>
+  </g>
+
+  <!-- ICS calendar -->
+  <g transform="translate(40 330)">
+    <rect class="card" width="380" height="140" rx="26"/>
+    <g transform="translate(26 26)">
+      <rect width="88" height="88" rx="14" fill="#fff" stroke="#c9d3df" stroke-width="2"/>
+      <path d="M0 14a14 14 0 0 1 14-14h60a14 14 0 0 1 14 14v18H0z" fill="#e5534b"/>
+      <rect x="20" y="-8" width="8" height="18" rx="4" fill="#9aa8b8"/><rect x="60" y="-8" width="8" height="18" rx="4" fill="#9aa8b8"/>
+      <text x="44" y="73" text-anchor="middle" font-size="38" font-weight="900" fill="#2b3a4a">17</text>
+    </g>
+    <text x="134" y="68" font-size="30" class="t">Calendars</text>
+    <text x="134" y="102" font-size="21" class="s">ICS · clubs &amp; school</text>
+  </g>
+
+  <!-- IMAP mail + PDF -->
+  <g transform="translate(40 490)">
+    <rect class="card" width="380" height="140" rx="26"/>
+    <g transform="translate(22 30)">
+      <rect x="36" y="0" width="52" height="68" rx="6" fill="#fff" stroke="#c9d3df" stroke-width="2" transform="rotate(8 62 34)"/>
+      <g transform="rotate(8 62 34)" fill="#c9d3df"><rect x="46" y="14" width="32" height="5" rx="2"/><rect x="46" y="26" width="32" height="5" rx="2"/><rect x="46" y="38" width="22" height="5" rx="2"/></g>
+      <rect x="0" y="22" width="76" height="54" rx="9" fill="#f6ead0" stroke="#e4b95a" stroke-width="2"/>
+      <path d="M3 28 L38 56 L73 28" fill="none" stroke="#e4b95a" stroke-width="3" stroke-linejoin="round"/>
+    </g>
+    <text x="134" y="68" font-size="30" class="t">School mail</text>
+    <text x="134" y="102" font-size="21" class="s">IMAP · mail &amp; PDFs</text>
+  </g>
+
+  <!-- WhatsApp -->
+  <g transform="translate(40 650)">
+    <rect class="card" width="380" height="140" rx="26"/>
+    <g transform="translate(24 28)">
+      <path d="M44 0C20 0 2 17 2 39c0 8 3 16 8 22L4 82l23-7c5 2 11 3 17 3 24 0 42-17 42-39S68 0 44 0z" fill="#4caf6a"/>
+      <circle cx="30" cy="39" r="5" fill="#fff"/><circle cx="44" cy="39" r="5" fill="#fff"/><circle cx="58" cy="39" r="5" fill="#fff"/>
+    </g>
+    <text x="134" y="68" font-size="30" class="t">Parent chats</text>
+    <text x="134" y="102" font-size="21" class="s">WhatsApp · Matrix</text>
+  </g>
+
+  <!-- ===== YOUR SERVER ===== -->
+  <rect x="500" y="170" width="600" height="620" rx="40" fill="#f2f7fd" stroke="#c7daf0" stroke-width="3" filter="url(#sh)"/>
+  <!-- house logo -->
+  <g transform="translate(560 188)">
+    <path d="M0 26 L26 4 L52 26 V50 H0z" fill="#4a7fb5"/>
+    <rect x="20" y="30" width="12" height="20" rx="2" fill="#fff"/>
+  </g>
+  <text x="630" y="232" font-size="40" class="t">Family Agenda</text>
+  
+  <!-- step 1: poll -->
+  <g transform="translate(530 262)">
+    <rect class="card" width="540" height="100" rx="22"/>
+    <circle cx="48" cy="50" r="24" fill="#4a7fb5"/><text x="48" y="59" text-anchor="middle" font-size="26" font-weight="900" fill="#fff">1</text>
+    <text x="92" y="46" font-size="28" class="t">Collect</text>
+    <text x="92" y="76" font-size="20" class="s">Worker polls every Source for news</text>
+  </g>
+  <path d="M800 366 V392" stroke="#4a7fb5" stroke-width="4" stroke-linecap="round" marker-end="url(#arb)"/>
+
+  <!-- step 2: extraction + LLM -->
+  <g transform="translate(530 398)">
+    <rect class="card" width="250" height="120" rx="22"/>
+    <circle cx="40" cy="38" r="24" fill="#4a7fb5"/><text x="40" y="47" text-anchor="middle" font-size="26" font-weight="900" fill="#fff">2</text>
+    <text x="78" y="46" font-size="28" class="t">Extract</text>
+    <text x="24" y="86" font-size="20" class="s">Mails, PDFs &amp; chats are</text>
+    <text x="24" y="108" font-size="20" class="s">read for what matters</text>
+  </g>
+  <!-- arrows to / from LLM -->
+  <path d="M784 440 H826" stroke="#4a7fb5" stroke-width="4" stroke-linecap="round" marker-end="url(#arb)"/>
+  <path d="M826 478 H788" stroke="#4a7fb5" stroke-width="4" stroke-linecap="round" marker-end="url(#arb)"/>
+  <g transform="translate(830 398)">
+    <rect width="240" height="120" rx="22" fill="#fff" stroke="#9b7fd1" stroke-width="3" stroke-dasharray="10 8" filter="url(#sh)"/>
+    <!-- sparkle brain-ish chip -->
+    <g transform="translate(24 24)">
+      <rect width="52" height="52" rx="14" fill="#efe8fb" stroke="#9b7fd1" stroke-width="2"/>
+      <path d="M26 10 l4 12 l12 4 l-12 4 l-4 12 l-4 -12 l-12 -4 l12 -4z" fill="#9b7fd1"/>
+    </g>
+    <text x="92" y="58" font-size="30" class="t">LLM</text>
+    <text x="24" y="92" font-size="19" class="s">your choice: cloud API</text>
+    <text x="24" y="112" font-size="19" class="s">or local (Ollama)</text>
+  </g>
+  <path d="M800 522 V548" stroke="#4a7fb5" stroke-width="4" stroke-linecap="round" marker-end="url(#arb)"/>
+
+  <!-- step 3: items -->
+  <g transform="translate(530 554)">
+    <rect class="card" width="540" height="100" rx="22"/>
+    <circle cx="48" cy="50" r="24" fill="#4a7fb5"/><text x="48" y="59" text-anchor="middle" font-size="26" font-weight="900" fill="#fff">3</text>
+    <text x="92" y="42" font-size="28" class="t">Items</text>
+    <g font-size="20" font-weight="800">
+      <rect x="92" y="54" width="104" height="32" rx="16" fill="#dcebfa"/><text x="144" y="76" text-anchor="middle" fill="#2f5f93">Events</text>
+      <rect x="206" y="54" width="104" height="32" rx="16" fill="#dff3e3"/><text x="258" y="76" text-anchor="middle" fill="#2d7a42">Lessons</text>
+      <rect x="320" y="54" width="104" height="32" rx="16" fill="#fbecc6"/><text x="372" y="76" text-anchor="middle" fill="#9a6b0a">Tasks</text>
+    </g>
+  </g>
+  <path d="M800 658 V684" stroke="#4a7fb5" stroke-width="4" stroke-linecap="round" marker-end="url(#arb)"/>
+
+  <!-- step 4: agendas -->
+  <g transform="translate(530 690)">
+    <rect class="card" width="540" height="76" rx="22"/>
+    <circle cx="48" cy="38" r="24" fill="#4a7fb5"/><text x="48" y="47" text-anchor="middle" font-size="26" font-weight="900" fill="#fff">4</text>
+    <text x="92" y="34" font-size="28" class="t">Agendas</text>
+    <text x="92" y="60" font-size="19" class="s">per Family Member or whole Family</text>
+  </g>
+
+  <!-- ===== CLIENTS ===== -->
+  <!-- phone -->
+  <g transform="translate(1180 170)">
+    <rect class="card" width="380" height="140" rx="26"/>
+    <g transform="translate(36 22)">
+      <rect width="56" height="96" rx="12" fill="#2b3a4a"/>
+      <rect x="5" y="9" width="46" height="78" rx="6" fill="#fff"/>
+      <rect x="10" y="15" width="36" height="12" rx="4" fill="#dcebfa"/><rect x="10" y="31" width="36" height="12" rx="4" fill="#dff3e3"/><rect x="10" y="47" width="36" height="12" rx="4" fill="#fbecc6"/><rect x="10" y="63" width="36" height="12" rx="4" fill="#dcebfa"/>
+    </g>
+    <text x="124" y="68" font-size="30" class="t">Phones</text>
+    <text x="124" y="102" font-size="21" class="s">each person's agenda</text>
+  </g>
+
+  <!-- wall tablet -->
+  <g transform="translate(1180 330)">
+    <rect class="card" width="380" height="140" rx="26"/>
+    <g transform="translate(22 24)">
+      <rect width="96" height="92" rx="12" fill="#2b3a4a"/>
+      <rect x="6" y="6" width="84" height="80" rx="7" fill="#fff"/>
+      <rect x="12" y="12" width="34" height="9" rx="4" fill="#4a7fb5"/>
+      <rect x="12" y="26" width="72" height="10" rx="4" fill="#dcebfa"/><rect x="12" y="40" width="72" height="10" rx="4" fill="#dff3e3"/><rect x="12" y="54" width="72" height="10" rx="4" fill="#fbecc6"/><rect x="12" y="68" width="50" height="10" rx="4" fill="#dcebfa"/>
+    </g>
+    <text x="134" y="68" font-size="30" class="t">Kitchen tablet</text>
+    <text x="134" y="102" font-size="21" class="s">no sign-in needed</text>
+  </g>
+
+  <!-- laptop admin -->
+  <g transform="translate(1180 490)">
+    <rect class="card" width="380" height="140" rx="26"/>
+    <g transform="translate(20 30)">
+      <rect x="10" y="0" width="80" height="54" rx="7" fill="#2b3a4a"/>
+      <rect x="15" y="5" width="70" height="44" rx="3" fill="#fff"/>
+      <circle cx="30" cy="18" r="6" fill="#8fc6f0"/><rect x="42" y="14" width="34" height="8" rx="3" fill="#dcebfa"/><rect x="21" y="30" width="58" height="8" rx="3" fill="#e8ecf1"/>
+      <path d="M0 62 H100 L94 70 H6z" fill="#9aa8b8"/>
+    </g>
+    <text x="134" y="68" font-size="30" class="t">Admin area</text>
+    <text x="134" y="102" font-size="21" class="s">Sources &amp; members</text>
+  </g>
+
+  <!-- agenda link -->
+  <g transform="translate(1180 650)">
+    <rect class="card" width="380" height="140" rx="26"/>
+    <g transform="translate(26 26)" fill="none" stroke-linecap="round">
+      <circle cx="44" cy="44" r="40" fill="#eaf3fb" stroke="#4a7fb5" stroke-width="3"/>
+      <ellipse cx="44" cy="44" rx="17" ry="40" stroke="#4a7fb5" stroke-width="3"/>
+      <path d="M6 32 H82 M6 56 H82" stroke="#4a7fb5" stroke-width="3"/>
+    </g>
+    <text x="134" y="68" font-size="30" class="t">On the go</text>
+    <text x="134" y="102" font-size="21" class="s">secret Agenda Link</text>
+  </g>
+
+  <!-- ===== FLOWS ===== -->
+  <g class="flow" marker-end="url(#ar)">
+    <path d="M424 240 C468 240 460 330 496 330"/>
+    <path d="M424 400 C468 400 460 420 496 420"/>
+    <path d="M424 560 C468 560 460 520 496 520"/>
+    <path d="M424 720 C468 720 460 610 496 610"/>
+    <path d="M1104 330 C1140 330 1136 240 1176 240"/>
+    <path d="M1104 420 C1140 420 1136 400 1176 400"/>
+    <path d="M1104 520 C1140 520 1136 560 1176 560"/>
+    <path d="M1104 610 C1140 610 1136 720 1176 720"/>
+  </g>
+
+  <!-- footer line -->
+  <text x="800" y="850" text-anchor="middle" font-size="24" class="s">Local-first: your data stays on your server, no cloud needed.</text>
+</svg>
