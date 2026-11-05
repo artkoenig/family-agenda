@@ -1,0 +1,29 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended", "helpers:pinGitHubActionDigestsToSemver"],
+  "schedule": ["before 6am on monday"],
+  "timezone": "Europe/Berlin",
+  "prConcurrentLimit": 5,
+  "minimumReleaseAge": "3 days",
+  "lockFileMaintenance": { "enabled": true },
+  "packageRules": [
+    {
+      "description": "Group non-major updates into one PR per ecosystem to keep the PR count low",
+      "matchUpdateTypes": ["minor", "patch"],
+      "matchManagers": ["npm"],
+      "groupName": "npm non-major",
+      "automerge": true
+    },
+    {
+      "matchUpdateTypes": ["minor", "patch"],
+      "matchManagers": ["github-actions"],
+      "groupName": "GitHub Actions non-major",
+      "automerge": true
+    },
+    {
+      "description": "Docker base images and Go: review manually",
+      "matchManagers": ["dockerfile", "docker-compose", "gomod"],
+      "automerge": false
+    }
+  ]
+}
