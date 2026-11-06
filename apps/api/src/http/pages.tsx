@@ -154,6 +154,8 @@ export type SettingsSummary = {
   /** Whether Admins can sign in through an Identity Provider. */
   singleSignOn: boolean;
   kitSaved: boolean;
+  /** The release this Instance runs, such as `0.3.1`, `main-1a2b3c4` or `dev`. */
+  version: string;
   /** The Family Language. */
   family: FamilyLanguage;
   /** Whether OCR is on, its languages, and whether one of their models is missing. */
@@ -373,6 +375,7 @@ function AdminLayout(props: {
               })}
             </>
           ))}
+          <span class="fam-settings__version">{t.settings.version(admin.settings.version)}</span>
         </nav>
         <main class="fam-settings__main">
           {admin.settings.failingSources > 0 ? (

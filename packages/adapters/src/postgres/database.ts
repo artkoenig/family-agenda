@@ -3,7 +3,7 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
 import pg from "pg";
-import { refuseOldMigrationHistory } from "./migration-history";
+import { refuseNewerMigrationHistory, refuseOldMigrationHistory } from "./migration-history";
 import * as schema from "./schema";
 
 /** The schema in Postgres, through whichever driver reaches it. */
@@ -34,6 +34,7 @@ export function connectPostgres(databaseUrl: string): PostgresConnection {
       try {
         await lockClient.query("SELECT pg_advisory_lock($1)", [migrationLockKey]);
         await refuseOldMigrationHistory(db, migrationsFolder);
+        await refuseNewerMigrationHistory(db, migrationsFolder);
         await migrate(db, { migrationsFolder });
       } finally {
         await lockClient.query("SELECT pg_advisory_unlock($1)", [migrationLockKey]);

@@ -392,6 +392,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/domain
 
+  tools/release: {}
+
 packages:
 
   '@babel/code-frame@8.0.6':

@@ -3,6 +3,9 @@
 # its own image and volumes (Compose prefixes them with the project), none of the real Instance's.
 services:
   api:
+    # The pull request's own compose.yaml only names a release image, so the build is asked for
+    # here: relative to the pull request's worktree, which is the project directory.
+    build: .
     image: ${PREVIEW_IMAGE}
     volumes:
       # The seed, from the clone `pnpm preview` runs in: a pull request may predate it.

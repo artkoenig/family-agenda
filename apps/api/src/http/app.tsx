@@ -83,6 +83,8 @@ export type HttpOptions = {
   publicUrl?: string;
   /** Whether an Agenda opens, as decided for the listener this app serves (ADR-0005). */
   agendaAccess: AgendaAccessPolicy;
+  /** The release the image was built from; shown by the health check and in the Admin area. Defaults to a development build. */
+  version?: string;
 };
 
 type Env = {
@@ -162,6 +164,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     timeZone,
   } = application;
   const app = new Hono<Env>();
+  const version = options.version ?? "dev";
 
   const isHttps = (c: Context) =>
     options.trustProxy
@@ -225,7 +228,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     return c.body(font, 200, { "content-type": "font/woff2", "cache-control": "public, max-age=604800" });
   });
 
-  app.get("/api/health", (c) => c.json({ status: "ok" } satisfies HealthResponse));
+  app.get("/api/health", (c) => c.json({ status: "ok", version } satisfies HealthResponse));
 
   app.use(
     csrf({
@@ -485,6 +488,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
       admins: (await admins.listAdmins()).length,
       singleSignOn: (await singleSignOn.current())?.enabled ?? false,
       kitSaved: await recoveryKit.isConfirmed(),
+      version,
       family: language.language,
       ocr: {
         enabled: language.ocrEnabled,

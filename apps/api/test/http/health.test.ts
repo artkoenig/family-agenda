@@ -15,6 +15,6 @@ describe("health over HTTP", () => {
     const response = await instance.get("/api/health");
 
     expect(response.status).toBe(200);
-    expect(healthResponse.parse(await response.json())).toEqual({ status: "ok" });
+    expect(healthResponse.parse(await response.json())).toMatchObject({ status: "ok" });
   });
 });

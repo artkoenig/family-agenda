@@ -1,0 +1,289 @@
+name: Release
+
+# Run it from the Actions tab on main, with the version to release, such as 0.3.1.
+#
+#   1. preflight   Is this a new version, greater than every release, with CI green on main?
+#   2. prepare     The release commit (versions in package.json and compose.yaml), on a scratch ref.
+#   3. image       Build both platforms from that commit and test them. Nothing is tagged yet.
+#   4. tag         Push the release commit and the tag vX.Y.Z to main, in one step.
+#   5. tags        Put X.Y.Z, X.Y and latest on the images. From here the release can be pulled.
+#   6. release     The GitHub Release: generated notes, the Upgrading section, compose.yaml.
+#
+# Everything public and not reversible comes last. A published version tag is never moved or
+# deleted: when step 4, 5 or 6 failed, run the workflow again with the same version, and it
+# continues from the tag that exists, skipping what is done. A broken release is replaced by the
+# next patch version.
+#
+# Pushing to main needs a way past its ruleset: add the secret RELEASE_TOKEN (a token of a GitHub
+# App or a fine-grained token that may bypass the ruleset), or let the ruleset bypass GitHub Actions.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: The version to release, such as 0.3.1 (no v, no prerelease)
+        required: true
+        type: string
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions: {}
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  IMAGE: ghcr.io/artkoenig/family-agenda
+
+jobs:
+  preflight:
+    name: Preflight
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      packages: read
+      actions: read
+    outputs:
+      version: ${{ steps.check.outputs.version }}
+      minor: ${{ steps.check.outputs.minor }}
+      previous: ${{ steps.check.outputs.previous }}
+      sha: ${{ steps.check.outputs.sha }}
+      resume: ${{ steps.check.outputs.resume }}
+      published: ${{ steps.check.outputs.published }}
+      released: ${{ steps.check.outputs.released }}
+      ref: ${{ steps.check.outputs.ref }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: check
+        env:
+          VERSION: ${{ inputs.version }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          fail() { echo "::error::$1"; exit 1; }
+
+          [ "$GITHUB_REF" = "refs/heads/main" ] || fail "Run the release from main, not from $GITHUB_REF"
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail "The version must look like 0.3.1, without a v or a prerelease suffix: $VERSION"
+          tag="v$VERSION"
+
+          # An existing tag means an earlier run got that far: continue from it, never move it.
+          if git rev-parse --quiet --verify "refs/tags/$tag" > /dev/null; then
+            resume=true
+            git merge-base --is-ancestor "refs/tags/$tag" origin/main || fail "$tag exists but is not on main"
+          else
+            resume=false
+          fi
+
+          # The release before this one, by version order. A new release must be greater than all.
+          all=$({ git tag --list 'v*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' || true; echo "$tag"; } | sort -uV)
+          if [ "$resume" = false ] && [ "$(tail -n 1 <<< "$all")" != "$tag" ]; then
+            fail "$VERSION is not greater than every release so far ($(tail -n 1 <<< "$all"))"
+          fi
+          previous=$(grep -x -B1 "$tag" <<< "$all" | head -n 1)
+          if [ "$previous" = "$tag" ]; then previous=""; fi
+
+          # What an earlier run already did.
+          published=false
+          if docker buildx imagetools inspect "$IMAGE:$VERSION" > /dev/null 2>&1; then published=true; fi
+          released=false
+          if gh release view "$tag" > /dev/null 2>&1; then released=true; fi
+          if [ "$resume" = true ] && [ "$published" = true ] && [ "$released" = true ]; then
+            fail "$VERSION is released already"
+          fi
+          if [ "$resume" = false ] && { [ "$published" = true ] || [ "$released" = true ]; }; then
+            fail "$VERSION has an image or a release but no tag $tag: look at it by hand"
+          fi
+
+          # A new release starts from a main whose CI passed. The release commit changes versions only.
+          if [ "$resume" = false ]; then
+            passed=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$GITHUB_SHA&event=push&per_page=20" \
+              --jq '[.workflow_runs[] | select(.status == "completed" and .conclusion == "success")] | length')
+            [ "$passed" -gt 0 ] || fail "CI has not passed on $GITHUB_SHA, the head of main"
+          fi
+
+          {
+            echo "version=$VERSION"
+            echo "minor=${VERSION%.*}"
+            echo "previous=$previous"
+            echo "sha=$GITHUB_SHA"
+            echo "resume=$resume"
+            echo "published=$published"
+            echo "released=$released"
+            if [ "$resume" = true ]; then echo "ref=refs/tags/$tag"; else echo "ref=refs/release-candidates/$VERSION"; fi
+          } >> "$GITHUB_OUTPUT"
+          echo "Releasing $VERSION after ${previous:-nothing} (resume: $resume, images published: $published, release created: $released)"
+
+  prepare:
+    name: Prepare the release commit
+    needs: preflight
+    if: needs.preflight.outputs.resume != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    outputs:
+      commit: ${{ steps.commit.outputs.commit }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.preflight.outputs.sha }}
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - id: commit
+        env:
+          VERSION: ${{ needs.preflight.outputs.version }}
+          PREVIOUS: ${{ needs.preflight.outputs.previous }}
+        run: |
+          fail() { echo "::error::$1"; exit 1; }
+
+          # The version of the packages that make up the app, and the version compose.yaml runs by default.
+          # The Source plugins and demo-source keep the versions of their own identities (ADR-0010),
+          # source-sdk the one of its API (`sdkVersion`), and tools/ is not shipped.
+          for file in apps/*/package.json packages/adapters/package.json packages/application/package.json packages/contracts/package.json packages/domain/package.json; do
+            sed -i -E "s/^  \"version\": \"[^\"]*\"/  \"version\": \"$VERSION\"/" "$file"
+            grep -q "^  \"version\": \"$VERSION\"" "$file" || fail "$file has no version to set"
+          done
+          sed -i -E "s/(FAMILY_AGENDA_VERSION:-)[^}]*\}/\1$VERSION}/" compose.yaml
+          grep -q "FAMILY_AGENDA_VERSION:-$VERSION}" compose.yaml || fail "compose.yaml does not default to $VERSION"
+          if git diff --name-only | grep -q -v -E '(^|/)package\.json$|^compose\.yaml$'; then fail "Something other than versions changed"; fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -a -q -m "Release $VERSION"
+          echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+          # The SDK version has to follow a change of the SDK's API since the last release.
+          node --import tsx tools/release/src/main.ts check-sdk --previous "$PREVIOUS" --current HEAD
+
+          # The Upgrading section is written when the release is created. Writing it now means a
+          # problem with it stops the release before anything is built.
+          arguments=(--current HEAD --docs "https://github.com/$GITHUB_REPOSITORY/blob/v$VERSION/docs/upgrading.md")
+          if [ -n "$PREVIOUS" ]; then arguments+=(--previous "$PREVIOUS"); fi
+          node --import tsx tools/release/src/main.ts upgrading "${arguments[@]}"
+
+          # A scratch ref that is no branch and no tag, so that the build can fetch the commit.
+          git push --force origin "HEAD:refs/release-candidates/$VERSION"
+
+  image:
+    name: Build and test the image
+    needs: [preflight, prepare]
+    if: ${{ !cancelled() && !failure() && needs.preflight.outputs.published != 'true' }}
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/image.yml
+    with:
+      ref: ${{ needs.preflight.outputs.ref }}
+      version: ${{ needs.preflight.outputs.version }}
+
+  tag:
+    name: Push the release commit and the tag
+    needs: [preflight, prepare, image]
+    if: ${{ !cancelled() && !failure() && needs.preflight.outputs.resume != 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.preflight.outputs.ref }}
+          fetch-depth: 0
+          # May be a token that can push past the ruleset of main; see the top of this file.
+          token: ${{ secrets.RELEASE_TOKEN || github.token }}
+
+      # One atomic push: main moves to the release commit and the tag appears, or neither. If main
+      # moved on since the release started, the push is refused and nothing is public yet.
+      - env:
+          VERSION: ${{ needs.preflight.outputs.version }}
+          COMMIT: ${{ needs.prepare.outputs.commit }}
+        run: |
+          [ "$(git rev-parse HEAD)" = "$COMMIT" ] || { echo "::error::The release commit is not what was built"; exit 1; }
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "v$VERSION" -m "Release $VERSION" "$COMMIT"
+          git push --atomic origin "$COMMIT:refs/heads/main" "refs/tags/v$VERSION"
+          git push origin ":refs/release-candidates/$VERSION" || echo "The scratch ref stays; it is harmless."
+
+  tags:
+    name: Publish the image
+    needs: [preflight, image, tag]
+    if: ${{ !cancelled() && !failure() && needs.preflight.outputs.published != 'true' }}
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/image-tags.yml
+    with:
+      tags: |
+        ${{ needs.preflight.outputs.version }}
+        ${{ needs.preflight.outputs.minor }}
+        latest
+
+  release:
+    name: Create the GitHub Release
+    needs: [preflight, tag, tags]
+    if: ${{ !cancelled() && !failure() && needs.preflight.outputs.released != 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/v${{ needs.preflight.outputs.version }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Create the release
+        env:
+          VERSION: ${{ needs.preflight.outputs.version }}
+          PREVIOUS: ${{ needs.preflight.outputs.previous }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          arguments=(--current HEAD --docs "https://github.com/$GITHUB_REPOSITORY/blob/v$VERSION/docs/upgrading.md")
+          previous_option=()
+          if [ -n "$PREVIOUS" ]; then
+            arguments+=(--previous "$PREVIOUS")
+            previous_option=(--notes-start-tag "$PREVIOUS")
+          fi
+          node --import tsx tools/release/src/main.ts upgrading "${arguments[@]}" > "$RUNNER_TEMP/upgrading.md"
+          cat "$RUNNER_TEMP/upgrading.md"
+
+          # The Upgrading section comes first, the notes GitHub generates from the merged pull requests after it.
+          gh release create "v$VERSION" compose.yaml \
+            --verify-tag \
+            --title "$VERSION" \
+            --notes-file "$RUNNER_TEMP/upgrading.md" \
+            --generate-notes \
+            "${previous_option[@]}"

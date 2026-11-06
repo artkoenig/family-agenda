@@ -1,0 +1,13 @@
+# Builds the image from this working tree instead of pulling a release. Layer it over compose.yaml:
+#
+#   docker compose -f compose.yaml -f compose.dev.yaml up -d --build
+#
+# api builds the image; worker and mdns run the same one.
+services:
+  api:
+    build: .
+    image: family-agenda:local
+  worker:
+    image: family-agenda:local
+  mdns:
+    image: family-agenda:local
