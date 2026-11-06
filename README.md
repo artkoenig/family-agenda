@@ -44,18 +44,30 @@ Agendas open without signing in on the home network (kitchen tablet, phones). Aw
 
 ## 🚀 Install & start
 
-Requires Docker with Compose.
+Requires Docker with Compose. The Instance runs a published image for `amd64` and `arm64`, so nothing is built on your machine.
 
 ```sh
-git clone https://github.com/artkoenig/family-agenda.git
-cd family-agenda
-docker compose up -d --build
+mkdir family-agenda && cd family-agenda
+curl -fsSLO https://github.com/artkoenig/family-agenda/releases/latest/download/compose.yaml
+docker compose up -d
 ```
 
 Open `http://localhost:8080`, create the first Admin, keep the **Recovery Kit** safe. Then add Family Members, Agendas and Sources in the Admin area.
 
+An Instance runs the release its `compose.yaml` comes from. To move to another release, back up first and follow [docs/upgrading.md](docs/upgrading.md). Running it in Portainer: [docs/portainer.md](docs/portainer.md).
+
 > [!NOTE]
-> Upgrading from a version before the data model was rebuilt (ADR-0016)? Instances start over: see [RELEASE_NOTES.md](RELEASE_NOTES.md).
+> Releases before 1.0.0 may ask you to start over instead of keeping your data. Every GitHub Release says which in its **Upgrading** section. Upgrading from a version before the data model was rebuilt (ADR-0016)? Instances start over: see [docs/upgrading.md](docs/upgrading.md#start-over).
+
+### Build from source
+
+To run your own changes, build the image from a clone:
+
+```sh
+git clone https://github.com/artkoenig/family-agenda.git
+cd family-agenda
+docker compose -f compose.yaml -f compose.dev.yaml up -d --build
+```
 
 ## ⚙️ Configuration
 
