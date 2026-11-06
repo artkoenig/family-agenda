@@ -207,9 +207,9 @@ jobs:
     permissions:
       contents: write
     steps:
+      # The head of main as it was when the release started; the release commit is its child.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ needs.preflight.outputs.ref }}
           fetch-depth: 0
           # May be a token that can push past the ruleset of main; see the top of this file.
           token: ${{ secrets.RELEASE_TOKEN || github.token }}
@@ -220,7 +220,9 @@ jobs:
           VERSION: ${{ needs.preflight.outputs.version }}
           COMMIT: ${{ needs.prepare.outputs.commit }}
         run: |
-          [ "$(git rev-parse HEAD)" = "$COMMIT" ] || { echo "::error::The release commit is not what was built"; exit 1; }
+          # checkout fetches branches and tags only, so the scratch ref the release commit is on is fetched by hand.
+          git fetch --no-tags origin "+refs/release-candidates/$VERSION:refs/candidates/$VERSION"
+          [ "$(git rev-parse "refs/candidates/$VERSION")" = "$COMMIT" ] || { echo "::error::The release commit is not what was built"; exit 1; }
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git tag -a "v$VERSION" -m "Release $VERSION" "$COMMIT"
