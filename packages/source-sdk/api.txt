@@ -1,0 +1,234 @@
+// The public API of @family-agenda/source-sdk, written by `pnpm sdk-api`. Do not edit it by hand.
+// src/index.ts
+export type PluginText = string | {
+    en: string;
+    [language: string]: string | undefined;
+};
+export declare function englishOf(text: PluginText): string;
+export type SourcePluginIdentity = {
+    sourceTypeId: string;
+    displayName: PluginText;
+    version: string;
+    sdkVersion: string;
+};
+export type JsonValue = string | number | boolean | null | JsonValue[] | {
+    [key: string]: JsonValue;
+};
+export type JsonObject = {
+    [key: string]: JsonValue;
+};
+export type ConfigField = {
+    key: string;
+    label: PluginText;
+    secret: boolean;
+    required: boolean;
+    description?: PluginText;
+    setByPlugin?: boolean;
+    choices?: (context: RunContext) => Promise<Choice[]>;
+};
+export type Choice = {
+    value: string;
+    label: string;
+};
+export type Catalogue = {
+    title: PluginText;
+    configKey: string;
+    entries(): Promise<CatalogueEntry[]>;
+};
+export type CatalogueEntry = {
+    id: string;
+    displayName: PluginText;
+    description: PluginText;
+    installed: boolean;
+    riskNotice?: PluginText;
+};
+export type Configuration = {
+    version: number;
+    fields: ConfigField[];
+    migrations?: Record<number, (plain: JsonObject) => JsonObject>;
+};
+export type SetupStep = {
+    id: string;
+    title: PluginText;
+    description: PluginText;
+    progress?: (context: RunContext) => Promise<SetupProgress>;
+};
+export type SetupProgress = {
+    status: "waiting";
+    qrCode?: string;
+    message?: PluginText;
+} | {
+    status: "done";
+    message?: PluginText;
+} | {
+    status: "failed";
+    message: PluginText;
+};
+export type RunContext = {
+    config: {
+        plain: JsonObject;
+        secrets: Record<string, string>;
+    };
+    syncCursor: string | null;
+    now: Date;
+    timeZone: string;
+};
+export type SourceAttributeDeclaration = {
+    externalId: string;
+    name: string;
+};
+export interface SourceAttributes {
+    declare(attributes: SourceAttributeDeclaration[]): Promise<void>;
+    archive(externalId: string): Promise<void>;
+}
+export type IngestContext = RunContext & {
+    attributes: SourceAttributes;
+};
+export type IngestResult = {
+    origins: Origin[];
+    syncCursor: string | null;
+    withdrawn?: string[];
+};
+export type Ingestion = {
+    mode: "polling";
+    suggestedIntervalSeconds: number;
+    poll(context: IngestContext): Promise<IngestResult>;
+} | {
+    mode: "push";
+    receive(context: IngestContext, payload: Uint8Array): Promise<IngestResult>;
+};
+export type Attachment = {
+    filename: string;
+    contentType: string;
+    bytes: Uint8Array;
+};
+export declare const statedKinds: readonly ["event", "lesson", "task"];
+export declare const statedTextLimits: {
+    readonly event: 500;
+    readonly lesson: 200;
+    readonly task: 500;
+};
+export declare function clipped(text: string, limit: number): string;
+export type EventSpan = {
+    allDay: false;
+    start: string;
+    end: string;
+} | {
+    allDay: true;
+    firstDay: string;
+    lastDay: string;
+};
+export type StatedEvent = {
+    kind: "event";
+    title: string;
+    span: EventSpan;
+    place: string | null;
+    cancelled: boolean;
+};
+export type LessonSpan = {
+    allDay: false;
+    start: string;
+    end: string;
+};
+export type StatedLesson = {
+    kind: "lesson";
+    subject: string;
+    span: LessonSpan;
+    room: string | null;
+    teacher: string | null;
+    change: "cancellation" | "substitution" | "room-change" | null;
+    previousRoom: string | null;
+    previousTeacher: string | null;
+    note: string | null;
+};
+export type StatedTask = {
+    kind: "task";
+    title: string;
+    deadline: string | null;
+    bring: string[];
+};
+export type StatedItem = StatedEvent | StatedLesson | StatedTask;
+export type Origin = {
+    externalId: string;
+    occurredAt?: Date;
+    attributes: string[];
+    sender?: string;
+    subject?: string;
+    link?: string;
+    content: {
+        kind: "raw-message";
+        text: string;
+        attachments: Attachment[];
+    } | {
+        kind: "stated";
+        stated: StatedItem;
+    };
+};
+export type Health = {
+    silentApplies: boolean;
+};
+export declare class SourceError extends Error {
+    readonly kind: "definite" | "temporary";
+    constructor(message: string, kind: "definite" | "temporary");
+    static definite(message: string): SourceError;
+    static temporary(message: string): SourceError;
+}
+export type Services = {
+    reconcile(enabled: {
+        enabled: boolean;
+        entries: string[];
+    }): Promise<void>;
+    stop(): Promise<void>;
+};
+export interface SourcePlugin {
+    identity: SourcePluginIdentity;
+    configuration: Configuration;
+    setupSteps: SetupStep[];
+    ingestion: Ingestion;
+    health: Health;
+    catalogue?: Catalogue;
+    services?: Services;
+    sourceAdded?(context: Omit<RunContext, "syncCursor">): Promise<{
+        plain: JsonObject;
+        secrets: Record<string, string>;
+    }>;
+    sourceRemoved?(context: RunContext): Promise<void>;
+}
+export declare function problemsWith(plugin: SourcePlugin): string[];
+export declare function problemsWithOrigin(origin: Origin): string[];
+export type SourcePluginManifest = {
+    entry: string;
+    identity: SourcePluginIdentity;
+    description: PluginText;
+    needsLlm: boolean;
+    riskNotice?: PluginText;
+    esModule: boolean;
+};
+export type ManifestResult = {
+    ok: true;
+    manifest: SourcePluginManifest;
+} | {
+    ok: false;
+    problem: "no-manifest";
+} | {
+    ok: false;
+    problem: "invalid-manifest";
+    sourceTypeId?: string;
+    details: string[];
+};
+export declare function parseManifest(packageJson: unknown): ManifestResult;
+export declare function problemsWithManifest(manifest: SourcePluginManifest): string[];
+// src/testing.ts
+import { type RunContext, type SourceAttributes, type SourcePlugin } from "./index";
+export type ContractOptions = {
+    config?: RunContext["config"];
+    now?: Date;
+    languages?: string[];
+    packageJson?: unknown;
+};
+export declare function recordingAttributes(): SourceAttributes & {
+    active(): string[];
+    names(): Record<string, string>;
+};
+export declare function undeclaredAttributes(plugin: SourcePlugin, config: RunContext["config"], now?: Date): Promise<string[]>;
+export declare function describeSourcePluginContract(createPlugin: () => SourcePlugin, options?: ContractOptions): void;

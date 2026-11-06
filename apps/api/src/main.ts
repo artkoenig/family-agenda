@@ -9,6 +9,7 @@ const application = await bootApplication(config);
 const server = serve(
   { fetch: createHttpApp(application, {
       trustProxy: config.trustProxy,
+      version: config.version,
       ...(config.publicUrl ? { publicUrl: config.publicUrl } : {}),
       // The only listener in v1 is the local one, where Agendas open without a secret (ADR-0005).
       agendaAccess: openAgendaAccess,

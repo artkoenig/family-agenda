@@ -1,8 +1,13 @@
 name: family-agenda
 
+# The image api, worker and mdns run, written once so that one setting moves all three together.
+# FAMILY_AGENDA_VERSION is a release such as 0.3.1, `latest` for the newest release or `main` for
+# the current main branch. The default is the release this file belongs to; a release sets it.
+# To build the image from this working tree instead, add compose.dev.yaml (see docs/upgrading.md).
+x-image: &image ghcr.io/artkoenig/family-agenda:${FAMILY_AGENDA_VERSION:-main}
+
 x-app: &app
-  build: .
-  image: family-agenda:local
+  image: *image
   restart: unless-stopped
   environment:
     DATABASE_URL: postgres://family_agenda:${POSTGRES_PASSWORD:-family_agenda}@postgres:5432/family_agenda
@@ -67,7 +72,7 @@ services:
   # network, like homeassistant.local. It has to share the host's network to answer multicast DNS,
   # which works on a Linux host, such as a NAS or a Raspberry Pi, but not in Docker Desktop.
   mdns:
-    image: family-agenda:local
+    image: *image
     restart: unless-stopped
     network_mode: host
     working_dir: /app/apps/api

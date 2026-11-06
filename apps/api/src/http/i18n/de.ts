@@ -146,6 +146,7 @@ export const de: Catalogue = {
   settings: {
     title: "Einstellungen",
     signOut: "Abmelden",
+    version: (version: string) => `Version ${version}`,
     groups: { family: "Familie", sources: "Quellen", instance: "Instanz" },
     failingSource: "Eine Quelle funktioniert nicht",
     failingSourceBody: "Manche Einträge sind vielleicht nicht aktuell, bis sie behoben ist.",

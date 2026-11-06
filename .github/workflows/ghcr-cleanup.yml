@@ -1,0 +1,129 @@
+name: Clean up
+
+# Once a week: removes what the image workflows leave behind in GHCR, and the scratch refs of
+# releases that failed. Start it by hand with dry-run on to see what it would delete.
+#
+# Images: the `main` image, every image with a version tag or `latest`, and the 30 newest images
+# tagged only with a commit (`sha-<commit>`) stay. Older ones go. GHCR lists the platform images
+# and attestations of a multi-platform image as untagged versions of their own, so an untagged
+# version goes only when no image that stays refers to it and it is a day old.
+# Refs: refs/release-candidates/* older than a day, which a release leaves when it fails.
+
+on:
+  schedule:
+    - cron: "37 3 * * 0"
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: Only list what would be deleted
+        type: boolean
+        default: true
+
+concurrency:
+  group: cleanup
+  cancel-in-progress: false
+
+permissions: {}
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  IMAGE: ghcr.io/artkoenig/family-agenda
+  PACKAGE: family-agenda
+  # A scheduled run is not a dry run; the input exists only when started by hand.
+  DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry-run }}
+
+jobs:
+  images:
+    name: Image versions
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - uses: docker/setup-buildx-action@v4
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: List the versions of the package, and what each manifest refers to
+        run: |
+          path="/users/$GITHUB_REPOSITORY_OWNER/packages/container/$PACKAGE/versions"
+          gh api --paginate "$path?per_page=100" | jq -s 'add // []' > "$RUNNER_TEMP/versions.json"
+          echo "$(jq length "$RUNNER_TEMP/versions.json") versions"
+
+          # A manifest list names its images and an image its attestations; a plain image names nothing.
+          # A manifest that cannot be read is recorded as null, and the plan stops if an image that stays needs it.
+          echo '{}' > "$RUNNER_TEMP/children.json"
+          while read -r digest; do
+            if manifest=$(docker buildx imagetools inspect --raw "$IMAGE@$digest" 2> /dev/null); then
+              refers=$(jq -c '[.manifests[]?.digest]' <<< "$manifest")
+            else
+              refers=null
+            fi
+            jq --arg digest "$digest" --argjson refers "$refers" '. + {($digest): $refers}' "$RUNNER_TEMP/children.json" > "$RUNNER_TEMP/children.next"
+            mv "$RUNNER_TEMP/children.next" "$RUNNER_TEMP/children.json"
+          done < <(jq -r '.[].name' "$RUNNER_TEMP/versions.json")
+
+      - name: Decide what goes
+        run: node --import tsx tools/release/src/main.ts ghcr-plan --versions "$RUNNER_TEMP/versions.json" --children "$RUNNER_TEMP/children.json" > "$RUNNER_TEMP/delete.txt"
+
+      - name: Delete it
+        run: |
+          path="/users/$GITHUB_REPOSITORY_OWNER/packages/container/$PACKAGE/versions"
+          while read -r id; do
+            if [ "$DRY_RUN" = true ]; then
+              echo "Dry run: would delete version $id"
+            else
+              gh api --method DELETE "$path/$id"
+              echo "Deleted version $id"
+            fi
+          done < "$RUNNER_TEMP/delete.txt"
+
+  refs:
+    name: Scratch refs of releases
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Delete the scratch refs that are a day old
+        run: |
+          git fetch --quiet origin '+refs/release-candidates/*:refs/candidates/*'
+          now=$(date +%s)
+          git for-each-ref --format='%(refname) %(committerdate:unix)' refs/candidates | while read -r ref committed; do
+            if [ $((now - committed)) -gt 86400 ]; then
+              name=${ref#refs/candidates/}
+              if [ "$DRY_RUN" = true ]; then
+                echo "Dry run: would delete refs/release-candidates/$name"
+              else
+                git push --quiet origin --delete "refs/release-candidates/$name"
+                echo "Deleted refs/release-candidates/$name"
+              fi
+            fi
+          done

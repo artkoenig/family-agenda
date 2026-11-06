@@ -4,10 +4,11 @@ How to configure the containers, the address the Family opens, and single sign-o
 
 ## Containers
 
-`docker compose up -d --build` starts `api`, `worker`, `postgres` and `mdns`. Set variables in a `.env` file next to `compose.yaml` or in your stack tool (Portainer, ...).
+`docker compose up -d` starts `api`, `worker`, `postgres` and `mdns`. Set variables in a `.env` file next to `compose.yaml` or in your stack tool (Portainer, ...); [`.env.example`](../.env.example) lists them all.
 
 | Variable | Default | Purpose |
 |---|---|---|
+| `FAMILY_AGENDA_VERSION` | the release of your `compose.yaml` | Which release to run: a version such as `0.3.1`, `latest` for the newest release, `main` for the main branch (no guarantee that it keeps your data). Leave it unset unless you want to differ from your `compose.yaml` |
 | `PORT` | `8080` | Host port of the `api` |
 | `PUBLIC_URL` | `http://<MDNS_NAME>:<PORT>` | Address the Family opens. Agenda addresses and ICS links are built from it |
 | `TRUST_PROXY` | `false` | `true` behind your own HTTPS reverse proxy (see below) |
@@ -15,7 +16,7 @@ How to configure the containers, the address the Family opens, and single sign-o
 | `POSTGRES_PASSWORD` | `family_agenda` | Change it if the port of Postgres is ever exposed |
 | `TZ` | `Europe/Berlin` | Decides where an Agenda's days start |
 
-Data lives in named volumes (`postgres-data`, `master-key`, `blobs`, ...). A backup is a Postgres dump plus the blob volume. Keep the Recovery Kit, without it Source credentials cannot be restored (ADR-0006).
+Data lives in named volumes (`postgres-data`, `master-key`, `blobs`, ...). How to back them up, restore and upgrade is in [upgrading.md](upgrading.md). Keep the Recovery Kit, without it Source credentials cannot be restored (ADR-0006).
 
 ## Address of the Instance
 

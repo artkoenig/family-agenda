@@ -1,0 +1,7 @@
+{
+  "name": "@family-agenda/release",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Release tooling: writes the Upgrading section of a GitHub Release from what changed since the release before it."
+}

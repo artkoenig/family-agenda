@@ -1,6 +1,7 @@
 # The WhatsApp bridge, built on the Debian release the image runs on, with Go's own olm, so it needs
-# no libolm. The worker runs it while an Admin has WhatsApp enabled (ADR-0011).
-FROM golang:1.27-bookworm AS whatsapp-bridge
+# no libolm. The worker runs it while an Admin has WhatsApp enabled (ADR-0011). The Go version is the
+# toolchain the bridge's go.mod asks for (go1.27.1); Renovate raises it.
+FROM golang:1.27.1-bookworm AS whatsapp-bridge
 RUN CGO_ENABLED=1 go install -tags goolm -ldflags "-s -w" go.mau.fi/mautrix-whatsapp/cmd/mautrix-whatsapp@v0.2609.0
 
 FROM node:26-bookworm-slim
@@ -25,6 +26,13 @@ RUN pnpm install --frozen-lockfile --prod \
   && mkdir -p /var/lib/family-agenda/master-key /var/lib/family-agenda/blobs /var/lib/family-agenda/plugins /var/lib/family-agenda/tessdata /var/lib/family-agenda/matrix /var/lib/family-agenda/matrix-data \
   && chown node:node /var/lib/family-agenda/master-key /var/lib/family-agenda/blobs /var/lib/family-agenda/plugins /var/lib/family-agenda/tessdata /var/lib/family-agenda/matrix /var/lib/family-agenda/matrix-data \
   && chmod 700 /var/lib/family-agenda/master-key /var/lib/family-agenda/blobs /var/lib/family-agenda/matrix-data
+
+# The release this image is built from, such as 0.3.1 or main-1a2b3c4; `dev` when built from a working tree.
+# It comes last, so that a new version does not invalidate the layers above. The app names it in
+# /api/health and in the Admin area.
+ARG APP_VERSION=dev
+ENV APP_VERSION=$APP_VERSION
+LABEL org.opencontainers.image.version=$APP_VERSION
 
 USER node
 WORKDIR /app/apps/api

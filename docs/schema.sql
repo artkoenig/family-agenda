@@ -3,7 +3,7 @@
 -- This document is the readable reference of the schema. The migration is
 -- packages/adapters/drizzle/0000_initial.sql, and a test (initial-migration.test.ts) fails on any
 -- difference between the two, so change both together. There is no data migration from the old
--- model: existing Instances start over (ADR-0016, RELEASE_NOTES.md). Conventions (ADR-0014, as
+-- model: existing Instances start over (ADR-0016, docs/upgrading.md). Conventions (ADR-0014, as
 -- amended by ADR-0016):
 --   - singular table names;
 --   - closed lists are CHECK (... IN (...)), never enum types;

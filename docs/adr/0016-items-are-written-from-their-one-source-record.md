@@ -84,3 +84,5 @@ Where the first drafts of the schema document and the code differed, the impleme
 - **A `read` flag on Source Attributes instead of the allow-lists**, or a `rename` in the port: the plugin would declare Sent, Trash and private chats only to have them ignored. A name-keyed rename cannot be told from delete plus create anyway.
 - **An outbox of dropped file references**, filled by triggers on the rows that refer to files: catches cascades without a scan, but not a file written for a transaction that never commits. That still needs the sweep, which alone covers every case.
 - **An Agenda filter as JSONB**, or on Sources, Source Attributes or kinds: JSONB has no foreign keys (ADR-0014), and assigning Source Attributes already turns where an Item came from into whom it concerns.
+
+_Amended by the release process: the release notes moved into the GitHub Releases, and the volumes to remove are listed in `docs/upgrading.md`, which replaces `RELEASE_NOTES.md`._
