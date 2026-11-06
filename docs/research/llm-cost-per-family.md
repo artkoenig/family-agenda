@@ -1,111 +1,155 @@
 # LLM cost per Family on an EU-hosted endpoint
 
-Research for [issue #214](https://github.com/artkoenig/family-agenda/issues/214), part of map [#222](https://github.com/artkoenig/family-agenda/issues/222) (Paid hosted Family Agenda). Date: 2026-11-06.
+Research for [issue #214](https://github.com/artkoenig/family-agenda/issues/214), part of map [#222](https://github.com/artkoenig/family-agenda/issues/222) (Paid hosted Family Agenda). Date: 2026-11-06 (second pass, with provider pages read directly).
 Terms follow [GLOSSARY.md](../../GLOSSARY.md). Extraction quality and runtimes are in [llm-item-extraction.md](llm-item-extraction.md).
 
 **Question:** What does the hosted LLM endpoint cost per Family per month at low / typical / heavy volume, which EU providers with an OpenAI-compatible API could serve it, do they offer a DPA, and where does a fair-use cap sit?
 
-**Short answer:** The token cost is small enough to be a rounding error in the price. On a 24B-class model such as Mistral Small 3.2, one Family costs roughly **EUR 0.01 (low), 0.06 (typical) and 0.40 (heavy) per month**. Even a reasoning model at a larger size stays under EUR 1.50 at heavy volume. The price floor is therefore set by other Agenda Cloud costs, not by the LLM. A fair-use cap of about **2.5 million input tokens per month** (about 800 messages) would cost at most about EUR 0.50 on the recommended model and still covers the heavy case.
+**Short answer:** The LLM does not set the price floor. On a 24B-class model the token cost is about **EUR 0.01 (low), 0.05 (typical) and 0.26 (heavy) per Family per month**; the most expensive sensible choice (a 27B to 35B reasoning model) is about EUR 0.2 typical and EUR 1.0 to 1.8 heavy. A fair-use cap of **2.5 million input and 300,000 output tokens per month** costs at most about EUR 0.5 on the shortlisted models. Shortlist: **Scaleway Generative APIs** with `mistral-small-3.2-24b-instruct-2506` (everything we need is documented on primary pages), and **IONOS AI Model Hub** as the strongest privacy option, pending a `json_schema` test.
 
-> **Sourcing caveat, read first.** From this research environment the provider hosts (`mistral.ai`, `scaleway.com`, `ovhcloud.com`, and their docs and DPA pages) could not be fetched: they are outside the session's allowed network domains. Only the token volumes (section 1) are verified against the repository. **Every price and every DPA statement below is unverified**: prices come from search-engine extracts of the providers' pages and from third-party aggregators, and the DPA column is empty where search returned nothing. Before the price is decided, someone must open each provider's pricing page and DPA and check the cells marked *(unverified)*. The cost model in section 3 is parametric, so only the price inputs need replacing.
+## What is verified and what is not
 
----
+| Item | Status |
+|---|---|
+| Token overhead per read (instructions, schema, wrapper) | Measured with three tokenizers against the repo's real prompt and schema. |
+| Token volume of message text and output | **Measured on 24 synthetic German fixtures** with real tokenizers. The fixtures are written by me, not real mails: they fix tokens-per-character and output size per Item, but **messages per month and the share of newsletters and PDFs stay assumptions**. No provider key was available, so no real `usage` numbers. |
+| List prices of Scaleway, OVHcloud, IONOS, STACKIT, Mistral | Read on the providers' own pages on 2026-11-06 (links below). |
+| `json_schema` structured output | Verified for Scaleway and OVHcloud (own pages) and Mistral (own docs). **Not verified for IONOS and STACKIT**: neither page I read mentions it. |
+| Data location, retention, training | Verified for Scaleway, IONOS, OVHcloud (partly), STACKIT (partly), Mistral (partly); see section 2. |
+| DPA | Text read for Scaleway and Mistral. IONOS states one applies and links it, not opened. **OVHcloud and STACKIT DPA not located.** |
+| Sub-processor lists | Mistral's list is a JavaScript page that did not render; Scaleway's is referenced in the DPA but not opened; IONOS states none are engaged. |
 
-## 1. Token volume per message (from the code)
+## 1. Token volume per message
 
-Source of truth: `packages/application/src/extraction.ts` and `packages/adapters/src/openai-compatible-extractor.ts`.
+### Fixed overhead per read (measured)
 
-What one extraction read sends and receives:
+Source of truth: `packages/adapters/src/openai-compatible-extractor.ts` (the `instructions` constant, `extractionSchema`, `promptOf`) and `packages/application/src/extraction.ts`. The schema was counted as the `response_format` JSON that the adapter sends with `strict: true`; providers that inject it into the prompt count it as input.
 
-| Part | Size | Basis |
-|---|---|---|
-| System instructions | about 650 tokens | The `instructions` constant is 2,543 characters (475 words); at roughly 4 characters per token for English prose. |
-| JSON schema (`response_format`, `strict: true`) | about 450 tokens | `extractionSchema` is about 1,800 characters of JSON. Providers differ in whether they count it as input; counted here to stay on the safe side. |
-| Send-date line and `<<< >>>` wrapper | about 40 tokens | `promptOf`. |
-| **Fixed overhead per read** | **about 1,100 tokens** | Sum of the above. |
-| Message text | variable | The mail body followed by the text of its PDF attachments (`fullTextOf`). German text is assumed at about 3 to 3.5 characters per token. |
-| Output | 15 tokens for a message with nothing in it, about 120 tokens per Item | Each Event or Task is a JSON object with a six-field date mention and a verbatim `evidence` quote. |
+| Tokenizer | Instructions | Schema | Wrapper | Fixed per read |
+|---|---|---|---|---|
+| o200k (OpenAI; gpt-oss models) | 635 | 410 | 27 | **1,072** |
+| Mistral Small 24B (HF `Mistral-Small-24B-Instruct-2501`) | 651 | 455 | 35 | **1,141** |
+| Qwen3 (HF `Qwen/Qwen3-8B`) | 644 | 399 | 33 | **1,076** |
 
-Facts about the pipeline that bound the volume:
+This matches the 1,100 tokens assumed in the first pass. Chat-template tokens (a handful) are not counted.
 
-- **One chat completion per message, once** (ADR-0016). Items are written once or not at all. There is no re-extraction on a schedule.
-- **A second read happens only when an Item fails an automatic check** (`extractOne`: `checkAll`, then `read` again). So retries multiply cost only for messages with a failing Item; assumed 10 to 25 percent of messages.
-- **At most 20 messages per run** (`batchSize`), a pacing limit and not a cost cap.
-- **Only text reaches the LLM endpoint.** PDF text layers are read locally by the `TextExtractor`, and scanned pages are read by **Tesseract OCR on the Instance** (`readScans`, at most 10 scanned pages per attachment). No images are sent, so no image tokens are billed, and the hosted endpoint does not need a vision model.
-- There is **no truncation of message text** before it is sent. A very long newsletter or a 20-page PDF with a text layer goes in whole, so the heavy case is dominated by a few long messages. A cap on message length or on tokens per month belongs in the hosted service.
-- Messengers are out of scope for the hosted plan (per the ticket), so the volume is mail, calendar-derived text and PDF attachments.
-- The adapter sends `reasoning_effort: "low"`. A reasoning model still adds hidden output tokens; the model below allows for about 500 per read as a sensitivity, and none for a non-reasoning model.
+### Message text and output (measured on synthetic fixtures)
 
-### Monthly volume per Family
+24 German messages in four kinds: 8 short notes, 8 medium mails, 4 long newsletters (with the usual legal footer) and 4 PDF letters (mail body plus `Attachment <name>:` text, as `fullTextOf` builds it). Each has an expected Item list rendered into the real output schema, so output tokens are those of valid answers. Mean text tokens per message, by tokenizer:
 
-These are assumptions for a family with school-age children, not measurements; nothing in the repo records real volumes. Fixture-based measurement is the follow-up (section 5).
+| Kind | o200k | Mistral Small | Qwen3 | Output tokens (Mistral) | Characters per token (Mistral) |
+|---|---|---|---|---|---|
+| Short note | 37 | 44 | 46 | 88 | 3.2 |
+| Medium mail | 246 | 287 | 314 | 179 | 3.6 |
+| Newsletter | 1,243 | 1,409 | 1,556 | 493 | 3.8 |
+| PDF letter | 1,002 | 1,140 | 1,253 | 378 | 3.8 |
 
-| Scenario | Messages per month | Average text per message | Retry share | Reads | Input tokens | Output tokens |
-|---|---|---|---|---|---|---|
-| Low | 40 (one child, one class list, no PDFs) | 600 tokens (about 2,000 characters) | 10% | 44 | about 75,000 | about 4,000 |
-| Typical | 150 (two children, class and school lists, some PDFs) | 1,000 tokens | 15% | 172 | about 362,000 | about 26,000 |
-| Heavy | 600 (three children, several newsletters, many PDF letters) | 2,000 tokens | 25% | 750 | about 2,325,000 | about 188,000 |
+German costs about 3.2 to 3.8 characters per token on the Mistral tokenizer and 3.0 to 3.4 on Qwen3; the first pass assumed 3 to 3.5. Output is about 70 to 90 tokens per Item plus a small constant.
 
-Input per read is the fixed 1,100 tokens plus the average text. Output per read is 100 / 150 / 250 tokens.
+My short and medium fixtures are probably shorter than real school mail (real mails carry quoted threads, signatures and footers), so the cost table also shows a **doubled message text** sensitivity.
+
+### Facts about the pipeline that bound the volume (unchanged)
+
+- One chat completion per message (ADR-0016). A second read happens only when an Item fails an automatic check (`extractOne`); retries are assumed at 10, 15 and 25 percent of messages for low, typical and heavy.
+- At most 20 messages per run (`batchSize`): pacing, not a cap.
+- Only text reaches the LLM. PDF text layers and Tesseract OCR run on the Instance (`readScans`, at most 10 scanned pages per attachment), so no image tokens are billed and no vision model is needed.
+- Nothing truncates message text before it is sent, so a few very long messages dominate the heavy case.
+- The adapter sends `reasoning_effort: "low"`; a reasoning model still adds hidden output tokens. The cost table shows models without and with 400 hidden tokens per read.
+
+### Monthly volume per Family (message counts are assumptions)
+
+| Scenario | Messages (short / medium / newsletter / PDF letter) | Retry share | Reads | Input tokens | Output tokens |
+|---|---|---|---|---|---|
+| Low | 40 (20 / 16 / 4 / 0) | 10% | 44 | about 62,000 | about 7,000 |
+| Typical | 150 (60 / 50 / 25 / 15) | 15% | 172 | about 277,000 | about 37,000 |
+| Heavy | 600 (200 / 190 / 120 / 90) | 25% | 750 | about 1,275,000 | about 181,000 |
+
+(Mistral tokenizer; the others are within 8 percent.) The first pass assumed more input at typical and heavy (362k and 2.3M); measuring shows message text is smaller than I guessed, while output is larger, because each Item carries a six-field date mention and a verbatim evidence quote.
 
 ## 2. EU-hosted providers with an OpenAI-compatible API
 
-All prices below are **unverified** (see the caveat) and are per million tokens, before tax.
+All pages read on 2026-11-06. Prices are per million tokens, before tax, for a model suitable for extraction (the earlier research puts a 9B dense or 30B-class model as sufficient for typical Elternbriefe).
 
-| Provider | Hosting | OpenAI-compatible | Candidate model | Input / output | DPA |
-|---|---|---|---|---|---|
-| **Scaleway** Generative APIs (France) | Search extracts say EU data centres (Paris and others); not verified on a primary page. | Yes, the product is marketed as "OpenAI-compatible APIs" ([search result](https://www.scaleway.com/generative-apis/)). | `mistral-small-3.2-24b-instruct-2506` | EUR 0.15 / 0.35 *(unverified, via search of [scaleway.com/generative-apis](https://www.scaleway.com/generative-apis/))* | Not found. *(unverified)* |
-| | | | `gpt-oss-120b` | EUR 0.15 / 0.60 *(unverified)* | |
-| | | | `qwen3.6-35b-a3b` | EUR 0.25 / 1.50 *(unverified)* | |
-| | | | `qwen3.5-397b-a17b` | EUR 0.60 / 3.60 *(unverified)* | |
-| **Mistral** La Plateforme (France) | Not verified which region serves the API by default. | Chat completions endpoint with `json_schema` response format (see llm-item-extraction.md, via search). | Mistral Small (3.2 / 4) | USD 0.15 to 0.20 input, 0.60 output; sources disagree, one aggregator even lists USD 0.10 / 0.30 *(unverified, aggregators only)* | Not found. *(unverified)* |
-| **OVHcloud** AI Endpoints (France) | Search extract: runs on OVHcloud's own infrastructure in European data centres *(unverified)*. | Not confirmed on a primary page. | Mistral Small 3.2, Qwen3 family, gpt-oss | About USD 0.09 / 0.28 for Mistral Small 3.2 *(third-party calculator, unverified)* | Not found. *(unverified)* |
-| **IONOS** AI Model Hub, **STACKIT** AI Model Serving (both Germany) | Not researched: hosts not reachable and not searched. | Not checked. | n/a | n/a | n/a |
+### Scaleway Generative APIs (France)
 
-Observations that hold even with unverified numbers:
+- **Prices:** `mistral-small-3.2-24b-instruct-2506` EUR 0.15 / 0.35; `gpt-oss-120b` EUR 0.15 / 0.60; `qwen3.6-35b-a3b` EUR 0.25 / 1.50; `gemma-4-26b-a4b-it` EUR 0.25 / 0.50. Batch API at minus 50 percent; the first 1,000,000 tokens are free ([pricing](https://www.scaleway.com/en/pricing/model-as-a-service/)).
+- **Structured output:** `response_format: {"type": "json_schema"}` with nested schemas, `$ref`, `anyOf` and regular expressions; "All LLMs in the Scaleway library support Structured outputs" ([docs](https://www.scaleway.com/en/docs/generative-apis/how-to/use-structured-outputs/)). OpenAI libraries work ([FAQ](https://www.scaleway.com/en/docs/generative-apis/faq/)).
+- **Location:** serverless models are hosted in a data center in Paris operated by OPCORE; Scaleway "will continue to guarantee" they stay hosted in Europe ([FAQ](https://www.scaleway.com/en/docs/generative-apis/faq/)). Data region: Paris ([data privacy](https://www.scaleway.com/en/docs/generative-apis/reference-content/data-privacy/)).
+- **Retention and training:** default Zero Data Retention policy; prompts and outputs are not collected, read or used, except for abusive or error-triggering requests, which may be stored up to two weeks; not used for training; usage metadata aggregated and kept up to 6 months; "not subject to extraterritorial laws such as the American Cloud Act" ([data privacy](https://www.scaleway.com/en/docs/generative-apis/reference-content/data-privacy/)).
+- **DPA:** [Data Processing Agreement, version of 1 June 2024](https://www-uploads.scaleway.com/DPA_2024_ENG_b0abb5cc26.pdf), "an integral part of the contract", Scaleway as processor or sub-processor. Article 7.3 says the sub-processor list is available on Scaleway's website and Article 7.4 gives 30 days' notice of changes to those who subscribe to updates. The list itself was not opened.
 
-- Every candidate lists models good enough for this task (the earlier research puts a 9B dense or 30B-class MoE model as sufficient for typical Elternbriefe; Mistral Small 24B is in its "strong local" tier) at **well under EUR 1 per million input tokens**.
-- Because only text is sent, the cheapest suitable tier is a 24B to 35B text model. A 397B model is not needed and is shown below only as an upper bound.
-- Scaleway advertises a free first million tokens for new customers *(unverified)*; irrelevant for a production price.
-- **DPA and sub-processors are the open question.** A paid hosted service that forwards children's school data must have a processor agreement with the LLM provider (GDPR Art. 28) and must name that provider as a sub-processor towards the Families. None was confirmed from a primary source. Each provider's legal documentation (DPA, sub-processor list, data location, retention and training-on-data policy) needs to be read directly before a provider is chosen.
+### IONOS AI Model Hub (Germany)
+
+- **Prices (USD):** Mistral Small 24B Instruct 0.11 / 0.33; Qwen3.5-9B 0.11 / 0.17; Qwen3.8-27B 0.45 / 2.70; gpt-oss-120b 0.17 / 0.71 ([pricing](https://cloud.ionos.com/managed/ai-model-hub)). The page lists dollars, not euros, so the euro cost depends on the invoice currency.
+- **OpenAI compatibility:** "OpenAI-compatible REST API" ([same page](https://cloud.ionos.com/managed/ai-model-hub)). **`json_schema` support not found** in the product page, the models page or the text-generation how-to.
+- **Location and retention:** all inference in IONOS data centers in Germany; prompts and outputs are never logged, never written to persistent storage, never used for training and not disclosed to third parties; operational access only from within the EU ([data handling](https://docs.ionos.com/cloud/ai/ai-model-hub/governance-and-compliance/data-handling)).
+- **Sub-processors:** "No third-party sub-processors are engaged for AI Model Hub" (same page).
+- **DPA:** the same page states a data processing agreement (Art. 28 GDPR) applies as part of the contract and links it; I did not open the document.
+
+### OVHcloud AI Endpoints (France)
+
+- **Prices (EUR):** Qwen3.5-9B 0.10 / 0.15; gpt-oss-20b 0.04 / 0.15; gpt-oss-120b 0.08 / 0.40; Qwen3.6-27B 0.40 / 2.70; Qwen3.8-27B 0.40 / 2.70 ([catalog](https://www.ovhcloud.com/en/public-cloud/ai-endpoints/catalog/)). **Mistral-Small-3.2-24B is marked "Retired on Nov 4, 2026"** there. Batch mode saves 50 percent; base mode SLA 99.5 percent ([product page](https://www.ovhcloud.com/en/public-cloud/ai-endpoints/)).
+- **Structured output:** the catalog tags these models "Structured Output" and the Qwen3.5-9B page lists `json_object` and `json_schema`. OpenAI-compatible API ([product page](https://www.ovhcloud.com/en/public-cloud/ai-endpoints/)).
+- **Location and retention:** "hosted and run in the European Union. Your data is never used to train our models, and we only keep what is strictly necessary for billing" (product page).
+- **DPA:** **not located** on the pages I read; OVHcloud's contract list did not show an obvious DPA for this product. Needs a direct request.
+
+### STACKIT AI Model Serving (Germany)
+
+- **Prices (EUR):** gpt-oss-20b 0.15 / 0.25; Qwen3.6 27B and Qwen3.8 27B 0.45 / 0.65; gpt-oss-120b 0.45 / 0.65; Gemma 4 31B 0.45 / 0.65 ([price table](https://stackit.com/en/products/data-ai/stackit-ai-model-serving)).
+- **OpenAI compatibility:** "provides an OpenAI-compatible API", region `eu01` ([docs](https://docs.stackit.cloud/products/data-and-ai/ai-model-serving/how-tos/use-the-models/)). **`json_schema` support not found** in the docs I read.
+- **Retention:** "STACKIT does not collect or evaluate any customer data other than billing-relevant data"; customer data is not stored permanently; e-mail and subject ID are kept 30 days in service logs ([service certificate v1.4](https://stackit.com/en/asset/download/61500/file/Service_Certificate_STACKIT_AI_Model_Serving_1-4.pdf?version=10)). The certificate calls it a "GDPR-compliant service" but I found no DPA and no statement of the country of the data center for this service.
+
+### Mistral AI, La Plateforme (France)
+
+- **Price:** Mistral Small 4 USD 0.15 / 0.60 ([model page](https://docs.mistral.ai/models/mistral-small-4-0-26-03)). The pricing page quotes Mistral Large as the example, and notes batch at minus 50 percent and cached input up to minus 90 percent ([pricing](https://mistral.ai/pricing)).
+- **Structured output:** custom JSON-schema outputs and JSON mode ([docs](https://docs.mistral.ai/inference/conversations/structured-output)).
+- **DPA:** yes, [Data Processing Addendum](https://legal.mistral.ai/terms/data-processing-addendum) with Mistral as processor, an Exhibit listing a Paris address, sub-processors on its Trust Center, and SCCs for transfers.
+- **Not EU-only:** the [privacy policy](https://legal.mistral.ai/terms/privacy-policy) says Mistral "prioritize[s]" EU providers but may use non-EU ones "in exceptional cases". Inputs and outputs are kept 30 rolling days for abuse monitoring unless zero data retention is activated, and the DPA lets Mistral train on Personal Data as controller unless the customer opted out. I found no commitment to process API traffic only in the EU.
 
 ## 3. Resulting cost per Family per month
 
-Computed from the volumes in section 1 and the unverified prices in section 2 (`cost = input / 1M * price_in + (output + hidden reasoning) / 1M * price_out`). Reasoning models get +500 hidden output tokens per read; Mistral Small 3.2 is not a reasoning model.
+`cost = input / 1M * price_in + output / 1M * price_out`, with each model's own tokenizer. "Base" has no hidden reasoning tokens; "+reasoning" adds 400 hidden output tokens per read for models that reason (gpt-oss, Qwen). Mistral Small 3.2 and IONOS's Mistral Small do not reason. Currency as listed by the provider.
 
-| Model (Scaleway list price, unverified) | Low | Typical | Heavy |
-|---|---|---|---|
-| Mistral Small 3.2 24B (0.15 / 0.35) | EUR 0.01 | EUR 0.06 | EUR 0.41 |
-| gpt-oss-120b, with reasoning (0.15 / 0.60) | EUR 0.03 | EUR 0.12 | EUR 0.69 |
-| Qwen3.6-35B-A3B, with reasoning (0.25 / 1.50) | EUR 0.06 | EUR 0.26 | EUR 1.43 |
-| Qwen3.5-397B-A17B, with reasoning (0.60 / 3.60), upper bound | EUR 0.14 | EUR 0.62 | EUR 3.42 |
+| Model (provider) | Low | Typical | Heavy | Heavy, double text |
+|---|---|---|---|---|
+| Mistral Small 3.2 24B (Scaleway), EUR | 0.012 | 0.054 | 0.26 | 0.32 |
+| gpt-oss-120b (Scaleway), EUR | 0.012 / 0.023 | 0.058 / 0.10 | 0.27 / 0.45 | 0.33 / 0.51 |
+| Qwen3.6-35B-A3B (Scaleway), EUR | 0.025 / 0.052 | 0.12 / 0.23 | 0.58 / 1.03 | 0.69 / 1.14 |
+| Qwen3.5-9B (OVHcloud), EUR | 0.007 / 0.010 | 0.033 / 0.043 | 0.15 / 0.20 | 0.20 / 0.24 |
+| gpt-oss-20b (OVHcloud), EUR | 0.003 / 0.006 | 0.015 / 0.025 | 0.07 / 0.12 | 0.09 / 0.13 |
+| gpt-oss-120b (OVHcloud), EUR | 0.007 / 0.014 | 0.033 / 0.061 | 0.16 / 0.28 | 0.19 / 0.31 |
+| Qwen3.6-27B (OVHcloud), EUR | 0.043 / 0.09 | 0.20 / 0.39 | 0.97 / 1.78 | 1.16 / 1.97 |
+| Mistral Small 24B (IONOS), USD | 0.009 | 0.043 | 0.20 | 0.25 |
+| Qwen3.5-9B (IONOS), USD | 0.008 / 0.011 | 0.036 / 0.048 | 0.17 / 0.22 | 0.22 / 0.27 |
+| gpt-oss-20b (STACKIT), EUR | 0.010 / 0.015 | 0.046 / 0.064 | 0.22 / 0.29 | 0.27 / 0.35 |
+| Qwen3.6-27B (STACKIT), EUR | 0.032 / 0.043 | 0.15 / 0.19 | 0.68 / 0.88 | 0.89 / 1.09 |
+| Mistral Small 4 (Mistral), USD | 0.014 | 0.064 | 0.30 | 0.36 |
 
-Sensitivities:
+Changes against the first pass: heavy on the 24B model fell from EUR 0.41 to 0.26 (measured text is shorter), the 24B typical figure fell from 0.063 to 0.054, and the previously unknown cheaper tiers (OVHcloud 9B and 20B models, IONOS) are now priced: **a Family costs a few cents a month at typical volume on every candidate, and under EUR 2 at heavy volume on the most expensive combination listed.** The 397B model shown before as an upper bound is no longer needed.
 
-- **Prices off by a factor of two** (the aggregators disagree by about that much): the typical figure stays under EUR 0.15 on the 24B model. The conclusion does not change.
-- **Prompt caching** is not assumed. The 1,100-token fixed prefix is identical for every read, so a provider with prefix caching would cut the typical input cost by about a third; none of the candidates was verified to offer it.
-- **Batch discount** (Scaleway advertises one for non-realtime use, *unverified*) fits the worker, which already runs extraction in the background, but is not needed.
-- Output is a small share of the bill except for reasoning models; a hard cap on `max_tokens` is cheap insurance against a runaway reasoning model.
+Sensitivities: prices off by a factor of two do not change the conclusion; prompt caching is not assumed, although the 1,100-token prefix is identical for every read (Scaleway and Mistral advertise cached-input pricing on some models, not verified for these); batch pricing at minus 50 percent (Scaleway, OVHcloud, Mistral) suits the background worker if latency does not matter.
 
 ## 4. Where the fair-use cap sits
 
-The cap exists to stop an abusive or broken Source (a mailing list flooding the mailbox, a loop of retries), not to ration normal use.
+The cap exists to stop an abusive or broken Source (a mailing list flooding the mailbox, a retry loop), not to ration normal use.
 
-- **Normal use costs a fraction of one euro.** Typical is below EUR 0.30 on every model in the table except the 397B upper bound.
-- **Suggested cap: about 2.5 million input tokens and 250,000 output tokens per Family per month.** That is just above the heavy scenario, and costs at most about EUR 0.45 on Mistral Small 3.2 and about EUR 0.80 on gpt-oss-120b (both unverified list prices). Expressed in messages that is roughly 800 average messages.
-- **Meter tokens, not messages.** One message can be a 30-page PDF. The adapter already sees `finish_reason` and the endpoint's `usage` object; the hosted endpoint can count there.
-- **Behaviour at the cap:** the extraction already leaves messages pending when the endpoint refuses (`extractPending`: the rest wait for the next run). A cap can therefore be a soft pause until the next period, with the Admin shown how many messages wait, with no data loss.
-- **Add a per-message limit** (for example 20,000 tokens of text) so a single oversized attachment cannot use the whole allowance. Today nothing truncates a message, so this would be new work in the extraction.
+- **Suggested cap: 2.5 million input and 300,000 output tokens per Family per month.** Heavy needs 1.3M and 0.18M; the double-text sensitivity needs about 1.9M input. At the cap the bill is about **EUR 0.5** on Scaleway Mistral Small 3.2 (2.5 * 0.15 + 0.3 * 0.35) and about EUR 0.3 on OVHcloud gpt-oss-120b, plus up to about EUR 0.25 of hidden reasoning tokens on a reasoning model.
+- **Meter tokens, not messages.** One message can be a 30-page PDF. The chat completion's `usage` object gives the count.
+- **Behaviour at the cap:** extraction already leaves messages pending when the endpoint refuses (`extractPending`), so a cap can be a soft pause until the next period with no data loss; show the Admin how many messages wait.
+- **Add a per-message limit** (for example 20,000 tokens of text): nothing truncates a message today, so this is new work in the extraction.
+- **Set `max_tokens`** on the request as insurance against a runaway reasoning model; Scaleway's FAQ notes that several models can enter infinite generation loops, which means uncontrolled billing (the passage may be about its dedicated deployments; it applies to any per-token endpoint).
 
-## 5. Consequences for the decision this unblocks
+## 5. Shortlist and consequences for the decisions this unblocks
 
-- **Price floor:** the LLM contributes cents per month to cost of goods. It does not justify a price tier; the floor is set by Remote Access, push delivery, backups and operations.
-- **Fair-use limit:** use the token cap above, tuned after the fixture measurement below.
-- **Provider choice is a legal question first, a price question second.** All candidates are within a few euro cents of each other at typical volume.
+- **Price floor:** the LLM contributes cents per month. It is not a pricing tier; the floor is set by Remote Access, push, backups and operations. The claim holds with measured overhead and verified prices.
+- **Shortlist 1, Scaleway with `mistral-small-3.2-24b-instruct-2506`:** the only candidate where price in euros, `json_schema` for all models, a Paris data location, a zero-data-retention default, a no-training statement and a readable DPA are all on primary pages. A non-reasoning model keeps the cost per read predictable. Open: open the sub-processor list; the "France only for now, Europe later" wording means the data location can widen within Europe.
+- **Shortlist 2, IONOS AI Model Hub:** the strongest privacy statement (Germany only, nothing logged, no sub-processors, Art. 28 DPA stated) and comparable prices, but billed in USD and **`json_schema` is unverified**. Run the adapter against it before choosing.
+- **OVHcloud** is cheapest and supports `json_schema`, but retired Mistral Small 3.2 on 4 November 2026, its remaining small models are reasoning models, and I found no DPA. **STACKIT** is documented as GDPR compliant, but I found no DPA, no `json_schema` statement and a higher price. **Mistral itself** has a DPA but does not promise EU-only processing of API traffic, keeps inputs 30 days by default, and its default terms allow training unless opted out.
 
-## 6. Open items before this ticket is fully closed
+## 6. Still unverified
 
-1. Allow the provider hosts in the research session (or check by hand) and replace every *(unverified)* cell: the official pricing pages of Scaleway, Mistral, OVHcloud, IONOS and STACKIT; each provider's DPA, sub-processor list, data location and no-training commitment.
-2. Confirm which of them ship an OpenAI-compatible `/chat/completions` with `json_schema` strict output for the chosen model; the adapter depends on it (llm-item-extraction.md section 1).
-3. Replace the assumed volumes with measurements: run the 20 to 40 anonymised German fixtures proposed in llm-item-extraction.md through the adapter and read `usage` for real input and output tokens per message, with and without PDFs.
-4. Decide whether the hosted endpoint will be a reasoning model; that is the single biggest cost lever (section 3).
+1. Real `usage` from a provider: no API key was available, so volumes rest on tokenizer counts of 24 synthetic fixtures. Replace the fixtures with 20 to 40 anonymised real messages and read `usage` from a real endpoint, with and without PDF attachments.
+2. Messages per month per Family (the mix in section 1) are assumptions; nothing in the repo records real volumes.
+3. `json_schema` strict support on IONOS and STACKIT; the DPA of OVHcloud and STACKIT; Scaleway's sub-processor list; Mistral's sub-processor list (the page does not render without JavaScript) and its EU data location.
+4. Whether any provider caches the identical 1,100-token prefix at a discount for these models.
+5. Hidden reasoning tokens for gpt-oss and Qwen at `reasoning_effort: "low"` (400 per read is a placeholder).
