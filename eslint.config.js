@@ -6,7 +6,7 @@ import sonarjs from "eslint-plugin-sonarjs";
 const sonarjsOff = Object.fromEntries(Object.keys(sonarjs.configs.recommended.rules).map((rule) => [rule, "off"]));
 
 export default tseslint.config(
-  { ignores: ["**/node_modules/", "packages/adapters/drizzle/", ".stryker-tmp/"] },
+  { ignores: ["**/node_modules/", "packages/adapters/drizzle/", ".stryker-tmp/", ".previews/"] },
   js.configs.recommended,
   ...tseslint.configs.strictTypeChecked,
   {

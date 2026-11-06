@@ -1,0 +1,28 @@
+{
+  "name": "@family-agenda/demo-source",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "A developer tool: a Source plugin that states demo Events, Lessons and Tasks for `pnpm preview`. It sits outside packages/ so the Instance never discovers it unless a preview mounts it into the plugins directory.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "familyAgenda": {
+    "sourcePlugin": {
+      "entry": "./src/index.ts",
+      "sourceTypeId": "demo",
+      "displayName": {
+        "en": "Demo data",
+        "de": "Demodaten"
+      },
+      "sdkVersion": "1.0.0",
+      "description": {
+        "en": "States a week of made-up Events and Lessons, and two Tasks, around the run's date, for trying out a change in a preview. Never installed on a real Instance.",
+        "de": "Liefert eine Woche erfundener Termine und Unterrichtsstunden sowie zwei Aufgaben rund um das Datum des Laufs, um eine Änderung in einer Vorschau auszuprobieren. Wird nie auf einer echten Instanz installiert."
+      }
+    }
+  },
+  "dependencies": {
+    "@family-agenda/source-sdk": "workspace:*"
+  }
+}

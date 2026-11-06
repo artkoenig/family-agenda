@@ -66,9 +66,21 @@ describe("reading the Item a calendar or timetable entry states", () => {
     },
     { case: "a Lesson with a previous room but no change", stated: { ...lesson, previousRoom: "101" }, problems: ["previousRoom needs a change"] },
     { case: "a Lesson that ends before it starts", stated: { ...lesson, span: { ...span, end: span.start } }, problems: ["span is not a valid time span of a Lesson"] },
-    { case: "a kind of Item no Source states", stated: { kind: "task", title: "Bring milk" }, problems: ['"task" is no kind of Item a Source states'] },
+    { case: "a kind of Item no Source states", stated: { kind: "notice", title: "Bring milk" }, problems: ['"notice" is no kind of Item a Source states'] },
+    { case: "a Task without a title", stated: { kind: "task", deadline: null }, problems: ["title is missing"] },
+    { case: "a Task with an empty title", stated: { kind: "task", title: " " }, problems: ["title is not a non-empty text"] },
+    { case: "a Task with a Deadline that is no date", stated: { kind: "task", title: "Bring milk", deadline: "tomorrow" }, problems: ["deadline is not a date or null"] },
+    { case: "a Task stated as done, which only ticking it does", stated: { kind: "task", title: "Bring milk", done: true }, problems: ["done is not a field of a Task"] },
   ])("finds no Item in $case", ({ stated, problems }) => {
     expect(readStated(stated)).toEqual({ ok: false, problems });
+  });
+
+  it("reads a Task with or without a Deadline and things to bring, never cancelled", () => {
+    expect(readStated({ kind: "task", title: "Bring milk", deadline: "2026-09-18", bring: ["Milk"] })).toEqual({
+      ok: true,
+      item: { kind: "task", task: { title: "Bring milk", deadline: "2026-09-18", bring: ["Milk"], cancelled: false } },
+    });
+    expect(readStated({ kind: "task", title: "Bring milk" })).toMatchObject({ ok: true, item: { task: { deadline: null, bring: [] } } });
   });
 
   it("reads an Event without a place or cancellation as neither", () => {

@@ -1,15 +1,16 @@
-import { eventOf, lessonOf, problemsWithEventFields, problemsWithLessonFields, timetableChangeOf } from "@family-agenda/domain";
+import { eventOf, lessonOf, problemsWithEventFields, problemsWithLessonFields, problemsWithTaskFields, taskOf, timetableChangeOf } from "@family-agenda/domain";
 import type { ReadStated, StatedJson } from "./ports";
 
 /**
- * The Item a calendar or timetable entry states (ADR-0016), checked as its kind requires: an Event
- * with `cancelled` as its Source says, or a Lesson with its Timetable Change. One that is invalid
- * is no Item, and says why.
+ * The Item a calendar, timetable or list of Tasks entry states (ADR-0016), checked as its kind
+ * requires: an Event with `cancelled` as its Source says, a Lesson with its Timetable Change, or a
+ * Task, which is never stated cancelled or done. One that is invalid is no Item, and says why.
  */
 export const readStated: ReadStated = (stated) => {
   const { kind, ...fields } = stated;
   if (kind === "event") return eventFrom(fields);
   if (kind === "lesson") return lessonFrom(fields);
+  if (kind === "task") return taskFrom(fields);
   return { ok: false, problems: [`"${String(kind)}" is no kind of Item a Source states`] };
 };
 
@@ -19,6 +20,12 @@ function eventFrom(stated: StatedJson): ReturnType<ReadStated> {
   if (typeof cancelled !== "boolean") problems.push("cancelled is not true or false");
   const event = problems.length === 0 ? eventOf({ fields, cancelled: cancelled as boolean }) : null;
   return event ? { ok: true, item: { kind: "event", event } } : { ok: false, problems };
+}
+
+function taskFrom(fields: StatedJson): ReturnType<ReadStated> {
+  const problems = problemsWithTaskFields(fields);
+  const task = problems.length === 0 ? taskOf({ fields, cancelled: false }) : null;
+  return task ? { ok: true, item: { kind: "task", task } } : { ok: false, problems };
 }
 
 function lessonFrom(fields: StatedJson): ReturnType<ReadStated> {

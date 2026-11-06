@@ -4,3 +4,4 @@ node_modules/
 .stryker-tmp
 reports
 coverage/
+.previews/

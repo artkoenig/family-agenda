@@ -636,10 +636,16 @@ async function insertItem(tx: Transaction, recordId: string, item: StatedItem | 
   else await tx.insert(lessons).values({ itemId: row.id, ...lessonColumns(item) });
 }
 
-/** Overwrites an Item with what its Source states now. */
+/**
+ * Overwrites an Item with what its Source states now. A Task keeps whether it is done: that is the
+ * Family's to say by ticking it, so only what the Source states changes.
+ */
 async function updateDetail(tx: Transaction, id: string, item: StatedItem): Promise<void> {
   if (item.kind === "event") await tx.update(events).set(eventColumns(item.event)).where(eq(events.itemId, id));
-  else await tx.update(lessons).set(lessonColumns(item)).where(eq(lessons.itemId, id));
+  else if (item.kind === "task") {
+    const { title, deadline, bring } = taskColumns(item.task);
+    await tx.update(tasks).set({ title, deadline, bring }).where(eq(tasks.itemId, id));
+  } else await tx.update(lessons).set(lessonColumns(item)).where(eq(lessons.itemId, id));
 }
 
 /** An Event as the columns of its row. */

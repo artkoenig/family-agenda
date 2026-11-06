@@ -35,6 +35,9 @@ importers:
       eslint-plugin-sonarjs:
         specifier: ^4.2.2
         version: 4.2.2(eslint@10.13.0)
+      tsx:
+        specifier: ^4.23.15
+        version: 4.23.15
       typescript:
         specifier: ~6.0.3
         version: 6.0.3
@@ -209,6 +212,27 @@ importers:
       '@family-agenda/source-sdk':
         specifier: workspace:*
         version: link:../source-sdk
+
+  tools/demo-source:
+    dependencies:
+      '@family-agenda/source-sdk':
+        specifier: workspace:*
+        version: link:../../packages/source-sdk
+
+  tools/preview:
+    dependencies:
+      '@family-agenda/api':
+        specifier: workspace:*
+        version: link:../../apps/api
+      '@family-agenda/application':
+        specifier: workspace:*
+        version: link:../../packages/application
+      '@family-agenda/demo-source':
+        specifier: workspace:*
+        version: link:../demo-source
+      '@family-agenda/domain':
+        specifier: workspace:*
+        version: link:../../packages/domain
 
 packages:
 

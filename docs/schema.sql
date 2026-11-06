@@ -247,12 +247,14 @@ CREATE INDEX source_attribute_member_family_member_id_idx
 -- itself. It is read once by the LLM, and processed_at is set when its Items are written. NULL
 -- means waiting, or extraction keeps failing (an Admin can retry it while its content is kept). An edited message (same external_id, new content) keeps its first reading.
 --
--- A calendar entry or a Lesson (ICS UID, WebUntis `<childId>/<lessonId>`): stated holds the Item
+-- A calendar entry, a Lesson or a Task (ICS UID, WebUntis `<childId>/<lessonId>`, a list of Tasks): stated holds the Item
 -- as the plugin states it, e.g. {"kind": "event", "title": ..., "starts_at": ...}. No file, no
 -- sender/subject/body, occurred_at NULL. The core writes its one Item from it without the LLM,
 -- in the same transaction that sets processed_at. Every run emits the full state; a Source Record
 -- whose stated equals the stored one (compared as jsonb) is skipped without a write, a changed one
--- overwrites its Item in place; one that fails a check writes no Item and deletes the earlier one.
+-- overwrites its Item in place, a Task only in title, deadline and bring: whether it is done is the
+-- Family's, and stating it again never changes that. One that fails a check writes no Item and deletes
+-- the earlier one.
 --
 -- withdrawn_at: the Source no longer has it (deleted message, deleted calendar entry, unplanned
 -- Lesson, or an empty Source Attribute list). Its Items are deleted (trigger below), a message's
@@ -283,7 +285,7 @@ CREATE TABLE source_record (
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
   CONSTRAINT source_record_external_id_unique UNIQUE (source_id, external_id),
   CONSTRAINT source_record_stated_kind_known
-    CHECK (stated IS NULL OR stated->>'kind' IN ('event', 'lesson')),
+    CHECK (stated IS NULL OR stated->>'kind' IN ('event', 'lesson', 'task')),
   -- A stated Source Record carries nothing of a message.
   CONSTRAINT source_record_stated_is_no_message
     CHECK (stated IS NULL OR (sender IS NULL AND subject IS NULL AND body IS NULL
@@ -384,8 +386,8 @@ CREATE TABLE event (
 CREATE INDEX event_starts_at_idx ON event (starts_at, ends_at);
 CREATE INDEX event_first_day_idx ON event (first_day, last_day);
 
--- Something to do or bring. Only messages produce Tasks; its arrival is its Source Record's
--- occurred_at. deadline is the month's last day when a message names only a month.
+-- Something to do or bring. A message produces Tasks, and a Source can state them; its arrival is its
+-- Source Record's occurred_at, or its created_at when a Source states it. deadline is the month's last day when a message names only a month.
 -- bring is ticked with the Task, never entry by entry. A cancelled Task stays pinned, struck
 -- through, until ticked. done_at serves "done in the last 30 days".
 CREATE TABLE task (

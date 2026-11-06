@@ -2,7 +2,7 @@
  * The contract a Source plugin implements (ADR-0010). It is the only Family Agenda package a
  * plugin may import.
  */
-export const sdkVersion = "0.10.0";
+export const sdkVersion = "1.0.0";
 
 /**
  * A text the Admin area shows: plain, or per language as `{ en: "Calendar", de: "Kalender" }`.
@@ -180,13 +180,13 @@ export type Ingestion =
 export type Attachment = { filename: string; contentType: string; bytes: Uint8Array };
 
 /** The kinds of Item a plugin states on its Origin, without the LLM (ADR-0016). */
-export const statedKinds = ["event", "lesson"] as const;
+export const statedKinds = ["event", "lesson", "task"] as const;
 
 /**
  * The longest text an Item of each kind keeps, such as a title or a room. A plugin clips its texts
  * to these with `clipped`; an Item with a longer one is not written.
  */
-export const statedTextLimits = { event: 500, lesson: 200 } as const;
+export const statedTextLimits = { event: 500, lesson: 200, task: 500 } as const;
 
 /** The text, trimmed, and cut to at most `limit` characters. */
 export function clipped(text: string, limit: number): string {
@@ -228,8 +228,16 @@ export type StatedLesson = {
   note: string | null;
 };
 
-/** The one Item an Origin of a calendar or timetable states, as the Source has it now. */
-export type StatedItem = StatedEvent | StatedLesson;
+/**
+ * A Task as a Source states it, whole: something to do or bring, by a Deadline (`YYYY-MM-DD`) if it
+ * has one. `bring` is a packing list, ticked with the Task and never entry by entry; each text is
+ * at most `statedTextLimits.task` long, and there are at most 50. Whether it is done is the
+ * Family's to say by ticking it: stating the Task again never changes that.
+ */
+export type StatedTask = { kind: "task"; title: string; deadline: string | null; bring: string[] };
+
+/** The one Item an Origin of a calendar, a timetable or a list of Tasks states, as the Source has it now. */
+export type StatedItem = StatedEvent | StatedLesson | StatedTask;
 
 /** What a Source delivered under one external id: a message, or an entry stating its one Item. */
 export type Origin = {

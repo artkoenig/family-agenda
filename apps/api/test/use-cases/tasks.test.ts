@@ -247,9 +247,9 @@ describe("Tasks", () => {
     ]);
   });
 
-  it("refuses a Source stating a Task, which only a message can", async () => {
+  it("refuses a Source stating a kind of Item it cannot, such as a Notice", async () => {
     testPluginControls.emit("school", [
-      { externalId: "form", attributes: ["main"], content: { kind: "stated", stated: { kind: "task", title: "Sign the trip form" } as never } },
+      { externalId: "form", attributes: ["main"], content: { kind: "stated", stated: { kind: "notice", title: "Sign the trip form" } as never } },
     ]);
     instance.clock.advance(15 * minutes);
 

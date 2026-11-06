@@ -11,6 +11,7 @@ import {
   type Origin,
   type SourceAttributes,
   type StatedEvent,
+  type StatedTask,
   type SourcePlugin,
 } from "../src";
 import { describeSourcePluginContract, undeclaredAttributes } from "../src/testing";
@@ -118,6 +119,14 @@ describe("a plugin that is not loadable", () => {
     ]);
   });
 
+  it("is built for the SDK of this major, which is 1: a plugin for the 0.x line is refused, as every 0.x minor broke the last", () => {
+    const builtFor = (sdkVersion: string) => problemsWith(examplePlugin({ identity: { sourceTypeId: "example", displayName: "Example", version: "1.0.0", sdkVersion } }));
+
+    expect(sdkVersion).toBe("1.0.0");
+    expect(builtFor("1.0.0")).toEqual([]);
+    expect(builtFor("0.10.0")).toEqual(["built for SDK 0.10.0, but this is SDK 1.0.0"]);
+  });
+
   it("names configuration fields used twice and migrations that are missing", () => {
     const plugin = examplePlugin({
       configuration: {
@@ -220,11 +229,18 @@ describe("Origins", () => {
     ]);
   });
 
+  it("state a Task, with or without a Deadline and things to bring", () => {
+    const task: StatedTask = { kind: "task", title: "Bring a swimsuit", deadline: "2026-09-18", bring: ["swimsuit", "towel"] };
+
+    expect(problemsWithOrigin(origin({ kind: "stated", stated: task }))).toEqual([]);
+    expect(problemsWithOrigin(origin({ kind: "stated", stated: { ...task, deadline: null, bring: [] } }))).toEqual([]);
+  });
+
   it("need an external id and a kind of Item a Source states", () => {
-    const task = { ...event, kind: "task" } as unknown as StatedEvent;
-    expect(problemsWithOrigin({ ...origin({ kind: "stated", stated: task }), externalId: "" })).toEqual([
+    const notice = { ...event, kind: "notice" } as unknown as StatedEvent;
+    expect(problemsWithOrigin({ ...origin({ kind: "stated", stated: notice }), externalId: "" })).toEqual([
       "the Origin has no external id",
-      '"task" is no kind of Item a Source states',
+      '"notice" is no kind of Item a Source states',
     ]);
   });
 });
@@ -235,7 +251,7 @@ describe("clipped texts", () => {
     expect(clipped("Piano lesson", 5)).toBe("Piano");
     expect(clipped("Piano lesson", 6)).toBe("Piano");
     expect(clipped("Piano", 5)).toBe("Piano");
-    expect(statedTextLimits).toEqual({ event: 500, lesson: 200 });
+    expect(statedTextLimits).toEqual({ event: 500, lesson: 200, task: 500 });
   });
 });
 
