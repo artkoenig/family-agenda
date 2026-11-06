@@ -13,11 +13,12 @@ const demoMembers = ["Anna", "Ben", "Emma", "Noah"];
 /** The Source Attributes of the demo Source (see `demoAttributes` there) that concern one Family Member each; the family calendar concerns no one in particular. */
 const attributeOwners = { "school-emma": "Emma", "club-noah": "Noah" };
 
-/** The Agendas of the demo: one for the whole Family, none naming a member, and one for each child. */
+/** The Agendas of the demo: one for the whole Family, none naming a member, one for each child, and the Family's Task List. */
 const demoAgendas = [
-  { audience: "the Family", member: null },
-  { audience: "Emma", member: "Emma" },
-  { audience: "Noah", member: "Noah" },
+  { audience: "the Family", member: null, layout: "timeline" },
+  { audience: "Emma", member: "Emma", layout: "timeline" },
+  { audience: "Noah", member: "Noah", layout: "timeline" },
+  { audience: "the Family's Tasks", member: null, layout: "task_list" },
 ] as const;
 
 class SeedProblem extends Error {}
@@ -30,8 +31,8 @@ function succeeded<T extends { ok: boolean }>(result: T): Extract<T, { ok: true 
 
 /**
  * Fills a fresh Instance with a made-up Family for trying out a change: an Admin, four Family
- * Members, the demo Source (which states a week of Events and Lessons, ADR-0016), assigned to
- * them, and an Agenda for the whole Family and for each child. It goes through the same use cases
+ * Members, the demo Source (which states a week of Events and Lessons and two Tasks, ADR-0016),
+ * assigned to them, and an Agenda for the whole Family and for each child, and a Task List. It goes through the same use cases
  * as the Admin area, so what it writes is what the Instance itself would write. The demo Source
  * plugin must be installed in the Instance already.
  *
@@ -69,9 +70,9 @@ async function bringInDemoSource(app: Application, members: Map<string, FamilyMe
 
 async function createAgendas(app: Application, members: Map<string, FamilyMemberId>): Promise<SeededAgenda[]> {
   const agendas: SeededAgenda[] = [];
-  for (const { audience, member } of demoAgendas) {
+  for (const { audience, member, layout } of demoAgendas) {
     const memberIds = member === null ? [] : [members.get(member) as FamilyMemberId];
-    agendas.push({ id: succeeded(await app.agendas.create({ memberIds, horizonDays: 7 })).id, audience });
+    agendas.push({ id: succeeded(await app.agendas.create({ layout, memberIds, horizonDays: 7 })).id, audience });
   }
   return agendas;
 }

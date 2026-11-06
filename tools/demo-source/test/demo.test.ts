@@ -21,11 +21,25 @@ const statedItems = (origins: Origin[]): StatedItem[] => origins.flatMap((origin
 describeSourcePluginContract(() => createDemoPlugin(), { config, now, languages: ["de"], packageJson });
 
 describe("the demo plugin", () => {
-  it("states both Events and Lessons, so every Agenda has something to show", async () => {
+  it("states Events, Lessons and Tasks, so every kind of Agenda has something to show", async () => {
     const { origins } = await poll(createDemoPlugin());
 
     const kinds = new Set(statedItems(origins).map((item) => item.kind));
-    expect([...kinds].sort()).toEqual(["event", "lesson"]);
+    expect([...kinds].sort()).toEqual(["event", "lesson", "task"]);
+  });
+
+  it("states its Tasks under one id each, with Deadlines ahead of the run, so they never pile up as Overdue", async () => {
+    const tasksOn = async (day: Date) =>
+      (await poll(createDemoPlugin(), { now: day })).origins.flatMap((origin) => (origin.content.kind === "stated" && origin.content.stated.kind === "task" ? [{ id: origin.externalId, ...origin.content.stated }] : []));
+
+    const monday = await tasksOn(now);
+    const later = await tasksOn(new Date("2026-10-05T07:00:00Z"));
+
+    expect(monday).toEqual([
+      { id: "task-class-trip-form", kind: "task", title: "Sign the class trip form", deadline: "2026-09-15", bring: [] },
+      { id: "task-swimming-kit", kind: "task", title: "Bring the swimming kit", deadline: "2026-09-17", bring: ["Swimsuit", "Towel", "Goggles"] },
+    ]);
+    expect(later.map((task) => [task.id, task.deadline])).toEqual([["task-class-trip-form", "2026-10-06"], ["task-swimming-kit", "2026-10-08"]]);
   });
 
   it("starts on the day of the run, in the Family's time zone", async () => {

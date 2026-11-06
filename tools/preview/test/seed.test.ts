@@ -56,4 +56,17 @@ describe("seeding a demo Family into an Instance", () => {
 
     expect(await seedDemoFamily(instance.app)).toEqual({ ok: false, problem: "admin-exists" });
   });
+
+  it("gives the Family a Task List with the Tasks that are due or coming", async () => {
+    const seeded = await seedDemoFamily(instance.app);
+    if (!seeded.ok) throw new Error(`seeding failed: ${seeded.problem}`);
+    const taskList = seeded.agendas.find((agenda) => agenda.audience === "the Family's Tasks");
+    if (!taskList) throw new Error("no Task List");
+
+    const page = await instance.app.agendas.open(taskList.id, { access: openAgendaAccess });
+
+    expect(page?.layout).toBe("task_list");
+    const titles = page?.layout === "task_list" ? [...page.due, ...page.upcoming].map((task) => task.title) : [];
+    expect(titles).toEqual(expect.arrayContaining(["Bring the swimming kit", "Sign the class trip form"]));
+  });
 });

@@ -1,0 +1,2 @@
+ALTER TABLE "source_record" DROP CONSTRAINT "source_record_stated_kind_known";--> statement-breakpoint
+ALTER TABLE "source_record" ADD CONSTRAINT "source_record_stated_kind_known" CHECK ("source_record"."stated" IS NULL OR "source_record"."stated"->>'kind' IN ('event', 'lesson', 'task'));

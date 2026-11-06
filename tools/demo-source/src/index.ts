@@ -16,7 +16,7 @@ export const demoAttributes = [
 type Day = { date: string; weekday: number; timeZone: string };
 
 /**
- * States a week of made-up Events and Lessons starting on the day of the run, so that a preview
+ * States a week of made-up Events and Lessons, and two Tasks, starting on the day of the run, so that a preview
  * always shows an Agenda with something on today and in the days ahead. It is a developer tool
  * (`pnpm preview`) and lives outside `packages/`, so an Instance only finds it when a preview
  * mounts it into the plugins directory.
@@ -41,7 +41,19 @@ export function createDemoPlugin(): SourcePlugin {
 export default createDemoPlugin();
 
 function originsFor(days: Day[]): Origin[] {
-  return days.flatMap((day, index) => [...lessonsOn(day), ...clubOn(day), ...familyOn(day, index)]);
+  return [...days.flatMap((day, index) => [...lessonsOn(day), ...clubOn(day), ...familyOn(day, index)]), ...tasksAhead(days)];
+}
+
+/**
+ * Two Tasks, each under one id however often it runs, with Deadlines that follow the day of the
+ * run: stated again, a Task is updated and stays ticked if it was, and none is ever Overdue.
+ */
+function tasksAhead(days: Day[]): Origin[] {
+  const [, tomorrow, , inThreeDays] = days as [Day, Day, Day, Day];
+  return [
+    origin("task-class-trip-form", "family", { kind: "task", title: "Sign the class trip form", deadline: tomorrow.date, bring: [] }),
+    origin("task-swimming-kit", "school-emma", { kind: "task", title: "Bring the swimming kit", deadline: inThreeDays.date, bring: ["Swimsuit", "Towel", "Goggles"] }),
+  ];
 }
 
 function origin(externalId: string, attribute: string, stated: StatedItem): Origin {
