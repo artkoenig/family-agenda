@@ -1,9 +1,16 @@
-import { readFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { classifyApiChange, describeSdkApi, pluginRunsOn, sdkVersionProblem } from "../src/sdk";
 
 const here = (path: string) => fileURLToPath(new URL(path, import.meta.url));
+
+const directories: string[] = [];
+afterEach(() => {
+  for (const directory of directories.splice(0)) rmSync(directory, { recursive: true, force: true });
+});
 
 describe("the API text of the SDK", () => {
   it("lists what is exported, one member per line, without comments, implementations and the version", () => {
@@ -25,6 +32,16 @@ describe("the API text of the SDK", () => {
         "",
       ].join("\n"),
     );
+  });
+
+  it("stops with the reason where the SDK does not compile, instead of describing half of it", () => {
+    const sdk = mkdtempSync(join(tmpdir(), "broken-sdk-"));
+    directories.push(sdk);
+    mkdirSync(join(sdk, "src"));
+    writeFileSync(join(sdk, "src/index.ts"), 'export const broken: number = "text";\n');
+    writeFileSync(join(sdk, "src/testing.ts"), "export {};\n");
+
+    expect(() => describeSdkApi(sdk)).toThrow(/The SDK does not compile: .*string.*number/);
   });
 
   it("is what packages/source-sdk/api.txt holds; after a change to the SDK's API, run `pnpm sdk-api` and raise the version", () => {

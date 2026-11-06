@@ -36,19 +36,19 @@ export function describeSdkApi(sdkDirectory: string): string {
   });
   const problems = ts.getPreEmitDiagnostics(program);
   if (problems.length > 0) {
-    throw new Error(`The SDK does not compile: ${ts.flattenDiagnosticMessageText(problems[0]?.messageText, "\n")}`);
+    const reasons = problems.slice(0, 3).map((problem) => ts.flattenDiagnosticMessageText(problem.messageText, "\n"));
+    throw new Error(`The SDK does not compile: ${reasons.join("; ")}`);
   }
-  const declarations = new Map<string, string>();
-  for (const file of files) {
-    const source = program.getSourceFile(file);
-    if (source === undefined) throw new Error(`No ${file}`);
-    program.emit(source, (name, text) => declarations.set(name, text), undefined, true);
+  const sections: string[] = [];
+  for (const entry of entries) {
+    // One declaration file comes out per entry point, in the order of the entries.
+    program.emit(
+      program.getSourceFile(`${sdkDirectory}/${entry}`),
+      (_name, text) => sections.push([`// ${entry}`, ...text.split("\n").filter((line) => !versionLine.test(line))].join("\n").trimEnd()),
+      undefined,
+      true,
+    );
   }
-  const sections = files.map((file, index) => {
-    const text = declarations.get(file.replace(/\.ts$/, ".d.ts")) ?? "";
-    const lines = text.split("\n").filter((line) => !versionLine.test(line));
-    return [`// ${entries[index]}`, ...lines].join("\n").trimEnd();
-  });
   return [header, ...sections].join("\n") + "\n";
 }
 
@@ -95,6 +95,14 @@ export function pluginRunsOn(builtFor: string, running: string): boolean {
   return major === 0 ? minor === ownMinor : minor <= ownMinor;
 }
 
+const show = (version: Version) => version.join(".");
+
+/** The lowest version that goes with a change of the API, from the version before it. */
+function lowestVersionFor(change: "additive" | "breaking", [major, minor, patch]: Version): Version {
+  if (change === "breaking") return major === 0 ? [0, minor + 1, 0] : [major + 1, 0, 0];
+  return major === 0 ? [0, minor, patch + 1] : [major, minor + 1, 0];
+}
+
 /**
  * What is wrong with the SDK's version after its API changed since a release, or null. A breaking
  * change needs a new major (a new minor while the major is 0), an addition a new minor (a new patch
@@ -105,13 +113,8 @@ export function sdkVersionProblem(previous: SdkSnapshot, current: SdkSnapshot): 
   if (compare(after, before) < 0) return `The SDK version went down, from ${previous.version} to ${current.version}.`;
   const change = classifyApiChange(previous.api, current.api);
   if (change === "none") return null;
-  const [major, minor] = before;
-  const pre1 = major === 0;
-  const raised =
-    change === "breaking"
-      ? after[0] > major || (pre1 && after[1] > minor)
-      : after[0] > major || after[1] > minor || (pre1 && compare(after, before) > 0);
-  if (raised) return null;
-  const needed = change === "breaking" ? (pre1 ? `0.${minor + 1}.0` : `${major + 1}.0.0`) : pre1 ? `0.${minor}.${before[2] + 1}` : `${major}.${minor + 1}.0`;
-  return `The public API of the SDK has ${change === "breaking" ? "had something removed or changed" : "grown"} since the last release, but its version is still ${current.version} (was ${previous.version}). Raise it to at least ${needed} in packages/source-sdk/package.json, and run \`pnpm sdk-api\`.`;
+  const lowest = lowestVersionFor(change, before);
+  if (compare(after, lowest) >= 0) return null;
+  const what = change === "breaking" ? "had something removed or changed" : "grown";
+  return `The public API of the SDK has ${what} since the last release, but its version is still ${current.version} (was ${previous.version}). Raise it to at least ${show(lowest)} in packages/source-sdk/package.json, and run \`pnpm sdk-api\`.`;
 }
