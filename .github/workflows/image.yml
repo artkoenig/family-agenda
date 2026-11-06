@@ -1,0 +1,145 @@
+name: Image
+
+# Builds the image for each platform on a runner of that platform, pushes it by digest (no tag, so
+# nothing can pull it by name yet), and tests the pushed image: the tools it ships, and the stack
+# started from it. The tags come later, from image-tags.yml, so that a release can push its commit
+# and tag between the two. Called by publish-main.yml and release.yml.
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: The Git ref or commit to build
+        required: true
+        type: string
+      version:
+        description: The release the image is built as, such as 0.3.1 or main-1a2b3c4; the app reports it
+        required: true
+        type: string
+
+permissions: {}
+
+env:
+  IMAGE: ghcr.io/artkoenig/family-agenda
+
+jobs:
+  build:
+    name: Build and test ${{ matrix.platform }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-24.04
+            slug: amd64
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+            slug: arm64
+    env:
+      VERSION: ${{ inputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+
+      - uses: docker/setup-buildx-action@v4
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Only for the labels: source, revision and licence of the image, and its version.
+      - id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.IMAGE }}
+          tags: type=raw,value=build
+          labels: |
+            org.opencontainers.image.version=${{ inputs.version }}
+
+      - id: build
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          build-args: APP_VERSION=${{ inputs.version }}
+          labels: ${{ steps.meta.outputs.labels }}
+          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
+          provenance: mode=max
+          sbom: true
+          cache-from: type=gha,scope=${{ matrix.slug }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.slug }}
+
+      - name: Keep the digest for the tags
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/digests"
+          touch "$RUNNER_TEMP/digests/${DIGEST#sha256:}"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: digests-${{ matrix.slug }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+      # The image under test is the pushed one, by digest, under a local name that compose.yaml finds.
+      - name: Pull the pushed image under a local tag
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          docker pull "$IMAGE@$DIGEST"
+          docker tag "$IMAGE@$DIGEST" "$IMAGE:smoke"
+
+      - name: Check that provenance and an SBOM are attached
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          for attestation in Provenance SBOM; do
+            docker buildx imagetools inspect "$IMAGE@$DIGEST" --format "{{ json .${attestation} }}" \
+              | jq -e 'type == "object" and length > 0' > /dev/null \
+              || { echo "::error::The image has no $attestation attestation"; exit 1; }
+          done
+
+      - name: Check the tools the image ships
+        run: |
+          docker run --rm --entrypoint mautrix-whatsapp "$IMAGE:smoke" --version
+          docker run --rm --entrypoint tesseract "$IMAGE:smoke" --version
+          languages=$(docker run --rm --entrypoint tesseract "$IMAGE:smoke" --list-langs)
+          for language in deu eng osd; do
+            grep -qx "$language" <<< "$languages" || { echo "::error::Tesseract has no $language model"; exit 1; }
+          done
+          docker run --rm --entrypoint sh "$IMAGE:smoke" -c 'command -v pdftotext pdftoppm'
+          docker run --rm --entrypoint /opt/synapse/bin/python "$IMAGE:smoke" -c 'import synapse, psycopg2'
+
+      # compose.yaml takes its image from FAMILY_AGENDA_VERSION, so the tag above stands in for a
+      # release. mdns needs the host network and multicast, which a runner does not offer: the
+      # services under test are the ones that hold the app.
+      - name: Start the stack from the image and ask it for its version
+        env:
+          FAMILY_AGENDA_VERSION: smoke
+        run: |
+          docker compose up -d --wait api worker
+          curl --fail --silent --show-error http://localhost:8080/api/health | tee /dev/stderr \
+            | jq -e --arg version "$VERSION" '.status == "ok" and .version == $version'
+
+      - name: Show the logs of the stack
+        if: failure()
+        env:
+          FAMILY_AGENDA_VERSION: smoke
+        run: docker compose logs --no-color
+
+      - name: Remove the stack
+        if: always()
+        env:
+          FAMILY_AGENDA_VERSION: smoke
+        run: docker compose down --volumes --remove-orphans

@@ -1,0 +1,64 @@
+name: Publish main
+
+# After CI passed on a push to main, publishes that commit as the image tagged `main` (and as
+# `sha-<commit>`). A release does not go through here: release.yml builds and tags its own.
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+
+# A newer main supersedes an older one that is still building.
+concurrency:
+  group: publish-main
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  gate:
+    name: Is this still main?
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions: {}
+    outputs:
+      publish: ${{ steps.check.outputs.publish }}
+      sha: ${{ steps.check.outputs.sha }}
+      short: ${{ steps.check.outputs.short }}
+    steps:
+      # CI of an older commit can finish after main moved on; it must not take `main` back.
+      - id: check
+        env:
+          SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          latest=$(git ls-remote "https://github.com/$GITHUB_REPOSITORY" refs/heads/main | cut -f1)
+          {
+            echo "sha=$SHA"
+            echo "short=${SHA::7}"
+            if [ "$latest" = "$SHA" ]; then echo "publish=true"; else echo "publish=false"; fi
+          } >> "$GITHUB_OUTPUT"
+          [ "$latest" = "$SHA" ] || echo "main is at $latest now, not publishing $SHA"
+
+  image:
+    needs: gate
+    if: needs.gate.outputs.publish == 'true'
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/image.yml
+    with:
+      ref: ${{ needs.gate.outputs.sha }}
+      version: main-${{ needs.gate.outputs.short }}
+
+  tags:
+    needs: [gate, image]
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/image-tags.yml
+    with:
+      tags: |
+        main
+        sha-${{ needs.gate.outputs.short }}
