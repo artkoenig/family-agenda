@@ -16,7 +16,9 @@ RUN apt-get update \
 RUN python3 -m venv /opt/synapse \
   && /opt/synapse/bin/pip install --no-cache-dir matrix-synapse==1.163.2 psycopg2-binary==2.9.13
 COPY --from=whatsapp-bridge /go/bin/mautrix-whatsapp /usr/local/bin/mautrix-whatsapp
-RUN corepack enable
+# Node.js has not shipped Corepack since version 25, so it comes from npm. It reads the pnpm version
+# from the packageManager field of package.json.
+RUN npm install --global corepack@0.36.0 && corepack enable
 WORKDIR /app
 
 COPY . .
