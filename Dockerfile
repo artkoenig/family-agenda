@@ -3,7 +3,7 @@
 FROM golang:1.27-bookworm AS whatsapp-bridge
 RUN CGO_ENABLED=1 go install -tags goolm -ldflags "-s -w" go.mau.fi/mautrix-whatsapp/cmd/mautrix-whatsapp@v0.2609.0
 
-FROM node:24-bookworm-slim
+FROM node:26-bookworm-slim
 
 ENV NODE_ENV=production
 # poppler and Tesseract turn PDF attachments into text. The image ships the German and English
