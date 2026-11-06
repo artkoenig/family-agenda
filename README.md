@@ -57,7 +57,7 @@ Open `http://localhost:8080`, create the first Admin, keep the **Recovery Kit** 
 An Instance runs the release its `compose.yaml` comes from. To move to another release, back up first and follow [docs/upgrading.md](docs/upgrading.md). Running it in Portainer: [docs/portainer.md](docs/portainer.md).
 
 > [!NOTE]
-> Releases before 1.0.0 may ask you to start over instead of keeping your data. Every GitHub Release says which in its **Upgrading** section. Upgrading from a version before the data model was rebuilt (ADR-0016)? Instances start over: see [docs/upgrading.md](docs/upgrading.md#start-over).
+> Releases before 1.0.0 may ask you to start over instead of keeping your data. Every GitHub Release says which in its **Upgrading** section, and [docs/upgrading.md](docs/upgrading.md#start-over) says how to start over.
 
 ### Build from source
 
