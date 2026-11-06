@@ -1,3 +1,5 @@
+import { versionOf } from "./version";
+
 export type Config = {
   databaseUrl: string;
   masterKeyFile: string;
@@ -29,7 +31,7 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): Config {
     port: Number(env.PORT ?? 3000),
     trustProxy: env.TRUST_PROXY === "true",
     publicUrl: publicUrlOf(env.PUBLIC_URL),
-    version: env.APP_VERSION || "dev",
+    version: versionOf(env),
   };
 }
 
