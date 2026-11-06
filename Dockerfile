@@ -1,6 +1,7 @@
 # The WhatsApp bridge, built on the Debian release the image runs on, with Go's own olm, so it needs
-# no libolm. The worker runs it while an Admin has WhatsApp enabled (ADR-0011).
-FROM golang:1.27-bookworm AS whatsapp-bridge
+# no libolm. The worker runs it while an Admin has WhatsApp enabled (ADR-0011). The Go version is the
+# toolchain the bridge's go.mod asks for (go1.27.1); Renovate raises it.
+FROM golang:1.27.1-bookworm AS whatsapp-bridge
 RUN CGO_ENABLED=1 go install -tags goolm -ldflags "-s -w" go.mau.fi/mautrix-whatsapp/cmd/mautrix-whatsapp@v0.2609.0
 
 FROM node:26-bookworm-slim

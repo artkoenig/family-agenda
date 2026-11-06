@@ -173,6 +173,7 @@ describe("the Postgres major version of a compose file", () => {
   it.each([
     ["postgres:17", 17],
     ["postgres:17.5-alpine", 17],
+    ["postgres:17@sha256:0123456789abcdef", 17],
     ["postgres:18", 18],
   ])("reads %s as %i", (image, major) => {
     expect(postgresMajorOf(compose(image))).toBe(major);

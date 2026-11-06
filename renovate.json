@@ -1,6 +1,6 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["config:recommended", "helpers:pinGitHubActionDigestsToSemver"],
+  "extends": ["config:recommended", "helpers:pinGitHubActionDigestsToSemver", "docker:pinDigests"],
   "timezone": "Europe/Berlin",
   "prConcurrentLimit": 1,
   "minimumReleaseAge": "3 days",
@@ -17,6 +17,11 @@
       "description": "One PR with every update (all managers, all update types)",
       "matchPackageNames": ["*"],
       "groupName": "all dependencies"
+    },
+    {
+      "description": "Our own image is built by this repository and named by a variable in compose.yaml, not a dependency",
+      "matchPackageNames": ["ghcr.io/artkoenig/family-agenda"],
+      "enabled": false
     }
   ]
 }
