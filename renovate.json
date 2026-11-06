@@ -5,6 +5,8 @@
   "prConcurrentLimit": 1,
   "minimumReleaseAge": "3 days",
   "internalChecksFilter": "strict",
+  "minimumReleaseAgeBehaviour": "timestamp-optional",
+  "separateMajorMinor": false,
   "packageRules": [
     {
       "description": "One PR with every update (all managers, all update types)",
