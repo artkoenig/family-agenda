@@ -9,6 +9,11 @@
   "separateMajorMinor": false,
   "packageRules": [
     {
+      "description": "typescript-eslint and dependency-cruiser do not support TypeScript 7 yet",
+      "matchPackageNames": ["typescript"],
+      "allowedVersions": "<7"
+    },
+    {
       "description": "One PR with every update (all managers, all update types)",
       "matchPackageNames": ["*"],
       "groupName": "all dependencies"
