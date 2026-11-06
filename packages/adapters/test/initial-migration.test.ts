@@ -4,7 +4,13 @@ import { PGlite } from "@electric-sql/pglite";
 import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
 import { afterEach, describe, expect, it } from "vitest";
-import { migrationsFolder, OldMigrationHistoryError, refuseOldMigrationHistory } from "../src";
+import {
+  migrationsFolder,
+  NewerMigrationHistoryError,
+  OldMigrationHistoryError,
+  refuseNewerMigrationHistory,
+  refuseOldMigrationHistory,
+} from "../src";
 
 const targetSchema = fileURLToPath(new URL("../../../docs/schema.sql", import.meta.url));
 
@@ -64,6 +70,8 @@ describe("a database that carries the old migration history", () => {
     await expect(refused).rejects.toThrow(OldMigrationHistoryError);
     await expect(refused).rejects.toThrow(/start over/i);
     await expect(refused).rejects.toThrow(/master key/);
+    await expect(refused).rejects.toThrow(/docs\/upgrading\.md/);
+    await expect(refused).rejects.not.toThrow(/RELEASE_NOTES/);
   });
 
   it("is not mistaken for an Instance that is up to date, or one that has not been migrated yet", async () => {
@@ -72,5 +80,39 @@ describe("a database that carries the old migration history", () => {
 
     await migrate(drizzle(fresh), { migrationsFolder });
     await expect(refuseOldMigrationHistory(databaseOf(fresh), migrationsFolder)).resolves.toBeUndefined();
+  });
+});
+
+describe("a database that a newer version has migrated further", () => {
+  const databaseOf = (postgres: PGlite) => drizzle(postgres);
+  const migratedFurther = async () => {
+    const postgres = await emptyDatabase();
+    await migrate(drizzle(postgres), { migrationsFolder });
+    await postgres.exec(`INSERT INTO drizzle.__drizzle_migrations (hash, created_at) VALUES ('hash-of-a-migration-from-a-newer-version', 9999999999999)`);
+    return postgres;
+  };
+
+  it("is refused with a message that names the downgrade and where to read about it", async () => {
+    const refused = refuseNewerMigrationHistory(databaseOf(await migratedFurther()), migrationsFolder);
+
+    await expect(refused).rejects.toThrow(NewerMigrationHistoryError);
+    await expect(refused).rejects.toThrow(/newer version/i);
+    await expect(refused).rejects.toThrow(/backup/i);
+    await expect(refused).rejects.toThrow(/docs\/upgrading\.md/);
+  });
+
+  it("is not mistaken for an Instance that is up to date, or one that has not been migrated yet", async () => {
+    const fresh = await emptyDatabase();
+    await expect(refuseNewerMigrationHistory(databaseOf(fresh), migrationsFolder)).resolves.toBeUndefined();
+
+    await migrate(drizzle(fresh), { migrationsFolder });
+    await expect(refuseNewerMigrationHistory(databaseOf(fresh), migrationsFolder)).resolves.toBeUndefined();
+  });
+
+  it("is refused before the migrator would skip its newer history silently", async () => {
+    const migrated = await migratedFurther();
+
+    await expect(refuseOldMigrationHistory(databaseOf(migrated), migrationsFolder)).resolves.toBeUndefined();
+    await expect(refuseNewerMigrationHistory(databaseOf(migrated), migrationsFolder)).rejects.toThrow(NewerMigrationHistoryError);
   });
 });

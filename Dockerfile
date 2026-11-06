@@ -26,6 +26,13 @@ RUN pnpm install --frozen-lockfile --prod \
   && chown node:node /var/lib/family-agenda/master-key /var/lib/family-agenda/blobs /var/lib/family-agenda/plugins /var/lib/family-agenda/tessdata /var/lib/family-agenda/matrix /var/lib/family-agenda/matrix-data \
   && chmod 700 /var/lib/family-agenda/master-key /var/lib/family-agenda/blobs /var/lib/family-agenda/matrix-data
 
+# The release this image is built from, such as 0.3.1 or main-1a2b3c4; `dev` when built from a working tree.
+# It comes last, so that a new version does not invalidate the layers above. The app names it in
+# /api/health and in the Admin area.
+ARG APP_VERSION=dev
+ENV APP_VERSION=$APP_VERSION
+LABEL org.opencontainers.image.version=$APP_VERSION
+
 USER node
 WORKDIR /app/apps/api
 EXPOSE 3000
