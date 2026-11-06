@@ -187,4 +187,26 @@ describe("Sources of a Source Type with a catalogue and a live setup step", () =
     const [source] = await instance.app.sources.list();
     expect(source?.plain).toMatchObject({ messenger: "whatsapp", chats: [] });
   });
+  it("waits for the first read after chats were chosen, and asks again until the groups can be assigned", async () => {
+    await instance.app.catalogues.enable("bridged", "whatsapp", { riskAcknowledged: true });
+    const member = await instance.app.familyMembers.add({ name: "Mia" });
+    if (!member.ok) throw new Error("adding failed");
+    const added = await instance.app.sources.add({ sourceTypeId: "bridged", plain: { messenger: "whatsapp" }, secrets: {} });
+    if (!added.ok) throw new Error("adding failed");
+    const nothingChosen = await (await instance.get(`/admin/sources/${added.id}`, { cookie })).text();
+    expect(nothingChosen).not.toContain("Reading the Source for the first time");
+
+    const body = new FormData();
+    body.append("choice.chats", "!class:local");
+    await instance.request(`/admin/sources/${added.id}`, { body, cookie });
+    const waiting = await (await instance.get(`/admin/sources/${added.id}`, { cookie })).text();
+    expect(waiting).toContain("Reading the Source for the first time");
+    expect(waiting).toContain(`hx-get="/admin/sources/${added.id}"`);
+
+    testPluginControls.declare("bridged", [{ externalId: "!class:local", name: "Klasse 5b" }]);
+    await instance.app.polling.pollDue();
+    const ready = await (await instance.get(`/admin/sources/${added.id}`, { cookie })).text();
+    expect(ready).not.toContain("Reading the Source for the first time");
+    expect(ready).toContain('type="checkbox" name="member.');
+  });
 });

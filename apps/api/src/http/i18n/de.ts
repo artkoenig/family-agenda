@@ -304,6 +304,7 @@ export const de: Catalogue = {
     concernsList: (names) => `Betrifft ${names}`,
     attributes: "Betrifft",
     attributesHint: "Tippe die Familienmitglieder an, die jeder Teil dieser Quelle betrifft, etwa ein Mail-Ordner oder ein Kind, auch für Einträge, die er schon gebracht hat. Ist niemand gewählt, betrifft er die ganze Familie.",
+    attributesPending: "Die Quelle wird zum ersten Mal gelesen. Ihre Teile erscheinen hier, sobald sie bekannt sind.",
     attributeMembers: (name) => `Betrifft, für ${name}`,
     attributeWholeFamily: "Betrifft die ganze Familie",
     attributeArchived: "In der Quelle nicht mehr da",
