@@ -13,6 +13,8 @@ Every GitHub Release has an **Upgrading** section that is written from the chang
 - **This migration removes data**, with the name of the migration file. Make a backup first and read the release.
 - **Start over required.** The data model changed in a way that cannot be migrated. See [Start over](#start-over).
 - **Postgres major upgrade: dump and restore required.** The Postgres version of the compose file changed. See [Restore](#restore).
+- **Source plugins built for SDK X will not load.** The SDK that Source plugins are built against got a new major version. The plugins that come with the app are updated with it; rebuild the ones you added to the `plugins` volume.
+- **SDK X → Y.** The SDK got a new minor version. Source plugins built for the old one keep working.
 
 Releases before 1.0.0 may ask you to start over. Read the section before every upgrade.
 

@@ -29,7 +29,16 @@ describe("reading the snapshot of a release from Git", () => {
     git(repo, "init", "-q");
     commit(repo, { "compose.yaml": "image: postgres:17\n", "packages/adapters/drizzle/0000_initial.sql": "CREATE TABLE a (id int);", "packages/adapters/drizzle/meta/_journal.json": "{}" }, "first");
     git(repo, "tag", "v0.1.0");
-    commit(repo, { "compose.yaml": "image: postgres:18\n", "packages/adapters/drizzle/0001_more.sql": "CREATE TABLE b (id int);" }, "second");
+    commit(
+      repo,
+      {
+        "compose.yaml": "image: postgres:18\n",
+        "packages/adapters/drizzle/0001_more.sql": "CREATE TABLE b (id int);",
+        "packages/source-sdk/package.json": JSON.stringify({ name: "sdk", version: "1.2.0" }),
+        "packages/source-sdk/api.txt": "export type A = {};\n",
+      },
+      "second",
+    );
     return repo;
   };
 
@@ -39,6 +48,7 @@ describe("reading the snapshot of a release from Git", () => {
     expect(readSnapshot(repo, "v0.1.0")).toEqual({
       migrations: { "0000_initial.sql": "CREATE TABLE a (id int);" },
       compose: "image: postgres:17\n",
+      sdk: null,
     });
   });
 
@@ -49,6 +59,13 @@ describe("reading the snapshot of a release from Git", () => {
 
     expect(Object.keys(migrations)).toEqual(["0000_initial.sql", "0001_more.sql"]);
     expect(compose).toBe("image: postgres:18\n");
+  });
+
+  it("reads the SDK's version and API file where the ref has them, and none where it has not", () => {
+    const repo = repoWithTwoReleases();
+
+    expect(readSnapshot(repo, "HEAD").sdk).toEqual({ version: "1.2.0", api: "export type A = {};\n" });
+    expect(readSnapshot(repo, "v0.1.0").sdk).toBeNull();
   });
 
   it("fails for a ref that does not exist, instead of reading nothing", () => {

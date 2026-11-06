@@ -1,9 +1,13 @@
+import { pluginRunsOn, type SdkSnapshot } from "./sdk";
+
 /** What decides how an upgrade goes, as it stands at one release. */
 export type Snapshot = {
   /** The SQL migrations in `packages/adapters/drizzle/`, by file name. */
   migrations: Record<string, string>;
   /** The text of `compose.yaml`. */
   compose: string;
+  /** The SDK Source plugins are built against; none where the release has no SDK package yet. */
+  sdk: SdkSnapshot | null;
 };
 
 /** Statements that take data away, which a Family should read about before it upgrades. */
@@ -59,6 +63,15 @@ function postgresLines(before: string, after: string, docs: string): string[] {
   ];
 }
 
+function sdkLines(before: Snapshot["sdk"], after: Snapshot["sdk"]): string[] {
+  if (before === null || after === null || before.version === after.version) return [];
+  const [from, to] = [before.version, after.version];
+  if (pluginRunsOn(from, to)) return [`**SDK ${from} → ${to}.** Source plugins built for SDK ${from} keep working.`];
+  return [
+    `**Source plugins built for SDK ${from} will not load.** The SDK changed from ${from} to ${to}. The plugins that come with the app are updated with it; update the ones you added to the \`plugins\` volume.`,
+  ];
+}
+
 /**
  * The "Upgrading" section of a GitHub Release, written from what changed since the release
  * before it (`previous`, or none for the first release). `docs` is the address of
@@ -68,6 +81,10 @@ export function deriveUpgrading(previous: Snapshot | null, current: Snapshot, do
   const lines =
     previous === null
       ? ["This is the first release: there is nothing to upgrade from."]
-      : [...dataLines(previous.migrations, current.migrations, docs), ...postgresLines(previous.compose, current.compose, docs)];
+      : [
+          ...dataLines(previous.migrations, current.migrations, docs),
+          ...postgresLines(previous.compose, current.compose, docs),
+          ...sdkLines(previous.sdk, current.sdk),
+        ];
   return ["## Upgrading", "", ...lines.map((line) => `- ${line}`), ""].join("\n");
 }

@@ -174,11 +174,14 @@ jobs:
           git commit -a -q -m "Release $VERSION"
           echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
+          # The SDK version has to follow a change of the SDK's API since the last release.
+          node --import tsx tools/release/src/main.ts check-sdk --previous "$PREVIOUS" --current HEAD
+
           # The Upgrading section is written when the release is created. Writing it now means a
           # problem with it stops the release before anything is built.
           arguments=(--current HEAD --docs "https://github.com/$GITHUB_REPOSITORY/blob/v$VERSION/docs/upgrading.md")
           if [ -n "$PREVIOUS" ]; then arguments+=(--previous "$PREVIOUS"); fi
-          node --import tsx tools/release/src/main.ts "${arguments[@]}"
+          node --import tsx tools/release/src/main.ts upgrading "${arguments[@]}"
 
           # A scratch ref that is no branch and no tag, so that the build can fetch the commit.
           git push --force origin "HEAD:refs/release-candidates/$VERSION"
@@ -274,7 +277,7 @@ jobs:
             arguments+=(--previous "$PREVIOUS")
             previous_option=(--notes-start-tag "$PREVIOUS")
           fi
-          node --import tsx tools/release/src/main.ts "${arguments[@]}" > "$RUNNER_TEMP/upgrading.md"
+          node --import tsx tools/release/src/main.ts upgrading "${arguments[@]}" > "$RUNNER_TEMP/upgrading.md"
           cat "$RUNNER_TEMP/upgrading.md"
 
           # The Upgrading section comes first, the notes GitHub generates from the merged pull requests after it.

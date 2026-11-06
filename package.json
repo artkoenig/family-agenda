@@ -14,7 +14,8 @@
     "check": "pnpm lint && pnpm typecheck && pnpm depcruise && pnpm crap && pnpm mutation",
     "mutation": "stryker run",
     "crap": "vitest run --coverage --coverage.provider=v8 --coverage.reporter=json && crap-typescript --exclude .stryker-tmp/** --format text --threshold 8",
-    "preview": "node --import tsx tools/preview/src/main.ts"
+    "preview": "node --import tsx tools/preview/src/main.ts",
+    "sdk-api": "node --import tsx tools/release/src/main.ts sdk-api --write"
   },
   "devDependencies": {
     "@barney-media/crap-typescript": "2.0.0",
