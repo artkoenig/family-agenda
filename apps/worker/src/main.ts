@@ -2,7 +2,7 @@ import { bootWorker } from "@family-agenda/api/composition-root";
 import { readConfig } from "@family-agenda/api/config";
 
 /** How often the worker looks for Sources whose polling interval has passed. */
-const tickMs = 30_000;
+const tickMs = 5_000;
 
 /** How often the worker starts and stops the programs of Source Types as Admins enable them. */
 const servicesTickMs = 5_000;

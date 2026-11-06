@@ -318,6 +318,7 @@ export const en = {
     concernsList: (names: string) => `Concerns ${names}`,
     attributes: "Concerns",
     attributesHint: "Tap the Family Members each part of this Source concerns, such as a mail folder or a child, also for Items it brought in before. With no one chosen, it concerns the whole Family.",
+    attributesPending: "Reading the Source for the first time. Its parts appear here as soon as they are known.",
     attributeMembers: (name: string) => `Concerns, for ${name}`,
     attributeWholeFamily: "Concerns the whole Family",
     attributeArchived: "Gone from the Source",

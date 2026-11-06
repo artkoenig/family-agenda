@@ -1250,9 +1250,10 @@ export function SourceTypePage(props: {
  */
 function SourceAttributesForm(props: { source: SourceSummary; members: FamilyMemberSummary[]; href: string; t: Translation["t"]; s: Translation["t"]["sources"] }) {
   const { source, members, href, t, s } = props;
-  if (members.length === 0 || source.attributes.length === 0) return null;
+  if (members.length === 0) return null;
+  if (source.attributes.length === 0) return <AttributesPending source={source} href={href} s={s} />;
   return (
-    <form method="post" action={`${href}/attributes`} class="fam-sheet__form">
+    <form method="post" action={`${href}/attributes`} class="fam-sheet__form" id="source-attributes">
       <Group title={s.attributes} level={2} intro={s.attributesHint}>
         <div class="fam-attributes">
           {source.attributes.map((attribute) => (
@@ -1281,6 +1282,37 @@ function SourceAttributesForm(props: { source: SourceSummary; members: FamilyMem
         </div>
       </Group>
     </form>
+  );
+}
+
+/** How often a Source waiting for its first read asks again whether its Source Attributes are there. */
+const attributesPollSeconds = 2;
+
+/**
+ * Where the Source Attributes will be once the Source has been read after its parts were chosen,
+ * such as its folders or groups: until then it asks again every few seconds and replaces itself, so
+ * that the Admin can assign them as soon as they are declared. A Source with nothing chosen, or
+ * failing, declares none and does not wait.
+ */
+function AttributesPending(props: { source: SourceSummary; href: string; s: Translation["t"]["sources"] }) {
+  const { source, href, s } = props;
+  const chosen = Object.values(source.plain).some((value) => Array.isArray(value) && value.length > 0);
+  if (!chosen || source.health.status === "failing") return null;
+  return (
+    <div
+      id="source-attributes"
+      class="fam-sheet__form"
+      hx-get={href}
+      hx-trigger={`load delay:${attributesPollSeconds}s`}
+      hx-select="#source-attributes"
+      hx-target="this"
+      hx-swap="outerHTML"
+      aria-live="polite"
+    >
+      <Group title={s.attributes} level={2}>
+        <p class="fam-group__empty">{s.attributesPending}</p>
+      </Group>
+    </div>
   );
 }
 
