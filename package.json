@@ -13,7 +13,8 @@
     "test": "vitest run",
     "check": "pnpm lint && pnpm typecheck && pnpm depcruise && pnpm crap && pnpm mutation",
     "mutation": "stryker run",
-    "crap": "vitest run --coverage --coverage.provider=v8 --coverage.reporter=json && crap-typescript --exclude .stryker-tmp/** --format text --threshold 8"
+    "crap": "vitest run --coverage --coverage.provider=v8 --coverage.reporter=json && crap-typescript --exclude .stryker-tmp/** --format text --threshold 8",
+    "preview": "node --import tsx tools/preview/src/main.ts"
   },
   "devDependencies": {
     "@barney-media/crap-typescript": "2.0.0",
@@ -25,6 +26,7 @@
     "dependency-cruiser": "^18.7.0",
     "eslint": "^10.13.0",
     "eslint-plugin-sonarjs": "^4.2.2",
+    "tsx": "^4.23.15",
     "typescript": "~6.0.3",
     "typescript-eslint": "^8.72.0",
     "vitest": "^5.0.5"
