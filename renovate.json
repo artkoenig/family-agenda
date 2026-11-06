@@ -4,6 +4,7 @@
   "timezone": "Europe/Berlin",
   "prConcurrentLimit": 1,
   "minimumReleaseAge": "3 days",
+  "internalChecksFilter": "strict",
   "packageRules": [
     {
       "description": "One PR with every update (all managers, all update types)",
