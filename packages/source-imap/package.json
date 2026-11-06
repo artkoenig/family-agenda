@@ -24,8 +24,8 @@
   },
   "dependencies": {
     "@family-agenda/source-sdk": "workspace:*",
-    "imapflow": "2.4.0",
-    "mailparser": "3.9.38"
+    "imapflow": "2.10.0",
+    "mailparser": "3.14.1"
   },
   "devDependencies": {
     "@types/mailparser": "^3.4.6"
