@@ -77,7 +77,7 @@ Check the running version in the Admin area, below the settings list, or at `/ap
 
 ## Start over
 
-When a release says **Start over required**, or an Instance refuses to start because its database comes from before the data model was rebuilt (ADR-0016), the data cannot be carried over. Make a backup first if you want to keep a copy. Then stop the Instance, remove the volumes that hold data of the old model, and start it again.
+When a release says **Start over required**, the data cannot be carried over. Make a backup first if you want to keep a copy. Then stop the Instance, remove the volumes that hold its data, and start it again.
 
 ```bash
 docker compose down
