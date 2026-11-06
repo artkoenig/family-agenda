@@ -20,6 +20,10 @@ The Agendas show a week of made-up Events and Lessons from the day you run `up`.
 
 The seed and the demo Source come from the clone you run `pnpm preview` in, not from the pull request, so older pull requests work too.
 
+## Trust
+
+A preview builds and runs the pull request's code, including its Dockerfile, with your Docker. Preview only pull requests you trust.
+
 ## What it does not cover
 
 - Real Sources (mail, WhatsApp and other Messengers, WebUntis, the LLM). The demo has no Tasks either: Tasks only come from extracting text with the LLM, and a plugin states Events and Lessons only.
