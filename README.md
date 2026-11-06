@@ -61,6 +61,10 @@ Open `http://localhost:8080`, create the first Admin, keep the **Recovery Kit** 
 
 Container variables, the address the Family opens, HTTPS behind a proxy and single sign-on for Admins: see [docs/configuration.md](docs/configuration.md).
 
+## 🧪 Trying a pull request
+
+`pnpm preview up <pr>` runs a pull request's code with demo data before it is merged: see [docs/preview.md](docs/preview.md).
+
 ## 🖥️ Hardware
 
 | | Needs |

@@ -1,5 +1,9 @@
 # Release notes
 
+## Source plugins are built for SDK 1.0.0
+
+The Source plugin SDK is 1.0.0, so that a Source can state Tasks as well as Events and Lessons (ADR-0016). The plugins shipped with Family Agenda (ICS, IMAP, Matrix, WebUntis) are updated. **A plugin you added to the `plugins` volume was built for SDK 0.10.0 and no longer loads**: its Source Type is listed as not loadable, and its Sources are not read, until its author rebuilds it with `sdkVersion` `1.0.0` in its `package.json`. Nothing else changes for a plugin. The database gets one migration, applied on start.
+
 ## The data model is rebuilt: existing Instances start over
 
 This release replaces the data model (ADR-0016). **There is no data migration.** The migration history is squashed into one initial migration, and an Instance whose database was created by an earlier version refuses to start, with a message that says so, instead of failing on a half-applied schema. Items, Agendas, Sources, Family Members and the Admin account have to be set up again.

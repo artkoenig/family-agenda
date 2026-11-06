@@ -15,6 +15,13 @@
       "when": 1793891206119,
       "tag": "0001_identity_provider",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1793952005605,
+      "tag": "0002_stated_tasks",
+      "breakpoints": true
     }
   ]
 }

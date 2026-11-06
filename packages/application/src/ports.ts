@@ -445,10 +445,11 @@ export interface SourceRepository {
   remove(id: SourceId): Promise<BlobRef[]>;
 }
 
-/** The one Item a calendar or timetable entry states, checked and ready to write. */
+/** The one Item a calendar, timetable or list of Tasks entry states, checked and ready to write. */
 export type StatedItem =
   | { kind: "event"; event: Event }
-  | { kind: "lesson"; lesson: Omit<Lesson, "cancelled">; change: StoredChange | null };
+  | { kind: "lesson"; lesson: Omit<Lesson, "cancelled">; change: StoredChange | null }
+  | { kind: "task"; task: StatedTask };
 
 /** A Lesson's Timetable Change as it is stored on the Lesson. */
 export type StoredChange = Pick<TimetableChange, "change" | "previousRoom" | "previousTeacher" | "note">;

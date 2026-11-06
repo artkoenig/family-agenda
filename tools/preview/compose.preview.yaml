@@ -1,0 +1,19 @@
+# Layered over the pull request's own compose.yaml by `pnpm preview up` (tools/preview/src/plan.ts),
+# which sets PORT, PUBLIC_URL, PREVIEW_IMAGE and PREVIEW_TOOLS. A preview is a throwaway Instance:
+# its own image and volumes (Compose prefixes them with the project), none of the real Instance's.
+services:
+  api:
+    image: ${PREVIEW_IMAGE}
+    volumes:
+      # The seed, from the clone `pnpm preview` runs in: a pull request may predate it.
+      - ${PREVIEW_TOOLS}:/preview-tools:ro
+      # The demo Source, found like any plugin an operator adds (ADR-0010).
+      - ${PREVIEW_TOOLS}/demo-source:/var/lib/family-agenda/plugins/demo-source:ro
+  worker:
+    image: ${PREVIEW_IMAGE}
+    volumes:
+      - ${PREVIEW_TOOLS}/demo-source:/var/lib/family-agenda/plugins/demo-source:ro
+  # Announces family-agenda.local on the host's network, which a preview must not take over.
+  mdns:
+    image: ${PREVIEW_IMAGE}
+    profiles: ["never"]
