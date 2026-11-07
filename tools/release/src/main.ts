@@ -11,10 +11,9 @@
  *   ghcr-plan --versions <versions.json> --children <children.json>
  *       prints the ids of the versions of the image package that the weekly clean-up deletes, one per line.
  */
-import { readFileSync, writeFileSync } from "node:fs";
+import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { parseArgs } from "node:util";
 import { planCleanup, versionsFromApi, type Children } from "./cleanup";
-import { readdirSync } from "node:fs";
 import { describePackageApi, sdkVersionProblem } from "./sdk";
 import { readPackageApis, readSnapshot } from "./snapshot";
 import { deriveUpgrading } from "./upgrading";

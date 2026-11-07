@@ -74,7 +74,7 @@ module.exports = {
       comment: "The HTTP app knows the use cases and the wire contracts, never adapters, the Composition Root or plugins.",
       severity: "error",
       from: { path: "^packages/http/src/" },
-      to: { path: "^(apps/|packages/(?!(http|application|contracts|domain)/))" },
+      to: { path: "^(apps/|packages/(?!(http|application|contracts)/))" },
     },
     {
       name: "no-circular",

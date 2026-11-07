@@ -1,3 +1,5 @@
+// One Instance per process: this plugin reads the process environment and runs programs for the whole
+// process. "Off" means it is not in the plugin list; there is no runtime flag.
 import { randomBytes } from "node:crypto";
 import { setTimeout as sleep } from "node:timers/promises";
 import {
