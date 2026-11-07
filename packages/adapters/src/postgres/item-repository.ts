@@ -202,11 +202,25 @@ export class PostgresItemRepository implements ItemRepository {
     });
   }
 
-  async pendingMessages(limit: number): Promise<PendingMessage[]> {
+  async pendingExtractionFailures(): Promise<(Date | null)[]> {
+    const rows = await this.db
+      .selectDistinct({ failedAt: sourceRuns.lastExtractionFailureAt })
+      .from(sourceRecords)
+      .innerJoin(sourceRuns, eq(sourceRuns.sourceId, sourceRecords.sourceId))
+      .where(pendingMessage);
+    return rows.map((row) => row.failedAt);
+  }
+
+  async pendingMessages(limit: number, failedAfter: Date): Promise<PendingMessage[]> {
     const rows = await this.db
       .select({ id: sourceRecords.id, sourceId: sourceRecords.sourceId, sentAt: arrivedAt, body: sourceRecords.body })
       .from(sourceRecords)
-      .where(pendingMessage)
+      .where(
+        and(
+          pendingMessage,
+          sql`NOT EXISTS (SELECT 1 FROM ${sourceRuns} WHERE ${sourceRuns.sourceId} = ${sourceRecords.sourceId} AND ${sourceRuns.lastExtractionFailureAt} > ${failedAfter.toISOString()}::timestamptz)`,
+        ),
+      )
       .orderBy(asc(sourceRecords.createdAt), asc(sourceRecords.occurredAt))
       .limit(limit);
     const attachments =
@@ -246,8 +260,9 @@ export class PostgresItemRepository implements ItemRepository {
         .update(sourceRecords)
         .set({ processedAt: extraction.at })
         .where(and(eq(sourceRecords.id, extraction.messageId), isNull(sourceRecords.processedAt)))
-        .returning({ recordId: sourceRecords.id });
+        .returning({ recordId: sourceRecords.id, sourceId: sourceRecords.sourceId });
       if (!message) return;
+      await tx.update(sourceRuns).set({ lastExtractionFailureAt: null }).where(eq(sourceRuns.sourceId, message.sourceId));
       for (const { position, problem } of extraction.attachmentProblems) {
         await tx
           .update(sourceRecordAttachments)

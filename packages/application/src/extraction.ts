@@ -34,6 +34,7 @@ import type {
   PendingAttachment,
   PendingMessage,
   SecretStore,
+  SourceRepository,
   TextExtractor,
 } from "./ports";
 
@@ -45,6 +46,8 @@ export type ExtractionDeps = {
   endpoints: LlmEndpointRepository;
   secrets: SecretStore;
   items: ItemRepository;
+  /** Where a Source's last failed extraction is kept, which its messages wait after. */
+  sources: SourceRepository;
   blobs: BlobStore;
   extractor: Extractor;
   textExtractor: TextExtractor;
@@ -66,6 +69,9 @@ export type ExtractionReport = {
 /** How many messages one run extracts at most, so that a run stays short. */
 const batchSize = 20;
 
+/** How long the messages of a Source wait for their next try after extracting one of them failed. */
+export const extractionBackoffMs = 5 * 60 * 1000;
+
 /**
  * Extraction of Items from raw messages (ADR-0016): once per message, through the Family's LLM
  * endpoint. The model only reads; code resolves dates against the send time and checks what the
@@ -73,7 +79,7 @@ const batchSize = 20;
  * not written.
  */
 export function createExtraction(deps: ExtractionDeps) {
-  const { clock, timeZone, families, items, blobs, extractor, textExtractor, ocrModels, activity } = deps;
+  const { clock, timeZone, families, items, sources, blobs, extractor, textExtractor, ocrModels, activity } = deps;
 
   /**
    * The text of a PDF attachment: its text layer, and the pages that are scans read by OCR when
@@ -157,6 +163,19 @@ export function createExtraction(deps: ExtractionDeps) {
     },
 
     /**
+     * When extraction is next due: now if a message waits whose Source is not in backoff, else when
+     * the first backoff ends; null if nothing waits, or without an LLM endpoint to read with.
+     */
+    async nextDueAt(): Promise<Date | null> {
+      if (!(await llmEndpointOf(deps))) return null;
+      const failures = await items.pendingExtractionFailures();
+      if (failures.length === 0) return null;
+      const now = clock.now();
+      const ends = failures.map((failedAt) => (failedAt ? new Date(failedAt.getTime() + extractionBackoffMs) : now));
+      return new Date(Math.max(now.getTime(), Math.min(...ends.map((end) => end.getTime()))));
+    },
+
+    /**
      * Extracts the messages that wait for it, as the worker does on each tick. Without an LLM
      * endpoint they keep waiting; when the endpoint cannot be reached or refuses the key, the rest
      * wait for the next run, since they would fail the same way.
@@ -165,19 +184,24 @@ export function createExtraction(deps: ExtractionDeps) {
       const report: ExtractionReport = { extracted: [], dropped: [], failed: [] };
       const endpoint = await llmEndpointOf(deps);
       if (!endpoint) return report;
-      const pending = await items.pendingMessages(batchSize);
+      const pending = await items.pendingMessages(batchSize, new Date(clock.now().getTime() - extractionBackoffMs));
       if (pending.length === 0) return report;
       const progress = await activity.begin("extracting", pending.length);
+      const failedSources = new Set<SourceId>();
       try {
         for (const message of pending) {
           const failure = await extractMessage(message, endpoint, report);
-          if (failure) report.failed.push(failure);
-          else report.extracted.push(message.id);
+          if (failure) {
+            report.failed.push(failure);
+            failedSources.add(message.sourceId);
+          } else report.extracted.push(message.id);
           await progress.advance();
           if (failure && failure.problem !== "invalid-output") break;
         }
       } finally {
         await progress.end();
+        // After the loop, so that a later success of the same Source does not clear the backoff.
+        for (const sourceId of failedSources) await sources.recordFailedExtraction(sourceId, clock.now());
       }
       return report;
     },

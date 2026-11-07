@@ -5,6 +5,7 @@ export * from "./admin-access";
 export * from "./assignment";
 export * from "./catalogues";
 export * from "./enabled-source-type";
+export * from "./due-work";
 export * from "./enablement";
 export * from "./extraction";
 export * from "./family-members";
@@ -179,6 +180,44 @@ export declare function enabledSourceType(sourceTypeId: SourceTypeId, deps: {
     registry: SourceTypeRegistry;
     sourceTypes: SourceTypeRepository;
 }): Promise<LoadedSourceType | null>;
+// src/due-work.ts
+import type { ExtractionAccess, ExtractionReport } from "./extraction";
+import type { PollReport, SourcePolling } from "./polling";
+import type { Clock } from "./ports";
+import type { Retention } from "./retention";
+import type { SecretSweep } from "./secret-sweep";
+export type DueWorkDeps = {
+    clock: Clock;
+    polling: SourcePolling;
+    extraction: ExtractionAccess;
+};
+export type DueWorkReport = {
+    polling: PollReport | null;
+    extraction: ExtractionReport | null;
+    errors: {
+        step: "polling" | "extraction";
+        error: unknown;
+    }[];
+};
+export declare const maximumSleepMs = 15000;
+export declare function createDueWork(deps: DueWorkDeps): {
+    run(): Promise<DueWorkReport>;
+    nextDueAt: () => Promise<Date | null>;
+    sleepMs(): Promise<number>;
+    idle(): Promise<void>;
+};
+export type DueWork = ReturnType<typeof createDueWork>;
+export declare function createCleanup(deps: {
+    retention: Retention;
+    secretSweep: SecretSweep;
+}): {
+    run(): Promise<{
+        purged: number;
+        deleted: number;
+        swept: number;
+    }>;
+};
+export type Cleanup = ReturnType<typeof createCleanup>;
 // src/enablement.ts
 import type { MultilingualText } from "@family-agenda/domain";
 export type Enableable = {
@@ -211,7 +250,7 @@ export declare function disableIfUnused<P extends EnablementProblems>(candidate:
 // src/extraction.ts
 import { type RawMessageId, type SourceId } from "@family-agenda/domain";
 import type { ActivityLog } from "./activity";
-import type { BlobStore, Clock, ExtractionResult, Extractor, FamilyRepository, ItemRepository, LlmEndpointRepository, OcrModelStore, SecretStore, TextExtractor } from "./ports";
+import type { BlobStore, Clock, ExtractionResult, Extractor, FamilyRepository, ItemRepository, LlmEndpointRepository, OcrModelStore, SecretStore, SourceRepository, TextExtractor } from "./ports";
 export type ExtractionDeps = {
     clock: Clock;
     timeZone: string;
@@ -219,6 +258,7 @@ export type ExtractionDeps = {
     endpoints: LlmEndpointRepository;
     secrets: SecretStore;
     items: ItemRepository;
+    sources: SourceRepository;
     blobs: BlobStore;
     extractor: Extractor;
     textExtractor: TextExtractor;
@@ -240,10 +280,12 @@ export type ExtractionReport = {
         message: string;
     }[];
 };
+export declare const extractionBackoffMs: number;
 export declare function createExtraction(deps: ExtractionDeps): {
     waiting(scope?: {
         sourceId?: SourceId;
     }): Promise<number>;
+    nextDueAt(): Promise<Date | null>;
     extractPending(): Promise<ExtractionReport>;
 };
 export type ExtractionAccess = ReturnType<typeof createExtraction>;
@@ -464,6 +506,7 @@ export type PollReport = {
     }[];
 };
 export declare function createSourcePolling(deps: PollingDeps): {
+    nextDueAt(): Promise<Date | null>;
     pollDue(): Promise<PollReport>;
 };
 export type SourcePolling = ReturnType<typeof createSourcePolling>;
@@ -755,6 +798,7 @@ export interface SourceRepository {
     migrateConfig(id: SourceId, fromVersion: number, plain: PlainConfig, configVersion: number): Promise<void>;
     update(source: Source): Promise<void>;
     recordFailedRun(id: SourceId, at: Date, error: RunError): Promise<void>;
+    recordFailedExtraction(id: SourceId, at: Date): Promise<void>;
     setShown(id: SourceId, shown: boolean): Promise<void>;
     rename(id: SourceId, name: string | null): Promise<void>;
     declareAttributes(id: SourceId, attributes: DeclaredAttribute[]): Promise<void>;
@@ -903,7 +947,8 @@ export interface ItemRepository {
         purged: number;
         deleted: number;
     }>;
-    pendingMessages(limit: number): Promise<PendingMessage[]>;
+    pendingMessages(limit: number, failedAfter: Date): Promise<PendingMessage[]>;
+    pendingExtractionFailures(): Promise<(Date | null)[]>;
     pendingMessageCount(scope: {
         sourceId?: SourceId;
     }): Promise<number>;

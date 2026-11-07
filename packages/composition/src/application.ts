@@ -2,6 +2,8 @@ import type {
   AdminAccess,
   AgendaAccess,
   CatalogueAccess,
+  Cleanup,
+  DueWork,
   ExtractionAccess,
   FamilyMemberAccess,
   LanguageAccess,
@@ -24,9 +26,9 @@ export type Application = {
   timeZone: string;
   admins: AdminAccess;
   secrets: SecretStore;
-  /** Removes the secrets nothing refers to any more; the worker does when it starts. */
+  /** Removes the secrets nothing refers to any more; part of `cleanup`. */
   secretSweep: SecretSweep;
-  /** Deletes messages' text and attachments after their retention; the worker does it in the background. */
+  /** Deletes messages' text and attachments after their retention; part of `cleanup`. */
   retention: Retention;
   recoveryKit: RecoveryKitAccess;
   familyMembers: FamilyMemberAccess;
@@ -39,15 +41,19 @@ export type Application = {
   /** What an Admin enables within a Source Type, such as Messengers. */
   catalogues: CatalogueAccess;
   sources: SourceAccess;
-  /** Runs the Sources that are due; the worker does on each tick. */
+  /** Runs the Sources that are due; part of `dueWork`. */
   polling: SourcePolling;
   /** Starts and stops the programs of Source Types, such as a homeserver; only the worker does. */
   services: ServiceSupervision;
   llmEndpoint: LlmEndpointAccess;
   /** Signing in through the Identity Provider, alongside the password. */
   singleSignOn: SingleSignOn;
-  /** Extracts Items from the raw messages that wait for it; the worker does on each tick. */
+  /** Extracts Items from the raw messages that wait for it; part of `dueWork`. */
   extraction: ExtractionAccess;
+  /** One round of polling and extraction, and when the next is due; a scheduler decides when to run it. */
+  dueWork: DueWork;
+  /** Retention and the secret sweep, which the worker runs once a day. */
+  cleanup: Cleanup;
   messages: MessageAccess;
   close(): Promise<void>;
 };

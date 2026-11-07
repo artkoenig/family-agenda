@@ -11,5 +11,5 @@ export {
   type PostgresConnection,
   type PostgresPoolOptions,
 } from "@family-agenda/adapters";
-export { createWorkerLoop, type WorkerLog, type WorkerLoop } from "./worker-loop";
+export { createWorkerLoop, logDueWorkReport, type WorkerLog, type WorkerLoop } from "./worker-loop";
 export { SourceRegistry } from "./source-registry";

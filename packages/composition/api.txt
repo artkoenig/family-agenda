@@ -6,7 +6,7 @@ export { bootApplication, bootWorker, type Worker } from "./boot";
 export { readApplicationConfig, type ApplicationConfig } from "./config";
 export { bootSelfHosted, bootSelfHostedWorker, readSelfHostedConfig, selfHostedAdapters, type SelfHostedConfig } from "./self-hosted";
 export { connectPostgres, NewerMigrationHistoryError, OldMigrationHistoryError, runMigrations, type PostgresConnection, type PostgresPoolOptions, } from "@family-agenda/adapters";
-export { createWorkerLoop, type WorkerLog, type WorkerLoop } from "./worker-loop";
+export { createWorkerLoop, logDueWorkReport, type WorkerLog, type WorkerLoop } from "./worker-loop";
 export { SourceRegistry } from "./source-registry";
 // src/adapters.ts
 import type { PostgresConnection } from "@family-agenda/adapters";
@@ -25,7 +25,7 @@ export type Adapters = {
     pluginDirectories: string[];
 };
 // src/application.ts
-import type { AdminAccess, AgendaAccess, CatalogueAccess, ExtractionAccess, FamilyMemberAccess, LanguageAccess, LlmEndpointAccess, MessageAccess, RecoveryKitAccess, Retention, SecretStore, SecretSweep, ServiceSupervision, SingleSignOn, SourceAccess, SourcePolling, SourceTypeAccess, TaskAccess } from "@family-agenda/application";
+import type { AdminAccess, AgendaAccess, CatalogueAccess, Cleanup, DueWork, ExtractionAccess, FamilyMemberAccess, LanguageAccess, LlmEndpointAccess, MessageAccess, RecoveryKitAccess, Retention, SecretStore, SecretSweep, ServiceSupervision, SingleSignOn, SourceAccess, SourcePolling, SourceTypeAccess, TaskAccess } from "@family-agenda/application";
 export type Application = {
     timeZone: string;
     admins: AdminAccess;
@@ -45,6 +45,8 @@ export type Application = {
     llmEndpoint: LlmEndpointAccess;
     singleSignOn: SingleSignOn;
     extraction: ExtractionAccess;
+    dueWork: DueWork;
+    cleanup: Cleanup;
     messages: MessageAccess;
     close(): Promise<void>;
 };
@@ -83,13 +85,14 @@ export declare function readSelfHostedConfig(env?: NodeJS.ProcessEnv): Promise<S
 export declare function bootSelfHosted(env?: NodeJS.ProcessEnv): Promise<Application>;
 export declare function bootSelfHostedWorker(env?: NodeJS.ProcessEnv): Promise<Worker>;
 // src/worker-loop.ts
+import type { DueWorkReport } from "@family-agenda/application";
 import type { Worker } from "./boot";
 export type WorkerLog = {
     warn(message: string): void;
     error(message: string, error?: unknown): void;
 };
+export declare function logDueWorkReport(report: DueWorkReport, log: WorkerLog): void;
 export type WorkerLoop = {
-    poll(): Promise<void>;
     reconcile(): Promise<void>;
     stop(): Promise<void>;
 };

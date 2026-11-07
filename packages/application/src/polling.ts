@@ -136,20 +136,23 @@ export function createSourcePolling(deps: PollingDeps) {
     for (const origin of origins) if (origin.message) await removeBlobsOf(origin.message);
   }
 
-function isDue(
+/** When a Source is next due: at once if it never ran, or last ran in the future (after a clock change). */
+function dueAt(
   source: Source,
   ingestion: PollingIngestion,
   catalogue: CatalogueSpec | null,
   entryIntervals: Map<string, number | null>,
   now: number,
-): boolean {
+): number {
   const own = catalogue ? (entryIntervals.get(String(source.plain[catalogue.configKey])) ?? null) : source.pollIntervalSeconds;
   const interval = (own ?? ingestion.suggestedIntervalSeconds) * 1000;
-  return !(source.lastRunAt && now - source.lastRunAt.getTime() < interval);
+  const last = source.lastRunAt?.getTime();
+  return last === undefined || last > now ? now : last + interval;
 }
 
-    async function findDue(enabled: Set<SourceTypeId>, now: number): Promise<{ source: Source; ingestion: PollingIngestion }[]> {
-    const due: { source: Source; ingestion: PollingIngestion }[] = [];
+  /** Every polling Source of the enabled Source Types with when it is due. */
+  async function schedule(enabled: Set<SourceTypeId>, now: number): Promise<{ source: Source; ingestion: PollingIngestion; dueAt: number }[]> {
+    const all: { source: Source; ingestion: PollingIngestion; dueAt: number }[] = [];
     for (const type of enabled) {
       const loaded = await registry.load(type);
       if (!loaded.ok) continue;
@@ -159,15 +162,23 @@ function isDue(
         catalogue ? (await catalogues.list(type)).map((record) => [record.entryId, record.pollIntervalSeconds]) : [],
       );
       for (const source of await sources.listOfType(type)) {
-        if (isDue(source, ingestion, catalogue, entryIntervals, now)) {
-          due.push({ source, ingestion });
-        }
+        all.push({ source, ingestion, dueAt: dueAt(source, ingestion, catalogue, entryIntervals, now) });
       }
     }
-    return due;
+    return all;
+  }
+
+  async function enabledTypes(): Promise<Set<SourceTypeId>> {
+    return new Set((await sourceTypes.list()).filter((type) => type.enabled).map((type) => type.id));
   }
 
   return {
+    /** When the first polling Source is due, now if one is already; null if there is none. */
+    async nextDueAt(): Promise<Date | null> {
+      const times = (await schedule(await enabledTypes(), clock.now().getTime())).map((entry) => entry.dueAt);
+      return times.length === 0 ? null : new Date(Math.min(...times));
+    },
+
     /**
      * Runs every polling Source of an enabled Source Type whose interval has passed since its last
      * run, as the worker does on each tick. A failed run waits for the next interval too. A Source
@@ -175,9 +186,8 @@ function isDue(
      */
     async pollDue(): Promise<PollReport> {
       const report: PollReport = { polled: [], failed: [], invalid: [], refused: [] };
-      const enabled = new Set((await sourceTypes.list()).filter((type) => type.enabled).map((type) => type.id));
       const now = clock.now().getTime();
-      const due = await findDue(enabled, now);
+      const due = (await schedule(await enabledTypes(), now)).filter((entry) => entry.dueAt <= now);
       if (due.length === 0) return report;
       const progress = await activity.begin("polling", due.length);
       try {

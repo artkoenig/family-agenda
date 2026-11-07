@@ -421,6 +421,8 @@ export interface SourceRepository {
    * first failed run after its last successful one, and definitely once any of them did.
    */
   recordFailedRun(id: SourceId, at: Date, error: RunError): Promise<void>;
+  /** Records that extracting one of the Source's messages failed at `at`; a successful extraction clears it. */
+  recordFailedExtraction(id: SourceId, at: Date): Promise<void>;
   /** Shows or hides the Source's Items on the timeline and in the feeds. */
   setShown(id: SourceId, shown: boolean): Promise<void>;
   /** Names the Source as an Admin calls it; null for the name derived from its settings. */
@@ -604,8 +606,16 @@ export interface ItemRepository {
    * the files of the removed attachments, for the caller to remove.
    */
   purgeMessages(now: Date, retainedSince: Date): Promise<{ files: BlobRef[]; purged: number; deleted: number }>;
-  /** Raw messages not yet extracted successfully, oldest first. */
-  pendingMessages(limit: number): Promise<PendingMessage[]>;
+  /**
+   * Raw messages not yet extracted successfully, oldest first. Those of a Source whose extraction
+   * failed after `failedAfter` are left out: they wait for their backoff to pass.
+   */
+  pendingMessages(limit: number, failedAfter: Date): Promise<PendingMessage[]>;
+  /**
+   * For each Source with a message waiting for extraction, when extracting one of its messages last
+   * failed; null if it has not, or not since one succeeded.
+   */
+  pendingExtractionFailures(): Promise<(Date | null)[]>;
   /** How many raw messages, of one Source or of all, wait for extraction. */
   pendingMessageCount(scope: { sourceId?: SourceId }): Promise<number>;
   /**
