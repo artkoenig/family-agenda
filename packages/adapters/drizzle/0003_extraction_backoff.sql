@@ -1,0 +1,1 @@
+ALTER TABLE "source_run" ADD COLUMN "last_extraction_failure_at" timestamp with time zone;

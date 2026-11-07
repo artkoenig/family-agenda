@@ -3,6 +3,7 @@ export * from "./admin-access";
 export * from "./assignment";
 export * from "./catalogues";
 export * from "./enabled-source-type";
+export * from "./due-work";
 export * from "./enablement";
 export * from "./extraction";
 export * from "./family-members";

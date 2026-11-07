@@ -536,6 +536,11 @@ export class PostgresSourceRepository implements SourceRepository {
       .where(eq(sourceRuns.sourceId, id));
   }
 
+  async recordFailedExtraction(id: SourceId, at: Date): Promise<void> {
+    if (!uuidPattern.test(id)) return;
+    await this.db.update(sourceRuns).set({ lastExtractionFailureAt: at }).where(eq(sourceRuns.sourceId, id));
+  }
+
   async setShown(id: SourceId, shown: boolean): Promise<void> {
     if (!uuidPattern.test(id)) return;
     await this.db.update(sources).set({ shown }).where(eq(sources.id, id));

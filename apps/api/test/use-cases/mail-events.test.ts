@@ -1,5 +1,5 @@
 import type { Origin } from "@family-agenda/source-sdk";
-import { openAgendaAccess } from "@family-agenda/application";
+import { extractionBackoffMs, openAgendaAccess } from "@family-agenda/application";
 import type { AgendaId } from "@family-agenda/domain";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { bootForTest, type TestInstance } from "../support/boot";
@@ -221,6 +221,7 @@ describe("Events extracted from mail", () => {
     expect(await timeline()).toEqual({});
 
     extractor.recover();
+    instance.clock.advance(extractionBackoffMs);
     await instance.app.extraction.extractPending();
     expect(await timeline()).toEqual({ "2026-09-17": ["19:30-19:30 Elternabend Klasse 5b"] });
   });

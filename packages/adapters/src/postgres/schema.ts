@@ -249,6 +249,8 @@ export const sourceRuns = pgTable(
     syncCursor: jsonb("sync_cursor"),
     /** When it last ran; null to run it at the next tick. */
     lastRunAt: timestamptz("last_run_at"),
+    /** When extracting one of its messages last failed; the extraction of its messages waits a while after that. Null after a successful one. */
+    lastExtractionFailureAt: timestamptz("last_extraction_failure_at"),
     /** When it last ran successfully, which the Admin area shows. */
     lastSuccessAt: timestamptz("last_success_at"),
     /** The first failed run since the last successful one; null while it runs successfully. */

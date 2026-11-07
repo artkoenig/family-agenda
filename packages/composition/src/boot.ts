@@ -21,6 +21,8 @@ import {
   createAdminAccess,
   createAgendaAccess,
   createCatalogueAccess,
+  createCleanup,
+  createDueWork,
   createExtraction,
   createFamilyMemberAccess,
   createLanguageAccess,
@@ -178,6 +180,7 @@ export async function bootApplication(config: ApplicationConfig, adapters: Adapt
     endpoints,
     secrets,
     items,
+    sources: sourceRepository,
     blobs,
     extractor,
     textExtractor,
@@ -185,6 +188,8 @@ export async function bootApplication(config: ApplicationConfig, adapters: Adapt
     activity,
   });
   const messages = createMessageAccess({ items, blobs });
+  const dueWork = createDueWork({ clock, polling, extraction });
+  const cleanup = createCleanup({ retention, secretSweep });
   await withDatabase(postgres, async () => {
     await sourceTypes.start();
     await catalogues.start();
@@ -209,6 +214,8 @@ export async function bootApplication(config: ApplicationConfig, adapters: Adapt
     llmEndpoint,
     singleSignOn,
     extraction,
+    dueWork,
+    cleanup,
     messages,
     close: () => postgres.close(),
   };

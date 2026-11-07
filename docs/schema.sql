@@ -185,6 +185,7 @@ CREATE TABLE source_run (
   source_id                 UUID PRIMARY KEY REFERENCES source(id) ON DELETE CASCADE,
   sync_cursor               JSONB,
   last_run_at               TIMESTAMPTZ,
+  last_extraction_failure_at TIMESTAMPTZ,   -- extraction of the Source's messages waits a while after it
   last_success_at           TIMESTAMPTZ,
   failing_since             TIMESTAMPTZ,
   last_error_kind           TEXT,

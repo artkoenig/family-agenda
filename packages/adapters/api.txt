@@ -329,6 +329,7 @@ export declare class PostgresSourceRepository implements SourceRepository {
     migrateConfig(id: SourceId, fromVersion: number, plain: PlainConfig, configVersion: number): Promise<void>;
     update(source: Source): Promise<void>;
     recordFailedRun(id: SourceId, at: Date, error: RunError): Promise<void>;
+    recordFailedExtraction(id: SourceId, at: Date): Promise<void>;
     setShown(id: SourceId, shown: boolean): Promise<void>;
     rename(id: SourceId, name: string | null): Promise<void>;
     declareAttributes(id: SourceId, attributes: DeclaredAttribute[]): Promise<void>;
@@ -377,7 +378,8 @@ export declare class PostgresItemRepository implements ItemRepository {
         purged: number;
         deleted: number;
     }>;
-    pendingMessages(limit: number): Promise<PendingMessage[]>;
+    pendingExtractionFailures(): Promise<(Date | null)[]>;
+    pendingMessages(limit: number, failedAfter: Date): Promise<PendingMessage[]>;
     pendingMessageCount(scope: {
         sourceId?: SourceId;
     }): Promise<number>;

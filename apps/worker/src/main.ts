@@ -1,49 +1,61 @@
-import { bootSelfHostedWorker, createWorkerLoop } from "@family-agenda/composition";
-
-/** How often the worker looks for Sources whose polling interval has passed. */
-const tickMs = 5_000;
+import { bootSelfHostedWorker, createWorkerLoop, logDueWorkReport } from "@family-agenda/composition";
 
 /** How often the worker starts and stops the programs of Source Types as Admins enable them. */
 const servicesTickMs = 5_000;
 
-/** How often the worker deletes messages past their retention. */
-const retentionTickMs = 60 * 60 * 1000;
+/** How often the worker deletes messages past their retention and sweeps secrets nothing refers to. */
+const cleanupTickMs = 24 * 60 * 60 * 1000;
 
 const worker = await bootSelfHostedWorker();
-const loop = createWorkerLoop(worker, {
-  warn: (message) => {
+const log = {
+  warn: (message: string) => {
     console.warn(message);
   },
-  error: (message, error) => {
+  error: (message: string, error?: unknown) => {
     console.error(message, error);
   },
-});
+};
+const loop = createWorkerLoop(worker, log);
 console.log("Family Agenda worker started");
 
-worker.secretSweep.sweep().catch((error: unknown) => {
-  console.error("Removing secrets nothing refers to failed:", error);
-});
-
-const purge = () => {
-  worker.retention.purge().catch((error: unknown) => {
-    console.error("Purging messages past their retention failed:", error);
+const cleanup = () => {
+  worker.cleanup.run().catch((error: unknown) => {
+    console.error("Cleaning up (retention, secrets nothing refers to) failed:", error);
   });
 };
-purge();
-const retentionTimer = setInterval(purge, retentionTickMs);
-
-void loop.poll();
-const timer = setInterval(() => void loop.poll(), tickMs);
+cleanup();
+const cleanupTimer = setInterval(cleanup, cleanupTickMs);
 
 void loop.reconcile();
 const servicesTimer = setInterval(() => void loop.reconcile(), servicesTickMs);
 
+const stopping = new AbortController();
+const isStopping = () => stopping.signal.aborted;
+let wake = () => {};
+
+/** Rounds of due work, each followed by a sleep until the next work is due. */
+const working = (async () => {
+  while (!isStopping()) {
+    logDueWorkReport(await worker.dueWork.run(), log);
+    if (isStopping()) break;
+    const sleepMs = await worker.dueWork.sleepMs().catch(() => servicesTickMs);
+    await new Promise<void>((resolve) => {
+      const timer = setTimeout(resolve, sleepMs);
+      wake = () => {
+        clearTimeout(timer);
+        resolve();
+      };
+    });
+  }
+})();
+
 const shutdown = () => {
-  clearInterval(timer);
+  stopping.abort();
+  wake();
   clearInterval(servicesTimer);
-  clearInterval(retentionTimer);
-  void loop
-    .stop()
+  clearInterval(cleanupTimer);
+  void working
+    .then(() => loop.stop())
     .then(() => worker.close())
     .then(() => process.exit(0));
 };

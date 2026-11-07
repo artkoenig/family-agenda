@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { SourceTypeId } from "@family-agenda/domain";
+import { createDueWork } from "@family-agenda/application";
 import { createWorkerLoop, type Worker } from "@family-agenda/composition";
 import { bootForTest, type TestInstance } from "../support/boot";
 
@@ -47,16 +48,16 @@ describe("two Instances in one process", () => {
     const failing: Worker["services"]["reconcile"] = () => Promise.resolve({ failed: [{ sourceTypeId: "bridged" as SourceTypeId, message: "no program" }] });
     const blocked: Worker = {
       ...berlin.app,
-      polling: { ...berlin.app.polling, pollDue: () => hanging },
+      dueWork: createDueWork({ clock: berlin.clock, polling: { ...berlin.app.polling, pollDue: () => hanging }, extraction: berlin.app.extraction }),
       services: { ...berlin.app.services, reconcile: failing },
     };
     const first = createWorkerLoop(blocked, log("first"));
     const second = createWorkerLoop({ ...tokyo.app, services: { ...tokyo.app.services, reconcile: failing } }, log("second"));
 
-    const stuck = first.poll();
-    await second.poll();
-    // The second Instance polled although the first one's poll is still running.
-    expect(warnings.filter((line) => line.startsWith("second") && line.includes("Polling"))).toEqual([]);
+    const stuck = blocked.dueWork.run();
+    const secondReport = await tokyo.app.dueWork.run();
+    // The second Instance ran its round although the first one's is still running.
+    expect(secondReport.errors).toEqual([]);
 
     // A failure that stays is logged once per Instance, not once for both.
     await first.reconcile();
@@ -66,7 +67,7 @@ describe("two Instances in one process", () => {
     expect(warnings.filter((line) => line.includes("Services of Source Type bridged failed"))).toHaveLength(2);
 
     release();
-    await stuck;
+    expect((await stuck).errors).toHaveLength(1);
     await Promise.all([first.stop(), second.stop()]);
   });
 
