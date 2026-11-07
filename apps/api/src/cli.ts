@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { bootApplication, readApplicationConfig, readSelfHostedConfig, selfHostedAdapters } from "@family-agenda/composition";
+import { bootSelfHosted } from "@family-agenda/composition";
 
 const usage = "Usage: family-agenda reset-admin-password <email>";
 
@@ -9,7 +9,7 @@ if (command !== "reset-admin-password" || !email) {
   process.exit(2);
 }
 
-const application = await bootApplication(readApplicationConfig(), await selfHostedAdapters(await readSelfHostedConfig()));
+const application = await bootSelfHosted();
 try {
   const newPassword = randomBytes(12).toString("base64url");
   const result = await application.admins.resetPasswordByEmail({ email, newPassword });

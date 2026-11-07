@@ -2,7 +2,7 @@ export type { Adapters } from "./adapters";
 export type { Application } from "./application";
 export { bootApplication, bootWorker, type Worker } from "./boot";
 export { readApplicationConfig, type ApplicationConfig } from "./config";
-export { readSelfHostedConfig, selfHostedAdapters, type SelfHostedConfig } from "./self-hosted";
+export { bootSelfHosted, bootSelfHostedWorker, readSelfHostedConfig, selfHostedAdapters, type SelfHostedConfig } from "./self-hosted";
 export {
   connectPostgres,
   NewerMigrationHistoryError,

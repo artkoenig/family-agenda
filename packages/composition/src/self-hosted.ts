@@ -17,6 +17,9 @@ import {
   type TessdataCatalog,
 } from "@family-agenda/adapters";
 import type { Adapters } from "./adapters";
+import type { Application } from "./application";
+import { bootApplication, bootWorker, type Worker } from "./boot";
+import { readApplicationConfig } from "./config";
 
 const defaultWorkspacePackages = fileURLToPath(new URL("../../../packages", import.meta.url));
 
@@ -103,4 +106,14 @@ export async function readSelfHostedConfig(env: NodeJS.ProcessEnv = process.env)
     tessdataDirectory: env.TESSDATA_DIRECTORY ?? "/var/lib/family-agenda/tessdata",
     bundledTessdataDirectory: (env.BUNDLED_TESSDATA_DIRECTORY ?? "/usr/share/tesseract-ocr/5/tessdata") || null,
   };
+}
+
+/** Boots an Application from the environment, as `api` and the CLI do. */
+export async function bootSelfHosted(env: NodeJS.ProcessEnv = process.env): Promise<Application> {
+  return bootApplication(readApplicationConfig(env), await selfHostedAdapters(await readSelfHostedConfig(env)));
+}
+
+/** Boots the Worker from the environment. */
+export async function bootSelfHostedWorker(env: NodeJS.ProcessEnv = process.env): Promise<Worker> {
+  return bootWorker(readApplicationConfig(env), await selfHostedAdapters(await readSelfHostedConfig(env)));
 }

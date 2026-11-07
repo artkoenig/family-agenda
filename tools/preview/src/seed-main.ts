@@ -7,10 +7,7 @@ import { seedDemoFamily } from "./seed";
 const root = process.env.APP_ROOT ?? "/app";
 const composition = (await import(`${root}/packages/composition/src/index.ts`)) as typeof import("@family-agenda/composition");
 
-const application = await composition.bootApplication(
-  composition.readApplicationConfig(),
-  await composition.selfHostedAdapters(await composition.readSelfHostedConfig()),
-);
+const application = await composition.bootSelfHosted();
 try {
   const seeded = await seedDemoFamily(application);
   if (!seeded.ok) {

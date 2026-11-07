@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { selfHostedAdapters } from "../src/self-hosted";
+import { bootSelfHosted, bootSelfHostedWorker, selfHostedAdapters } from "../src/self-hosted";
 
 describe("the adapters of a self-hosted Instance", () => {
   let directory: string;
@@ -32,5 +32,15 @@ describe("the adapters of a self-hosted Instance", () => {
     expect(adapters.pluginDirectories).toEqual([join(directory, "packages"), join(directory, "plugins")]);
     expect(await readdir(join(directory, "tessdata"))).toEqual(["deu.traineddata"]);
     await adapters.postgres.close();
+  });
+});
+
+describe("booting from the environment", () => {
+  it("fails at start without a time zone", async () => {
+    await expect(bootSelfHosted({ DATABASE_URL: "postgres://unused/family", MASTER_KEY: randomBytes(32).toString("base64") })).rejects.toThrow(/TZ is not set/);
+  });
+
+  it("fails at start without a master key, before it touches Postgres", async () => {
+    await expect(bootSelfHostedWorker({ TZ: "Europe/Berlin", DATABASE_URL: "postgres://unused/family" })).rejects.toThrow(/master key is not set/);
   });
 });
