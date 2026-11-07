@@ -4,18 +4,13 @@
  */
 import { seedDemoFamily } from "./seed";
 
-type Api = {
-  composition: typeof import("@family-agenda/api/composition-root");
-  config: typeof import("@family-agenda/api/config");
-};
-
 const root = process.env.APP_ROOT ?? "/app";
-const api: Api = {
-  composition: (await import(`${root}/apps/api/src/composition-root.ts`)) as Api["composition"],
-  config: (await import(`${root}/apps/api/src/config.ts`)) as Api["config"],
-};
+const composition = (await import(`${root}/packages/composition/src/index.ts`)) as typeof import("@family-agenda/composition");
 
-const application = await api.composition.bootApplication(api.config.readConfig());
+const application = await composition.bootApplication(
+  composition.readApplicationConfig(),
+  await composition.selfHostedAdapters(await composition.readSelfHostedConfig()),
+);
 try {
   const seeded = await seedDemoFamily(application);
   if (!seeded.ok) {

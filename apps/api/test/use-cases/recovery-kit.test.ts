@@ -1,4 +1,3 @@
-import { readFile } from "node:fs/promises";
 import { readRecoveryKitKey } from "@family-agenda/application";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { bootForTest, type TestInstance } from "../support/boot";
@@ -21,12 +20,12 @@ describe("Recovery Kit", () => {
     expect(await instance.app.recoveryKit.isConfirmed()).toBe(true);
   });
 
-  it("holds the master key, so that a restore can recover it", async () => {
+  it("holds the master key, so that a restore can recover it", () => {
     const kit = instance.app.recoveryKit.contents();
 
     const recovered = readRecoveryKitKey(kit.masterKey);
 
-    expect(recovered).toEqual(new Uint8Array(await readFile(instance.masterKeyFile)));
+    expect(recovered).toEqual(new Uint8Array(instance.masterKey));
   });
 
   it("is read back regardless of spacing and case, but not with a typo", () => {

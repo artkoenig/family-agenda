@@ -795,11 +795,6 @@ export interface OcrModelStore {
   remove(language: OcrLanguage): Promise<void>;
 }
 
-export interface JobQueue {
-  send(name: string, data: object): Promise<void>;
-  work(name: string, handler: (data: unknown) => Promise<void>): Promise<void>;
-}
-
 /** What the worker is busy with in the background: running Sources, or extracting messages. */
 export type ActivityKind = "polling" | "extracting";
 

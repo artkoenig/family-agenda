@@ -1,11 +1,11 @@
 import { serve } from "@hono/node-server";
 import { openAgendaAccess } from "@family-agenda/application";
-import { bootApplication } from "./composition-root";
+import { bootApplication, readApplicationConfig, readSelfHostedConfig, selfHostedAdapters } from "@family-agenda/composition";
 import { readConfig } from "./config";
 import { createHttpApp } from "./http/app";
 
 const config = readConfig();
-const application = await bootApplication(config);
+const application = await bootApplication(readApplicationConfig(), await selfHostedAdapters(await readSelfHostedConfig()));
 const server = serve(
   { fetch: createHttpApp(application, {
       trustProxy: config.trustProxy,

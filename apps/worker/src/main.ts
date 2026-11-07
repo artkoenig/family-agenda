@@ -1,5 +1,4 @@
-import { bootWorker } from "@family-agenda/api/composition-root";
-import { readConfig } from "@family-agenda/api/config";
+import { bootWorker, readApplicationConfig, readSelfHostedConfig, selfHostedAdapters } from "@family-agenda/composition";
 
 /** How often the worker looks for Sources whose polling interval has passed. */
 const tickMs = 5_000;
@@ -7,7 +6,7 @@ const tickMs = 5_000;
 /** How often the worker starts and stops the programs of Source Types as Admins enable them. */
 const servicesTickMs = 5_000;
 
-const worker = await bootWorker(readConfig());
+const worker = await bootWorker(readApplicationConfig(), await selfHostedAdapters(await readSelfHostedConfig()));
 console.log("Family Agenda worker started");
 
 worker.secretSweep.sweep().catch((error: unknown) => {

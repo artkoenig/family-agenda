@@ -1,4 +1,4 @@
-import type { Application } from "@family-agenda/api/composition-root";
+import type { Application } from "@family-agenda/composition";
 import type { AgendaId, FamilyMemberId, SourceAttributeId } from "@family-agenda/domain";
 
 /** Who signs in to the Admin area of a preview. Public on purpose: a preview holds no real data. */

@@ -4,7 +4,6 @@
   "private": true,
   "type": "module",
   "exports": {
-    "./composition-root": "./src/composition-root.ts",
     "./config": "./src/config.ts"
   },
   "scripts": {
@@ -14,6 +13,7 @@
   "dependencies": {
     "@family-agenda/adapters": "workspace:*",
     "@family-agenda/application": "workspace:*",
+    "@family-agenda/composition": "workspace:*",
     "@family-agenda/contracts": "workspace:*",
     "@family-agenda/domain": "workspace:*",
     "@family-agenda/source-sdk": "workspace:*",

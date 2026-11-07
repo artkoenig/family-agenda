@@ -14,7 +14,8 @@ How to configure the containers, the address the Family opens, and single sign-o
 | `TRUST_PROXY` | `false` | `true` behind your own HTTPS reverse proxy (see below) |
 | `MDNS_NAME` | `family-agenda.local` | Name the `mdns` service announces (Linux host only) |
 | `POSTGRES_PASSWORD` | `family_agenda` | Change it if the port of Postgres is ever exposed |
-| `TZ` | `Europe/Berlin` | Decides where an Agenda's days start |
+| `TZ` | `Europe/Berlin` | Decides where an Agenda's days start. Required; the time zone of the process is no longer a fallback |
+| `MASTER_KEY` | none, required | 32 random bytes in base64 (`openssl rand -base64 32`) that Source credentials are encrypted with. An Instance that already has a key file in the `master-key` volume may leave it unset; Family Agenda no longer creates a key on its own |
 
 Data lives in named volumes (`postgres-data`, `master-key`, `blobs`, ...). How to back them up, restore and upgrade is in [upgrading.md](upgrading.md). Keep the Recovery Kit, without it Source credentials cannot be restored (ADR-0006).
 
