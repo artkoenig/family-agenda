@@ -12,8 +12,7 @@ import type {
 
 /**
  * Everything of an Instance that does I/O, handed to the boot functions ready to use. A process
- * builds them its own way: `selfHostedAdapters` from the environment, a test with fakes, a
- * router serving several Families per Family.
+ * builds them its own way: `selfHostedAdapters` from the environment, a test with fakes.
  */
 export type Adapters = {
   /** The Instance's database; booting migrates it and closing the Application closes it. */

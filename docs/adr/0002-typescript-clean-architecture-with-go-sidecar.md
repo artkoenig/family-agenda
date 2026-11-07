@@ -5,10 +5,11 @@ Family Agenda is a TypeScript monorepo on Node.js LTS that follows Clean Archite
 The dependency rule is enforced by workspace package boundaries and dependency-cruiser, not by convention:
 
 - `packages/domain`: plain TypeScript with no dependencies, including no zod.
-- `packages/application`: use cases and ports (`SourceAdapter`, `Extractor`, `TextExtractor`, `JobQueue`).
-- `packages/adapters-*`: Postgres via Drizzle, the Sources, the LLMs and pg-boss.
+- `packages/application`: use cases and ports (`SourceAdapter`, `Extractor`, `TextExtractor`).
+- `packages/adapters-*`: Postgres via Drizzle, the Sources, the LLMs.
 - `packages/contracts`: zod schemas for the DTOs.
-- `apps/api`: Hono, and the composition root.
+- `packages/composition`: the composition root, which wires use cases to adapters for `apps/api` and `apps/worker`.
+- `apps/api`: Hono.
 - `apps/web`: the React frontend, which imports only `contracts`.
 
 The sidecar holds no domain logic. It keeps its own whatsmeow session store, drops messages from groups that are not allow-listed, and forwards the rest to `api` by webhook.

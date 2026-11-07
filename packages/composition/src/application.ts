@@ -39,7 +39,6 @@ export type Application = {
   /** What an Admin enables within a Source Type, such as Messengers. */
   catalogues: CatalogueAccess;
   sources: SourceAccess;
-  /** Which Family Members the Items of a Source's Origins concern. */
   /** Runs the Sources that are due; the worker does on each tick. */
   polling: SourcePolling;
   /** Starts and stops the programs of Source Types, such as a homeserver; only the worker does. */

@@ -24,7 +24,7 @@ export { schema as postgresSchema };
 /** Arbitrary key that serialises migrations run by `api` and `worker` starting together. */
 const migrationLockKey = 7_342_001;
 
-/** How the pool behind a connection is sized; a Composition Root serving several Families keeps these small. */
+/** How the pool behind a connection is sized. */
 export type PostgresPoolOptions = {
   /** The most connections the pool opens. */
   max?: number;
