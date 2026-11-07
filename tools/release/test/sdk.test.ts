@@ -3,7 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
-import { classifyApiChange, describeSdkApi, pluginRunsOn, sdkVersionProblem } from "../src/sdk";
+import { readdirSync } from "node:fs";
+import { classifyApiChange, describePackageApi, describeSdkApi, pluginRunsOn, sdkVersionProblem } from "../src/sdk";
 
 const here = (path: string) => fileURLToPath(new URL(path, import.meta.url));
 
@@ -51,6 +52,34 @@ describe("the API text of the SDK", () => {
   });
 });
 
+describe("the API text of a package", () => {
+  it("follows the re-exports of the entry file into the files behind it", () => {
+    expect(describePackageApi(here("fixtures/package"))).toBe(
+      [
+        "// The public API of @family-agenda/fixture, written by `pnpm sdk-api`. Do not edit it by hand.",
+        "// src/index.ts",
+        'export * from "./greeting";',
+        "// src/greeting.ts",
+        "export declare function greet(name: string): string;",
+        "export declare const internal = 1;",
+        "",
+      ].join("\n"),
+    );
+  });
+
+  it("is none for a package that exports nothing", () => {
+    expect(describePackageApi(here("fixtures/private-package"))).toBeNull();
+  });
+
+  it("is what api.txt holds in every package; after a change run `pnpm sdk-api` and raise the version", () => {
+    const packages = here("../../../packages");
+    for (const folder of readdirSync(packages, { withFileTypes: true }).filter((entry) => entry.isDirectory())) {
+      const api = describePackageApi(`${packages}/${folder.name}`);
+      if (api !== null) expect(readFileSync(`${packages}/${folder.name}/api.txt`, "utf8"), folder.name).toBe(api);
+    }
+  });
+});
+
 describe("what changed in an API text", () => {
   const api = "export type A = {\n    a: string;\n};\nexport declare function f(a: string): void;\n";
 
@@ -95,7 +124,7 @@ describe("the SDK's version after its API changed", () => {
   });
 
   it("refuses a version that went down", () => {
-    expect(problem("1.2.0", "1.1.0", before, before)).toBe("The SDK version went down, from 1.2.0 to 1.1.0.");
+    expect(problem("1.2.0", "1.1.0", before, before)).toBe("The version of the SDK went down, from 1.2.0 to 1.1.0.");
   });
 
   it("asks for a new minor version for an addition, and accepts that or more", () => {

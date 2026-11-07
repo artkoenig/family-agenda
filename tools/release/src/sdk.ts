@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import ts from "typescript";
 
 /** The version of the SDK, and its public API as `describeSdkApi` writes it. */
@@ -9,7 +10,7 @@ const entries = ["src/index.ts", "src/testing.ts"];
 /** The version is part of the API file only through this line, which must not count as a change of the API. */
 const versionLine = /^export declare const sdkVersion = /;
 
-const header = "// The public API of @family-agenda/source-sdk, written by `pnpm sdk-api`. Do not edit it by hand.";
+const headerOf = (name: string) => `// The public API of ${name}, written by \`pnpm sdk-api\`. Do not edit it by hand.`;
 
 /**
  * The public API of the SDK as declarations, one member per line: what `tsc` would emit as `.d.ts`
@@ -17,6 +18,36 @@ const header = "// The public API of @family-agenda/source-sdk, written by `pnpm
  * is a change a plugin can break on; a line added is an addition.
  */
 export function describeSdkApi(sdkDirectory: string): string {
+  return describeApi(sdkDirectory, "@family-agenda/source-sdk", entries);
+}
+
+/** The entry files a package's `exports` name, such as `src/index.ts`. */
+function entriesOf(manifest: { exports?: Record<string, string> }): string[] {
+  return Object.values(manifest.exports ?? {}).map((target) => target.replace(/^\.\//, ""));
+}
+
+/** The public API of a workspace package, by the files its `exports` name; null for a package that exports nothing. */
+export function describePackageApi(directory: string): string | null {
+  const manifest = JSON.parse(readFileSync(`${directory}/package.json`, "utf8")) as { name: string; exports?: Record<string, string> };
+  const packageEntries = entriesOf(manifest);
+  return packageEntries.length === 0 ? null : describeApi(directory, manifest.name, packageEntries);
+}
+
+/** The files of the package that a file re-exports from with `export ... from "./x"`. */
+function relativeReExports(program: ts.Program, source: ts.SourceFile): string[] {
+  const specifiers = source.statements
+    .filter(ts.isExportDeclaration)
+    .map((statement) => statement.moduleSpecifier)
+    .filter((specifier) => specifier !== undefined && ts.isStringLiteral(specifier) && specifier.text.startsWith("."))
+    .map((specifier) => (specifier as ts.StringLiteral).text);
+  return specifiers.flatMap((specifier) => {
+    const resolved = ts.resolveModuleName(specifier, source.fileName, program.getCompilerOptions(), ts.sys).resolvedModule;
+    return resolved === undefined ? [] : [resolved.resolvedFileName];
+  });
+}
+
+function describeApi(sdkDirectory: string, name: string, entries: string[]): string {
+  const header = headerOf(name);
   const files = entries.map((entry) => `${sdkDirectory}/${entry}`);
   const program = ts.createProgram(files, {
     target: ts.ScriptTarget.ES2023,
@@ -40,14 +71,24 @@ export function describeSdkApi(sdkDirectory: string): string {
     throw new Error(`The SDK does not compile: ${reasons.join("; ")}`);
   }
   const sections: string[] = [];
-  for (const entry of entries) {
-    // One declaration file comes out per entry point, in the order of the entries.
+  // The entry files, then the files of the package they re-export from (`export * from "./x"`),
+  // so that the declarations behind a barrel file are part of the API. A file reachable this way
+  // counts as a whole, with exports no entry names.
+  const queue = entries.map((entry) => `${sdkDirectory}/${entry}`);
+  const seen = new Set<string>();
+  for (const path of queue) {
+    if (seen.has(path)) continue;
+    seen.add(path);
+    const source = program.getSourceFile(path);
+    if (source === undefined) continue;
+    // One declaration file comes out per source file.
     program.emit(
-      program.getSourceFile(`${sdkDirectory}/${entry}`),
-      (_name, text) => sections.push([`// ${entry}`, ...text.split("\n").filter((line) => !versionLine.test(line))].join("\n").trimEnd()),
+      source,
+      (_name, text) => sections.push([`// ${path.slice(sdkDirectory.length + 1)}`, ...text.split("\n").filter((line) => !versionLine.test(line))].join("\n").trimEnd()),
       undefined,
       true,
     );
+    queue.push(...relativeReExports(program, source));
   }
   return [header, ...sections].join("\n") + "\n";
 }
@@ -108,13 +149,13 @@ function lowestVersionFor(change: "additive" | "breaking", [major, minor, patch]
  * change needs a new major (a new minor while the major is 0), an addition a new minor (a new patch
  * while the major is 0), and the version never goes down.
  */
-export function sdkVersionProblem(previous: SdkSnapshot, current: SdkSnapshot): string | null {
+export function sdkVersionProblem(previous: SdkSnapshot, current: SdkSnapshot, subject = { name: "the SDK", manifest: "packages/source-sdk/package.json" }): string | null {
   const [before, after] = [parseVersion(previous.version), parseVersion(current.version)];
-  if (compare(after, before) < 0) return `The SDK version went down, from ${previous.version} to ${current.version}.`;
+  if (compare(after, before) < 0) return `The version of ${subject.name} went down, from ${previous.version} to ${current.version}.`;
   const change = classifyApiChange(previous.api, current.api);
   if (change === "none") return null;
   const lowest = lowestVersionFor(change, before);
   if (compare(after, lowest) >= 0) return null;
   const what = change === "breaking" ? "had something removed or changed" : "grown";
-  return `The public API of the SDK has ${what} since the last release, but its version is still ${current.version} (was ${previous.version}). Raise it to at least ${show(lowest)} in packages/source-sdk/package.json, and run \`pnpm sdk-api\`.`;
+  return `The public API of ${subject.name} has ${what} since the last release, but its version is still ${current.version} (was ${previous.version}). Raise it to at least ${show(lowest)} in ${subject.manifest}, and run \`pnpm sdk-api\`.`;
 }

@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { readSnapshot } from "../src/snapshot";
+import { readPackageApis, readSnapshot } from "../src/snapshot";
 
 const repos: string[] = [];
 afterEach(() => {
@@ -66,6 +66,17 @@ describe("reading the snapshot of a release from Git", () => {
 
     expect(readSnapshot(repo, "HEAD").sdk).toEqual({ version: "1.2.0", api: "export type A = {};\n" });
     expect(readSnapshot(repo, "v0.1.0").sdk).toBeNull();
+  });
+
+  it("reads the version and API file of every package that has one", () => {
+    const repo = repoWithTwoReleases();
+    commit(repo, { "packages/domain/package.json": JSON.stringify({ version: "0.3.0" }), "packages/domain/api.txt": "export {};\n", "packages/contracts/package.json": "{}" }, "third");
+
+    expect(readPackageApis(repo, "HEAD")).toEqual({
+      "source-sdk": { version: "1.2.0", api: "export type A = {};\n" },
+      domain: { version: "0.3.0", api: "export {};\n" },
+    });
+    expect(readPackageApis(repo, "v0.1.0")).toEqual({});
   });
 
   it("fails for a ref that does not exist, instead of reading nothing", () => {

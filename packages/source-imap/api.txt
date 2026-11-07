@@ -1,0 +1,10 @@
+// The public API of @family-agenda/source-imap, written by `pnpm sdk-api`. Do not edit it by hand.
+// src/index.ts
+import { type SourcePlugin } from "@family-agenda/source-sdk";
+export type ImapPluginOptions = {
+    allowPlaintext?: boolean;
+    timeoutMs?: number;
+};
+export declare function createImapPlugin(options?: ImapPluginOptions): SourcePlugin;
+declare const _default: SourcePlugin;
+export default _default;

@@ -38,3 +38,20 @@ export function readSnapshot(repo: string, ref: string): Snapshot {
     sdk: readSdk(repo, ref),
   };
 }
+
+const packagesFolder = "packages";
+
+/** The version and API file of every package that has an `api.txt` at a ref, by package folder name. */
+export function readPackageApis(repo: string, ref: string): Record<string, SdkSnapshot> {
+  const folders = git(repo, "ls-tree", "--name-only", ref, `${packagesFolder}/`)
+    .split("\n")
+    .filter((folder) => folder !== "")
+    .map((folder) => folder.slice(packagesFolder.length + 1));
+  const apis: Record<string, SdkSnapshot> = {};
+  for (const folder of folders) {
+    const manifest = readOptional(repo, ref, `${packagesFolder}/${folder}/package.json`);
+    const api = readOptional(repo, ref, `${packagesFolder}/${folder}/api.txt`);
+    if (manifest !== null && api !== null) apis[folder] = { version: (JSON.parse(manifest) as { version: string }).version, api };
+  }
+  return apis;
+}

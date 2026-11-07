@@ -1,0 +1,10 @@
+// The public API of @family-agenda/contracts, written by `pnpm sdk-api`. Do not edit it by hand.
+// src/index.ts
+export * from "./health";
+// src/health.ts
+import { z } from "zod";
+export declare const healthResponse: z.ZodObject<{
+    status: z.ZodLiteral<"ok">;
+    version: z.ZodString;
+}, z.core.$strip>;
+export type HealthResponse = z.infer<typeof healthResponse>;

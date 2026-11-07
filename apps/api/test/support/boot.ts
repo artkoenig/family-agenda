@@ -38,6 +38,8 @@ export type TestOptions = {
   tessdataCatalog?: TessdataCatalog;
   /** Replaces the OIDC client, such as with a `ScriptedIdentityProviderClient`. */
   identityProviderClient?: IdentityProviderClient;
+  /** The time zone of the Family; `Europe/Berlin` by default. */
+  timeZone?: string;
   /** Test plugins installed as workspace packages before the first boot. */
   sourcePlugins?: TestPluginPackage[];
 };
@@ -81,12 +83,12 @@ export async function bootForTest(options: TestOptions = {}): Promise<TestInstan
   for (const model of ["deu", "eng", "osd"]) {
     await writeFile(join(bundledTessdataDirectory, `${model}.traineddata`), `bundled ${model} model`);
   }
-  const { sourcePlugins = [], ...applicationOptions } = options;
+  const { sourcePlugins = [], timeZone = "Europe/Berlin", ...applicationOptions } = options;
   for (const plugin of sourcePlugins) await writeTestPluginPackage(workspacePackages, plugin);
 
   const clock = new FakeClock(new Date("2026-09-14T07:00:00Z"));
   const initialKey = randomBytes(32);
-  const config: ApplicationConfig = { timeZone: "Europe/Berlin" };
+  const config: ApplicationConfig = { timeZone };
   const tessdataDirectory = join(keyDirectory, "tessdata");
   /** The adapters of the Instance, built anew on each boot as a process would on each start. */
   const adaptersFor = async (masterKey: Buffer): Promise<Adapters> => {

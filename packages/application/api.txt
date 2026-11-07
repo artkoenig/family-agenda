@@ -1,0 +1,1575 @@
+// The public API of @family-agenda/application, written by `pnpm sdk-api`. Do not edit it by hand.
+// src/index.ts
+export * from "./activity";
+export * from "./admin-access";
+export * from "./assignment";
+export * from "./catalogues";
+export * from "./enabled-source-type";
+export * from "./enablement";
+export * from "./extraction";
+export * from "./family-members";
+export * from "./languages";
+export * from "./llm-endpoint";
+export * from "./messages";
+export * from "./poll-interval";
+export * from "./polling";
+export * from "./ports";
+export * from "./recovery-kit";
+export * from "./retention";
+export * from "./secret-sweep";
+export * from "./single-sign-on";
+export * from "./services";
+export * from "./source-health";
+export * from "./source-types";
+export * from "./sources";
+export * from "./tasks";
+export * from "./agendas";
+// src/activity.ts
+import type { ActivityKind, ActivityRepository, BackgroundActivity, Clock } from "./ports";
+export type ActivityDeps = {
+    clock: Clock;
+    activities: ActivityRepository;
+};
+export type ActivityProgress = {
+    advance(): Promise<void>;
+    end(): Promise<void>;
+};
+export type CurrentActivity = Pick<BackgroundActivity, "kind" | "done" | "total">;
+export declare function createActivityLog(deps: ActivityDeps): {
+    begin(kind: ActivityKind, total: number): Promise<ActivityProgress>;
+    current(): Promise<CurrentActivity | null>;
+};
+export type ActivityLog = ReturnType<typeof createActivityLog>;
+// src/admin-access.ts
+import { type AdminId, type Email } from "@family-agenda/domain";
+import type { AdminRepository, AdminSessionRepository, Clock, FamilyRepository, PasswordHasher, SignInFailureLog } from "./ports";
+export declare const sessionLifetimeMs: number;
+export declare const signInLimits: {
+    windowMs: number;
+    perAccount: number;
+    perClient: number;
+};
+export type AdminAccessDeps = {
+    clock: Clock;
+    passwordHasher: PasswordHasher;
+    families: FamilyRepository;
+    admins: AdminRepository;
+    sessions: AdminSessionRepository;
+    signInFailures: SignInFailureLog;
+};
+export type AdminSummary = {
+    id: AdminId;
+    email: Email;
+};
+export type AccountProblem = "invalid-email" | "password-too-short";
+export type CreateFirstAdminResult = {
+    ok: true;
+    sessionToken: string;
+} | {
+    ok: false;
+    problem: AccountProblem | "admin-exists" | "invalid-language";
+};
+export type SignInResult = {
+    ok: true;
+    sessionToken: string;
+} | {
+    ok: false;
+    problem: "invalid-credentials" | "rate-limited";
+};
+export type IdentitySignInResult = {
+    ok: true;
+    sessionToken: string;
+} | {
+    ok: false;
+    problem: "identity-email-unverified" | "identity-conflict";
+};
+export type PasswordResetResult = {
+    ok: true;
+} | {
+    ok: false;
+    problem: "password-too-short" | "own-account" | "unknown-admin";
+};
+export declare function createAdminAccess(deps: AdminAccessDeps): {
+    needsFirstAdmin(): Promise<boolean>;
+    createFirstAdmin(input: {
+        email: string;
+        password: string;
+        language?: string;
+    }): Promise<CreateFirstAdminResult>;
+    signIn(input: {
+        email: string;
+        password: string;
+        client: string;
+    }): Promise<SignInResult>;
+    signInThroughIdentityProvider(identity: {
+        subject: string;
+        email: string | null;
+        emailVerified: boolean;
+    }): Promise<IdentitySignInResult>;
+    signOut(sessionToken: string): Promise<void>;
+    listAdmins(): Promise<AdminSummary[]>;
+    createAdmin(input: {
+        email: string;
+        password: string;
+    }): Promise<{
+        ok: true;
+    } | {
+        ok: false;
+        problem: AccountProblem | "email-taken";
+    }>;
+    resetPassword(actor: AdminSummary, input: {
+        adminId: AdminId;
+        newPassword: string;
+    }): Promise<PasswordResetResult>;
+    resetPasswordByEmail(input: {
+        email: string;
+        newPassword: string;
+    }): Promise<PasswordResetResult>;
+    authenticate(sessionToken: string): Promise<AdminSummary | null>;
+};
+export type AdminAccess = ReturnType<typeof createAdminAccess>;
+// src/assignment.ts
+import { type Attribution } from "@family-agenda/domain";
+import type { ProjectedItem } from "./ports";
+export declare function concernsOf(item: Pick<ProjectedItem, "assignments">): Attribution;
+// src/catalogues.ts
+import { type MultilingualText, type SourceTypeId } from "@family-agenda/domain";
+import type { CatalogueEntrySpec, CatalogueRepository, LoadedSourceType, SourceTypeRegistry, SourceTypeRepository } from "./ports";
+import { type DisableResult, type EnableResult } from "./enablement";
+export type CataloguesDeps = {
+    registry: SourceTypeRegistry;
+    sourceTypes: SourceTypeRepository;
+    catalogues: CatalogueRepository;
+};
+export type CatalogueEntrySummary = CatalogueEntrySpec & {
+    enabled: boolean;
+    pollIntervalSeconds: number | null;
+};
+export type CatalogueSummary = {
+    sourceTypeId: SourceTypeId;
+    title: MultilingualText;
+    entries: CatalogueEntrySummary[];
+};
+declare const problems: {
+    readonly unknown: "unknown-entry";
+    readonly unavailable: "not-installed";
+    readonly inUse: "entry-in-use";
+};
+export declare function usableEntries(sourceTypeId: SourceTypeId, sourceType: LoadedSourceType, catalogues: CatalogueRepository): Promise<CatalogueEntrySpec[]>;
+export declare function createCatalogueAccess(deps: CataloguesDeps): {
+    start(): Promise<void>;
+    list(): Promise<CatalogueSummary[]>;
+    enable(sourceTypeId: string, entryId: string, input?: {
+        riskAcknowledged?: boolean;
+    }): Promise<EnableResult<typeof problems>>;
+    setPollInterval(sourceTypeId: string, entryId: string, seconds: number | null): Promise<{
+        ok: true;
+    } | {
+        ok: false;
+        problem: "unknown-entry" | "invalid-interval";
+    }>;
+    disable(sourceTypeId: string, entryId: string): Promise<DisableResult<typeof problems>>;
+};
+export type CatalogueAccess = ReturnType<typeof createCatalogueAccess>;
+export {};
+// src/enabled-source-type.ts
+import type { SourceTypeId } from "@family-agenda/domain";
+import type { LoadedSourceType, SourceTypeRegistry, SourceTypeRepository } from "./ports";
+export declare function enabledSourceType(sourceTypeId: SourceTypeId, deps: {
+    registry: SourceTypeRegistry;
+    sourceTypes: SourceTypeRepository;
+}): Promise<LoadedSourceType | null>;
+// src/enablement.ts
+import type { MultilingualText } from "@family-agenda/domain";
+export type Enableable = {
+    available(): Promise<boolean>;
+    riskNotice: MultilingualText | null;
+    enable(): Promise<boolean>;
+    disableIfUnused(): Promise<boolean>;
+};
+export type EnablementProblems = {
+    unknown: string;
+    unavailable: string;
+    inUse: string;
+};
+export type EnableResult<P extends EnablementProblems> = {
+    ok: true;
+} | {
+    ok: false;
+    problem: P["unknown"] | P["unavailable"] | "risk-not-acknowledged";
+};
+export type DisableResult<P extends EnablementProblems> = {
+    ok: true;
+} | {
+    ok: false;
+    problem: P["unknown"] | P["inUse"];
+};
+export declare function enableIfAllowed<P extends EnablementProblems>(candidate: Enableable | null, input: {
+    riskAcknowledged?: boolean;
+}, problems: P): Promise<EnableResult<P>>;
+export declare function disableIfUnused<P extends EnablementProblems>(candidate: Enableable | null, problems: P): Promise<DisableResult<P>>;
+// src/extraction.ts
+import { type RawMessageId, type SourceId } from "@family-agenda/domain";
+import type { ActivityLog } from "./activity";
+import type { BlobStore, Clock, ExtractionResult, Extractor, FamilyRepository, ItemRepository, LlmEndpointRepository, OcrModelStore, SecretStore, TextExtractor } from "./ports";
+export type ExtractionDeps = {
+    clock: Clock;
+    timeZone: string;
+    families: FamilyRepository;
+    endpoints: LlmEndpointRepository;
+    secrets: SecretStore;
+    items: ItemRepository;
+    blobs: BlobStore;
+    extractor: Extractor;
+    textExtractor: TextExtractor;
+    ocrModels: OcrModelStore;
+    activity: ActivityLog;
+};
+export type ExtractionReport = {
+    extracted: RawMessageId[];
+    dropped: {
+        messageId: RawMessageId;
+        title: string | null;
+        problem: string;
+    }[];
+    failed: {
+        messageId: RawMessageId;
+        problem: Extract<ExtractionResult, {
+            ok: false;
+        }>["problem"];
+        message: string;
+    }[];
+};
+export declare function createExtraction(deps: ExtractionDeps): {
+    waiting(scope?: {
+        sourceId?: SourceId;
+    }): Promise<number>;
+    extractPending(): Promise<ExtractionReport>;
+};
+export type ExtractionAccess = ReturnType<typeof createExtraction>;
+// src/family-members.ts
+import { type FamilyMember, type FamilyMemberId, type PhotoType } from "@family-agenda/domain";
+import type { BlobStore, Clock, FamilyMemberRepository, SoleAssignment } from "./ports";
+export type FamilyMembersDeps = {
+    clock: Clock;
+    members: FamilyMemberRepository;
+    blobs: BlobStore;
+};
+export type FamilyMemberSummary = {
+    id: FamilyMemberId;
+    name: string;
+    initial: string;
+    hasPhoto: boolean;
+};
+export type FamilyMemberProblem = "invalid-name" | "invalid-photo" | "photo-too-large";
+export type RemoveResult = {
+    ok: true;
+} | {
+    ok: false;
+    problem: "sole-assignee";
+    blocking: SoleAssignment[];
+};
+export type EditResult = {
+    ok: true;
+} | {
+    ok: false;
+    problem: FamilyMemberProblem | "unknown-member";
+};
+export declare function createFamilyMemberAccess(deps: FamilyMembersDeps): {
+    list(): Promise<FamilyMemberSummary[]>;
+    add(input: {
+        name: string;
+        photo?: Uint8Array;
+    }): Promise<{
+        ok: true;
+        id: FamilyMemberId;
+    } | {
+        ok: false;
+        problem: FamilyMemberProblem;
+    }>;
+    edit(id: FamilyMemberId, input: {
+        name: string;
+        photo?: Uint8Array | null;
+    }): Promise<EditResult>;
+    remove(id: FamilyMemberId): Promise<RemoveResult>;
+    photo(id: FamilyMemberId): Promise<{
+        bytes: Uint8Array<ArrayBuffer>;
+        contentType: PhotoType;
+    } | null>;
+};
+export type FamilyMemberAccess = ReturnType<typeof createFamilyMemberAccess>;
+export declare function summariseFamilyMember(member: FamilyMember): FamilyMemberSummary;
+// src/languages.ts
+import { type FamilyLanguage, type OcrLanguage } from "@family-agenda/domain";
+import type { FamilyRepository, OcrModelStore } from "./ports";
+export type LanguagesDeps = {
+    families: FamilyRepository;
+    ocrModels: OcrModelStore;
+};
+export type LanguageSettings = {
+    language: FamilyLanguage;
+    ocrEnabled: boolean;
+    ocrLanguages: {
+        language: OcrLanguage;
+        installed: boolean;
+    }[];
+    addable: OcrLanguage[];
+};
+export type SetLanguageResult = {
+    ok: true;
+} | {
+    ok: false;
+    problem: "invalid-language";
+};
+export type AddOcrLanguageResult = {
+    ok: true;
+} | {
+    ok: false;
+    problem: "unknown-ocr-language";
+} | {
+    ok: false;
+    problem: "download-failed";
+    message: string;
+};
+export type ChangeOcrLanguagesResult = {
+    ok: true;
+} | {
+    ok: false;
+    problem: "unknown-ocr-language" | "no-ocr-language";
+};
+export declare function createLanguageAccess(deps: LanguagesDeps): {
+    familyLanguage(): Promise<FamilyLanguage>;
+    current(): Promise<LanguageSettings>;
+    setLanguage(language: string): Promise<SetLanguageResult>;
+    setOcrEnabled(enabled: boolean): Promise<void>;
+    addOcrLanguage(language: string): Promise<AddOcrLanguageResult>;
+    removeOcrLanguage(language: string): Promise<ChangeOcrLanguagesResult>;
+    moveOcrLanguageUp(language: string): Promise<ChangeOcrLanguagesResult>;
+};
+export type LanguageAccess = ReturnType<typeof createLanguageAccess>;
+// src/llm-endpoint.ts
+import type { Clock, Extractor, LlmEndpoint, LlmEndpointRepository, SecretStore } from "./ports";
+export type LlmEndpointDeps = {
+    clock: Clock;
+    endpoints: LlmEndpointRepository;
+    secrets: SecretStore;
+    extractor: Extractor;
+};
+export type LlmEndpointSummary = {
+    baseUrl: string;
+    model: string;
+    hasApiKey: boolean;
+    local: boolean;
+};
+export type LlmEndpointHealth = {
+    ok: true;
+} | {
+    ok: false;
+    message: string;
+};
+export type LlmEndpointInput = {
+    baseUrl: string;
+    model: string;
+    apiKey: string;
+    removeApiKey?: boolean;
+    thirdPartiesAcknowledged?: boolean;
+};
+export type SaveLlmEndpointResult = {
+    ok: true;
+} | {
+    ok: false;
+    problem: "invalid-endpoint-url" | "invalid-model" | "third-parties-not-acknowledged";
+};
+export declare function createLlmEndpointAccess(deps: LlmEndpointDeps): {
+    current(): Promise<LlmEndpointSummary | null>;
+    health(): Promise<LlmEndpointHealth | null>;
+    models(): Promise<string[]>;
+    save(input: LlmEndpointInput): Promise<SaveLlmEndpointResult>;
+};
+export type LlmEndpointAccess = ReturnType<typeof createLlmEndpointAccess>;
+export declare function llmEndpointOf(deps: {
+    endpoints: LlmEndpointRepository;
+    secrets: SecretStore;
+}): Promise<LlmEndpoint | null>;
+// src/messages.ts
+import type { ItemId, RawMessageId } from "@family-agenda/domain";
+import type { BlobStore, ItemRepository, ProjectedItem } from "./ports";
+export type MessageDetails = {
+    id: RawMessageId;
+    sentAt: Date;
+    sender: string | null;
+    subject: string | null;
+    attributes: string[];
+    text: string;
+    purgedAt: Date | null;
+    attachments: {
+        position: number;
+        filename: string;
+        contentType: string;
+        size: number;
+        conversionProblem: string | null;
+    }[];
+    items: ProjectedItem[];
+};
+export declare function createMessageAccess(deps: {
+    items: ItemRepository;
+    blobs: BlobStore;
+}): {
+    open(id: RawMessageId): Promise<MessageDetails | null>;
+    attachment(id: RawMessageId, position: number): Promise<{
+        filename: string;
+        contentType: string;
+        bytes: Uint8Array<ArrayBuffer>;
+    } | null>;
+    deleteItem(id: ItemId): Promise<boolean>;
+};
+export type MessageAccess = ReturnType<typeof createMessageAccess>;
+// src/poll-interval.ts
+export declare const pollIntervalRange: {
+    minSeconds: number;
+    maxSeconds: number;
+};
+export declare function isPollInterval(seconds: number | null | undefined): boolean;
+// src/polling.ts
+import type { SourceId } from "@family-agenda/domain";
+import type { ActivityLog } from "./activity";
+import type { BlobStore, CatalogueRepository, Clock, ItemRepository, SecretStore, SourceRepository, SourceTypeRegistry, SourceTypeRepository } from "./ports";
+export type PollingDeps = {
+    clock: Clock;
+    timeZone: string;
+    registry: SourceTypeRegistry;
+    sourceTypes: SourceTypeRepository;
+    catalogues: CatalogueRepository;
+    sources: SourceRepository;
+    secrets: SecretStore;
+    items: ItemRepository;
+    blobs: BlobStore;
+    activity: ActivityLog;
+};
+export type PollReport = {
+    polled: SourceId[];
+    failed: {
+        sourceId: SourceId;
+        kind: "definite" | "temporary";
+        message: string;
+    }[];
+    invalid: {
+        sourceId: SourceId;
+        externalId: string;
+        problems: string[];
+    }[];
+    refused: {
+        sourceId: SourceId;
+        attributes: string[];
+    }[];
+};
+export declare function createSourcePolling(deps: PollingDeps): {
+    pollDue(): Promise<PollReport>;
+};
+export type SourcePolling = ReturnType<typeof createSourcePolling>;
+// src/ports.ts
+import type { Admin, DateMention, BlobRef, AdminId, Email, FamilyLanguages, FamilyMember, FamilyMemberId, Event, ItemId, Lesson, LocalDate, LocalTime, MultilingualText, OcrLanguage, RawMessageId, RunError, SourceFailure, SourceAttributeId, SourceId, SourceTypeId, StatedTask, Task, TimetableChange, Agenda, AgendaId } from "@family-agenda/domain";
+export interface Clock {
+    now(): Date;
+}
+export interface PasswordHasher {
+    hash(password: string): Promise<string>;
+    verify(hash: string, password: string): Promise<boolean>;
+}
+export interface FamilyRepository {
+    recoveryKitConfirmed(): Promise<boolean>;
+    confirmRecoveryKit(at: Date): Promise<void>;
+    languages(): Promise<FamilyLanguages>;
+    saveLanguages(languages: FamilyLanguages): Promise<void>;
+    ocrEnabled(): Promise<boolean>;
+    saveOcrEnabled(enabled: boolean): Promise<void>;
+}
+export interface AdminRepository {
+    exists(): Promise<boolean>;
+    addFirst(admin: Admin): Promise<boolean>;
+    add(admin: Admin): Promise<boolean>;
+    findById(id: AdminId): Promise<Admin | null>;
+    findByEmail(email: Email): Promise<Admin | null>;
+    findByIdentitySubject(subject: string): Promise<Admin | null>;
+    list(): Promise<Admin[]>;
+    setPasswordHash(id: AdminId, passwordHash: string): Promise<void>;
+    setIdentitySubject(id: AdminId, subject: string): Promise<void>;
+}
+export interface FamilyMemberRepository {
+    add(member: FamilyMember): Promise<void>;
+    list(): Promise<FamilyMember[]>;
+    findById(id: FamilyMemberId): Promise<FamilyMember | null>;
+    update(member: FamilyMember): Promise<void>;
+    remove(id: FamilyMemberId): Promise<{
+        removed: true;
+    } | {
+        removed: false;
+        blocking: SoleAssignment[];
+    }>;
+}
+export type SoleAssignment = {
+    sourceId: SourceId;
+    attribute: string;
+};
+export interface AgendaRepository {
+    add(agenda: Agenda): Promise<void>;
+    list(): Promise<Agenda[]>;
+    findById(id: AgendaId): Promise<Agenda | null>;
+    update(agenda: Agenda): Promise<void>;
+    remove(id: AgendaId): Promise<void>;
+}
+export interface AgendaAccessPolicy {
+    mayOpen(agenda: AgendaId): Promise<boolean>;
+}
+export type AdminSession = {
+    id: string;
+    adminId: AdminId;
+    expiresAt: Date;
+};
+export interface AdminSessionRepository {
+    add(session: AdminSession): Promise<void>;
+    find(id: string): Promise<AdminSession | null>;
+    remove(id: string): Promise<void>;
+    removeAllOf(adminId: AdminId): Promise<void>;
+    removeExpired(now: Date): Promise<void>;
+}
+export interface SignInFailureLog {
+    record(keys: string[], at: Date): Promise<string[]>;
+    forget(ids: string[]): Promise<void>;
+    countAfter(key: string, after: Date): Promise<number>;
+    clear(key: string): Promise<void>;
+}
+export type SecretRef = string & {
+    readonly __brand: "SecretRef";
+};
+export interface SecretStore {
+    put(plaintext: string): Promise<SecretRef>;
+    get(ref: SecretRef): Promise<string | null>;
+    remove(ref: SecretRef): Promise<void>;
+    list(): Promise<{
+        ref: SecretRef;
+        storedAt: Date;
+    }[]>;
+}
+export interface BlobStore {
+    put(contents: Uint8Array): Promise<BlobRef>;
+    get(ref: BlobRef): Promise<Uint8Array<ArrayBuffer> | null>;
+    remove(ref: BlobRef): Promise<void>;
+}
+export type InstalledSourceType = {
+    id: SourceTypeId;
+    displayName: MultilingualText;
+    description: MultilingualText;
+    version: string;
+    needsLlm: boolean;
+    riskNotice: MultilingualText | null;
+    notLoadable: string | null;
+};
+export type PlainConfig = Record<string, unknown>;
+export type ConfigFieldSpec = {
+    key: string;
+    label: MultilingualText;
+    secret: boolean;
+    required: boolean;
+    description: MultilingualText | null;
+    setByPlugin: boolean;
+    choice: boolean;
+};
+export type SetupStepSpec = {
+    id: string;
+    title: MultilingualText;
+    description: MultilingualText;
+    live: boolean;
+};
+export type SetupProgress = {
+    status: "waiting";
+    qrCode: string | null;
+    message: MultilingualText | null;
+} | {
+    status: "done";
+    message: MultilingualText | null;
+} | {
+    status: "failed";
+    message: MultilingualText;
+};
+export type CatalogueEntrySpec = {
+    id: string;
+    displayName: MultilingualText;
+    description: MultilingualText;
+    installed: boolean;
+    riskNotice: MultilingualText | null;
+};
+export type CatalogueSpec = {
+    title: MultilingualText;
+    configKey: string;
+    entries(): Promise<CatalogueEntrySpec[]>;
+};
+export type ServicesSpec = {
+    reconcile(enabled: {
+        enabled: boolean;
+        entries: string[];
+    }): Promise<void>;
+    stop(): Promise<void>;
+};
+export type SourceRunContext = {
+    plain: PlainConfig;
+    secrets: Record<string, string>;
+    syncCursor: string | null;
+    now: Date;
+    timeZone: string;
+};
+export type StatedJson = Record<string, unknown>;
+export type IngestedAttachment = {
+    filename: string;
+    contentType: string;
+    bytes: Uint8Array;
+};
+export type IngestedMessage = {
+    text: string;
+    attachments: IngestedAttachment[];
+};
+export type IngestedOrigin = {
+    externalId: string;
+    occurredAt: Date | null;
+    attributes: string[];
+    sender: string | null;
+    subject: string | null;
+    link: string | null;
+    stated: StatedJson | null;
+    message: IngestedMessage | null;
+};
+export type SourceRunResult = {
+    ok: true;
+    origins: IngestedOrigin[];
+    syncCursor: string | null;
+    withdrawn: string[];
+} | {
+    ok: false;
+    kind: "definite" | "temporary";
+    message: string;
+};
+export type DeclaredAttribute = {
+    externalId: string;
+    name: string;
+};
+export type AttributeReporting = {
+    declare(attributes: DeclaredAttribute[]): Promise<void>;
+    archive(externalId: string): Promise<void>;
+};
+export type PollingIngestion = {
+    mode: "polling";
+    suggestedIntervalSeconds: number;
+    poll(context: SourceRunContext, attributes: AttributeReporting): Promise<SourceRunResult>;
+};
+export type LoadedSourceType = {
+    configuration: {
+        version: number;
+        fields: ConfigFieldSpec[];
+    };
+    setupSteps: SetupStepSpec[];
+    migrateConfig: (plain: PlainConfig, fromVersion: number) => PlainConfig;
+    ingestion: PollingIngestion | {
+        mode: "push";
+    };
+    silentApplies: boolean;
+    catalogue: CatalogueSpec | null;
+    services: ServicesSpec | null;
+    choices(key: string, context: SourceRunContext): Promise<KnownValue[]>;
+    setupProgress(stepId: string, context: SourceRunContext): Promise<SetupProgress>;
+    sourceAdded(context: Omit<SourceRunContext, "syncCursor">): Promise<{
+        ok: true;
+        plain: PlainConfig;
+        secrets: Record<string, string>;
+    } | {
+        ok: false;
+        message: string;
+    }>;
+    sourceRemoved(context: SourceRunContext): Promise<void>;
+};
+export type KnownValue = {
+    value: string;
+    label: string;
+};
+export interface SourceTypeRegistry {
+    installed(): InstalledSourceType[];
+    load(id: SourceTypeId): Promise<{
+        ok: true;
+        sourceType: LoadedSourceType;
+    } | {
+        ok: false;
+    }>;
+}
+export type SourceTypeRecord = {
+    id: SourceTypeId;
+    enabled: boolean;
+};
+export type CatalogueRecord = {
+    entryId: string;
+    enabled: boolean;
+    pollIntervalSeconds: number | null;
+};
+export interface CatalogueRepository {
+    recordDiscovered(sourceTypeId: SourceTypeId, entryIds: string[]): Promise<void>;
+    list(sourceTypeId: SourceTypeId): Promise<CatalogueRecord[]>;
+    enable(sourceTypeId: SourceTypeId, entryId: string): Promise<void>;
+    setPollInterval(sourceTypeId: SourceTypeId, entryId: string, seconds: number | null): Promise<void>;
+    disableIfUnused(sourceTypeId: SourceTypeId, entryId: string, configKey: string): Promise<boolean>;
+}
+export interface SourceTypeRepository {
+    recordDiscovered(ids: SourceTypeId[]): Promise<void>;
+    list(): Promise<SourceTypeRecord[]>;
+    enable(id: SourceTypeId): Promise<void>;
+    disableIfUnused(id: SourceTypeId): Promise<boolean>;
+}
+export type Source = {
+    id: SourceId;
+    sourceTypeId: SourceTypeId;
+    plain: PlainConfig;
+    configVersion: number;
+    secrets: Record<string, SecretRef>;
+    syncCursor: string | null;
+    pollIntervalSeconds: number | null;
+    shown: boolean;
+    name: string | null;
+    attributes: SourceAttribute[];
+    lastRunAt: Date | null;
+    lastSuccessAt: Date | null;
+    failure: SourceFailure | null;
+    lastNewRecordAt: Date | null;
+    invalidRecords: string[];
+    unknownAttributes: string[];
+    createdAt: Date;
+};
+export type SourceAttribute = {
+    id: SourceAttributeId;
+    externalId: string;
+    name: string;
+    archived: boolean;
+    concerns: FamilyMemberId[];
+};
+export interface SourceRepository {
+    add(source: Source): Promise<void>;
+    list(): Promise<Source[]>;
+    listOfType(sourceTypeId: SourceTypeId): Promise<Source[]>;
+    findById(id: SourceId): Promise<Source | null>;
+    migrateConfig(id: SourceId, fromVersion: number, plain: PlainConfig, configVersion: number): Promise<void>;
+    update(source: Source): Promise<void>;
+    recordFailedRun(id: SourceId, at: Date, error: RunError): Promise<void>;
+    setShown(id: SourceId, shown: boolean): Promise<void>;
+    rename(id: SourceId, name: string | null): Promise<void>;
+    declareAttributes(id: SourceId, attributes: DeclaredAttribute[]): Promise<void>;
+    archiveAttribute(id: SourceId, externalId: string): Promise<void>;
+    assignAttribute(id: SourceAttributeId, concerns: FamilyMemberId[]): Promise<boolean>;
+    remove(id: SourceId): Promise<BlobRef[]>;
+}
+export type StatedItem = {
+    kind: "event";
+    event: Event;
+} | {
+    kind: "lesson";
+    lesson: Omit<Lesson, "cancelled">;
+    change: StoredChange | null;
+} | {
+    kind: "task";
+    task: StatedTask;
+};
+export type StoredChange = Pick<TimetableChange, "change" | "previousRoom" | "previousTeacher" | "note">;
+export type ReadStated = (stated: StatedJson) => {
+    ok: true;
+    item: StatedItem;
+} | {
+    ok: false;
+    problems: string[];
+};
+export type InvalidRecord = {
+    externalId: string;
+    problems: string[];
+};
+export type StoredFile = {
+    blob: BlobRef;
+    sha256: string;
+    size: number;
+};
+export type StoredMessage = {
+    sender: string | null;
+    subject: string | null;
+    body: string;
+    attachments: (StoredFile & {
+        filename: string;
+        contentType: string;
+    })[];
+};
+export type SourceRun = {
+    sourceId: SourceId;
+    at: Date;
+    syncCursor: string | null;
+    retainedSince: Date;
+    withdrawn: string[];
+    origins: {
+        externalId: string;
+        occurredAt: Date | null;
+        attributes: string[];
+        sender: string | null;
+        subject: string | null;
+        link: string | null;
+        stated: StatedJson | null;
+        message: StoredMessage | null;
+    }[];
+};
+export type RunRecorded = {
+    knownMessages: string[];
+    withdrawnFiles: BlobRef[];
+    invalid: InvalidRecord[];
+    refused: string[];
+};
+export type PendingMessage = {
+    id: RawMessageId;
+    sourceId: SourceId;
+    sentAt: Date;
+    body: string;
+    attachments: PendingAttachment[];
+};
+export type PendingAttachment = {
+    position: number;
+    filename: string;
+    contentType: string;
+    blob: BlobRef;
+};
+export type RawMessage = {
+    id: RawMessageId;
+    sourceId: SourceId;
+    sentAt: Date;
+    sender: string | null;
+    subject: string | null;
+    attributes: string[];
+    body: string;
+    purgedAt: Date | null;
+    attachments: {
+        position: number;
+        filename: string;
+        contentType: string;
+        size: number;
+        blob: BlobRef;
+        conversionProblem: string | null;
+    }[];
+};
+export type NewItem = {
+    kind: "event";
+    event: Event;
+} | {
+    kind: "task";
+    task: StatedTask;
+};
+export type Extraction = {
+    messageId: RawMessageId;
+    at: Date;
+    items: NewItem[];
+    attachmentProblems: AttachmentProblem[];
+};
+export type AttachmentProblem = {
+    position: number;
+    problem: string;
+};
+export type ItemDetails = {
+    kind: "event";
+    event: Event;
+} | {
+    kind: "task";
+    task: Task;
+} | {
+    kind: "lesson";
+    lesson: Lesson;
+    change: TimetableChange | null;
+};
+export type ProjectedItem = ItemDetails & {
+    id: ItemId;
+    links: {
+        url: string;
+        sourceTypeId: SourceTypeId;
+        sourceName: string | null;
+    }[];
+    messages: {
+        id: RawMessageId;
+        sourceTypeId: SourceTypeId;
+        sourceName: string | null;
+        sentAt: Date;
+    }[];
+    assignments: FamilyMemberId[][];
+};
+export interface ItemRepository {
+    recordRun(run: SourceRun, read: ReadStated): Promise<RunRecorded>;
+    purgeMessages(now: Date, retainedSince: Date): Promise<{
+        files: BlobRef[];
+        purged: number;
+        deleted: number;
+    }>;
+    pendingMessages(limit: number): Promise<PendingMessage[]>;
+    pendingMessageCount(scope: {
+        sourceId?: SourceId;
+    }): Promise<number>;
+    recordExtraction(extraction: Extraction): Promise<void>;
+    findMessage(id: RawMessageId): Promise<RawMessage | null>;
+    itemsOfMessage(id: RawMessageId): Promise<ProjectedItem[]>;
+    overlapping(from: Date, to: Date | null): Promise<ProjectedItem[]>;
+    outstanding(): Promise<ProjectedItem[]>;
+    find(id: ItemId): Promise<ProjectedItem | null>;
+    setTaskDone(id: ItemId, at: Date | null): Promise<void>;
+    remove(id: ItemId): Promise<boolean>;
+}
+export type LlmEndpoint = {
+    baseUrl: string;
+    model: string;
+    apiKey: string | null;
+};
+export type StoredLlmEndpoint = {
+    baseUrl: string;
+    model: string;
+    apiKey: SecretRef | null;
+    acknowledgedAt: Date | null;
+    savedAt: Date;
+};
+export interface LlmEndpointRepository {
+    find(): Promise<StoredLlmEndpoint | null>;
+    save(endpoint: StoredLlmEndpoint): Promise<void>;
+}
+export type StoredIdentityProvider = {
+    enabled: boolean;
+    issuerUrl: string;
+    clientId: string;
+    clientSecret: SecretRef | null;
+    requiredGroup: string;
+    publicBaseUrl: string;
+    savedAt: Date;
+};
+export interface IdentityProviderRepository {
+    find(): Promise<StoredIdentityProvider | null>;
+    save(provider: StoredIdentityProvider): Promise<void>;
+}
+export type IdentityProviderConnection = {
+    issuerUrl: string;
+    clientId: string;
+    clientSecret: string;
+};
+export type PendingSignIn = {
+    state: string;
+    nonce: string;
+    codeVerifier: string;
+};
+export type VerifiedIdentity = {
+    subject: string;
+    email: string | null;
+    emailVerified: boolean;
+    groups: string[];
+};
+export interface IdentityProviderClient {
+    discover(issuerUrl: string): Promise<{
+        ok: true;
+    } | {
+        ok: false;
+        message: string;
+    }>;
+    begin(connection: IdentityProviderConnection, redirectUri: string): Promise<{
+        authorizationUrl: string;
+        pending: PendingSignIn;
+    }>;
+    complete(connection: IdentityProviderConnection, redirectUri: string, callbackUrl: string, pending: PendingSignIn): Promise<VerifiedIdentity | null>;
+}
+export type ExtractedEvent = {
+    title: string | null;
+    date: DateMention;
+    startTime: string | null;
+    endTime: string | null;
+    place: string | null;
+    evidence: string;
+};
+export type ExtractedTask = {
+    title: string | null;
+    deadline: DateMention;
+    bring: string[];
+    evidence: string;
+};
+export type ExtractionRequest = {
+    endpoint: LlmEndpoint;
+    message: {
+        text: string;
+        sent: {
+            date: LocalDate;
+            time: LocalTime;
+            weekday: string;
+        };
+    };
+};
+export type EndpointFailure = {
+    ok: false;
+    problem: "unreachable" | "unauthorized" | "invalid-output";
+    message: string;
+};
+export type ExtractionResult = {
+    ok: true;
+    events: ExtractedEvent[];
+    tasks: ExtractedTask[];
+} | EndpointFailure;
+export interface Extractor {
+    extract(request: ExtractionRequest): Promise<ExtractionResult>;
+    health(endpoint: LlmEndpoint): Promise<EndpointHealth>;
+    models(endpoint: LlmEndpoint): Promise<string[]>;
+}
+export type EndpointHealth = {
+    ok: true;
+} | {
+    ok: false;
+    message: string;
+};
+export type Conversion<T> = {
+    ok: true;
+    value: T;
+} | {
+    ok: false;
+    message: string;
+};
+export interface TextExtractor {
+    textLayer(pdf: Uint8Array): Promise<Conversion<string[]>>;
+    ocr(pdf: Uint8Array, pages: number[], languages: OcrLanguage[]): Promise<Conversion<string[]>>;
+}
+export type OcrModel = {
+    language: OcrLanguage;
+    bundled: boolean;
+};
+export interface OcrModelStore {
+    downloadable(): OcrLanguage[];
+    installed(): Promise<OcrModel[]>;
+    install(language: OcrLanguage): Promise<Conversion<null>>;
+    remove(language: OcrLanguage): Promise<void>;
+}
+export type ActivityKind = "polling" | "extracting";
+export type BackgroundActivity = {
+    kind: ActivityKind;
+    done: number;
+    total: number;
+    updatedAt: Date;
+};
+export interface ActivityRepository {
+    find(): Promise<BackgroundActivity | null>;
+    save(activity: BackgroundActivity): Promise<void>;
+    clear(): Promise<void>;
+}
+// src/recovery-kit.ts
+import type { Clock, FamilyRepository } from "./ports";
+export type RecoveryKitDeps = {
+    clock: Clock;
+    families: FamilyRepository;
+    masterKey: Uint8Array;
+};
+export type RecoveryKit = {
+    masterKey: string;
+};
+export declare function createRecoveryKitAccess(deps: RecoveryKitDeps): {
+    contents(): RecoveryKit;
+    isConfirmed(): Promise<boolean>;
+    confirm(): Promise<void>;
+};
+export type RecoveryKitAccess = ReturnType<typeof createRecoveryKitAccess>;
+export declare function readRecoveryKitKey(masterKey: string): Uint8Array | null;
+// src/retention.ts
+import type { BlobStore, Clock, ItemRepository } from "./ports";
+export declare const messageRetentionDays = 180;
+export declare const retainedSince: (now: Date) => Date;
+export declare function createRetention(deps: {
+    clock: Clock;
+    items: ItemRepository;
+    blobs: BlobStore;
+}): {
+    purge(): Promise<{
+        purged: number;
+        deleted: number;
+    }>;
+};
+export type Retention = ReturnType<typeof createRetention>;
+// src/secret-sweep.ts
+import type { Clock, IdentityProviderRepository, LlmEndpointRepository, SecretStore, SourceRepository } from "./ports";
+export type SecretSweepDeps = {
+    clock: Clock;
+    secrets: SecretStore;
+    sources: SourceRepository;
+    endpoints: LlmEndpointRepository;
+    identityProvider: IdentityProviderRepository;
+};
+export declare const unreferencedSecretGraceMs: number;
+export declare function createSecretSweep(deps: SecretSweepDeps): {
+    sweep(): Promise<number>;
+};
+export type SecretSweep = ReturnType<typeof createSecretSweep>;
+// src/single-sign-on.ts
+import type { AdminAccess } from "./admin-access";
+import type { Clock, IdentityProviderClient, IdentityProviderRepository, PendingSignIn, SecretStore } from "./ports";
+export type SingleSignOnDeps = {
+    clock: Clock;
+    provider: IdentityProviderRepository;
+    secrets: SecretStore;
+    client: IdentityProviderClient;
+    admins: AdminAccess;
+};
+export declare const singleSignOnCallbackPath = "/sso/callback";
+export declare const defaultRequiredGroup = "homelab-admin";
+export type SingleSignOnSummary = {
+    enabled: boolean;
+    issuerUrl: string;
+    clientId: string;
+    hasClientSecret: boolean;
+    requiredGroup: string;
+    publicBaseUrl: string;
+    redirectUri: string;
+};
+export type SingleSignOnInput = {
+    enabled: boolean;
+    issuerUrl: string;
+    clientId: string;
+    clientSecret: string;
+    requiredGroup: string;
+    publicBaseUrl: string;
+};
+export type SaveSingleSignOnResult = {
+    ok: true;
+} | {
+    ok: false;
+    problem: "invalid-issuer-url" | "invalid-client-id" | "invalid-required-group" | "invalid-public-url" | "client-secret-missing";
+} | {
+    ok: false;
+    problem: "discovery-failed";
+    message: string;
+};
+export type SingleSignOnSignInResult = {
+    ok: true;
+    sessionToken: string;
+} | {
+    ok: false;
+    problem: "sso-failed" | "sso-not-in-group" | "sso-email-unverified" | "sso-conflict";
+};
+export declare function createSingleSignOn(deps: SingleSignOnDeps): {
+    current(): Promise<SingleSignOnSummary | null>;
+    isOfferedAt(origin: string): Promise<boolean>;
+    save(input: SingleSignOnInput): Promise<SaveSingleSignOnResult>;
+    begin(origin: string): Promise<{
+        authorizationUrl: string;
+        pending: PendingSignIn;
+    } | null>;
+    complete(input: {
+        origin: string;
+        query: string;
+        pending: PendingSignIn;
+    }): Promise<SingleSignOnSignInResult>;
+};
+export type SingleSignOn = ReturnType<typeof createSingleSignOn>;
+// src/services.ts
+import type { SourceTypeId } from "@family-agenda/domain";
+import type { CatalogueRepository, SourceTypeRegistry, SourceTypeRepository } from "./ports";
+export type ServiceSupervisionDeps = {
+    registry: SourceTypeRegistry;
+    sourceTypes: SourceTypeRepository;
+    catalogues: CatalogueRepository;
+};
+export type ServiceReport = {
+    failed: {
+        sourceTypeId: SourceTypeId;
+        message: string;
+    }[];
+};
+export declare function createServiceSupervision(deps: ServiceSupervisionDeps): {
+    reconcile(): Promise<ServiceReport>;
+    stop(): Promise<void>;
+};
+export type ServiceSupervision = ReturnType<typeof createServiceSupervision>;
+// src/source-health.ts
+import { type SourceStatus } from "@family-agenda/domain";
+import type { Clock, Source, SourceRepository, SourceTypeRegistry, SourceTypeRepository } from "./ports";
+export type HealthProblem = {
+    kind: "run-failed";
+    message: string;
+} | {
+    kind: "not-installed";
+} | {
+    kind: "not-loadable";
+    reason: string | null;
+};
+export type SourceHealth = {
+    status: SourceStatus;
+    problem: HealthProblem | null;
+    lastSuccessAt: Date | null;
+    invalidRecords: string[];
+    unknownAttributes: string[];
+};
+export type SourceHealthDeps = {
+    clock: Clock;
+    registry: SourceTypeRegistry;
+    sourceTypes: SourceTypeRepository;
+    sources: SourceRepository;
+};
+export declare function healthOf(source: Source, deps: SourceHealthDeps): Promise<SourceHealth>;
+export declare function createSourceHealth(deps: SourceHealthDeps): {
+    anyFailing(): Promise<boolean>;
+};
+export type SourceHealthCheck = ReturnType<typeof createSourceHealth>;
+// src/source-types.ts
+import { type DisableResult, type EnableResult } from "./enablement";
+import type { InstalledSourceType, SourceRepository, SourceTypeRegistry, SourceTypeRepository } from "./ports";
+export type SourceTypesDeps = {
+    registry: SourceTypeRegistry;
+    sourceTypes: SourceTypeRepository;
+    sources: SourceRepository;
+};
+export type SourceTypeSummary = InstalledSourceType & {
+    enabled: boolean;
+};
+declare const problems: {
+    readonly unknown: "unknown-source-type";
+    readonly unavailable: "not-loadable";
+    readonly inUse: "has-sources";
+};
+export declare function createSourceTypeAccess(deps: SourceTypesDeps): {
+    start(): Promise<void>;
+    list: () => Promise<SourceTypeSummary[]>;
+    enable(id: string, input?: {
+        riskAcknowledged?: boolean;
+    }): Promise<EnableResult<typeof problems>>;
+    disable(id: string): Promise<DisableResult<typeof problems>>;
+};
+export type SourceTypeAccess = ReturnType<typeof createSourceTypeAccess>;
+export {};
+// src/sources.ts
+import { type FamilyMemberId, type MultilingualText, type SourceAttributeId, type SourceId, type SourceTypeId } from "@family-agenda/domain";
+import type { BlobStore, CatalogueRepository, Clock, ConfigFieldSpec, FamilyMemberRepository, KnownValue, PlainConfig, SecretStore, SetupProgress, SetupStepSpec, Source, SourceAttribute, SourceRepository, SourceRunContext, SourceTypeRegistry, SourceTypeRepository } from "./ports";
+import { type SourceHealth } from "./source-health";
+export type SourcesDeps = {
+    clock: Clock;
+    members: FamilyMemberRepository;
+    registry: SourceTypeRegistry;
+    sourceTypes: SourceTypeRepository;
+    catalogues: CatalogueRepository;
+    sources: SourceRepository;
+    secrets: SecretStore;
+    blobs: BlobStore;
+    timeZone: string;
+};
+export type SourceSummary = {
+    id: SourceId;
+    sourceTypeId: SourceTypeId;
+    displayName: MultilingualText;
+    plain: PlainConfig;
+    storedSecrets: string[];
+    pollIntervalSeconds: number | null;
+    shown: boolean;
+    name: string | null;
+    attributes: SourceAttribute[];
+    health: SourceHealth;
+    choices?: Record<string, KnownValue[]>;
+};
+export type SourceForm = {
+    sourceTypeId: SourceTypeId;
+    displayName: MultilingualText;
+    fields: ConfigFieldSpec[];
+    catalogue: {
+        configKey: string;
+        entries: {
+            id: string;
+            displayName: MultilingualText;
+        }[];
+    } | null;
+    setupSteps: SetupStepSpec[];
+    suggestedIntervalSeconds: number | null;
+};
+export type SourceInput = {
+    plain: PlainConfig;
+    secrets: Record<string, string>;
+    pollIntervalSeconds?: number | null;
+};
+export type SourceProblem = {
+    ok: false;
+    problem: "invalid-interval";
+} | {
+    ok: false;
+    problem: "invalid-config";
+    fields: string[];
+};
+export type AddSourceResult = {
+    ok: true;
+    id: SourceId;
+    setUp: boolean;
+} | {
+    ok: false;
+    problem: "source-type-not-enabled";
+} | {
+    ok: false;
+    problem: "setup-failed";
+    message: string;
+} | SourceProblem;
+export type EditSourceResult = {
+    ok: true;
+} | {
+    ok: false;
+    problem: "unknown-source" | "source-type-not-enabled";
+} | SourceProblem;
+export declare function createSourceAccess(deps: SourcesDeps): {
+    list(): Promise<SourceSummary[]>;
+    listOfType(sourceTypeId: string): Promise<SourceSummary[]>;
+    find(id: SourceId): Promise<SourceSummary | null>;
+    setupProgress(id: SourceId, stepId: string): Promise<SetupProgress | null>;
+    forms(): Promise<SourceForm[]>;
+    add(input: SourceInput & {
+        sourceTypeId: string;
+    }): Promise<AddSourceResult>;
+    edit(id: SourceId, input: SourceInput): Promise<EditSourceResult>;
+    setShown(id: SourceId, shown: boolean): Promise<void>;
+    rename(id: SourceId, name: string): Promise<{
+        ok: true;
+    } | {
+        ok: false;
+        problem: "invalid-name";
+    }>;
+    assignAttribute(id: SourceAttributeId, concerns: FamilyMemberId[]): Promise<{
+        ok: true;
+    } | {
+        ok: false;
+        problem: "unknown-attribute" | "unknown-member";
+    }>;
+    remove(id: SourceId): Promise<void>;
+};
+export type SourceAccess = ReturnType<typeof createSourceAccess>;
+export declare function runContextOf(source: Source, context: {
+    secrets: SecretStore;
+    now: Date;
+    timeZone: string;
+}): Promise<SourceRunContext>;
+// src/tasks.ts
+import { type ItemId, type AgendaId } from "@family-agenda/domain";
+import type { Clock, ItemRepository, AgendaAccessPolicy, AgendaRepository } from "./ports";
+export type TasksDeps = {
+    clock: Clock;
+    items: ItemRepository;
+    agendas: AgendaRepository;
+};
+export type TickProblem = "unknown-agenda" | "unknown-task";
+export declare function createTaskAccess(deps: TasksDeps): {
+    tickFromAgenda(agendaId: AgendaId, id: ItemId, input: {
+        done: boolean;
+        access: AgendaAccessPolicy;
+    }): Promise<{
+        ok: true;
+    } | {
+        ok: false;
+        problem: TickProblem;
+    }>;
+};
+export type TaskAccess = ReturnType<typeof createTaskAccess>;
+// src/agendas.ts
+import { type Attribution, type FamilyLanguage, type FamilyMemberId, type ItemId, type LocalDate, type LocalTime, type MultilingualText, type RawMessageId, type TaskStatus, type TimeSpan, type TimetableChangeKind, type AgendaId, type AgendaLayout } from "@family-agenda/domain";
+import type { ActivityLog, CurrentActivity } from "./activity";
+import { type FamilyMemberSummary } from "./family-members";
+import type { Clock, FamilyMemberRepository, FamilyRepository, ItemRepository, ProjectedItem, SourceTypeRegistry, AgendaAccessPolicy, AgendaRepository } from "./ports";
+import type { SourceHealthCheck } from "./source-health";
+export type AgendasDeps = {
+    clock: Clock;
+    timeZone: string;
+    families: FamilyRepository;
+    members: FamilyMemberRepository;
+    agendas: AgendaRepository;
+    items: ItemRepository;
+    registry: SourceTypeRegistry;
+    activity: ActivityLog;
+    sourceHealth: SourceHealthCheck;
+};
+export type AgendaSettings = {
+    layout: AgendaLayout;
+    memberIds: FamilyMemberId[];
+    horizonDays: number;
+};
+export type AgendaSettingsInput = Omit<AgendaSettings, "layout"> & {
+    layout?: string;
+};
+export type AgendaSummary = AgendaSettings & {
+    id: AgendaId;
+};
+export type AgendaProblem = "unknown-layout" | "invalid-horizon" | "unknown-member";
+export type Showing = FamilyMemberId[] | "all";
+export type LocalDateTime = {
+    date: LocalDate;
+    time: LocalTime;
+};
+export type TimelineEvent = {
+    itemId: ItemId;
+    title: string;
+    from: LocalTime | null;
+    until: LocalTime | null;
+    span: {
+        allDay: true;
+        firstDay: LocalDate;
+        lastDay: LocalDate;
+    } | {
+        allDay: false;
+        start: LocalDateTime;
+        end: LocalDateTime;
+    };
+    place: string | null;
+    cancelled: boolean;
+    earlier: boolean;
+    links: {
+        url: string;
+        source: MultilingualText;
+    }[];
+    messages: {
+        id: RawMessageId;
+        source: MultilingualText;
+        sentAt: Date;
+    }[];
+    concerns: Attribution;
+};
+export type TimelineLesson = {
+    itemId: ItemId;
+    subject: string;
+    from: LocalTime;
+    until: LocalTime;
+    room: string | null;
+    teacher: string | null;
+    cancelled: boolean;
+};
+export type TimelineSchoolDay = {
+    from: LocalTime;
+    until: LocalTime;
+    cancelled: boolean;
+    changed: boolean;
+    earlier: boolean;
+    lessons: TimelineLesson[];
+    concerns: Attribution;
+};
+export type TimelineTimetableChange = {
+    itemId: ItemId;
+    change: TimetableChangeKind;
+    subject: string;
+    from: LocalTime;
+    until: LocalTime;
+    room: string | null;
+    teacher: string | null;
+    previousRoom: string | null;
+    previousTeacher: string | null;
+    note: string | null;
+    earlier: boolean;
+    concerns: Attribution;
+};
+export type TimelineTask = {
+    itemId: ItemId;
+    title: string;
+    deadline: LocalDate | null;
+    bring: string[];
+    status: TaskStatus;
+    cancelled: boolean;
+    links: TimelineEvent["links"];
+    messages: TimelineEvent["messages"];
+    concerns: Attribution;
+};
+type AgendaBarPage = {
+    id: AgendaId;
+    language: FamilyLanguage;
+    now: LocalDateTime;
+    members: FamilyMemberSummary[];
+    choices: FamilyMemberSummary[];
+    showing: Showing;
+    activity: CurrentActivity | null;
+    mayBeOutOfDate: boolean;
+};
+export type AgendaPage = AgendaBarPage & {
+    layout: "timeline";
+    horizonDays: number;
+    pinned: TimelineTask[];
+    days: TimelineDay[];
+};
+export type TaskListPage = AgendaBarPage & {
+    layout: "task_list";
+    due: TimelineTask[];
+    upcoming: TimelineTask[];
+    done: TimelineTask[];
+};
+export type TimelineDay = {
+    date: LocalDate;
+    items: TimelineEvent[];
+    tasks: TimelineTask[];
+    schoolDays: TimelineSchoolDay[];
+    timetableChanges: TimelineTimetableChange[];
+};
+export type TimelineDays = {
+    first: LocalDate;
+    last: LocalDate;
+};
+export type FeedEvent = {
+    itemId: ItemId;
+    title: string;
+    span: TimeSpan;
+    when: TimelineEvent["span"];
+    place: string | null;
+    cancelled: boolean;
+};
+export type FeedSchoolDay = {
+    key: string;
+    date: LocalDate;
+    cancelled: boolean;
+    lessons: TimelineLesson[];
+    timetableChanges: TimelineTimetableChange[];
+    concerns: Attribution;
+    names: string[];
+};
+export type FeedTask = {
+    itemId: ItemId;
+    title: string;
+    deadline: LocalDate;
+    bring: string[];
+    overdue: boolean;
+    cancelled: boolean;
+};
+export type MessageItemRows = {
+    language: FamilyLanguage;
+    now: LocalDateTime;
+    members: FamilyMemberSummary[];
+    days: {
+        date: LocalDate;
+        items: TimelineEvent[];
+    }[];
+    tasks: TimelineTask[];
+};
+export type AgendaFeed = {
+    id: AgendaId;
+    language: FamilyLanguage;
+    generatedAt: Date;
+    events: FeedEvent[];
+    schoolDays: FeedSchoolDay[];
+    tasks: FeedTask[];
+};
+export declare const openAgendaAccess: AgendaAccessPolicy;
+export declare function createAgendaAccess(deps: AgendasDeps): {
+    messageItemRows(written: ProjectedItem[]): Promise<MessageItemRows>;
+    list(): Promise<AgendaSummary[]>;
+    create(input: AgendaSettingsInput): Promise<{
+        ok: true;
+        id: AgendaId;
+    } | {
+        ok: false;
+        problem: AgendaProblem;
+    }>;
+    edit(id: AgendaId, input: AgendaSettingsInput): Promise<{
+        ok: true;
+    } | {
+        ok: false;
+        problem: AgendaProblem | "unknown-agenda";
+    }>;
+    remove(id: AgendaId): Promise<void>;
+    open(id: AgendaId, input: {
+        access: AgendaAccessPolicy;
+        show?: Showing;
+        days?: TimelineDays;
+    }): Promise<AgendaPage | TaskListPage | null>;
+    activity(id: AgendaId, input: {
+        access: AgendaAccessPolicy;
+    }): Promise<CurrentActivity | null | undefined>;
+    feed(id: AgendaId, input: {
+        access: AgendaAccessPolicy;
+    }): Promise<AgendaFeed | null>;
+};
+export type AgendaAccess = ReturnType<typeof createAgendaAccess>;
+export {};

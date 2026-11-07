@@ -117,7 +117,12 @@ const sdkSpecifier = "@family-agenda/source-sdk";
 
 /** Directories, as URL prefixes, whose plugins import the SDK through `shareSdkWith`. */
 const sharingDirectories = new Set<string>();
-let hookRegistered = false;
+/**
+ * The one global of the library: Node's `registerHooks` acts on the whole process and cannot be
+ * undone, so it is called once, and every Instance in the process adds its plugin directories
+ * to the set the hook consults. It holds no state of an Instance beyond those paths.
+ */
+const sdkHook = { registered: false };
 
 /**
  * Lets the plugins in `directories` import the SDK by its package name although no
@@ -126,8 +131,8 @@ let hookRegistered = false;
  * `SourceError`. Applies to Node's loader, not to the one of the test runner.
  */
 function shareSdkWith(directories: string[]): void {
-  if (!hookRegistered) {
-    hookRegistered = true;
+  if (!sdkHook.registered) {
+    sdkHook.registered = true;
     registerHooks({
       resolve(specifier, context, nextResolve) {
         const fromPlugin =
