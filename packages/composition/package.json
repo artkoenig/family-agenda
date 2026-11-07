@@ -1,0 +1,15 @@
+{
+  "name": "@family-agenda/composition",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@family-agenda/adapters": "workspace:*",
+    "@family-agenda/application": "workspace:*",
+    "@family-agenda/domain": "workspace:*",
+    "@family-agenda/source-sdk": "workspace:*"
+  }
+}

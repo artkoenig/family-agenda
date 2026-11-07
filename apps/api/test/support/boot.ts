@@ -1,7 +1,18 @@
+import { randomBytes } from "node:crypto";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { TessdataCatalog } from "@family-agenda/adapters";
+import {
+  Argon2idPasswordHasher,
+  CommandLineTextExtractor,
+  EnvelopeSecretStore,
+  FileBlobStore,
+  OidcIdentityProviderClient,
+  OpenAiCompatibleExtractor,
+  TessdataDirectory,
+  tessdataFastCatalog,
+  type TessdataCatalog,
+} from "@family-agenda/adapters";
 import type {
   BlobStore,
   Extractor,
@@ -9,11 +20,7 @@ import type {
   SecretStore,
   TextExtractor,
 } from "@family-agenda/application";
-import {
-  bootApplication,
-  type Application,
-  type ApplicationConfig,
-} from "../../src/composition-root";
+import { bootApplication, type Adapters, type Application, type ApplicationConfig } from "@family-agenda/composition";
 import { FakeClock } from "./fake-clock";
 import { acquirePostgres } from "./in-process-postgres";
 import { writeTestPluginPackage, type TestPluginPackage } from "./test-source-plugin";
@@ -38,8 +45,8 @@ export type TestOptions = {
 export type TestInstance = {
   app: Application;
   clock: FakeClock;
-  /** The file the master key is kept in, outside Postgres. */
-  masterKeyFile: string;
+  /** The master key the Instance boots with. */
+  masterKey: Buffer;
   /** Where the SourceRegistry finds workspace packages, which hold no plugins at first. */
   workspacePackages: string;
   /** The `plugins/` volume, empty at first. */
@@ -50,15 +57,15 @@ export type TestInstance = {
   query(sql: string): Promise<Record<string, unknown>[]>;
   /**
    * Stops the application and boots it again on the same database, master key file and plugin
-   * directories, as an update would.
+   * directories, as an update would; with the given master key, should the operator have changed it.
    */
-  restart(): Promise<void>;
+  restart(masterKey?: Buffer): Promise<void>;
   close(): Promise<void>;
 };
 
 /**
  * Boots the application through the real composition root against a throwaway in-process
- * Postgres database (PGlite, no server needed) and master key file, with a controllable Clock.
+ * Postgres database (PGlite, no server needed) with a master key and a controllable Clock.
  */
 export async function bootForTest(options: TestOptions = {}): Promise<TestInstance> {
   const postgres = await acquirePostgres();
@@ -78,33 +85,49 @@ export async function bootForTest(options: TestOptions = {}): Promise<TestInstan
   for (const plugin of sourcePlugins) await writeTestPluginPackage(workspacePackages, plugin);
 
   const clock = new FakeClock(new Date("2026-09-14T07:00:00Z"));
-  const config: ApplicationConfig = {
-    connectDatabase: () => postgres.connect(),
-    masterKeyFile: join(keyDirectory, "master.key"),
-    blobDirectory: join(keyDirectory, "blobs"),
-    workspacePackages,
-    pluginDirectory,
-    tessdataDirectory: join(keyDirectory, "tessdata"),
-    bundledTessdataDirectory,
-    timeZone: "Europe/Berlin",
-    clock,
-    ...applicationOptions,
+  const initialKey = randomBytes(32);
+  const config: ApplicationConfig = { timeZone: "Europe/Berlin" };
+  const tessdataDirectory = join(keyDirectory, "tessdata");
+  /** The adapters of the Instance, built anew on each boot as a process would on each start. */
+  const adaptersFor = async (masterKey: Buffer): Promise<Adapters> => {
+    const database = postgres.connect();
+    const ocrModels = new TessdataDirectory({
+      directory: tessdataDirectory,
+      bundledDirectory: bundledTessdataDirectory,
+      catalog: applicationOptions.tessdataCatalog ?? tessdataFastCatalog(),
+    });
+    await mkdir(tessdataDirectory, { recursive: true });
+    await ocrModels.linkBundled();
+    return {
+      postgres: database,
+      masterKey,
+      clock,
+      passwordHasher: new Argon2idPasswordHasher(),
+      identityProviderClient: applicationOptions.identityProviderClient ?? new OidcIdentityProviderClient(),
+      secrets: applicationOptions.secretStore ?? new EnvelopeSecretStore(database.db, masterKey),
+      blobs: applicationOptions.blobStore ?? new FileBlobStore(join(keyDirectory, "blobs")),
+      extractor: applicationOptions.extractor ?? new OpenAiCompatibleExtractor(),
+      textExtractor: applicationOptions.textExtractor ?? new CommandLineTextExtractor({ tessdataDirectory }),
+      ocrModels,
+      pluginDirectories: [workspacePackages, pluginDirectory],
+    };
   };
 
   const instance: TestInstance = {
-    app: await bootApplication(config),
+    app: await bootApplication(config, await adaptersFor(initialKey)),
     clock,
-    masterKeyFile: config.masterKeyFile,
+    masterKey: initialKey,
     workspacePackages,
     pluginDirectory,
-    tessdataDirectory: config.tessdataDirectory,
+    tessdataDirectory,
     query: (sql) => postgres.query(sql),
-    async restart() {
+    async restart(masterKey = instance.masterKey) {
       const stopped = instance.app;
       await stopped.close();
       // Already closed, should booting again fail.
       instance.app = { ...stopped, close: () => Promise.resolve() };
-      instance.app = await bootApplication(config);
+      instance.masterKey = masterKey;
+      instance.app = await bootApplication(config, await adaptersFor(masterKey));
     },
     async close() {
       await instance.app.close();

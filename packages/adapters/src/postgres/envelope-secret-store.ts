@@ -11,11 +11,6 @@ const ivLength = 12;
 const tagLength = 16;
 const dataKeyLength = 32;
 
-/** Whether Postgres holds any secret, which only the master key it was stored with can read. */
-export async function holdsSecrets(db: Database): Promise<boolean> {
-  return (await db.$count(secrets)) > 0;
-}
-
 /**
  * Envelope encryption: each secret is encrypted with its own data key, and the data key
  * is wrapped with the master key. Postgres holds only the ciphertexts.

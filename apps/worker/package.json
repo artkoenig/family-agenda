@@ -7,7 +7,7 @@
     "start": "node --import tsx src/main.ts"
   },
   "dependencies": {
-    "@family-agenda/api": "workspace:*",
+    "@family-agenda/composition": "workspace:*",
     "tsx": "^4.23.15"
   }
 }

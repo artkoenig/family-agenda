@@ -24,8 +24,21 @@ export { schema as postgresSchema };
 /** Arbitrary key that serialises migrations run by `api` and `worker` starting together. */
 const migrationLockKey = 7_342_001;
 
-export function connectPostgres(databaseUrl: string): PostgresConnection {
-  const pool = new pg.Pool({ connectionString: databaseUrl });
+/** How the pool behind a connection is sized. */
+export type PostgresPoolOptions = {
+  /** The most connections the pool opens. */
+  max?: number;
+  /** How long an idle connection stays open before the pool closes it. */
+  idleTimeoutMillis?: number;
+};
+
+export function connectPostgres(databaseUrl: string, options: PostgresPoolOptions = {}): PostgresConnection {
+  const { max, idleTimeoutMillis } = options;
+  const pool = new pg.Pool({
+    connectionString: databaseUrl,
+    ...(max === undefined ? {} : { max }),
+    ...(idleTimeoutMillis === undefined ? {} : { idleTimeoutMillis }),
+  });
   const db = drizzle(pool, { schema });
   return {
     db,

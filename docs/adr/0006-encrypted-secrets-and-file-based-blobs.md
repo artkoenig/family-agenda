@@ -4,7 +4,7 @@ status: proposed, partly superseded by ADR-0016
 
 # Source credentials are encrypted at rest, and raw messages live in files
 
-Sources need credentials: IMAP passwords, the WebUntis QR secret, ICS URLs that are themselves secrets, and the whatsmeow session. Postgres dumps get copied, attached to bug reports and uploaded as backups, so credentials must not appear in them in clear text. A `SecretStore` port encrypts each credential with a data key, and the data keys are wrapped with a master key (envelope encryption). The master key is a file in its own volume, never written to Postgres, and created on first start.
+Sources need credentials: IMAP passwords, the WebUntis QR secret, ICS URLs that are themselves secrets, and the whatsmeow session. Postgres dumps get copied, attached to bug reports and uploaded as backups, so credentials must not appear in them in clear text. A `SecretStore` port encrypts each credential with a data key, and the data keys are wrapped with a master key (envelope encryption). The master key is a file in its own volume, never written to Postgres. The Operator supplies it (`MASTER_KEY`, or an existing key file); the Instance never creates one, since a new key could not read what an earlier one encrypted.
 
 Raw source messages and attachments, such as PDFs and images, are kept behind a `BlobStore` port. Its default implementation is the filesystem, in a data volume. Postgres holds only their metadata and content hash. Blobs make up most of the data, and in Postgres they would make dumps slow and large.
 

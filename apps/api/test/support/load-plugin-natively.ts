@@ -7,7 +7,7 @@ import { pathToFileURL } from "node:url";
 import { join } from "node:path";
 import { SourceError, type SourcePlugin } from "@family-agenda/source-sdk";
 import type { SourceTypeId } from "@family-agenda/domain";
-import { SourceRegistry } from "../../src/source-registry";
+import { SourceRegistry } from "@family-agenda/composition";
 
 const [directory = "", packageName = "", sourceTypeId = ""] = process.argv.slice(2);
 const registry = await SourceRegistry.discover([directory]);

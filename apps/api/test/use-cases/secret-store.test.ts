@@ -1,5 +1,4 @@
 import { randomBytes } from "node:crypto";
-import { readFile, rm, writeFile } from "node:fs/promises";
 import { afterEach, describe, expect, it } from "vitest";
 import type { SecretRef } from "@family-agenda/application";
 import { bootForTest, type TestInstance } from "../support/boot";
@@ -93,37 +92,23 @@ describe("secrets at rest", () => {
     expect(stored).not.toContain(Buffer.from("ics-url-secret-0123456789").toString("base64"));
   });
 
-  it("keeps the master key in its own file, created on first start and kept across restarts", async () => {
+  it("keeps the master key out of Postgres, and reads secrets again after a restart with it", async () => {
     instance = await bootForTest();
     const ref = await instance.app.secrets.put("hunter2");
-    const masterKey = await readFile(instance.masterKeyFile);
-    expect(masterKey).toHaveLength(32);
 
     await instance.restart();
 
-    expect(await readFile(instance.masterKeyFile)).toEqual(masterKey);
     expect(await instance.app.secrets.get(ref)).toBe("hunter2");
     const stored = await storedValues();
-    expect(stored).not.toContain(masterKey.toString("hex"));
-    expect(stored).not.toContain(masterKey.toString("base64"));
-  });
-
-  it("refuses to start without the master key file once secrets are stored", async () => {
-    instance = await bootForTest();
-    await instance.app.secrets.put("hunter2");
-
-    await rm(instance.masterKeyFile);
-
-    await expect(instance.restart()).rejects.toThrow(/master key file .* is missing/);
-    await expect(readFile(instance.masterKeyFile)).rejects.toThrow(/ENOENT/);
+    expect(stored).not.toContain(instance.masterKey.toString("hex"));
+    expect(stored).not.toContain(instance.masterKey.toString("base64"));
   });
 
   it("cannot read secrets with another master key", async () => {
     instance = await bootForTest();
     const ref = await instance.app.secrets.put("hunter2");
 
-    await writeFile(instance.masterKeyFile, randomBytes(32));
-    await instance.restart();
+    await instance.restart(randomBytes(32));
 
     await expect(instance.app.secrets.get(ref)).rejects.toThrow();
   });

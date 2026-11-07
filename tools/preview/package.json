@@ -5,7 +5,7 @@
   "type": "module",
   "description": "A developer tool: `pnpm preview up <pr>` runs a pull request's code as a throwaway Instance with demo data.",
   "dependencies": {
-    "@family-agenda/api": "workspace:*",
+    "@family-agenda/composition": "workspace:*",
     "@family-agenda/application": "workspace:*",
     "@family-agenda/demo-source": "workspace:*",
     "@family-agenda/domain": "workspace:*"

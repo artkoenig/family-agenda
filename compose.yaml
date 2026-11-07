@@ -16,6 +16,9 @@ x-app: &app
     PUBLIC_URL: ${PUBLIC_URL:-http://${MDNS_NAME:-family-agenda.local}:${PORT:-8080}}
     # Set to true behind your own HTTPS reverse proxy, so session cookies become Secure.
     TRUST_PROXY: ${TRUST_PROXY:-false}
+    # The key Source credentials are encrypted with, 32 bytes in base64: `openssl rand -base64 32`.
+    # An Instance started before this setting keeps its key in the master-key volume, read when this is empty.
+    MASTER_KEY: ${MASTER_KEY:-}
     MASTER_KEY_FILE: /var/lib/family-agenda/master-key/master.key
     BLOB_DIRECTORY: /var/lib/family-agenda/blobs
     PLUGIN_DIRECTORY: /var/lib/family-agenda/plugins

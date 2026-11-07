@@ -37,7 +37,7 @@ import {
   sessionLifetimeMs,
   type PendingSignIn,
 } from "@family-agenda/application";
-import type { Application } from "../composition-root";
+import type { Application } from "@family-agenda/composition";
 import type { Catalogue } from "./i18n/en";
 import { TranslationContext, translationFor, type Translation } from "./i18n/translation";
 import {

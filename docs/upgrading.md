@@ -16,6 +16,11 @@ Every GitHub Release has an **Upgrading** section that is written from the chang
 - **Source plugins built for SDK X will not load.** The SDK that Source plugins are built against got a new major version. The plugins that come with the app are updated with it; rebuild the ones you added to the `plugins` volume.
 - **SDK X → Y.** The SDK got a new minor version. Source plugins built for the old one keep working.
 
+Also read what the release asks you to **set**:
+
+- **`MASTER_KEY` is required.** Family Agenda no longer creates a master key on its first start. Create one with `openssl rand -base64 32` and set it as `MASTER_KEY`. An Instance that already has a key in the `master-key` volume keeps working while `MASTER_KEY` is unset; setting it to the same key (base64 of the file) is the way forward. See [configuration.md](configuration.md).
+- **`TZ` is required.** The time zone of the process is no longer a fallback. `compose.yaml` sets it to `Europe/Berlin` unless you change it.
+
 Releases before 1.0.0 may ask you to start over. Read the section before every upgrade.
 
 ## Back up

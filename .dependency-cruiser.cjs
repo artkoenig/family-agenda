@@ -25,7 +25,14 @@ module.exports = {
       comment: "Adapters know the domain and application, never the apps, contracts or plugins.",
       severity: "error",
       from: { path: "^packages/adapters/" },
-      to: { path: "^(apps/|packages/(contracts|source-[^/]+)/)" },
+      to: { path: "^(apps/|packages/(contracts|composition|source-[^/]+)/)" },
+    },
+    {
+      name: "composition-wires-adapters-to-use-cases",
+      comment: "The Composition Root is the one place that knows both use cases and adapters; only processes and tools build on it, never another package, and it never imports an app.",
+      severity: "error",
+      from: { path: "^packages/(?!composition/)" },
+      to: { path: "^packages/composition/" },
     },
     {
       name: "contracts-import-only-zod",

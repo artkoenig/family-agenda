@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { describeSourcePluginContract, recordingAttributes, undeclaredAttributes } from "@family-agenda/source-sdk/testing";
 import type { IngestContext, IngestResult, Origin, SourcePlugin, StatedItem } from "@family-agenda/source-sdk";
-import { SourceRegistry } from "../../../apps/api/src/source-registry";
+import { SourceRegistry } from "../../../packages/composition/src/source-registry";
 import { createDemoPlugin } from "../src";
 
 const packageJson: unknown = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
