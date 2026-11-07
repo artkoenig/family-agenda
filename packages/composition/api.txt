@@ -1,0 +1,114 @@
+// The public API of @family-agenda/composition, written by `pnpm sdk-api`. Do not edit it by hand.
+// src/index.ts
+export type { Adapters } from "./adapters";
+export type { Application } from "./application";
+export { bootApplication, bootWorker, type Worker } from "./boot";
+export { readApplicationConfig, type ApplicationConfig } from "./config";
+export { bootSelfHosted, bootSelfHostedWorker, readSelfHostedConfig, selfHostedAdapters, type SelfHostedConfig } from "./self-hosted";
+export { connectPostgres, NewerMigrationHistoryError, OldMigrationHistoryError, runMigrations, type PostgresConnection, type PostgresPoolOptions, } from "@family-agenda/adapters";
+export { createWorkerLoop, type WorkerLog, type WorkerLoop } from "./worker-loop";
+export { SourceRegistry } from "./source-registry";
+// src/adapters.ts
+import type { PostgresConnection } from "@family-agenda/adapters";
+import type { BlobStore, Clock, Extractor, IdentityProviderClient, OcrModelStore, PasswordHasher, SecretStore, TextExtractor } from "@family-agenda/application";
+export type Adapters = {
+    postgres: PostgresConnection;
+    masterKey: Buffer;
+    clock: Clock;
+    passwordHasher: PasswordHasher;
+    identityProviderClient: IdentityProviderClient;
+    secrets: SecretStore;
+    blobs: BlobStore;
+    extractor: Extractor;
+    textExtractor: TextExtractor;
+    ocrModels: OcrModelStore;
+    pluginDirectories: string[];
+};
+// src/application.ts
+import type { AdminAccess, AgendaAccess, CatalogueAccess, ExtractionAccess, FamilyMemberAccess, LanguageAccess, LlmEndpointAccess, MessageAccess, RecoveryKitAccess, Retention, SecretStore, SecretSweep, ServiceSupervision, SingleSignOn, SourceAccess, SourcePolling, SourceTypeAccess, TaskAccess } from "@family-agenda/application";
+export type Application = {
+    timeZone: string;
+    admins: AdminAccess;
+    secrets: SecretStore;
+    secretSweep: SecretSweep;
+    retention: Retention;
+    recoveryKit: RecoveryKitAccess;
+    familyMembers: FamilyMemberAccess;
+    languages: LanguageAccess;
+    agendas: AgendaAccess;
+    tasks: TaskAccess;
+    sourceTypes: SourceTypeAccess;
+    catalogues: CatalogueAccess;
+    sources: SourceAccess;
+    polling: SourcePolling;
+    services: ServiceSupervision;
+    llmEndpoint: LlmEndpointAccess;
+    singleSignOn: SingleSignOn;
+    extraction: ExtractionAccess;
+    messages: MessageAccess;
+    close(): Promise<void>;
+};
+// src/boot.ts
+import type { Adapters } from "./adapters";
+import type { Application } from "./application";
+import { type ApplicationConfig } from "./config";
+export type Worker = Application;
+export declare function bootApplication(config: ApplicationConfig, adapters: Adapters): Promise<Application>;
+export declare function bootWorker(config: ApplicationConfig, adapters: Adapters): Promise<Worker>;
+// src/config.ts
+export type ApplicationConfig = {
+    timeZone: string;
+};
+export declare function readApplicationConfig(env: NodeJS.ProcessEnv): ApplicationConfig;
+export declare function assertTimeZone(timeZone: string): void;
+// src/self-hosted.ts
+import { type PostgresPoolOptions, type TessdataCatalog } from "@family-agenda/adapters";
+import type { Adapters } from "./adapters";
+import type { Application } from "./application";
+import { type Worker } from "./boot";
+export type SelfHostedConfig = {
+    databaseUrl: string;
+    pool?: PostgresPoolOptions;
+    masterKey: Buffer;
+    blobDirectory: string;
+    pluginDirectory: string;
+    tessdataDirectory: string;
+    bundledTessdataDirectory: string | null;
+    tessdataCatalog?: TessdataCatalog;
+    workspacePackages?: string;
+};
+export declare function selfHostedAdapters(config: SelfHostedConfig): Promise<Adapters>;
+export declare function readMasterKeyFrom(env: NodeJS.ProcessEnv): Promise<Buffer>;
+export declare function readSelfHostedConfig(env?: NodeJS.ProcessEnv): Promise<SelfHostedConfig>;
+export declare function bootSelfHosted(env?: NodeJS.ProcessEnv): Promise<Application>;
+export declare function bootSelfHostedWorker(env?: NodeJS.ProcessEnv): Promise<Worker>;
+// src/worker-loop.ts
+import type { Worker } from "./boot";
+export type WorkerLog = {
+    warn(message: string): void;
+    error(message: string, error?: unknown): void;
+};
+export type WorkerLoop = {
+    poll(): Promise<void>;
+    reconcile(): Promise<void>;
+    stop(): Promise<void>;
+};
+export declare function createWorkerLoop(worker: Worker, log: WorkerLog): WorkerLoop;
+// src/source-registry.ts
+import type { InstalledSourceType, LoadedSourceType, SourceTypeRegistry } from "@family-agenda/application";
+import type { SourceTypeId } from "@family-agenda/domain";
+export declare class SourceRegistry implements SourceTypeRegistry {
+    private readonly discovered;
+    private readonly loading;
+    private readonly loadFailures;
+    private constructor();
+    static discover(directories: string[]): Promise<SourceRegistry>;
+    installed(): InstalledSourceType[];
+    load(id: SourceTypeId): Promise<{
+        ok: true;
+        sourceType: LoadedSourceType;
+    } | {
+        ok: false;
+    }>;
+    private import;
+}

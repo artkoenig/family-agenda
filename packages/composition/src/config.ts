@@ -4,8 +4,8 @@ export type ApplicationConfig = {
   timeZone: string;
 };
 
-/** Reads the behaviour of the Instance from environment variables. */
-export function readApplicationConfig(env: NodeJS.ProcessEnv = process.env): ApplicationConfig {
+/** Reads the behaviour of the Instance from the given environment variables. */
+export function readApplicationConfig(env: NodeJS.ProcessEnv): ApplicationConfig {
   const timeZone = env.TZ;
   if (!timeZone) throw new Error("TZ is not set. Set it to the Family's IANA time zone, such as Europe/Berlin.");
   return { timeZone };

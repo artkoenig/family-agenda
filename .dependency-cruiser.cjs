@@ -63,6 +63,20 @@ module.exports = {
       to: { path: "^apps/" },
     },
     {
+      name: "packages-only-through-exports",
+      comment: "A package is imported by its name, so only what its `exports` name is reachable; no relative path into another package or app.",
+      severity: "error",
+      from: { path: "^(packages|apps)/([^/]+)/" },
+      to: { path: "^(packages|apps)/", pathNot: "^$1/$2/", dependencyTypes: ["local"] },
+    },
+    {
+      name: "http-imports-only-application-and-contracts",
+      comment: "The HTTP app knows the use cases and the wire contracts, never adapters, the Composition Root or plugins.",
+      severity: "error",
+      from: { path: "^packages/http/src/" },
+      to: { path: "^(apps/|packages/(?!(http|application|contracts)/))" },
+    },
+    {
       name: "no-circular",
       severity: "error",
       from: {},

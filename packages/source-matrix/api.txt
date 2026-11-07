@@ -1,0 +1,146 @@
+// The public API of @family-agenda/source-matrix, written by `pnpm sdk-api`. Do not edit it by hand.
+// src/index.ts
+import { type SourcePlugin } from "@family-agenda/source-sdk";
+import { type MatrixInstance } from "./instance";
+import { type MatrixPrograms } from "./services";
+export type { MatrixInstance } from "./instance";
+export { messengers } from "./messengers";
+export type MatrixPluginOptions = {
+    instance?: MatrixInstance | string;
+    timeoutMs?: number;
+    programs?: MatrixPrograms;
+    startTimeoutMs?: number;
+};
+export declare function createMatrixPlugin(options?: MatrixPluginOptions): SourcePlugin;
+declare const _default: SourcePlugin;
+export default _default;
+export declare function servicesFromEnvironment(programs: MatrixPrograms, instanceFile: string): {
+    programs: MatrixPrograms;
+    databaseUrl: string;
+    dataDirectory: string;
+    instanceFile: string;
+    host: string;
+    serverName: string;
+    ports: {
+        synapse: number;
+        bridges: {
+            whatsapp: number;
+        };
+    };
+    database: {
+        host: string;
+        port: number;
+        name: string;
+        user: string;
+    };
+};
+// src/testing.ts
+import type { SyncResponse } from "./homeserver";
+import type { MatrixInstance } from "./instance";
+import type { MatrixPrograms } from "./services";
+export declare const installedPrograms: MatrixPrograms;
+export declare class FakeHomeserver {
+    readonly serverName = "family-agenda.local";
+    readonly registrationSharedSecret = "registration-shared-secret";
+    readonly provisioningSecret = "provisioning-shared-secret";
+    readonly requests: string[];
+    private server;
+    private port;
+    private position;
+    private readonly events;
+    private readonly rooms;
+    private readonly users;
+    private readonly logins;
+    private readonly media;
+    private readonly pendingSteps;
+    private qrCodes;
+    bridgeRunning: boolean;
+    limitedJoins: number;
+    get url(): string;
+    instance(): MatrixInstance;
+    start(): Promise<void>;
+    close(): Promise<void>;
+    registeredUsers(): string[];
+    ghost(phone: string): string;
+    get bot(): string;
+    createRoom(name: string, ghosts?: Record<string, string>, options?: {
+        direct?: boolean;
+        jid?: string;
+    }): string;
+    jidOf(roomId: string): string;
+    rename(roomId: string, name: string, at: Date): void;
+    leave(roomId: string, userId: string): void;
+    invite(roomId: string, userId: string, inviter?: string): void;
+    addMember(roomId: string, userId: string): void;
+    isMember(roomId: string, userId: string): boolean;
+    send(roomId: string, sender: string, content: Record<string, unknown>, at: Date): string;
+    text(roomId: string, sender: string, body: string, at: Date): string;
+    upload(bytes: Uint8Array): string;
+    redact(roomId: string, eventId: string, at: Date): string;
+    replaySync(userId: string, responses: SyncResponse[]): void;
+    setLogin(userId: string, stateEvent: string | null, reason?: string): void;
+    awaitsScan(userId: string): boolean;
+    scanQr(userId: string): void;
+    refreshQr(userId: string): void;
+    private append;
+    private roomOf;
+    private userOf;
+    private qrStep;
+    private messagesChunk;
+    private stateOf;
+    private sync;
+    private syncRoomFor;
+    private membershipChange;
+    private roomSync;
+    private handle;
+    private routeOf;
+    private handleBridge;
+    private handleRegisterCheck;
+    private handleClientRoute;
+    private handleRoomRoute;
+    private handleJoinRoute;
+    private handleMessagesRoute;
+    private handleStateRoute;
+    private handleDownloadRoute;
+    private handleRegister;
+    private handleSync;
+    private handleJoin;
+    private messagesParams;
+    private handleMessages;
+    private handleState;
+    private handleDownload;
+    private provision;
+    private provisionWhoami;
+    private provisionLogin;
+    private provisionLogout;
+    private authenticate;
+}
+// src/instance.ts
+export type MatrixInstance = {
+    homeserver: {
+        url: string;
+        serverName: string;
+        registrationSharedSecret: string;
+    };
+    bridges: Record<string, {
+        url: string;
+        provisioningSecret: string;
+    }>;
+};
+export declare const defaultInstanceFile = "/var/lib/family-agenda/matrix/instance.json";
+export declare function instanceReader(source: MatrixInstance | string): () => Promise<MatrixInstance | null>;
+// src/messengers.ts
+import type { PluginText } from "@family-agenda/source-sdk";
+export type Messenger = {
+    id: string;
+    displayName: PluginText;
+    description: PluginText;
+    riskNotice?: PluginText;
+    botLocalpart: string;
+    ghostPrefix: string;
+    qrLoginFlow: string;
+    scanHint: PluginText;
+    attributeValue: string;
+};
+export declare const messengers: Messenger[];
+export declare function messengerOf(id: unknown): Messenger | undefined;

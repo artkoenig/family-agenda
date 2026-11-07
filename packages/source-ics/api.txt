@@ -1,0 +1,10 @@
+// The public API of @family-agenda/source-ics, written by `pnpm sdk-api`. Do not edit it by hand.
+// src/index.ts
+import { type SourcePlugin } from "@family-agenda/source-sdk";
+export type IcsPluginOptions = {
+    fetch?: typeof globalThis.fetch;
+    timeoutMs?: number;
+};
+export declare function createIcsPlugin(options?: IcsPluginOptions): SourcePlugin;
+declare const _default: SourcePlugin;
+export default _default;

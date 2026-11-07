@@ -1,0 +1,428 @@
+// The public API of @family-agenda/adapters, written by `pnpm sdk-api`. Do not edit it by hand.
+// src/index.ts
+export * from "./argon2-password-hasher";
+export * from "./command-line-text-extractor";
+export * from "./file-blob-store";
+export * from "./file-master-key";
+export * from "./oidc-identity-provider-client";
+export * from "./openai-compatible-extractor";
+export * from "./postgres/database";
+export * from "./postgres/migration-history";
+export * from "./postgres/envelope-secret-store";
+export * from "./postgres/repositories";
+export * from "./postgres/item-repository";
+export * from "./system-clock";
+export * from "./tessdata-directory";
+export * from "./tessdata-fast-catalog";
+// src/argon2-password-hasher.ts
+import type { PasswordHasher } from "@family-agenda/application";
+export declare class Argon2idPasswordHasher implements PasswordHasher {
+    hash(password: string): Promise<string>;
+    verify(passwordHash: string, password: string): Promise<boolean>;
+}
+// src/command-line-text-extractor.ts
+import type { Conversion, TextExtractor } from "@family-agenda/application";
+import type { OcrLanguage } from "@family-agenda/domain";
+export type CommandLineTextExtractorOptions = {
+    timeoutMs?: number;
+    tessdataDirectory?: string;
+};
+export declare class CommandLineTextExtractor implements TextExtractor {
+    private readonly timeoutMs;
+    private readonly tessdataDirectory;
+    constructor(options?: CommandLineTextExtractorOptions);
+    textLayer(pdf: Uint8Array): Promise<Conversion<string[]>>;
+    ocr(pdf: Uint8Array, pages: number[], languages: OcrLanguage[]): Promise<Conversion<string[]>>;
+    private render;
+    private tool;
+    private withPdf;
+}
+// src/file-blob-store.ts
+import type { BlobStore } from "@family-agenda/application";
+import type { BlobRef } from "@family-agenda/domain";
+export declare class FileBlobStore implements BlobStore {
+    private readonly directory;
+    constructor(directory: string);
+    put(contents: Uint8Array): Promise<BlobRef>;
+    get(ref: BlobRef): Promise<Uint8Array<ArrayBuffer> | null>;
+    remove(ref: BlobRef): Promise<void>;
+}
+// src/file-master-key.ts
+export declare const masterKeyLength = 32;
+export declare function readMasterKey(path: string): Promise<Buffer | null>;
+// src/oidc-identity-provider-client.ts
+import type { IdentityProviderClient, IdentityProviderConnection, PendingSignIn, VerifiedIdentity } from "@family-agenda/application";
+export declare class OidcIdentityProviderClient implements IdentityProviderClient {
+    discover(issuerUrl: string): Promise<{
+        ok: true;
+    } | {
+        ok: false;
+        message: string;
+    }>;
+    begin(connection: IdentityProviderConnection, redirectUri: string): Promise<{
+        authorizationUrl: string;
+        pending: PendingSignIn;
+    }>;
+    complete(connection: IdentityProviderConnection, _redirectUri: string, callbackUrl: string, pending: PendingSignIn): Promise<VerifiedIdentity | null>;
+}
+// src/openai-compatible-extractor.ts
+import type { EndpointHealth, ExtractionRequest, ExtractionResult, Extractor, LlmEndpoint } from "@family-agenda/application";
+export type OpenAiCompatibleExtractorOptions = {
+    timeoutMs?: number;
+};
+export declare const extractionSchema: {
+    type: string;
+    additionalProperties: boolean;
+    required: string[];
+    properties: {
+        events: {
+            type: string;
+            items: {
+                type: string;
+                additionalProperties: boolean;
+                required: string[];
+                properties: {
+                    title: {
+                        type: string[];
+                    };
+                    date: {
+                        type: string;
+                        additionalProperties: boolean;
+                        required: string[];
+                        properties: {
+                            day: {
+                                type: string[];
+                            };
+                            month: {
+                                type: string[];
+                            };
+                            year: {
+                                type: string[];
+                            };
+                            weekday: {
+                                type: string[];
+                                enum: ("monday" | "tuesday" | "wednesday" | "thursday" | "friday" | "saturday" | "sunday" | null)[];
+                            };
+                            daysAfter: {
+                                type: string[];
+                            };
+                            weeksAfter: {
+                                type: string[];
+                            };
+                        };
+                    };
+                    startTime: {
+                        type: string[];
+                    };
+                    endTime: {
+                        type: string[];
+                    };
+                    place: {
+                        type: string[];
+                    };
+                    evidence: {
+                        type: string;
+                    };
+                };
+            };
+        };
+        tasks: {
+            type: string;
+            items: {
+                type: string;
+                additionalProperties: boolean;
+                required: string[];
+                properties: {
+                    title: {
+                        type: string[];
+                    };
+                    deadline: {
+                        type: string;
+                        additionalProperties: boolean;
+                        required: string[];
+                        properties: {
+                            day: {
+                                type: string[];
+                            };
+                            month: {
+                                type: string[];
+                            };
+                            year: {
+                                type: string[];
+                            };
+                            weekday: {
+                                type: string[];
+                                enum: ("monday" | "tuesday" | "wednesday" | "thursday" | "friday" | "saturday" | "sunday" | null)[];
+                            };
+                            daysAfter: {
+                                type: string[];
+                            };
+                            weeksAfter: {
+                                type: string[];
+                            };
+                        };
+                    };
+                    bring: {
+                        type: string;
+                        items: {
+                            type: string;
+                        };
+                    };
+                    evidence: {
+                        type: string;
+                    };
+                };
+            };
+        };
+    };
+};
+export declare class OpenAiCompatibleExtractor implements Extractor {
+    private readonly timeoutMs;
+    constructor(options?: OpenAiCompatibleExtractorOptions);
+    extract(request: ExtractionRequest): Promise<ExtractionResult>;
+    health(endpoint: LlmEndpoint): Promise<EndpointHealth>;
+    models(endpoint: LlmEndpoint): Promise<string[]>;
+    private listModels;
+    private complete;
+}
+// src/postgres/database.ts
+import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
+import * as schema from "./schema";
+export type Database = PgDatabase<PgQueryResultHKT, typeof schema>;
+export type PostgresConnection = {
+    db: Database;
+    migrate(): Promise<void>;
+    close(): Promise<void>;
+};
+export declare const migrationsFolder: string;
+export { schema as postgresSchema };
+export type PostgresPoolOptions = {
+    max?: number;
+    idleTimeoutMillis?: number;
+};
+export declare function connectPostgres(databaseUrl: string, options?: PostgresPoolOptions): PostgresConnection;
+export declare function runMigrations(connection: PostgresConnection): Promise<void>;
+// src/postgres/migration-history.ts
+import { type SQL } from "drizzle-orm";
+type Queryable = {
+    execute(query: SQL): PromiseLike<unknown>;
+};
+export declare class OldMigrationHistoryError extends Error {
+    constructor();
+}
+export declare class NewerMigrationHistoryError extends Error {
+    constructor(applied: number, known: number);
+}
+export declare function refuseOldMigrationHistory(db: Queryable, migrationsFolder: string): Promise<void>;
+export declare function refuseNewerMigrationHistory(db: Queryable, migrationsFolder: string): Promise<void>;
+export {};
+// src/postgres/envelope-secret-store.ts
+import type { SecretRef, SecretStore } from "@family-agenda/application";
+import type { Database } from "./database";
+export declare class EnvelopeSecretStore implements SecretStore {
+    private readonly db;
+    private readonly masterKey;
+    constructor(db: Database, masterKey: Buffer);
+    put(plaintext: string): Promise<SecretRef>;
+    get(ref: SecretRef): Promise<string | null>;
+    remove(ref: SecretRef): Promise<void>;
+    list(): Promise<{
+        ref: SecretRef;
+        storedAt: Date;
+    }[]>;
+}
+// src/postgres/repositories.ts
+import type { ActivityRepository, AdminRepository, AdminSession, AdminSessionRepository, BackgroundActivity, CatalogueRecord, CatalogueRepository, DeclaredAttribute, FamilyMemberRepository, FamilyRepository, IdentityProviderRepository, SoleAssignment, LlmEndpointRepository, PlainConfig, SignInFailureLog, Source, SourceRepository, SourceTypeRecord, SourceTypeRepository, StoredIdentityProvider, StoredLlmEndpoint, AgendaRepository } from "@family-agenda/application";
+import type { Admin, AdminId, BlobRef, Email, FamilyLanguages, FamilyMember, FamilyMemberId, RunError, SourceAttributeId, SourceFailure, SourceId, SourceTypeId, Agenda, AgendaId } from "@family-agenda/domain";
+import { type SQL } from "drizzle-orm";
+import type { Database } from "./database";
+export declare class PostgresFamilyRepository implements FamilyRepository {
+    private readonly db;
+    constructor(db: Database);
+    recoveryKitConfirmed(): Promise<boolean>;
+    confirmRecoveryKit(at: Date): Promise<void>;
+    languages(): Promise<FamilyLanguages>;
+    saveLanguages(languages: FamilyLanguages): Promise<void>;
+    ocrEnabled(): Promise<boolean>;
+    saveOcrEnabled(enabled: boolean): Promise<void>;
+}
+export declare class PostgresAdminRepository implements AdminRepository {
+    private readonly db;
+    constructor(db: Database);
+    exists(): Promise<boolean>;
+    addFirst(admin: Admin): Promise<boolean>;
+    add(admin: Admin): Promise<boolean>;
+    findById(id: AdminId): Promise<Admin | null>;
+    findByEmail(email: Email): Promise<Admin | null>;
+    findByIdentitySubject(subject: string): Promise<Admin | null>;
+    setIdentitySubject(id: AdminId, subject: string): Promise<void>;
+    list(): Promise<Admin[]>;
+    setPasswordHash(id: AdminId, passwordHash: string): Promise<void>;
+}
+export declare class PostgresAdminSessionRepository implements AdminSessionRepository {
+    private readonly db;
+    constructor(db: Database);
+    add(session: AdminSession): Promise<void>;
+    find(id: string): Promise<AdminSession | null>;
+    remove(id: string): Promise<void>;
+    removeAllOf(adminId: AdminId): Promise<void>;
+    removeExpired(now: Date): Promise<void>;
+}
+export declare class PostgresSignInFailureLog implements SignInFailureLog {
+    private readonly db;
+    private readonly keepForMs;
+    constructor(db: Database, keepForMs: number);
+    record(keys: string[], at: Date): Promise<string[]>;
+    forget(ids: string[]): Promise<void>;
+    countAfter(key: string, after: Date): Promise<number>;
+    clear(key: string): Promise<void>;
+}
+export declare class PostgresFamilyMemberRepository implements FamilyMemberRepository {
+    private readonly db;
+    constructor(db: Database);
+    add(member: FamilyMember): Promise<void>;
+    list(): Promise<FamilyMember[]>;
+    findById(id: FamilyMemberId): Promise<FamilyMember | null>;
+    update(member: FamilyMember): Promise<void>;
+    remove(id: FamilyMemberId): Promise<{
+        removed: true;
+    } | {
+        removed: false;
+        blocking: SoleAssignment[];
+    }>;
+    private soleAssignments;
+}
+export declare class PostgresAgendaRepository implements AgendaRepository {
+    private readonly db;
+    constructor(db: Database);
+    add(agenda: Agenda): Promise<void>;
+    list(): Promise<Agenda[]>;
+    findById(id: AgendaId): Promise<Agenda | null>;
+    update(agenda: Agenda): Promise<void>;
+    remove(id: AgendaId): Promise<void>;
+    private select;
+}
+export declare class PostgresSourceTypeRepository implements SourceTypeRepository {
+    private readonly db;
+    constructor(db: Database);
+    recordDiscovered(ids: SourceTypeId[]): Promise<void>;
+    list(): Promise<SourceTypeRecord[]>;
+    enable(id: SourceTypeId): Promise<void>;
+    disableIfUnused(id: SourceTypeId): Promise<boolean>;
+}
+export declare class PostgresCatalogueRepository implements CatalogueRepository {
+    private readonly db;
+    constructor(db: Database);
+    recordDiscovered(sourceTypeId: SourceTypeId, entryIds: string[]): Promise<void>;
+    list(sourceTypeId: SourceTypeId): Promise<CatalogueRecord[]>;
+    enable(sourceTypeId: SourceTypeId, entryId: string): Promise<void>;
+    setPollInterval(sourceTypeId: SourceTypeId, entryId: string, seconds: number | null): Promise<void>;
+    disableIfUnused(sourceTypeId: SourceTypeId, entryId: string, configKey: string): Promise<boolean>;
+}
+export declare class PostgresSourceRepository implements SourceRepository {
+    private readonly db;
+    constructor(db: Database);
+    add(source: Source): Promise<void>;
+    list(): Promise<Source[]>;
+    listOfType(sourceTypeId: SourceTypeId): Promise<Source[]>;
+    findById(id: SourceId): Promise<Source | null>;
+    migrateConfig(id: SourceId, fromVersion: number, plain: PlainConfig, configVersion: number): Promise<void>;
+    update(source: Source): Promise<void>;
+    recordFailedRun(id: SourceId, at: Date, error: RunError): Promise<void>;
+    setShown(id: SourceId, shown: boolean): Promise<void>;
+    rename(id: SourceId, name: string | null): Promise<void>;
+    declareAttributes(id: SourceId, attributes: DeclaredAttribute[]): Promise<void>;
+    archiveAttribute(id: SourceId, externalId: string): Promise<void>;
+    assignAttribute(id: SourceAttributeId, concerns: FamilyMemberId[]): Promise<boolean>;
+    remove(id: SourceId): Promise<BlobRef[]>;
+    private select;
+    private attributesOf;
+}
+export declare const cursorToJson: (syncCursor: string | null) => SQL;
+export declare function failureColumns(failure: SourceFailure | null): {
+    failingSince: Date | null;
+    lastErrorKind: "definite" | "temporary" | null;
+    lastError: string | null;
+};
+export declare class PostgresLlmEndpointRepository implements LlmEndpointRepository {
+    private readonly db;
+    constructor(db: Database);
+    find(): Promise<StoredLlmEndpoint | null>;
+    save(endpoint: StoredLlmEndpoint): Promise<void>;
+}
+export declare class PostgresIdentityProviderRepository implements IdentityProviderRepository {
+    private readonly db;
+    constructor(db: Database);
+    find(): Promise<StoredIdentityProvider | null>;
+    save(provider: StoredIdentityProvider): Promise<void>;
+}
+export declare class PostgresActivityRepository implements ActivityRepository {
+    private readonly db;
+    constructor(db: Database);
+    find(): Promise<BackgroundActivity | null>;
+    save(activity: BackgroundActivity): Promise<void>;
+    clear(): Promise<void>;
+}
+// src/postgres/item-repository.ts
+import type { Extraction, ItemRepository, PendingMessage, ProjectedItem, RawMessage, ReadStated, RunRecorded, SourceRun } from "@family-agenda/application";
+import type { BlobRef, ItemId, RawMessageId, SourceId } from "@family-agenda/domain";
+import type { Database } from "./database";
+export declare class PostgresItemRepository implements ItemRepository {
+    private readonly db;
+    constructor(db: Database);
+    recordRun(run: SourceRun, read: ReadStated): Promise<RunRecorded>;
+    private withdraw;
+    purgeMessages(now: Date, retainedSince: Date): Promise<{
+        files: BlobRef[];
+        purged: number;
+        deleted: number;
+    }>;
+    pendingMessages(limit: number): Promise<PendingMessage[]>;
+    pendingMessageCount(scope: {
+        sourceId?: SourceId;
+    }): Promise<number>;
+    recordExtraction(extraction: Extraction): Promise<void>;
+    findMessage(id: RawMessageId): Promise<RawMessage | null>;
+    itemsOfMessage(id: RawMessageId): Promise<ProjectedItem[]>;
+    overlapping(from: Date, to: Date | null): Promise<ProjectedItem[]>;
+    outstanding(): Promise<ProjectedItem[]>;
+    find(id: ItemId): Promise<ProjectedItem | null>;
+    setTaskDone(id: ItemId, at: Date | null): Promise<void>;
+    remove(id: ItemId): Promise<boolean>;
+    private query;
+    private projected;
+}
+// src/system-clock.ts
+import type { Clock } from "@family-agenda/application";
+export declare class SystemClock implements Clock {
+    now(): Date;
+}
+// src/tessdata-directory.ts
+import type { Conversion, OcrModel, OcrModelStore } from "@family-agenda/application";
+import { type OcrLanguage } from "@family-agenda/domain";
+export type TessdataCatalog = {
+    checksums: ReadonlyMap<string, string>;
+    download(language: OcrLanguage): Promise<Uint8Array>;
+};
+export type TessdataDirectoryOptions = {
+    directory: string;
+    bundledDirectory: string | null;
+    catalog: TessdataCatalog;
+};
+export declare class TessdataDirectory implements OcrModelStore {
+    private readonly options;
+    constructor(options: TessdataDirectoryOptions);
+    linkBundled(): Promise<void>;
+    private linkFile;
+    downloadable(): OcrLanguage[];
+    installed(): Promise<OcrModel[]>;
+    install(language: OcrLanguage): Promise<Conversion<null>>;
+    remove(language: OcrLanguage): Promise<void>;
+}
+// src/tessdata-fast-catalog.ts
+import type { TessdataCatalog } from "./tessdata-directory";
+export declare const tessdataFastCommit = "87416418657359cb625c412a48b6e1d6d41c29bd";
+export declare function parseChecksums(text: string): Map<string, string>;
+export declare function tessdataFastCatalog(options?: {
+    timeoutMs?: number;
+}): TessdataCatalog;

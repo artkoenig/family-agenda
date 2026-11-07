@@ -1,0 +1,277 @@
+// The public API of @family-agenda/domain, written by `pnpm sdk-api`. Do not edit it by hand.
+// src/index.ts
+export * from "./admin";
+export * from "./calendar";
+export * from "./family-member";
+export * from "./photo";
+export * from "./source";
+export * from "./agenda";
+export * from "./item";
+export * from "./event";
+export * from "./lesson";
+export * from "./task";
+export * from "./mention";
+export * from "./network";
+export * from "./language";
+export * from "./attribution";
+// src/admin.ts
+export type AdminId = string & {
+    readonly __brand: "AdminId";
+};
+export type Email = string & {
+    readonly __brand: "Email";
+};
+export type Admin = {
+    id: AdminId;
+    email: Email;
+    passwordHash: string | null;
+    identitySubject: string | null;
+    createdAt: Date;
+};
+export declare const minimumPasswordLength = 12;
+export declare function parseEmail(raw: string): Email | null;
+export declare function isAcceptablePassword(password: string): boolean;
+// src/calendar.ts
+export type LocalDate = string & {
+    readonly __brand: "LocalDate";
+};
+export type LocalTime = string & {
+    readonly __brand: "LocalTime";
+};
+export declare function localDateTime(at: Date, timeZone: string): {
+    date: LocalDate;
+    time: LocalTime;
+};
+export declare function addDays(date: LocalDate, days: number): LocalDate;
+export declare function daysBetween(from: LocalDate, to: LocalDate): number;
+export declare function isLocalDate(value: string): value is LocalDate;
+// src/family-member.ts
+import type { Photo } from "./photo";
+export type FamilyMemberId = string & {
+    readonly __brand: "FamilyMemberId";
+};
+export type FamilyMember = {
+    id: FamilyMemberId;
+    name: string;
+    photo: Photo | null;
+    createdAt: Date;
+};
+export declare const maximumNameLength = 40;
+export declare function parseName(raw: string): string | null;
+export declare function initialOf(name: string): string;
+// src/photo.ts
+export type BlobRef = string & {
+    readonly __brand: "BlobRef";
+};
+export declare const photoTypes: readonly ["image/jpeg", "image/png", "image/webp", "image/gif"];
+export type PhotoType = (typeof photoTypes)[number];
+export type Photo = {
+    blob: BlobRef;
+    contentType: PhotoType;
+};
+export declare const maximumPhotoBytes: number;
+export declare function photoTypeOf(file: Uint8Array): PhotoType | null;
+// src/source.ts
+export type SourceTypeId = string & {
+    readonly __brand: "SourceTypeId";
+};
+export type SourceId = string & {
+    readonly __brand: "SourceId";
+};
+export type SourceAttributeId = string & {
+    readonly __brand: "SourceAttributeId";
+};
+export type SourceStatus = "ok" | "failing" | "silent";
+export type RunError = {
+    kind: "definite" | "temporary";
+    message: string;
+};
+export type SourceFailure = RunError & {
+    since: Date;
+};
+export declare const failingAfterMs: number;
+export declare const silentAfterMs: number;
+export declare function sourceStatus(source: {
+    failure: SourceFailure | null;
+    silentApplies: boolean;
+    lastNewRecordAt: Date | null;
+    createdAt: Date;
+    now: Date;
+}): SourceStatus;
+// src/agenda.ts
+import { type LocalDate } from "./calendar";
+import type { FamilyMemberId } from "./family-member";
+export type AgendaId = string & {
+    readonly __brand: "AgendaId";
+};
+export declare const agendaLayouts: readonly ["timeline", "task_list"];
+export type AgendaLayout = (typeof agendaLayouts)[number];
+export declare function isAgendaLayout(value: string): value is AgendaLayout;
+export type Agenda = {
+    id: AgendaId;
+    layout: AgendaLayout;
+    memberIds: FamilyMemberId[];
+    horizonDays: number;
+    createdAt: Date;
+};
+export declare const horizonDaysRange: {
+    min: number;
+    max: number;
+};
+export declare const defaultHorizonDays = 7;
+export declare function isAcceptableHorizon(days: number): boolean;
+export declare const maxTimelineDays = 366;
+export declare function isAcceptableTimelineRange(first: LocalDate, last: LocalDate): boolean;
+// src/item.ts
+export type ItemId = string & {
+    readonly __brand: "ItemId";
+};
+export type OriginId = string & {
+    readonly __brand: "OriginId";
+};
+export type RawMessageId = string & {
+    readonly __brand: "RawMessageId";
+};
+export declare const itemKinds: readonly ["event", "task", "lesson"];
+export type ItemKind = (typeof itemKinds)[number];
+export declare const statedItemKinds: readonly ["event", "lesson", "task"];
+export type ItemFields = {
+    fields: Record<string, unknown>;
+    cancelled: boolean;
+};
+// src/event.ts
+import { type LocalDate, type LocalTime } from "./calendar";
+import type { ItemFields } from "./item";
+export type TimeSpan = {
+    allDay: false;
+    start: Date;
+    end: Date;
+} | {
+    allDay: true;
+    firstDay: LocalDate;
+    lastDay: LocalDate;
+};
+export type Event = {
+    title: string;
+    span: TimeSpan;
+    place: string | null;
+    cancelled: boolean;
+};
+export declare const maximumEventTextLength = 500;
+export declare function problemsWithEventFields(fields: Record<string, unknown>): string[];
+export declare function eventOf(folded: ItemFields | null): Event | null;
+export declare function spanOnDay(span: TimeSpan, day: LocalDate, timeZone: string): {
+    from: LocalTime | null;
+    until: LocalTime | null;
+} | null;
+export declare function lastDayOf(span: TimeSpan, timeZone: string): LocalDate;
+export declare function spanBounds(span: TimeSpan): {
+    from: Date;
+    to: Date;
+};
+// src/lesson.ts
+import type { ItemFields } from "./item";
+export type LessonSpan = {
+    start: Date;
+    end: Date;
+};
+export type Lesson = {
+    subject: string;
+    span: LessonSpan;
+    room: string | null;
+    teacher: string | null;
+    cancelled: boolean;
+};
+export declare const timetableChangeKinds: readonly ["cancellation", "substitution", "room-change"];
+export type TimetableChangeKind = (typeof timetableChangeKinds)[number];
+export type TimetableChange = {
+    change: TimetableChangeKind;
+    subject: string;
+    span: LessonSpan;
+    room: string | null;
+    teacher: string | null;
+    previousRoom: string | null;
+    previousTeacher: string | null;
+    note: string | null;
+};
+export declare const maximumLessonTextLength = 200;
+export declare function problemsWithLessonFields(fields: Record<string, unknown>): string[];
+export declare function lessonOf(folded: ItemFields | null): Lesson | null;
+export declare function timetableChangeOf(folded: ItemFields | null): TimetableChange | null;
+// src/task.ts
+import { type LocalDate } from "./calendar";
+import type { ItemFields } from "./item";
+export type Task = {
+    title: string;
+    deadline: LocalDate | null;
+    bring: string[];
+    doneAt: Date | null;
+    arrivedAt: Date | null;
+    cancelled: boolean;
+};
+export type TaskStatus = "upcoming" | "due" | "overdue" | "done";
+export declare const maximumTaskTextLength = 500;
+export declare const maximumThingsToBring = 50;
+export declare function problemsWithTaskFields(fields: Record<string, unknown>): string[];
+export type StatedTask = Pick<Task, "title" | "deadline" | "bring" | "cancelled">;
+export declare function taskOf(folded: ItemFields | null): StatedTask | null;
+export declare function taskStatus(task: Task, today: LocalDate): TaskStatus;
+export declare function isPinned(task: Task, today: LocalDate): boolean;
+export declare function instantOfTask(task: Task): Date | null;
+export declare function dayOfTask(task: Task, timeZone: string): LocalDate | null;
+export declare function isOutstanding(task: Task): boolean;
+// src/mention.ts
+import { type LocalDate } from "./calendar";
+export declare const weekdays: readonly ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
+export type Weekday = (typeof weekdays)[number];
+export type DateMention = {
+    day: number | null;
+    month: number | null;
+    year: number | null;
+    weekday: Weekday | null;
+    daysAfter: number | null;
+    weeksAfter: number | null;
+};
+export type ResolvedDate = {
+    ok: true;
+    date: LocalDate;
+} | {
+    ok: false;
+    problem: "weekday-mismatch";
+    date: LocalDate;
+} | {
+    ok: false;
+    problem: "no-date";
+};
+export declare function resolveDate(mention: DateMention, sentOn: LocalDate): ResolvedDate;
+export declare function resolveDeadline(mention: DateMention, sentOn: LocalDate): ResolvedDate;
+export declare function instantAt(date: LocalDate, time: string, timeZone: string): Date | null;
+export declare function quoteFoundIn(quote: string, message: string): boolean;
+export declare function weekdayOf(date: LocalDate): Weekday;
+// src/network.ts
+export declare function isLocalHost(host: string): boolean;
+// src/language.ts
+export declare const familyLanguages: readonly ["en", "de"];
+export type FamilyLanguage = (typeof familyLanguages)[number];
+export declare const defaultFamilyLanguage: FamilyLanguage;
+export declare function isFamilyLanguage(text: string): text is FamilyLanguage;
+export declare function localeOf(language: FamilyLanguage): string;
+export type OcrLanguage = string & {
+    readonly __brand: "OcrLanguage";
+};
+export declare function isOcrLanguage(text: string): text is OcrLanguage;
+export declare function ocrLanguageOf(language: FamilyLanguage): OcrLanguage;
+export type FamilyLanguages = {
+    language: FamilyLanguage;
+    ocrLanguages: OcrLanguage[];
+};
+export type MultilingualText = string | {
+    en: string;
+    [language: string]: string | undefined;
+};
+export declare function textIn(text: MultilingualText, language: FamilyLanguage): string;
+// src/attribution.ts
+import type { FamilyMemberId } from "./family-member";
+export type Attribution = FamilyMemberId[] | "whole-family";
+export declare function attributionOf(assignedPerSource: readonly (readonly FamilyMemberId[])[]): Attribution;
+export declare function isShownTo(attribution: Attribution, showing: readonly FamilyMemberId[]): boolean;

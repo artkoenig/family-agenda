@@ -11,10 +11,11 @@
     "typecheck": "tsc --noEmit",
     "depcruise": "depcruise packages apps",
     "test": "vitest run",
-    "check": "pnpm lint && pnpm typecheck && pnpm depcruise && pnpm crap && pnpm mutation",
+    "check": "pnpm lint && pnpm typecheck && pnpm depcruise && pnpm api-version && pnpm crap && pnpm mutation",
     "mutation": "stryker run",
     "crap": "vitest run --coverage --coverage.provider=v8 --coverage.reporter=json && crap-typescript --exclude .stryker-tmp/** --format text --threshold 8",
     "preview": "node --import tsx tools/preview/src/main.ts",
+    "api-version": "node --import tsx tools/release/src/main.ts check-sdk --previous \"$(git describe --tags --abbrev=0 --match 'v*' 2> /dev/null || true)\"",
     "sdk-api": "node --import tsx tools/release/src/main.ts sdk-api --write"
   },
   "devDependencies": {

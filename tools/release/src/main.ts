@@ -5,20 +5,18 @@
  *       prints the "Upgrading" section of a GitHub Release. `--previous` is the tag of the release
  *       before it and is left out for the first release; `--current` defaults to HEAD.
  *   check-sdk [--previous <ref>] [--current <ref>]
- *       fails if the SDK's public API changed since `--previous` without its version being raised.
+ *       fails if the public API of a package changed since `--previous` without its version being raised.
  *   sdk-api [--write]
- *       prints the SDK's public API, or writes it to packages/source-sdk/api.txt (`pnpm sdk-api`).
+ *       prints the public API of every package, or writes it to packages/<name>/api.txt (`pnpm sdk-api`).
  *   ghcr-plan --versions <versions.json> --children <children.json>
  *       prints the ids of the versions of the image package that the weekly clean-up deletes, one per line.
  */
-import { readFileSync, writeFileSync } from "node:fs";
+import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { parseArgs } from "node:util";
 import { planCleanup, versionsFromApi, type Children } from "./cleanup";
-import { describeSdkApi, sdkVersionProblem } from "./sdk";
-import { readSnapshot } from "./snapshot";
+import { describePackageApi, sdkVersionProblem } from "./sdk";
+import { readPackageApis, readSnapshot } from "./snapshot";
 import { deriveUpgrading } from "./upgrading";
-
-const sdkDirectory = "packages/source-sdk";
 
 const { values, positionals } = parseArgs({
   allowPositionals: true,
@@ -47,25 +45,41 @@ function upgrading(): void {
 }
 
 function checkSdk(): void {
-  const before = previousRef === undefined ? null : readSnapshot(repo, previousRef).sdk;
-  if (before === null) {
-    console.log("There is no earlier release with an SDK API file to compare the SDK with.");
+  if (previousRef === undefined) {
+    console.log("There is no earlier release with API files to compare the packages with.");
     return;
   }
-  const current = readSnapshot(repo, values.current).sdk;
-  if (current === null) throw new Error(`${values.current} has no ${sdkDirectory}/api.txt: run pnpm sdk-api`);
-  const problem = sdkVersionProblem(before, current);
-  if (problem !== null) {
-    console.error(`::error::${problem}`);
+  const before = readPackageApis(repo, previousRef);
+  const current = readPackageApis(repo, values.current);
+  const problems: string[] = [];
+  for (const folder of packageFolders()) {
+    if (describePackageApi(`${repo}/packages/${folder}`) !== null && !(folder in current)) {
+      problems.push(`${values.current} has no packages/${folder}/api.txt: run pnpm sdk-api`);
+    }
+  }
+  for (const [folder, snapshot] of Object.entries(current)) {
+    const earlier = before[folder];
+    if (earlier === undefined) continue;
+    const subject = folder === "source-sdk" ? undefined : { name: `the package ${folder}`, manifest: `packages/${folder}/package.json` };
+    const problem = sdkVersionProblem(earlier, snapshot, subject);
+    if (problem !== null) problems.push(problem);
+  }
+  if (problems.length > 0) {
+    for (const problem of problems) console.error(`::error::${problem}`);
     process.exit(1);
   }
-  console.log(`The SDK is at ${current.version}, and its API agrees with the change since ${previousRef}.`);
+  console.log(`The API of ${Object.keys(current).length} packages agrees with their versions since ${previousRef}.`);
 }
 
+const packageFolders = () => readdirSync(`${repo}/packages`, { withFileTypes: true }).filter((entry) => entry.isDirectory() && entry.name !== "node_modules").map((entry) => entry.name);
+
 function sdkApi(): void {
-  const api = describeSdkApi(`${repo}/${sdkDirectory}`);
-  if (values.write) writeFileSync(`${repo}/${sdkDirectory}/api.txt`, api);
-  else process.stdout.write(api);
+  for (const folder of packageFolders()) {
+    const api = describePackageApi(`${repo}/packages/${folder}`);
+    if (api === null) continue;
+    if (values.write) writeFileSync(`${repo}/packages/${folder}/api.txt`, api);
+    else process.stdout.write(`${api}\n`);
+  }
 }
 
 /** What the weekly clean-up keeps: the newest 30 images tagged only with a commit, and untagged versions that are a day old. */
