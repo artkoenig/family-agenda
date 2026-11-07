@@ -247,7 +247,7 @@ importers:
     devDependencies:
       '@electric-sql/pglite':
         specifier: ^0.5.14
-        version: 0.5.14
+        version: 0.5.15
       '@family-agenda/source-matrix':
         specifier: workspace:*
         version: link:../../packages/source-matrix
@@ -256,7 +256,7 @@ importers:
         version: 1.5.6
       drizzle-orm:
         specifier: ^0.45.4
-        version: 0.45.4(@electric-sql/pglite@0.5.14)(@opentelemetry/api@1.10.0)(@types/pg@8.23.1)(pg@8.23.1)
+        version: 0.45.4(@electric-sql/pglite@0.5.15)(@opentelemetry/api@1.10.0)(@types/pg@8.23.1)(pg@8.23.1)
       ical.js:
         specifier: ^2.2.1
         version: 2.2.1
@@ -283,7 +283,7 @@ importers:
         version: 2.2.2
       drizzle-orm:
         specifier: ^0.45.4
-        version: 0.45.4(@electric-sql/pglite@0.5.14)(@opentelemetry/api@1.10.0)(@types/pg@8.23.1)(pg@8.23.1)
+        version: 0.45.4(@electric-sql/pglite@0.5.15)(@opentelemetry/api@1.10.0)(@types/pg@8.23.1)(pg@8.23.1)
       openid-client:
         specifier: ^6.8.9
         version: 6.8.9
@@ -296,7 +296,7 @@ importers:
     devDependencies:
       '@electric-sql/pglite':
         specifier: ^0.5.14
-        version: 0.5.14
+        version: 0.5.15
       '@types/pg':
         specifier: ^8.23.1
         version: 8.23.1
@@ -336,11 +336,11 @@ importers:
         specifier: workspace:*
         version: link:../source-sdk
       imapflow:
-        specifier: 2.10.0
-        version: 2.10.0
+        specifier: 2.10.2
+        version: 2.10.2
       mailparser:
-        specifier: 3.14.1
-        version: 3.14.1
+        specifier: 3.14.2
+        version: 3.14.2
     devDependencies:
       '@types/mailparser':
         specifier: ^3.4.6
@@ -620,8 +620,8 @@ packages:
   '@drizzle-team/brocli@0.10.2':
     resolution: {integrity: sha512-z33Il7l5dKjUgGULTqBsQBQwckHh5AbIuxhdsIxDDiZAzBOrZO6q9ogcWC65kU382AfynTfgNumVcNIjuIua6w==}
 
-  '@electric-sql/pglite@0.5.14':
-    resolution: {integrity: sha512-aAQe7iArcFB2w1xtx91l3l9trxhMzD6aZf+WnosSHNhwgp70EJz80Igw/bHnW14fUEFYWPBoQ1sGom8Xc0Jttg==}
+  '@electric-sql/pglite@0.5.15':
+    resolution: {integrity: sha512-ERZWgaRTxueGV4cvL1tfpAOzFCWTXoUtbCBqnf2FhHDVs/so9eAKaanvrwWF9Dntx7BYsmFQujVQ0/B4S8Mmiw==}
 
   '@esbuild-kit/core-utils@3.3.2':
     resolution: {integrity: sha512-sPRAnw9CdSsRmEtnsl2WXWdyquogVpB3yZ3dgwJfe8zrOzTsV7cJvmwrKVa+0ma5BoiGJ+BoqkMvawbayKUsqQ==}
@@ -1660,8 +1660,8 @@ packages:
   '@vitest/spy@5.1.0':
     resolution: {integrity: sha512-2DPO5OMHWKrBngC+fCmTQqemNF0gidRhp3lxbBmRhW+M1XJrfgPpqNqWVevXtn2f2ufD5ZaR1B6B641aAlcX5A==}
 
-  '@zone-eu/mailsplit@5.4.29':
-    resolution: {integrity: sha512-CCUNycmUjrV5M0wNf23waWAt9eOHczhjLbUQS7k0FNJvR0py9VSqHFt+tSl/D0+XI73VLG0U+PwYtq9R0zsm9Q==}
+  '@zone-eu/mailsplit@5.4.30':
+    resolution: {integrity: sha512-qN0KT6/ziAFvo5TzscaqpurIJaJQEXPPtqBZnpyhiGrACOKLDVMV6Lm57kXt5e/8zZUWoYiSC8oKl/aewtrJDQ==}
     engines: {node: '>=20.0.0'}
 
   acorn-jsx-walk@2.0.0:
@@ -1979,8 +1979,8 @@ packages:
     resolution: {integrity: sha512-AnfC1ATldl49/cvZdLPDjBfrRNwbDO05aibiOtzQu3qtlbJtomNLhF30HEtn/7iBz50dlMECqATo3fG0LrdEgw==}
     engines: {node: '>=14'}
 
-  encoding-japanese@2.4.0:
-    resolution: {integrity: sha512-PE0KjlsDy9JSsoU4C2Q8NXb1kC4c+bZRac9ZvHXUE4q1Ht63gScKMdEy9jst9+Fi3M4eDkqzkEhBZvix4blP2A==}
+  encoding-japanese@2.5.0:
+    resolution: {integrity: sha512-5TKhaMWTUF777NQ16OrAkJFuEd1uOnEBw8ODeXFTc/Y9csZZQ6/jiIS5r4aFuzfowu9gLGrE51zqI2H0dLwlmg==}
     engines: {node: '>=18.0.0'}
 
   enhanced-resolve@5.26.0:
@@ -2269,8 +2269,8 @@ packages:
     resolution: {integrity: sha512-wCBiZ77u1tuWde6G/nfOtLaCTYcFDU5yCzARzK10y+rLhzYoL7a7yEemcopcc2Mzow7gZOIjnV2ym1NYmdiJOQ==}
     engines: {node: '>= 4'}
 
-  imapflow@2.10.0:
-    resolution: {integrity: sha512-J4YH1eHwemE00xaCT2vn30s+81iJi+C4OHQEoO6/hptA/z75nGdP1isU3oDfMaiheHD240LIhMMJcMMCJ5RDYA==}
+  imapflow@2.10.2:
+    resolution: {integrity: sha512-KI9tW4KXMz8KuZoSLGwLkXLUH39me38/vYZBL/eyh2CjHVDBFUj1QuqqfzeHJOIj1VwAZ4jL4zoVKppM7cXfrw==}
     engines: {node: '>=20.0.0'}
 
   import-meta-resolve@4.2.0:
@@ -2390,8 +2390,8 @@ packages:
     resolution: {integrity: sha512-Nyh3H90B3gRtrcxIe56Ayy7635J0jmh6AbxbQgQae8wrSPQMH5wFqJChiMTB13yKG512L3YspbA5DzumhFTITA==}
     engines: {node: '>=20.0.0'}
 
-  libmime@5.6.3:
-    resolution: {integrity: sha512-cuTUW/Jybvh5O4/U9p61gyutHOjDtZyGQYuY99+bfnaFwqcDf2Nb+R6hMHY6DDen2H9wLKQSMpofWUgn2TI5JQ==}
+  libmime@5.6.4:
+    resolution: {integrity: sha512-QWiiwq3ujIUSsCCjFDldDN7FfXuLYSTnEln0oeYfOjgqyVlRV6WQ3UyJ/paguoz8Ynxy1s7k3kh6xomS3bJkCw==}
     engines: {node: '>=20.0.0'}
 
   libqp@3.0.1:
@@ -2499,8 +2499,8 @@ packages:
   magicast@0.5.5:
     resolution: {integrity: sha512-UicdXN8zQ3JHlxVq+28afMXPr1z7WNY6+7EJnzTdQWkTAlMLF5fNCCKxJHBQwGaNGR11581EiQmQzx73+MvszA==}
 
-  mailparser@3.14.1:
-    resolution: {integrity: sha512-Z0LLk7F0yhSCx3xjyL8BMm6dXO3vuWrSAeVhm1F18wVGVBbLAKOsVsCjPyOhJy+KuyDW9PRyDuyiPb7yJCHwVA==}
+  mailparser@3.14.2:
+    resolution: {integrity: sha512-D5hdnLqSfjm6JV361ZqyWCx+bJsU5AovGiNloNqAM0pPJsa0BqVluDh+bgcOS+aHUtJdN/GJ2FVGGtCt841lyw==}
     engines: {node: '>=20.0.0'}
 
   math-intrinsics@1.1.0:
@@ -3467,7 +3467,7 @@ snapshots:
 
   '@drizzle-team/brocli@0.10.2': {}
 
-  '@electric-sql/pglite@0.5.14': {}
+  '@electric-sql/pglite@0.5.15': {}
 
   '@esbuild-kit/core-utils@3.3.2':
     dependencies:
@@ -4246,10 +4246,10 @@ snapshots:
 
   '@vitest/spy@5.1.0': {}
 
-  '@zone-eu/mailsplit@5.4.29':
+  '@zone-eu/mailsplit@5.4.30':
     dependencies:
       libbase64: 1.4.1
-      libmime: 5.6.3
+      libmime: 5.6.4
       libqp: 3.0.1
 
   acorn-jsx-walk@2.0.0: {}
@@ -4456,9 +4456,9 @@ snapshots:
       esbuild: 0.25.12
       tsx: 4.23.15
 
-  drizzle-orm@0.45.4(@electric-sql/pglite@0.5.14)(@opentelemetry/api@1.10.0)(@types/pg@8.23.1)(pg@8.23.1):
+  drizzle-orm@0.45.4(@electric-sql/pglite@0.5.15)(@opentelemetry/api@1.10.0)(@types/pg@8.23.1)(pg@8.23.1):
     optionalDependencies:
-      '@electric-sql/pglite': 0.5.14
+      '@electric-sql/pglite': 0.5.15
       '@opentelemetry/api': 1.10.0
       '@types/pg': 8.23.1
       pg: 8.23.1
@@ -4477,7 +4477,7 @@ snapshots:
 
   empathic@2.1.0: {}
 
-  encoding-japanese@2.4.0: {}
+  encoding-japanese@2.5.0: {}
 
   enhanced-resolve@5.26.0:
     dependencies:
@@ -4857,13 +4857,13 @@ snapshots:
 
   ignore@7.0.14: {}
 
-  imapflow@2.10.0:
+  imapflow@2.10.2:
     dependencies:
-      '@zone-eu/mailsplit': 5.4.29
-      encoding-japanese: 2.4.0
+      '@zone-eu/mailsplit': 5.4.30
+      encoding-japanese: 2.5.0
       iconv-lite: 0.7.3
       libbase64: 1.4.1
-      libmime: 5.6.3
+      libmime: 5.6.4
       libqp: 3.0.1
       pino: 10.3.1
       socks: 2.8.10
@@ -4944,9 +4944,9 @@ snapshots:
 
   libbase64@1.4.1: {}
 
-  libmime@5.6.3:
+  libmime@5.6.4:
     dependencies:
-      encoding-japanese: 2.4.0
+      encoding-japanese: 2.5.0
       iconv-lite: 0.7.3
       libbase64: 1.4.1
       libqp: 3.0.1
@@ -5030,12 +5030,12 @@ snapshots:
       '@babel/types': 7.29.11
       source-map-js: 1.2.2
 
-  mailparser@3.14.1:
+  mailparser@3.14.2:
     dependencies:
-      '@zone-eu/mailsplit': 5.4.29
+      '@zone-eu/mailsplit': 5.4.30
       he: 1.2.0
       html-to-text: 10.0.1
-      libmime: 5.6.3
+      libmime: 5.6.4
       linkify-it: 5.0.2
       nodemailer: 10.3.1
       punycode.js: 2.3.1
