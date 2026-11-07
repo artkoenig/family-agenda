@@ -77,7 +77,8 @@ describe("the API text of a package", () => {
       const api = describePackageApi(`${packages}/${folder.name}`);
       if (api !== null) expect(readFileSync(`${packages}/${folder.name}/api.txt`, "utf8"), folder.name).toBe(api);
     }
-  });
+    // Compiles every package; slow on a CI runner with coverage on.
+  }, 120_000);
 });
 
 describe("what changed in an API text", () => {
