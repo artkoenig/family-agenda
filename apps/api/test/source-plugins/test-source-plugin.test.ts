@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { describeSourcePluginContract, recordingAttributes } from "@family-agenda/source-sdk/testing";
+import { describeSourcePluginContract } from "@family-agenda/source-sdk/testing";
 import { testPluginControls, testSourcePlugin } from "../support/test-source-plugin";
 
 const config = { plain: { url: "https://example.org" }, secrets: {} };
@@ -10,7 +10,7 @@ describe("the test plugin", () => {
   const poll = (sourceTypeId: string, syncCursor: string | null) => {
     const { ingestion } = testSourcePlugin({ sourceTypeId });
     if (ingestion.mode !== "polling") throw new Error("the test plugin polls");
-    return ingestion.poll({ config, syncCursor, now: new Date(), timeZone: "Europe/Berlin", attributes: recordingAttributes() });
+    return ingestion.poll({ config, syncCursor, now: new Date(), timeZone: "Europe/Berlin" });
   };
 
   it("emits the Origins it is given, once, and advances its sync cursor", async () => {
@@ -23,8 +23,8 @@ describe("the test plugin", () => {
     };
     testPluginControls.emit("emitting", [origin]);
 
-    expect(await poll("emitting", null)).toEqual({ origins: [origin], syncCursor: "1" });
-    expect(await poll("emitting", "1")).toEqual({ origins: [], syncCursor: "2" });
+    expect(await poll("emitting", null)).toEqual({ declaredAttributes: [{ externalId: "inbox", name: "inbox" }], archivedAttributes: [], origins: [origin], syncCursor: "1" });
+    expect(await poll("emitting", "1")).toEqual({ declaredAttributes: [], archivedAttributes: [], origins: [], syncCursor: "2" });
   });
 
   it("fails on demand with a definite or temporary error", async () => {

@@ -6,7 +6,7 @@ import {
   SourceError,
   type CatalogueEntry,
   type Configuration,
-  type IngestContext,
+  type IngestResult,
   type Origin,
   type PluginText,
   type SourceAttributeDeclaration,
@@ -207,33 +207,33 @@ function basicTestSourcePlugin(options: TestPluginOptions): SourcePlugin {
     ingestion: {
       mode: "polling",
       suggestedIntervalSeconds: 600,
-      poll: async (context) => {
+      poll: (context) => {
         const { syncCursor } = context;
         runs.set(sourceTypeId, [...(runs.get(sourceTypeId) ?? []), context]);
         const next = pending.get(sourceTypeId) ?? { origins: [] };
         pending.delete(sourceTypeId);
-        if (next.failure) throw next.failure;
-        await reportAttributes(sourceTypeId, context, next.origins);
-        return {
+        if (next.failure) return Promise.reject(next.failure);
+        return Promise.resolve({
+          ...reportedAttributes(sourceTypeId, next.origins),
           origins: next.origins,
           syncCursor: String(Number(syncCursor ?? 0) + 1),
           ...(next.withdrawn ? { withdrawn: next.withdrawn } : {}),
-        };
+        });
       },
     },
     health: { silentApplies: options.silentApplies ?? true },
   };
 }
 
-/** Declares the Source Attributes the Origins name and those asked for, then archives those asked for. */
-async function reportAttributes(sourceTypeId: string, context: IngestContext, origins: Origin[]): Promise<void> {
+/** The Source Attributes the Origins name and those asked for to declare, and those asked for to archive. */
+function reportedAttributes(sourceTypeId: string, origins: Origin[]): Pick<IngestResult, "declaredAttributes" | "archivedAttributes"> {
   const named = new Map<string, string>();
   if (!undeclared.delete(sourceTypeId)) for (const id of origins.flatMap((origin) => origin.attributes)) named.set(id, id);
   for (const { externalId, name } of declaring.get(sourceTypeId) ?? []) named.set(externalId, name);
   declaring.delete(sourceTypeId);
-  if (named.size > 0) await context.attributes.declare([...named].map(([externalId, name]) => ({ externalId, name })));
-  for (const externalId of archiving.get(sourceTypeId) ?? []) await context.attributes.archive(externalId);
+  const archivedAttributes = [...(archiving.get(sourceTypeId) ?? [])];
   archiving.delete(sourceTypeId);
+  return { declaredAttributes: [...named].map(([externalId, name]) => ({ externalId, name })), archivedAttributes };
 }
 
 export type TestPluginPackage = {

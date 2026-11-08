@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
 import { describeSourcePluginContract, recordingAttributes } from "@family-agenda/source-sdk/testing";
-import { SourceError, type IngestResult, type Origin, type RunContext, type SetupProgress, type SourceAttributes, type SourcePlugin } from "@family-agenda/source-sdk";
+import { SourceError, type IngestResult, type Origin, type RunContext, type SetupProgress, type SourcePlugin } from "@family-agenda/source-sdk";
 import { createMatrixPlugin } from "../src";
 import { FakeHomeserver, installedPrograms } from "../src/testing";
 
@@ -26,15 +26,17 @@ async function addSource(of: SourcePlugin = plugin()): Promise<RunContext["confi
 
 const userOf = (config: RunContext["config"]) => config.plain.userId as string;
 
-const poll = (
+const poll = async (
   config: RunContext["config"],
   syncCursor: string | null = null,
   of: SourcePlugin = plugin(),
   at = now,
-  attributes: SourceAttributes = recordingAttributes(),
+  attributes: ReturnType<typeof recordingAttributes> = recordingAttributes(),
 ): Promise<IngestResult> => {
   if (of.ingestion.mode !== "polling") throw new Error("the Matrix plugin polls");
-  return of.ingestion.poll({ config, syncCursor, now: at, timeZone: "Europe/Berlin", attributes });
+  const result = await of.ingestion.poll({ config, syncCursor, now: at, timeZone: "Europe/Berlin" });
+  attributes.apply(result);
+  return result;
 };
 
 const allowListing = (config: RunContext["config"], ...chats: string[]): RunContext["config"] => ({
@@ -544,7 +546,7 @@ describe("chats as Source Attributes", () => {
 
   it("archives the one Source Attribute a Source declared for its whole account before groups were Source Attributes", async () => {
     const attributes = recordingAttributes();
-    await attributes.declare([{ externalId: "account", name: "WhatsApp" }]);
+    attributes.apply({ declaredAttributes: [{ externalId: "account", name: "WhatsApp" }], origins: [], syncCursor: null });
     const first = await poll(allowListing(config, jid), null, plugin(), now, attributes);
     // A sync cursor written before groups were Source Attributes.
     const older = JSON.parse(first.syncCursor ?? "{}") as Record<string, unknown>;

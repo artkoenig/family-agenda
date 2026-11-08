@@ -2,7 +2,7 @@
  * The contract a Source plugin implements. It is the only Family Agenda package a
  * plugin may import.
  */
-export const sdkVersion = "1.0.0";
+export const sdkVersion = "2.0.0";
 
 /**
  * A text the Admin area shows: plain, or per language as `{ en: "Calendar", de: "Kalender" }`.
@@ -130,30 +130,22 @@ export type SourceAttributeDeclaration = {
   name: string;
 };
 
-/**
- * The Source Attributes of the Source being run, which a plugin reports and nothing
- * else creates. Whom an Item concerns follows from the Source Attributes its Origin names, and
- * the Family Members an Admin assigned to them. A call takes effect when it returns, so an Origin
- * may name an id from the moment `declare` returned it.
- */
-export interface SourceAttributes {
-  /**
-   * Makes these Source Attributes known; idempotent. An id the Source knows already gets its new
-   * name and is revived if it was archived, keeping the Family Members assigned to it. A Source
-   * without subdivisions declares exactly one.
-   */
-  declare(attributes: SourceAttributeDeclaration[]): Promise<void>;
-  /**
-   * Archives one that is gone, such as a deleted folder. Its assignment and the Items it decided
-   * stay; an Origin cannot name it until it is declared again. An unknown id is ignored.
-   */
-  archive(externalId: string): Promise<void>;
-}
-
-/** What a plugin gets to ingest for one Source: the run, and the Source's Source Attributes. */
-export type IngestContext = RunContext & { attributes: SourceAttributes };
-
 export type IngestResult = {
+  /**
+   * The Source Attributes the Source has now, which a plugin reports and nothing else creates.
+   * Whom an Item concerns follows from the Source Attributes its Origin names, and the Family
+   * Members an Admin assigned to them. The core applies them before it ingests `origins`, so an
+   * Origin may name any id declared here. Idempotent: an id the Source knows already gets its new
+   * name and is revived if it was archived, keeping its Family Members. A Source without
+   * subdivisions declares exactly one. A run that fails applies none of them.
+   */
+  declaredAttributes?: SourceAttributeDeclaration[];
+  /**
+   * External ids of Source Attributes that are gone, such as a deleted folder. Applied after
+   * `declaredAttributes`. Their assignment and the Items they decided stay; an Origin cannot name
+   * one until it is declared again. An unknown id is ignored.
+   */
+  archivedAttributes?: string[];
   origins: Origin[];
   /** Where the next run resumes; stored only together with these Origins. */
   syncCursor: string | null;
@@ -169,12 +161,12 @@ export type Ingestion =
       mode: "polling";
       /** How often the worker polls a Source by default; an Admin can change it. */
       suggestedIntervalSeconds: number;
-      poll(context: IngestContext): Promise<IngestResult>;
+      poll(context: RunContext): Promise<IngestResult>;
     }
   | {
       /** The plugin's own process delivers to an ingest endpoint the Instance gives each Source. */
       mode: "push";
-      receive(context: IngestContext, payload: Uint8Array): Promise<IngestResult>;
+      receive(context: RunContext, payload: Uint8Array): Promise<IngestResult>;
     };
 
 export type Attachment = { filename: string; contentType: string; bytes: Uint8Array };

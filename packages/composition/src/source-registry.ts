@@ -4,7 +4,7 @@ import { registerHooks } from "node:module";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import type {
-  AttributeReporting,
+  DeclaredAttribute,
   InstalledSourceType,
   LoadedSourceType,
   PlainConfig,
@@ -22,7 +22,7 @@ import {
   type IngestResult,
   type JsonObject,
   type SetupProgress,
-  type SourceAttributes,
+  type SourceAttributeDeclaration,
   type SourcePlugin,
   type SourcePluginManifest,
   type ManifestResult,
@@ -233,7 +233,7 @@ function loadedSourceType(plugin: SourcePlugin): LoadedSourceType {
         ? {
             mode: "polling",
             suggestedIntervalSeconds: ingestion.suggestedIntervalSeconds,
-            poll: (context, attributes) => run(() => ingestion.poll({ ...runContextOf(context), attributes: checkedAttributes(attributes) })),
+            poll: (context) => run(() => ingestion.poll(runContextOf(context))),
           }
         : { mode: "push" },
     silentApplies: health.silentApplies,
@@ -249,17 +249,12 @@ function loadedSourceType(plugin: SourcePlugin): LoadedSourceType {
   };
 }
 
-/** What a plugin reports its Source's Source Attributes through; one declared without an id or a name fails its run. */
-function checkedAttributes(reporting: AttributeReporting): SourceAttributes {
-  return {
-    declare(attributes) {
-      if (attributes.some(({ externalId, name }) => typeof externalId !== "string" || externalId === "" || typeof name !== "string" || name.trim() === "")) {
-        return Promise.reject(SourceError.definite("The plugin declared a Source Attribute without an id or a name."));
-      }
-      return reporting.declare(attributes.map(({ externalId, name }) => ({ externalId, name: name.trim() })));
-    },
-    archive: (externalId) => reporting.archive(externalId),
-  };
+/** The Source Attributes a plugin declared, with trimmed names; null if one lacks an id or a name. */
+function checkedDeclarations(declared: SourceAttributeDeclaration[]): DeclaredAttribute[] | null {
+  if (declared.some(({ externalId, name }) => typeof externalId !== "string" || externalId === "" || typeof name !== "string" || name.trim() === "")) {
+    return null;
+  }
+  return declared.map(({ externalId, name }) => ({ externalId, name: name.trim() }));
 }
 
 function runContextOf(context: SourceRunContext) {
@@ -277,12 +272,23 @@ async function run(ingest: () => Promise<IngestResult>): Promise<SourceRunResult
     // An error the plugin did not expect may well be gone next time.
     return { ok: false, kind: "temporary", message: messageOf(error) };
   }
+  return outcomeOf(result);
+}
+
+/** What a plugin that did not throw emitted, or why the core refuses it. */
+function outcomeOf(result: IngestResult): SourceRunResult {
   const problems = result.origins.flatMap(problemsWithOrigin);
   if (problems.length > 0) {
     return { ok: false, kind: "definite", message: `The plugin emitted invalid Origins: ${problems.join("; ")}` };
   }
+  const declared = checkedDeclarations(result.declaredAttributes ?? []);
+  if (declared === null) {
+    return { ok: false, kind: "definite", message: "The plugin declared a Source Attribute without an id or a name." };
+  }
   return {
     ok: true,
+    declared,
+    archived: (result.archivedAttributes ?? []).filter((id) => typeof id === "string" && id !== ""),
     syncCursor: result.syncCursor,
     withdrawn: (result.withdrawn ?? []).filter((id) => typeof id === "string" && id !== ""),
     origins: result.origins.map((origin) => ({

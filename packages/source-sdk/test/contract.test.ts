@@ -9,7 +9,7 @@ import {
   clipped,
   statedTextLimits,
   type Origin,
-  type SourceAttributes,
+  type IngestResult,
   type StatedEvent,
   type StatedTask,
   type SourcePlugin,
@@ -38,9 +38,9 @@ const examplePlugin = (overrides: Partial<SourcePlugin> = {}): SourcePlugin => (
   ingestion: {
     mode: "polling",
     suggestedIntervalSeconds: 900,
-    poll: async ({ syncCursor, attributes }) => {
-      await attributes.declare([{ externalId: "inbox", name: "Inbox" }]);
-      return {
+    poll: ({ syncCursor }) => {
+      return Promise.resolve({
+        declaredAttributes: [{ externalId: "inbox", name: "Inbox" }],
         origins:
           syncCursor !== null
             ? []
@@ -54,7 +54,7 @@ const examplePlugin = (overrides: Partial<SourcePlugin> = {}): SourcePlugin => (
                 },
               ],
         syncCursor: `${syncCursor ?? ""}+1`,
-      };
+      });
     },
   },
   health: { silentApplies: true },
@@ -66,42 +66,34 @@ describeSourcePluginContract(() => examplePlugin(), {
 });
 
 describe("the contract's check that a plugin declares before it emits", () => {
-  const emitting = (declare: (attributes: SourceAttributes) => Promise<void>, attribute = "inbox"): SourcePlugin =>
-    examplePlugin({
+  type Reported = Pick<IngestResult, "declaredAttributes" | "archivedAttributes">;
+  /** A plugin that reports `reported(run)` with each run, and emits an Origin naming `attribute`. */
+  const emitting = (reported: (run: number) => Reported, attribute = "inbox"): SourcePlugin => {
+    let run = 0;
+    return examplePlugin({
       ingestion: {
         mode: "polling",
         suggestedIntervalSeconds: 900,
-        poll: async ({ attributes }) => {
-          await declare(attributes);
-          return {
+        poll: () =>
+          Promise.resolve({
+            ...reported(run++),
             origins: [{ externalId: "e1", attributes: [attribute], content: { kind: "stated", stated: wholeDayEvent } }],
             syncCursor: null,
-          };
-        },
+          }),
       },
     });
+  };
+  const inbox = { declaredAttributes: [{ externalId: "inbox", name: "Inbox" }] };
   const config = { plain: {}, secrets: {} };
 
   it("passes a plugin that declares the Source Attributes its Origins name", async () => {
-    expect(await undeclaredAttributes(emitting((attributes) => attributes.declare([{ externalId: "inbox", name: "Inbox" }])), config)).toEqual([]);
+    expect(await undeclaredAttributes(emitting(() => inbox), config)).toEqual([]);
   });
 
   it("names the ids a plugin emits without declaring them, or after archiving them", async () => {
-    expect(await undeclaredAttributes(emitting(() => Promise.resolve()), config)).toEqual(["inbox"]);
-    const archived = emitting(async (attributes) => {
-      await attributes.declare([{ externalId: "inbox", name: "Inbox" }]);
-      await attributes.archive("inbox");
-    });
+    expect(await undeclaredAttributes(emitting(() => ({})), config)).toEqual(["inbox"]);
+    const archived = emitting(() => ({ ...inbox, archivedAttributes: ["inbox"] }));
     expect(await undeclaredAttributes(archived, config)).toEqual(["inbox"]);
-  });
-
-  it("lets a plugin declare an archived one again", async () => {
-    const revived = emitting(async (attributes) => {
-      await attributes.declare([{ externalId: "inbox", name: "Inbox" }]);
-      await attributes.archive("inbox");
-      await attributes.declare([{ externalId: "inbox", name: "Inbox, renamed" }]);
-    });
-    expect(await undeclaredAttributes(revived, config)).toEqual([]);
   });
 });
 
@@ -119,12 +111,13 @@ describe("a plugin that is not loadable", () => {
     ]);
   });
 
-  it("is built for the SDK of this major, which is 1: a plugin for the 0.x line is refused, as every 0.x minor broke the last", () => {
+  it("is built for the SDK of this major, which is 2: a plugin for the 1.x line or the 0.x line is refused, as every major broke the last", () => {
     const builtFor = (sdkVersion: string) => problemsWith(examplePlugin({ identity: { sourceTypeId: "example", displayName: "Example", version: "1.0.0", sdkVersion } }));
 
-    expect(sdkVersion).toBe("1.0.0");
-    expect(builtFor("1.0.0")).toEqual([]);
-    expect(builtFor("0.10.0")).toEqual(["built for SDK 0.10.0, but this is SDK 1.0.0"]);
+    expect(sdkVersion).toBe("2.0.0");
+    expect(builtFor("2.0.0")).toEqual([]);
+    expect(builtFor("1.0.0")).toEqual(["built for SDK 1.0.0, but this is SDK 2.0.0"]);
+    expect(builtFor("0.10.0")).toEqual(["built for SDK 0.10.0, but this is SDK 2.0.0"]);
   });
 
   it("names configuration fields used twice and migrations that are missing", () => {

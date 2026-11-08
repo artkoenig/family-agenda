@@ -1,4 +1,4 @@
-import { sdkVersion, type IngestContext, type IngestResult, type Origin, type SourcePlugin, type StatedItem } from "@family-agenda/source-sdk";
+import { sdkVersion, type IngestResult, type Origin, type RunContext, type SourcePlugin, type StatedItem } from "@family-agenda/source-sdk";
 
 /** The days from the run's day on that the demo states Items for. */
 const daysAhead = 7;
@@ -29,9 +29,8 @@ export function createDemoPlugin(): SourcePlugin {
     ingestion: {
       mode: "polling",
       suggestedIntervalSeconds: 3600,
-      async poll(context: IngestContext): Promise<IngestResult> {
-        await context.attributes.declare([...demoAttributes]);
-        return { origins: originsFor(daysFrom(context.now, context.timeZone)), syncCursor: null };
+      poll(context: RunContext): Promise<IngestResult> {
+        return Promise.resolve({ declaredAttributes: [...demoAttributes], origins: originsFor(daysFrom(context.now, context.timeZone)), syncCursor: null });
       },
     },
     health: { silentApplies: false },
