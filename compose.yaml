@@ -30,6 +30,8 @@ x-app: &app
     # the blobs. api, worker and plugin-host share this token: `openssl rand -hex 32`.
     PLUGIN_HOST_URL: http://plugin-host:4100
     PLUGIN_HOST_TOKEN: ${PLUGIN_HOST_TOKEN:?Set PLUGIN_HOST_TOKEN, such as to the output of openssl rand -hex 32}
+    # How long a Source plugin may take to load or to read a Source; empty for 300 seconds.
+    PLUGIN_TIMEOUT_SECONDS: ${PLUGIN_TIMEOUT_SECONDS:-}
   volumes:
     # The master key that Source credentials are encrypted with; never in Postgres.
     - master-key:/var/lib/family-agenda/master-key

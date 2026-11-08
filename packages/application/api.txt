@@ -664,6 +664,7 @@ export type SourceRunContext = {
     syncCursor: string | null;
     now: Date;
     timeZone: string;
+    signal?: AbortSignal;
 };
 export type StatedJson = Record<string, unknown>;
 export type IngestedAttachment = {

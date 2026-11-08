@@ -10,7 +10,13 @@ export type ApplicationConfig = {
 export function readApplicationConfig(env: NodeJS.ProcessEnv): ApplicationConfig {
   const timeZone = env.TZ;
   if (!timeZone) throw new Error("TZ is not set. Set it to the Family's IANA time zone, such as Europe/Berlin.");
-  return { timeZone };
+  const timeout = env.PLUGIN_TIMEOUT_SECONDS;
+  if (timeout === undefined || timeout === "") return { timeZone };
+  const seconds = Number(timeout);
+  if (!Number.isFinite(seconds) || seconds <= 0) {
+    throw new Error(`PLUGIN_TIMEOUT_SECONDS is "${timeout}". Set it to a positive number of seconds, such as 300.`);
+  }
+  return { timeZone, pluginTimeoutMs: seconds * 1000 };
 }
 
 /** Throws a clear error for a time zone Intl does not know. */

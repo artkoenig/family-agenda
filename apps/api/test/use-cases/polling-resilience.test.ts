@@ -57,6 +57,20 @@ describe("Polling of slow and broken plugins", () => {
     expect((await first).polled).toEqual([source]);
   });
 
+  it("never runs a Source in two worker processes at once", async () => {
+    const other = await instance.bootAnother();
+    const release = hold("school-portal");
+    const first = instance.app.polling.pollDue();
+    await vi.waitFor(() => { expect(runsOf("school-portal")).toBe(1); });
+
+    expect((await other.polling.pollDue()).polled).toEqual([]);
+
+    release();
+    expect((await first).polled).toEqual([source]);
+    expect((await other.polling.pollDue()).polled).toEqual([]);
+    expect(runsOf("school-portal")).toBe(1);
+  });
+
   it("lets the next run take a Source again once a run is over", async () => {
     await instance.app.polling.pollDue();
     instance.clock.advance(10 * minutes);
@@ -71,6 +85,14 @@ describe("Polling of slow and broken plugins", () => {
 
     expect(report.failed).toEqual([{ sourceId: source, kind: "temporary", message: "The plugin did not answer within 0.5 seconds." }]);
     expect((await health())?.problem).toEqual({ kind: "run-failed", message: "The plugin did not answer within 0.5 seconds." });
+  });
+
+  it("tells the plugin of a run that hangs that the Instance no longer waits for it", async () => {
+    hold("school-portal");
+
+    await instance.app.polling.pollDue();
+
+    expect(testPluginControls.runs("school-portal").at(-1)?.signal?.aborted).toBe(true);
   });
 
   it("waits twice as long after each failed run in a row, and as usual again after a successful one", async () => {

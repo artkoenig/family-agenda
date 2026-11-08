@@ -225,6 +225,8 @@ export type SourceRunContext = {
   syncCursor: string | null;
   now: Date;
   timeZone: string;
+  /** Aborted once the Instance stops waiting for the run; absent outside runs. */
+  signal?: AbortSignal;
 };
 
 /** The Item a calendar or timetable entry states, as JSON the way its plugin states it, with its `kind`. */

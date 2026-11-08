@@ -102,10 +102,12 @@ export function createSourcePolling(deps: PollingDeps) {
    */
   async function run(source: Source, ingestion: PollingIngestion, report: PollReport): Promise<{ timedOut: boolean }> {
     const now = clock.now();
-    const context = await runContextOf(source, { secrets, now, timeZone });
+    const aborting = new AbortController();
+    const context = { ...(await runContextOf(source, { secrets, now, timeZone })), signal: aborting.signal };
     let timedOut = false;
     const result = await withinTime(ingestion.poll(context), timeoutMs, () => {
       timedOut = true;
+      aborting.abort(new Error(noAnswerWithin(timeoutMs)));
       return { ok: false as const, kind: "temporary" as const, message: noAnswerWithin(timeoutMs) };
     });
     if (!result.ok) {

@@ -72,6 +72,7 @@ export type RunContext = {
     syncCursor: string | null;
     now: Date;
     timeZone: string;
+    signal?: AbortSignal;
 };
 export type SourceAttributeDeclaration = {
     externalId: string;

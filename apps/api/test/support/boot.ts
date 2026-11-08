@@ -70,6 +70,11 @@ export type TestInstance = {
    * Plugin Host installing what is published then, as an update would; with the given master key, should the operator have changed it.
    */
   restart(masterKey?: Buffer): Promise<void>;
+  /**
+   * Boots a second application on the same database, master key and plugin directories, with its
+   * own connection, as a second worker process would; closed with the Instance.
+   */
+  bootAnother(): Promise<Application>;
   close(): Promise<void>;
 };
 
@@ -125,6 +130,7 @@ export async function bootForTest(options: TestOptions = {}): Promise<TestInstan
     };
   };
 
+  const others: Application[] = [];
   const instance: TestInstance = {
     app: await bootApplication(config, await adaptersFor(initialKey)),
     clock,
@@ -140,7 +146,13 @@ export async function bootForTest(options: TestOptions = {}): Promise<TestInstan
       instance.masterKey = masterKey;
       instance.app = await bootApplication(config, await adaptersFor(masterKey));
     },
+    async bootAnother() {
+      const other = await bootApplication(config, await adaptersFor(instance.masterKey));
+      others.push(other);
+      return other;
+    },
     async close() {
+      for (const other of others) await other.close();
       await instance.app.close();
       await pluginHost?.stop();
       await postgres.release();

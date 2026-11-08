@@ -15,6 +15,16 @@ describe("the behaviour of an Instance", () => {
     expect(() => readApplicationConfig({})).toThrow(/TZ is not set/);
   });
 
+  it("reads how long a plugin may take, in seconds", () => {
+    expect(readApplicationConfig({ TZ: "Europe/Berlin", PLUGIN_TIMEOUT_SECONDS: "90" })).toEqual({ timeZone: "Europe/Berlin", pluginTimeoutMs: 90_000 });
+    expect(readApplicationConfig({ TZ: "Europe/Berlin", PLUGIN_TIMEOUT_SECONDS: "" })).toEqual({ timeZone: "Europe/Berlin" });
+  });
+
+  it("refuses a plugin timeout that is not a positive number", () => {
+    expect(() => readApplicationConfig({ TZ: "Europe/Berlin", PLUGIN_TIMEOUT_SECONDS: "soon" })).toThrow(/PLUGIN_TIMEOUT_SECONDS is "soon"/);
+    expect(() => readApplicationConfig({ TZ: "Europe/Berlin", PLUGIN_TIMEOUT_SECONDS: "0" })).toThrow(/positive number/);
+  });
+
   it("refuses a name that is no IANA time zone", () => {
     expect(() => { assertTimeZone("Mars/Olympus"); }).toThrow(/not an IANA time zone/);
     expect(() => { assertTimeZone(""); }).toThrow(/not set/);

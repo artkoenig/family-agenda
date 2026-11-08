@@ -196,8 +196,8 @@ function checkedDeclarations(declared: SourceAttributeDeclaration[]): DeclaredAt
 }
 
 function runContextOf(context: SourceRunContext) {
-  const { plain, secrets, syncCursor, now, timeZone } = context;
-  return { config: { plain: plain as JsonObject, secrets }, syncCursor, now, timeZone };
+  const { plain, secrets, syncCursor, now, timeZone, signal } = context;
+  return { config: { plain: plain as JsonObject, secrets }, syncCursor, now, timeZone, ...(signal ? { signal } : {}) };
 }
 
 /** A plugin's run as the core sees it: what it emitted, or why it failed. */
