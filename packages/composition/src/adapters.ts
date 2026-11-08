@@ -1,4 +1,5 @@
 import type { PostgresConnection } from "@family-agenda/adapters";
+import type { PluginHostConfig } from "./plugin-host-client";
 import type {
   BlobStore,
   Clock,
@@ -33,4 +34,6 @@ export type Adapters = {
   ocrModels: OcrModelStore;
   /** Where the SourceRegistry finds Source plugins, first match wins: the shipped ones, then the `plugins/` volume. */
   pluginDirectories: string[];
+  /** The Plugin Host and the Source Types it runs; without it, every plugin runs in this process. */
+  pluginHost?: PluginHostConfig | null;
 };

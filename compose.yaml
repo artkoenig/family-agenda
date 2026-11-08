@@ -27,6 +27,11 @@ x-app: &app
     MATRIX_INSTANCE_FILE: /var/lib/family-agenda/matrix/instance.json
     # The Family's time zone, which decides where an Agenda's days start.
     TZ: ${TZ:-Europe/Berlin}
+    # The Plugin Host runs the Source Types named here isolated from the database, the master key
+    # and the blobs. Off until PLUGIN_HOST_TOKEN is set: `openssl rand -hex 32`.
+    PLUGIN_HOST_URL: http://plugin-host:4100
+    PLUGIN_HOST_TOKEN: ${PLUGIN_HOST_TOKEN:-}
+    PLUGIN_HOST_SOURCE_TYPES: ${PLUGIN_HOST_SOURCE_TYPES:-ics}
   volumes:
     # The master key that Source credentials are encrypted with; never in Postgres.
     - master-key:/var/lib/family-agenda/master-key
@@ -70,6 +75,33 @@ services:
       # Synapse's configuration and media and the bridges' Messenger sessions, in SQLite outside
       # Postgres. Synapse's own database is on the Postgres server, created by the worker.
       - matrix-data:/var/lib/family-agenda/matrix-data
+
+  # Runs Source plugins, each as a Node process of its own user, with an empty environment, its own
+  # temp space, the permission model and limits. It holds no database, master key or blobs, and
+  # writes only to its tmpfs. It starts as root only to give each plugin its own user.
+  plugin-host:
+    image: *image
+    restart: on-failure
+    working_dir: /app/apps/plugin-host
+    command: ["node", "--import", "tsx", "src/main.ts"]
+    user: "0:0"
+    environment:
+      PLUGIN_HOST_TOKEN: ${PLUGIN_HOST_TOKEN:-}
+      TZ: ${TZ:-Europe/Berlin}
+    read_only: true
+    tmpfs:
+      # Where each plugin gets its directory and temp space; tsx caches in /tmp.
+      - /run/plugin-host:mode=0711
+      - /tmp:mode=1777
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETUID
+      - SETGID
+      - KILL
+    security_opt:
+      - no-new-privileges:true
 
   # Makes the Instance reachable at http://family-agenda.local:8080 from any device on the home
   # network, like homeassistant.local. It has to share the host's network to answer multicast DNS,

@@ -1,0 +1,83 @@
+// The public API of @family-agenda/plugin-protocol, written by `pnpm sdk-api`. Do not edit it by hand.
+// src/index.ts
+import type { CatalogueEntry, Choice, ConfigField, Health, IngestResult, JsonObject, PluginText, RunContext, SetupProgress, SourcePluginIdentity } from "@family-agenda/source-sdk";
+export declare const authorizationHeader = "authorization";
+export type PluginDescription = {
+    identity: SourcePluginIdentity;
+    configuration: {
+        version: number;
+        fields: (Omit<ConfigField, "choices"> & {
+            choices: boolean;
+        })[];
+        migrations: number[];
+    };
+    setupSteps: {
+        id: string;
+        title: PluginText;
+        description: PluginText;
+        live: boolean;
+    }[];
+    ingestion: {
+        mode: "polling";
+        suggestedIntervalSeconds: number;
+    } | {
+        mode: "push";
+    };
+    health: Health;
+    catalogue: {
+        title: PluginText;
+        configKey: string;
+    } | null;
+    sourceAdded: boolean;
+    sourceRemoved: boolean;
+};
+export type Calls = {
+    poll: {
+        args: [RunContext];
+        result: IngestResult;
+    };
+    sourceAdded: {
+        args: [Omit<RunContext, "syncCursor">];
+        result: {
+            plain: JsonObject;
+            secrets: Record<string, string>;
+        };
+    };
+    sourceRemoved: {
+        args: [RunContext];
+        result: null;
+    };
+    choices: {
+        args: [string, RunContext];
+        result: Choice[];
+    };
+    setupProgress: {
+        args: [string, RunContext];
+        result: SetupProgress | null;
+    };
+    catalogueEntries: {
+        args: [];
+        result: CatalogueEntry[];
+    };
+    migrate: {
+        args: [number, JsonObject];
+        result: JsonObject;
+    };
+};
+export type CallName = keyof Calls;
+export declare const callNames: readonly CallName[];
+export declare function isCallName(name: string): name is CallName;
+export type CallFailure = {
+    sourceError: "definite" | "temporary" | null;
+    message: string;
+};
+export type CallOutcome<T = unknown> = {
+    ok: true;
+    value: T;
+} | {
+    ok: false;
+    failure: CallFailure;
+};
+export declare function failureOf(error: unknown): CallFailure;
+export declare function encode(value: unknown): string;
+export declare function decode(text: string): unknown;

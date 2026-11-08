@@ -1,3 +1,4 @@
+import type { PluginHostConfig } from "./plugin-host-client";
 import { mkdir } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import {
@@ -41,6 +42,8 @@ export type SelfHostedConfig = {
   tessdataCatalog?: TessdataCatalog;
   /** Where the Source plugins shipped with Family Agenda are; by default the workspace's packages. */
   workspacePackages?: string;
+  /** The Plugin Host; null runs every plugin in this process. */
+  pluginHost?: PluginHostConfig | null;
 };
 
 /** Today's adapters: Postgres, files in volumes, the system clock and the real tools. */
@@ -66,6 +69,7 @@ export async function selfHostedAdapters(config: SelfHostedConfig): Promise<Adap
       textExtractor: new CommandLineTextExtractor({ tessdataDirectory: config.tessdataDirectory }),
       ocrModels,
       pluginDirectories: [config.workspacePackages ?? defaultWorkspacePackages, config.pluginDirectory],
+      pluginHost: config.pluginHost ?? null,
     };
   } catch (error) {
     await postgres.close();
@@ -105,6 +109,7 @@ export async function readSelfHostedConfig(env: NodeJS.ProcessEnv = process.env)
     pluginDirectory: env.PLUGIN_DIRECTORY ?? "/var/lib/family-agenda/plugins",
     tessdataDirectory: env.TESSDATA_DIRECTORY ?? "/var/lib/family-agenda/tessdata",
     bundledTessdataDirectory: (env.BUNDLED_TESSDATA_DIRECTORY ?? "/usr/share/tesseract-ocr/5/tessdata") || null,
+    pluginHost: pluginHostFrom(env),
   };
 }
 
@@ -116,4 +121,16 @@ export async function bootSelfHosted(env: NodeJS.ProcessEnv = process.env): Prom
 /** Boots the Worker from the environment. */
 export async function bootSelfHostedWorker(env: NodeJS.ProcessEnv = process.env): Promise<Worker> {
   return bootWorker(readApplicationConfig(env), await selfHostedAdapters(await readSelfHostedConfig(env)));
+}
+
+/**
+ * The Plugin Host, when PLUGIN_HOST_URL and PLUGIN_HOST_TOKEN are both set; PLUGIN_HOST_SOURCE_TYPES
+ * names the Source Types it runs, separated by commas, `ics` by default.
+ */
+export function pluginHostFrom(env: NodeJS.ProcessEnv): PluginHostConfig | null {
+  const url = env.PLUGIN_HOST_URL;
+  const token = env.PLUGIN_HOST_TOKEN;
+  if (!url || !token) return null;
+  const sourceTypes = (env.PLUGIN_HOST_SOURCE_TYPES ?? "ics").split(",").map((id) => id.trim()).filter((id) => id !== "");
+  return { url, token, sourceTypes };
 }

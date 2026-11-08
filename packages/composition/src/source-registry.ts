@@ -13,6 +13,7 @@ import type {
   SourceTypeRegistry,
 } from "@family-agenda/application";
 import type { SourceTypeId } from "@family-agenda/domain";
+import { bundlePlugin, PluginHostClient, type HostedPlugin, type PluginHostConfig } from "./plugin-host-client";
 import {
   parseManifest,
   problemsWith,
@@ -41,14 +42,20 @@ type Discovered = {
  * loaded when it is first asked for, which only happens for enabled Source Types.
  */
 export class SourceRegistry implements SourceTypeRegistry {
-  private readonly plugins = new Map<string, Promise<SourcePlugin | null>>();
+  private readonly plugins = new Map<string, Promise<HostedPlugin | null>>();
   private readonly loaded = new Map<string, LoadedSourceType>();
   private readonly loadFailures = new Map<string, string>();
 
-  private constructor(private readonly discovered: Map<string, Discovered>) {}
+  private constructor(
+    private readonly discovered: Map<string, Discovered>,
+    private readonly host: { client: PluginHostClient; sourceTypes: Set<string> } | null,
+  ) {}
 
-  /** The first package declaring a Source Type id wins; later ones are ignored with a warning. */
-  static async discover(directories: string[]): Promise<SourceRegistry> {
+  /**
+   * The first package declaring a Source Type id wins; later ones are ignored with a warning. The
+   * Source Types `pluginHost` names run there, shipped as a bundle; the others in this process.
+   */
+  static async discover(directories: string[], options: { pluginHost?: PluginHostConfig | null } = {}): Promise<SourceRegistry> {
     shareSdkWith(directories);
     const discovered = new Map<string, Discovered>();
     for (const directory of directories) {
@@ -63,7 +70,9 @@ export class SourceRegistry implements SourceTypeRegistry {
         discovered.set(id, found);
       }
     }
-    return new SourceRegistry(discovered);
+    const { pluginHost } = options;
+    const host = pluginHost ? { client: new PluginHostClient(pluginHost), sourceTypes: new Set(pluginHost.sourceTypes) } : null;
+    return new SourceRegistry(discovered, host);
   }
 
   installed(): InstalledSourceType[] {
@@ -74,7 +83,7 @@ export class SourceRegistry implements SourceTypeRegistry {
   }
 
   async load(id: SourceTypeId): Promise<{ ok: true; sourceType: LoadedSourceType } | { ok: false }> {
-    const plugin = await this.pluginOf(id);
+    const plugin = (await this.pluginOf(id))?.plugin;
     if (!plugin) return { ok: false };
     let sourceType = this.loaded.get(id);
     if (!sourceType) {
@@ -89,15 +98,14 @@ export class SourceRegistry implements SourceTypeRegistry {
     plain: PlainConfig,
     fromVersion: number,
   ): Promise<{ ok: true; plain: PlainConfig; configVersion: number } | { ok: false }> {
-    const plugin = await this.pluginOf(id);
-    if (!plugin) return { ok: false };
-    const { configuration } = plugin;
+    const hosted = await this.pluginOf(id);
+    if (!hosted) return { ok: false };
+    const { configuration } = hosted.plugin;
     let migrated = plain as JsonObject;
     try {
       for (let version = fromVersion; version < configuration.version; version++) {
-        const migrate = configuration.migrations?.[version];
-        if (!migrate) return { ok: false };
-        migrated = migrate(migrated);
+        if (!configuration.migrations?.[version]) return { ok: false };
+        migrated = await hosted.migrate(version, migrated);
       }
     } catch {
       return { ok: false };
@@ -105,7 +113,7 @@ export class SourceRegistry implements SourceTypeRegistry {
     return { ok: true, plain: migrated, configVersion: Math.max(fromVersion, configuration.version) };
   }
 
-  private pluginOf(id: SourceTypeId): Promise<SourcePlugin | null> {
+  private pluginOf(id: SourceTypeId): Promise<HostedPlugin | null> {
     let plugin = this.plugins.get(id);
     if (!plugin) {
       plugin = this.import(id);
@@ -114,31 +122,53 @@ export class SourceRegistry implements SourceTypeRegistry {
     return plugin;
   }
 
-  private async import(id: string): Promise<SourcePlugin | null> {
+  private async import(id: string): Promise<HostedPlugin | null> {
     const found = this.discovered.get(id);
     if (!found?.module || found.installed.notLoadable !== null) return null;
-    const loaded = await loadPlugin(found.module, id);
+    const loaded = this.host?.sourceTypes.has(id) ? await loadHosted(this.host.client, found.module, id) : await loadPlugin(found.module, id);
     if ("problems" in loaded) {
       this.loadFailures.set(id, loaded.problems.join("; "));
       return null;
     }
-    return loaded.plugin;
+    return loaded.hosted;
   }
 }
 
+type Loaded = { hosted: HostedPlugin } | { problems: string[] };
+
 /** The plugin an entry module exports, or what keeps it from being one. */
-async function loadPlugin(module: string, id: string): Promise<{ plugin: SourcePlugin } | { problems: string[] }> {
+async function loadPlugin(module: string, id: string): Promise<Loaded> {
   try {
     const imported = (await import(pathToFileURL(module).href)) as { default?: SourcePlugin };
     const plugin = imported.default;
     if (!plugin) return { problems: ["the entry module has no default export"] };
-    const problems = plugin.identity.sourceTypeId !== id
-      ? [`the code is for Source Type "${plugin.identity.sourceTypeId}", the manifest for "${id}"`]
-      : problemsWith(plugin);
-    return problems.length > 0 ? { problems } : { plugin };
+    return checked(id, { plugin, migrate: (from, plain) => Promise.resolve(migrationOf(plugin, from)(plain)) });
   } catch (error) {
     return { problems: [`loading the code failed: ${messageOf(error)}`] };
   }
+}
+
+/** The plugin of an entry module, run by the Plugin Host from its bundle. */
+async function loadHosted(client: PluginHostClient, module: string, id: string): Promise<Loaded> {
+  try {
+    return checked(id, await client.hosted(id, await bundlePlugin(module)));
+  } catch (error) {
+    return { problems: [`loading the code into the Plugin Host failed: ${messageOf(error)}`] };
+  }
+}
+
+function checked(id: string, hosted: HostedPlugin): Loaded {
+  const { plugin } = hosted;
+  const problems = plugin.identity.sourceTypeId !== id
+    ? [`the code is for Source Type "${plugin.identity.sourceTypeId}", the manifest for "${id}"`]
+    : problemsWith(plugin);
+  return problems.length > 0 ? { problems } : { hosted };
+}
+
+function migrationOf(plugin: SourcePlugin, from: number): (plain: JsonObject) => JsonObject {
+  const migrate = plugin.configuration.migrations?.[from];
+  if (!migrate) throw new Error(`no configuration migration from version ${from}`);
+  return migrate;
 }
 
 function messageOf(error: unknown): string {
