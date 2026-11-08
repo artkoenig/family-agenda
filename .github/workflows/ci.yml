@@ -5,8 +5,25 @@ on:
     branches: [main]
   pull_request:
 
+# The three jobs together are `pnpm check`; they run in parallel.
 jobs:
-  check:
+  static:
+    # Lint, typecheck, dependency rules, and the SDK version against its API: a change to the SDK's
+    # public API since the last release needs a higher SDK version (packages/source-sdk/package.json),
+    # so that plugins built for the old one are told apart.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/setup
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm depcruise
+      - run: pnpm api-version
+
+  crap:
+    # All tests with coverage, and the CRAP score.
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -27,20 +44,15 @@ jobs:
       REQUIRE_OCR: "true"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          # The tags, to compare the SDK with the last release.
-          fetch-depth: 0
       - name: Install poppler and Tesseract, which turn PDF attachments into text
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends poppler-utils tesseract-ocr tesseract-ocr-deu tesseract-ocr-eng
-      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version-file: .nvmrc
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      # Lint, typecheck, dependency rules, tests with the CRAP score, and mutation testing of `domain`.
-      - run: pnpm check
-      # A change to the SDK's public API since the last release needs a higher SDK version
-      # (packages/source-sdk/package.json), so that plugins built for the old one are told apart.
-      - name: The SDK version follows its API
-        run: node --import tsx tools/release/src/main.ts check-sdk --previous "$(git describe --tags --abbrev=0 --match 'v*' 2> /dev/null || true)"
+      - uses: ./.github/actions/setup
+      - run: pnpm crap
+
+  mutation:
+    # Mutation testing of `domain`.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup
+      - run: pnpm mutation
