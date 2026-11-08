@@ -1,6 +1,6 @@
 import type { PluginText } from "@family-agenda/source-sdk";
 
-/** A chat network the plugin reads through a bridge on the Instance's homeserver (ADR-0011). */
+/** A chat network the plugin reads through a bridge on the Instance's homeserver. */
 export type Messenger = {
   id: string;
   displayName: PluginText;

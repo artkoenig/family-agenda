@@ -21,7 +21,7 @@ const ocrDpi = 300;
 
 /**
  * The `TextExtractor` wrapping poppler's `pdftotext` and `pdftoppm` and Tesseract with the models
- * of the `tessdata` volume (ADR-0012). Each call works on a copy of the PDF in its own temporary
+ * of the `tessdata` volume. Each call works on a copy of the PDF in its own temporary
  * directory, removed afterwards.
  */
 export class CommandLineTextExtractor implements TextExtractor {

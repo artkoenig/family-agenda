@@ -1,5 +1,5 @@
 /**
- * The contract a Source plugin implements (ADR-0010). It is the only Family Agenda package a
+ * The contract a Source plugin implements. It is the only Family Agenda package a
  * plugin may import.
  */
 export const sdkVersion = "1.0.0";
@@ -57,7 +57,7 @@ export type Choice = { value: string; label: string };
 
 /**
  * What an Admin enables one by one within a Source Type, such as the Messengers the Matrix plugin
- * reads through bridges (ADR-0011). Each Source uses one entry, named by a plain field.
+ * reads through bridges. Each Source uses one entry, named by a plain field.
  */
 export type Catalogue = {
   /** What its entries are, such as "Messengers". */
@@ -131,7 +131,7 @@ export type SourceAttributeDeclaration = {
 };
 
 /**
- * The Source Attributes of the Source being run (ADR-0016), which a plugin reports and nothing
+ * The Source Attributes of the Source being run, which a plugin reports and nothing
  * else creates. Whom an Item concerns follows from the Source Attributes its Origin names, and
  * the Family Members an Admin assigned to them. A call takes effect when it returns, so an Origin
  * may name an id from the moment `declare` returned it.
@@ -179,7 +179,7 @@ export type Ingestion =
 
 export type Attachment = { filename: string; contentType: string; bytes: Uint8Array };
 
-/** The kinds of Item a plugin states on its Origin, without the LLM (ADR-0016). */
+/** The kinds of Item a plugin states on its Origin, without the LLM. */
 export const statedKinds = ["event", "lesson", "task"] as const;
 
 /**
@@ -250,7 +250,7 @@ export type Origin = {
   occurredAt?: Date;
   /**
    * The external ids of the Source Attributes it belongs to, such as the folder of a mail, each
-   * declared before (ADR-0016). Whom it concerns is decided by the Family Members assigned to
+   * declared before. Whom it concerns is decided by the Family Members assigned to
    * them. Naming one that is unknown or archived is a plugin bug: the Origin is refused. Emitted
    * again with another list, an Origin moves to it without being read again; with an empty list, it
    * is withdrawn like one named in `withdrawn`.
@@ -308,7 +308,7 @@ export class SourceError extends Error {
 
 /**
  * Programs a plugin runs on the Instance for its Sources, such as a homeserver and the bridges of
- * the Messengers an Admin enabled (ADR-0011). Only the worker runs them: it reconciles them with
+ * the Messengers an Admin enabled. Only the worker runs them: it reconciles them with
  * what is enabled every few seconds, and stops them when it shuts down.
  */
 export type Services = {

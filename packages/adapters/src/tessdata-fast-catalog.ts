@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import type { OcrLanguage } from "@family-agenda/domain";
 import type { TessdataCatalog } from "./tessdata-directory";
 
-/** The commit of `tesseract-ocr/tessdata_fast` models are downloaded from (ADR-0012). */
+/** The commit of `tesseract-ocr/tessdata_fast` models are downloaded from. */
 export const tessdataFastCommit = "87416418657359cb625c412a48b6e1d6d41c29bd";
 
 /** The largest model is about 12 MB; anything much larger is not one. */
@@ -20,7 +20,7 @@ export function parseChecksums(text: string): Map<string, string> {
 
 /**
  * The models of `tessdata_fast` at the pinned commit, with the checksums shipped in
- * `tessdata/tessdata-fast.sha256` (ADR-0012).
+ * `tessdata/tessdata-fast.sha256`.
  */
 export function tessdataFastCatalog(options: { timeoutMs?: number } = {}): TessdataCatalog {
   const checksums = parseChecksums(readFileSync(new URL("../tessdata/tessdata-fast.sha256", import.meta.url), "utf8"));

@@ -7,7 +7,7 @@ import type { Services } from "@family-agenda/source-sdk";
 import { pathsOf, secretsOf, writeConfiguration, type MatrixLayout } from "./configuration";
 import { messengers, type Messenger } from "./messengers";
 
-/** The programs the image ships: Synapse's Python and one bridge per Messenger (ADR-0011). */
+/** The programs the image ships: Synapse's Python and one bridge per Messenger. */
 export type MatrixPrograms = {
   /** The Python of Synapse's virtual environment. */
   synapse: string;

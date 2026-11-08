@@ -26,7 +26,7 @@ export type AddOcrLanguageResult =
 export type ChangeOcrLanguagesResult = { ok: true } | { ok: false; problem: "unknown-ocr-language" | "no-ocr-language" };
 
 /**
- * The Family Language, and the OCR languages (ADR-0012). A language in the list is read with, and
+ * The Family Language, and the OCR languages. A language in the list is read with, and
  * its Tesseract model comes and goes with it.
  */
 export function createLanguageAccess(deps: LanguagesDeps) {

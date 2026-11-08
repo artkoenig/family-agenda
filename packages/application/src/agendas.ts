@@ -295,7 +295,7 @@ const feedDaysBack = 30;
 /** How many days back a Task List reaches for Tasks that are done, today not counted. */
 const taskListDaysBack = 30;
 
-/** Lets every Agenda open, as on the local listener (ADR-0003). */
+/** Lets every Agenda open, as on the local listener. */
 export const openAgendaAccess: AgendaAccessPolicy = { mayOpen: () => Promise.resolve(true) };
 
 export function createAgendaAccess(deps: AgendasDeps) {

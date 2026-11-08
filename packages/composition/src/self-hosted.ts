@@ -33,7 +33,7 @@ export type SelfHostedConfig = {
   blobDirectory: string;
   /** The `plugins/` volume, for Source plugins an operator adds to a stock image. */
   pluginDirectory: string;
-  /** The `tessdata` volume of Tesseract models, bundled and downloaded (ADR-0012). */
+  /** The `tessdata` volume of Tesseract models, bundled and downloaded. */
   tessdataDirectory: string;
   /** Where the image keeps the Tesseract models it ships, linked into the volume on start. */
   bundledTessdataDirectory: string | null;

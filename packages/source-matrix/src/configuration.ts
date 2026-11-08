@@ -212,7 +212,7 @@ namespaces:
 /**
  * mautrix-whatsapp, receive only: it never shows the account online or typing, and it gets no
  * read receipts or typing notifications from Matrix to pass on. Its session stays in SQLite in
- * the data volume, outside Postgres (ADR-0006). The bridge adds its defaults for everything else.
+ * the data volume, outside Postgres. The bridge adds its defaults for everything else.
  */
 function whatsappConfig(layout: MatrixLayout, directory: string, bridge: BridgeSecrets): string {
   const port = layout.ports.bridges.whatsapp;

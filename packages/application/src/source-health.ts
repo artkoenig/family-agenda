@@ -34,7 +34,7 @@ export type SourceHealthDeps = {
   sources: SourceRepository;
 };
 
-/** How a Source is doing, as the Admin area shows it (ADR-0010). */
+/** How a Source is doing, as the Admin area shows it. */
 export async function healthOf(source: Source, deps: SourceHealthDeps): Promise<SourceHealth> {
   const { lastSuccessAt, failure, invalidRecords, unknownAttributes } = source;
   const loaded = await enabledSourceType(source.sourceTypeId, deps);

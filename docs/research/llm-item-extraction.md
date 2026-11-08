@@ -1,6 +1,6 @@
 # LLM extraction of Items from German school mail and PDFs
 
-> _Written before the data model was rebuilt (ADR-0016). Where it speaks of Notices, a Review Inbox, confidence or Revisions, read the current model in [GLOSSARY.md](../../GLOSSARY.md): Notices and the Review Inbox are gone, an Item is written once or not at all, and confidence is not kept. Findings about models, runtimes and APIs stand._
+> _Written before the data model was rebuilt. Where it speaks of Notices, a Review Inbox, confidence or Revisions, read the current model in [GLOSSARY.md](../../GLOSSARY.md): Notices and the Review Inbox are gone, an Item is written once or not at all, and confidence is not kept. Findings about models, runtimes and APIs stand._
 
 Research for [issue #6](https://github.com/artkoenig/family-buttler/issues/6). Date: 2026-10-25.
 Terms (Item, Event, Timetable Change, Task, Deadline, Notice, Family Member, Admin, Source) follow [GLOSSARY.md](../../GLOSSARY.md). "Review Inbox" means the Admin's review of uncertain Items.

@@ -107,7 +107,7 @@ type Row = {
   lesson: typeof lessons.$inferSelect | null;
 };
 
-/** Items in Postgres, each with the detail row of its kind (ADR-0016). */
+/** Items in Postgres, each with the detail row of its kind. */
 export class PostgresItemRepository implements ItemRepository {
   constructor(private readonly db: Database) {}
 

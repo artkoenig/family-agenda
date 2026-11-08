@@ -31,7 +31,7 @@ function succeeded<T extends { ok: boolean }>(result: T): Extract<T, { ok: true 
 
 /**
  * Fills a fresh Instance with a made-up Family for trying out a change: an Admin, four Family
- * Members, the demo Source (which states a week of Events and Lessons and two Tasks, ADR-0016),
+ * Members, the demo Source (which states a week of Events and Lessons and two Tasks),
  * assigned to them, and an Agenda for the whole Family and for each child, and a Task List. It goes through the same use cases
  * as the Admin area, so what it writes is what the Instance itself would write. The demo Source
  * plugin must be installed in the Instance already.

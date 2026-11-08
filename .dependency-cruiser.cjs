@@ -1,5 +1,5 @@
 /**
- * Package boundaries of the Clean Architecture (ADR-0002, ADR-0010).
+ * Package boundaries of the Clean Architecture.
  * Workspace packages resolve to their real paths, so rules match on `packages/<name>/`; an
  * import of a package that is not declared as a dependency stays a bare `@family-agenda/<name>`.
  * @type {import('dependency-cruiser').IConfiguration}
@@ -48,7 +48,7 @@ module.exports = {
     },
     {
       name: "source-plugins-import-only-source-sdk",
-      comment: "The SDK is the only Family Agenda package a plugin may import (ADR-0010).",
+      comment: "The SDK is the only Family Agenda package a plugin may import.",
       severity: "error",
       from: { path: "^packages/(source-(?!sdk/)[^/]+)/" },
       to: {
