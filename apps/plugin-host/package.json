@@ -1,0 +1,22 @@
+{
+  "name": "@family-agenda/plugin-host",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "start": "node --import tsx src/main.ts"
+  },
+  "dependencies": {
+    "@family-agenda/plugin-protocol": "workspace:*",
+    "@family-agenda/source-sdk": "workspace:*",
+    "esbuild": "^0.28.2",
+    "tsx": "^4.23.15"
+  },
+  "devDependencies": {
+    "@family-agenda/composition": "workspace:*",
+    "@family-agenda/domain": "workspace:*"
+  }
+}

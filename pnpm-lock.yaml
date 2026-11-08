@@ -251,9 +251,12 @@ importers:
       '@electric-sql/pglite':
         specifier: ^0.5.14
         version: 0.5.14
-      '@family-agenda/source-matrix':
+      '@family-agenda/plugin-host':
         specifier: workspace:*
-        version: link:../../packages/source-matrix
+        version: link:../plugin-host
+      '@family-agenda/plugin-protocol':
+        specifier: workspace:*
+        version: link:../../packages/plugin-protocol
       '@types/qrcode':
         specifier: ^1.5.6
         version: 1.5.6
@@ -263,6 +266,28 @@ importers:
       ical.js:
         specifier: ^2.2.1
         version: 2.2.1
+
+  apps/plugin-host:
+    dependencies:
+      '@family-agenda/plugin-protocol':
+        specifier: workspace:*
+        version: link:../../packages/plugin-protocol
+      '@family-agenda/source-sdk':
+        specifier: workspace:*
+        version: link:../../packages/source-sdk
+      esbuild:
+        specifier: ^0.28.2
+        version: 0.28.2
+      tsx:
+        specifier: ^4.23.15
+        version: 4.23.15
+    devDependencies:
+      '@family-agenda/composition':
+        specifier: workspace:*
+        version: link:../../packages/composition
+      '@family-agenda/domain':
+        specifier: workspace:*
+        version: link:../../packages/domain
 
   apps/worker:
     dependencies:
@@ -324,6 +349,9 @@ importers:
       '@family-agenda/domain':
         specifier: workspace:*
         version: link:../domain
+      '@family-agenda/plugin-protocol':
+        specifier: workspace:*
+        version: link:../plugin-protocol
       '@family-agenda/source-sdk':
         specifier: workspace:*
         version: link:../source-sdk
@@ -335,6 +363,12 @@ importers:
         version: 4.6.7
 
   packages/domain: {}
+
+  packages/plugin-protocol:
+    dependencies:
+      '@family-agenda/source-sdk':
+        specifier: workspace:*
+        version: link:../source-sdk
 
   packages/source-ics:
     dependencies:

@@ -229,7 +229,7 @@ describe("Agendas over HTTP", () => {
 
   it("tells an Admin which Source Attributes keep a Family Member from being removed", async () => {
     const cookie = await signIn();
-    await writeTestPluginPackage(instance.workspacePackages, { sourceTypeId: "calendar" });
+    await writeTestPluginPackage(instance.publishedPlugins, { sourceTypeId: "calendar" });
     await instance.restart();
     await instance.app.sourceTypes.enable("calendar");
     const added = await instance.app.sources.add({ sourceTypeId: "calendar", plain: { url: "https://calendar.example.org" }, secrets: {} });

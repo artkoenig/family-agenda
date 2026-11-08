@@ -11,3 +11,5 @@ services:
     image: family-agenda:local
   mdns:
     image: family-agenda:local
+  plugin-host:
+    image: family-agenda:local

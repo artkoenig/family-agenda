@@ -1,9 +1,7 @@
 import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { describeSourcePluginContract, recordingAttributes, undeclaredAttributes } from "@family-agenda/source-sdk/testing";
 import type { IngestResult, RunContext, Origin, SourcePlugin, StatedItem } from "@family-agenda/source-sdk";
-import { SourceRegistry } from "../../../packages/composition/src/source-registry";
 import { createDemoPlugin } from "../src";
 
 const packageJson: unknown = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
@@ -72,14 +70,5 @@ describe("the demo plugin", () => {
 
   it("declares every Source Attribute its Origins name", async () => {
     expect(await undeclaredAttributes(createDemoPlugin(), config, now)).toEqual([]);
-  });
-
-  it("is not among the Source Types an Instance finds on its own, so the image never offers it", async () => {
-    const shipped = fileURLToPath(new URL("../../../packages", import.meta.url));
-
-    const registry = await SourceRegistry.discover([shipped]);
-
-    expect(registry.installed().map((type) => type.id)).toEqual(expect.arrayContaining(["ics"]));
-    expect(registry.installed().map((type) => type.id)).not.toContain("demo");
   });
 });

@@ -12,7 +12,7 @@ describe("the adapters of a self-hosted Instance", () => {
   });
   afterEach(() => rm(directory, { recursive: true, force: true }));
 
-  it("link the bundled OCR models into the volume and look for plugins in the shipped packages, then the volume", async () => {
+  it("link the bundled OCR models into the volume and reach the Plugin Host", async () => {
     const bundled = join(directory, "bundled");
     await mkdir(bundled);
     await writeFile(join(bundled, "deu.traineddata"), "deu");
@@ -22,14 +22,13 @@ describe("the adapters of a self-hosted Instance", () => {
       databaseUrl: "postgres://unused/family",
       masterKey,
       blobDirectory: join(directory, "blobs"),
-      pluginDirectory: join(directory, "plugins"),
       tessdataDirectory: join(directory, "tessdata"),
       bundledTessdataDirectory: bundled,
-      workspacePackages: join(directory, "packages"),
+      pluginHost: { url: "http://plugin-host:4100", token: "t" },
     });
 
     expect(adapters.masterKey).toBe(masterKey);
-    expect(adapters.pluginDirectories).toEqual([join(directory, "packages"), join(directory, "plugins")]);
+    expect(adapters.pluginHost).toEqual({ url: "http://plugin-host:4100", token: "t" });
     expect(await readdir(join(directory, "tessdata"))).toEqual(["deu.traineddata"]);
     await adapters.postgres.close();
   });

@@ -10,6 +10,7 @@
     "@family-agenda/adapters": "workspace:*",
     "@family-agenda/application": "workspace:*",
     "@family-agenda/domain": "workspace:*",
+    "@family-agenda/plugin-protocol": "workspace:*",
     "@family-agenda/source-sdk": "workspace:*"
   }
 }

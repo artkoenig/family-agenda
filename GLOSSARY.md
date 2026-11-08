@@ -52,6 +52,10 @@ _Avoid_: Source kind, provider, plugin (for the domain concept)
 A subdivision of a Source that the Source itself reports, such as a mailbox folder or label, a WhatsApp group, a child in a timetable account, or the one calendar of an ICS Source; only those an Admin chose to read count. An Admin assigns it to Family Members, and its Items concern them, or the whole Family if it is assigned to no one.
 _Avoid_: Folder (for the domain concept), channel, sub-source, label
 
+**Plugin Host**:
+The service that runs every Source plugin, installed from the Plugin Repository, each in an isolated process without access to the database, the master key or the blobs.
+_Avoid_: sandbox, plugin server
+
 **Source Status**:
 Whether a Source works: **OK**; **Failing** when it needs an Admin, at once on a definite error and after 6 hours of temporary ones; or **Silent** when a Source Type that declares it has brought no new Source Record for 14 days.
 _Avoid_: Health state, broken, stale (for the status)

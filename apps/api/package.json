@@ -27,7 +27,8 @@
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.14",
-    "@family-agenda/source-matrix": "workspace:*",
+    "@family-agenda/plugin-host": "workspace:*",
+    "@family-agenda/plugin-protocol": "workspace:*",
     "@types/qrcode": "^1.5.6",
     "drizzle-orm": "^0.45.4",
     "ical.js": "^2.2.1"

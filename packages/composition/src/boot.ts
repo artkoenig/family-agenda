@@ -92,7 +92,7 @@ export async function bootApplication(config: ApplicationConfig, adapters: Adapt
 
   const items = new PostgresItemRepository(postgres.db);
   const activity = createActivityLog({ clock, activities: new PostgresActivityRepository(postgres.db) });
-  const registry = await SourceRegistry.discover(adapters.pluginDirectories);
+  const registry = await SourceRegistry.fromPluginHost(adapters.pluginHost);
   const sourceTypeRepository = new PostgresSourceTypeRepository(postgres.db);
   const sourceRepository = new PostgresSourceRepository(postgres.db);
   const sourceHealth = createSourceHealth({

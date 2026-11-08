@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "A developer tool: a Source plugin that states demo Events, Lessons and Tasks for `pnpm preview`. It sits outside packages/ so the Instance never discovers it unless a preview mounts it into the plugins directory.",
+  "description": "A developer tool: a Source plugin that states demo Events, Lessons and Tasks for `pnpm preview`. It sits outside packages/ so the Plugin Repository never publishes it unless a preview adds it.",
   "exports": {
     ".": "./src/index.ts"
   },

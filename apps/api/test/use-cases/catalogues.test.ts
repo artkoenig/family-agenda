@@ -31,7 +31,7 @@ describe("a Source Type's catalogue and the Sources that use it", () => {
     testPluginControls.catalogue("bridged", [whatsapp, signal]);
     secrets = new InMemorySecretStore();
     instance = await bootForTest({ secretStore: secrets });
-    await writeTestPluginPackage(instance.workspacePackages, {
+    await writeTestPluginPackage(instance.publishedPlugins, {
       sourceTypeId: "bridged",
       configuration,
       catalogue: { configKey: "network" },

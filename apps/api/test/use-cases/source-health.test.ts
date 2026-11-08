@@ -139,7 +139,7 @@ describe("Source health", () => {
   });
 
   it("is never Silent when its Source Type does not declare it", async () => {
-    await writeTestPluginPackage(instance.workspacePackages, { sourceTypeId: "calendar", silentApplies: false });
+    await writeTestPluginPackage(instance.publishedPlugins, { sourceTypeId: "calendar", silentApplies: false });
     await instance.restart();
     await instance.app.sourceTypes.enable("calendar");
     const added = await instance.app.sources.add({ sourceTypeId: "calendar", plain: { url: "https://cal.example.org" }, secrets: {} });
@@ -156,7 +156,7 @@ describe("Source health", () => {
     await tick();
     expect(testPluginControls.runs("school-portal").at(-1)?.syncCursor).toBeNull();
 
-    await rm(join(instance.workspacePackages, "school-portal"), { recursive: true });
+    await rm(join(instance.publishedPlugins, "school-portal"), { recursive: true });
     await instance.restart();
     await tick();
 
@@ -170,7 +170,7 @@ describe("Source health", () => {
     const [items] = await instance.query("SELECT count(*)::int AS items FROM item");
     expect(items).toEqual({ items: 1 });
 
-    await writeTestPluginPackage(instance.workspacePackages, { sourceTypeId: "school-portal" });
+    await writeTestPluginPackage(instance.publishedPlugins, { sourceTypeId: "school-portal" });
     await instance.restart();
     await tick();
 

@@ -1,5 +1,4 @@
 import { mkdir } from "node:fs/promises";
-import { fileURLToPath } from "node:url";
 import {
   Argon2idPasswordHasher,
   CommandLineTextExtractor,
@@ -18,10 +17,9 @@ import {
 } from "@family-agenda/adapters";
 import type { Adapters } from "./adapters";
 import type { Application } from "./application";
+import type { PluginHostConfig } from "./plugin-host-client";
 import { bootApplication, bootWorker, type Worker } from "./boot";
 import { readApplicationConfig } from "./config";
-
-const defaultWorkspacePackages = fileURLToPath(new URL("../../../packages", import.meta.url));
 
 /** What an Instance on its own server, with Postgres and volumes, needs to know. */
 export type SelfHostedConfig = {
@@ -31,16 +29,14 @@ export type SelfHostedConfig = {
   masterKey: Buffer;
   /** Where files such as photos are kept, outside Postgres. */
   blobDirectory: string;
-  /** The `plugins/` volume, for Source plugins an operator adds to a stock image. */
-  pluginDirectory: string;
   /** The `tessdata` volume of Tesseract models, bundled and downloaded. */
   tessdataDirectory: string;
   /** Where the image keeps the Tesseract models it ships, linked into the volume on start. */
   bundledTessdataDirectory: string | null;
   /** Replaces downloading from `tessdata_fast`. */
   tessdataCatalog?: TessdataCatalog;
-  /** Where the Source plugins shipped with Family Agenda are; by default the workspace's packages. */
-  workspacePackages?: string;
+  /** The Plugin Host, which runs every Source plugin. */
+  pluginHost: PluginHostConfig;
 };
 
 /** Today's adapters: Postgres, files in volumes, the system clock and the real tools. */
@@ -65,7 +61,7 @@ export async function selfHostedAdapters(config: SelfHostedConfig): Promise<Adap
       extractor: new OpenAiCompatibleExtractor(),
       textExtractor: new CommandLineTextExtractor({ tessdataDirectory: config.tessdataDirectory }),
       ocrModels,
-      pluginDirectories: [config.workspacePackages ?? defaultWorkspacePackages, config.pluginDirectory],
+      pluginHost: config.pluginHost,
     };
   } catch (error) {
     await postgres.close();
@@ -102,9 +98,9 @@ export async function readSelfHostedConfig(env: NodeJS.ProcessEnv = process.env)
     databaseUrl,
     masterKey: await readMasterKeyFrom(env),
     blobDirectory: env.BLOB_DIRECTORY ?? "/var/lib/family-agenda/blobs",
-    pluginDirectory: env.PLUGIN_DIRECTORY ?? "/var/lib/family-agenda/plugins",
     tessdataDirectory: env.TESSDATA_DIRECTORY ?? "/var/lib/family-agenda/tessdata",
     bundledTessdataDirectory: (env.BUNDLED_TESSDATA_DIRECTORY ?? "/usr/share/tesseract-ocr/5/tessdata") || null,
+    pluginHost: pluginHostFrom(env),
   };
 }
 
@@ -116,4 +112,13 @@ export async function bootSelfHosted(env: NodeJS.ProcessEnv = process.env): Prom
 /** Boots the Worker from the environment. */
 export async function bootSelfHostedWorker(env: NodeJS.ProcessEnv = process.env): Promise<Worker> {
   return bootWorker(readApplicationConfig(env), await selfHostedAdapters(await readSelfHostedConfig(env)));
+}
+
+/** The Plugin Host from PLUGIN_HOST_URL and PLUGIN_HOST_TOKEN, which are both needed. */
+export function pluginHostFrom(env: NodeJS.ProcessEnv): PluginHostConfig {
+  const url = env.PLUGIN_HOST_URL;
+  const token = env.PLUGIN_HOST_TOKEN;
+  if (!url) throw new Error("PLUGIN_HOST_URL is not set; it is where api and worker reach the Plugin Host, such as http://plugin-host:4100.");
+  if (!token) throw new Error("PLUGIN_HOST_TOKEN is not set. Set it to the same random token for api, worker and plugin-host, such as one from: openssl rand -hex 32");
+  return { url, token };
 }

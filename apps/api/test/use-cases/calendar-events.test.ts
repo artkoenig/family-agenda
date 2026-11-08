@@ -26,7 +26,7 @@ describe("calendar Events on the timeline", () => {
   beforeEach(async () => {
     // The clock starts on Monday 2026-09-14 at 09:00 in Berlin.
     instance = await bootForTest();
-    await writeTestPluginPackage(instance.workspacePackages, { sourceTypeId: "calendar" });
+    await writeTestPluginPackage(instance.publishedPlugins, { sourceTypeId: "calendar" });
     await instance.restart();
     await instance.app.sourceTypes.enable("calendar");
     const added = await instance.app.sources.add({
@@ -246,7 +246,7 @@ describe("polling Sources", () => {
   beforeEach(async () => {
     instance = await bootForTest();
     for (const sourceTypeId of ["school-cal", "club-cal", "idle-cal"]) {
-      await writeTestPluginPackage(instance.workspacePackages, { sourceTypeId });
+      await writeTestPluginPackage(instance.publishedPlugins, { sourceTypeId });
     }
     await instance.restart();
     await instance.app.sourceTypes.enable("school-cal");
@@ -334,7 +334,7 @@ describe("polling Sources", () => {
 
   it("does not run a Source whose plugin was removed", async () => {
     await add("school-cal");
-    await rm(join(instance.workspacePackages, "school-cal"), { recursive: true });
+    await rm(join(instance.publishedPlugins, "school-cal"), { recursive: true });
     await instance.restart();
 
     expect(await instance.app.polling.pollDue()).toEqual({ polled: [], failed: [], invalid: [], refused: [] });

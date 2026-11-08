@@ -1,4 +1,5 @@
 import type { PostgresConnection } from "@family-agenda/adapters";
+import type { PluginHostConfig } from "./plugin-host-client";
 import type {
   BlobStore,
   Clock,
@@ -31,6 +32,6 @@ export type Adapters = {
   textExtractor: TextExtractor;
   /** The Tesseract models, bundled, downloaded or put there by hand; where they live is its business. */
   ocrModels: OcrModelStore;
-  /** Where the SourceRegistry finds Source plugins, first match wins: the shipped ones, then the `plugins/` volume. */
-  pluginDirectories: string[];
+  /** The Plugin Host, which runs every Source plugin. */
+  pluginHost: PluginHostConfig;
 };

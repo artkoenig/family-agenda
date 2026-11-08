@@ -108,7 +108,7 @@ describe("Source health in the Admin area and on Agendas", () => {
   });
 
   it("shows a Source whose plugin is no longer installed as Failing", async () => {
-    await rm(join(instance.workspacePackages, "calendar"), { recursive: true });
+    await rm(join(instance.publishedPlugins, "calendar"), { recursive: true });
     await instance.restart();
 
     const page = await sourcesPage();

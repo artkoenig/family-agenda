@@ -39,8 +39,8 @@ describe("Source Records, as what a Source delivered is stored", () => {
     // The clock starts on Monday 2026-09-14 at 09:00 in Berlin.
     blobs = new InMemoryBlobStore();
     instance = await bootForTest({ blobStore: blobs });
-    await writeTestPluginPackage(instance.workspacePackages, { sourceTypeId: "mailbox", needsLlm: true });
-    await writeTestPluginPackage(instance.workspacePackages, { sourceTypeId: "calendar" });
+    await writeTestPluginPackage(instance.publishedPlugins, { sourceTypeId: "mailbox", needsLlm: true });
+    await writeTestPluginPackage(instance.publishedPlugins, { sourceTypeId: "calendar" });
     await instance.restart();
     for (const type of ["mailbox", "calendar"]) {
       await instance.app.sourceTypes.enable(type);

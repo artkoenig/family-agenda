@@ -59,8 +59,9 @@ describe("the master key of a self-hosted Instance", () => {
 
   it("reads the volumes with the image's defaults", async () => {
     const key = randomBytes(32);
-    const config = await readSelfHostedConfig({ DATABASE_URL: "postgres://x", MASTER_KEY: key.toString("base64") });
+    const config = await readSelfHostedConfig({ DATABASE_URL: "postgres://x", MASTER_KEY: key.toString("base64"), PLUGIN_HOST_URL: "http://h", PLUGIN_HOST_TOKEN: "t" });
     expect(config).toMatchObject({
+      pluginHost: { url: "http://h", token: "t" },
       databaseUrl: "postgres://x",
       masterKey: key,
       blobDirectory: "/var/lib/family-agenda/blobs",

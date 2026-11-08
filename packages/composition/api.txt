@@ -4,12 +4,14 @@ export type { Adapters } from "./adapters";
 export type { Application } from "./application";
 export { bootApplication, bootWorker, type Worker } from "./boot";
 export { readApplicationConfig, type ApplicationConfig } from "./config";
-export { bootSelfHosted, bootSelfHostedWorker, readSelfHostedConfig, selfHostedAdapters, type SelfHostedConfig } from "./self-hosted";
+export { bootSelfHosted, bootSelfHostedWorker, pluginHostFrom, readSelfHostedConfig, selfHostedAdapters, type SelfHostedConfig } from "./self-hosted";
 export { connectPostgres, NewerMigrationHistoryError, OldMigrationHistoryError, runMigrations, type PostgresConnection, type PostgresPoolOptions, } from "@family-agenda/adapters";
 export { createWorkerLoop, logDueWorkReport, type WorkerLog, type WorkerLoop } from "./worker-loop";
 export { SourceRegistry } from "./source-registry";
+export { PluginHostClient, type HostedPlugin, type PluginHostConfig, type RemotePlugin } from "./plugin-host-client";
 // src/adapters.ts
 import type { PostgresConnection } from "@family-agenda/adapters";
+import type { PluginHostConfig } from "./plugin-host-client";
 import type { BlobStore, Clock, Extractor, IdentityProviderClient, OcrModelStore, PasswordHasher, SecretStore, TextExtractor } from "@family-agenda/application";
 export type Adapters = {
     postgres: PostgresConnection;
@@ -22,7 +24,7 @@ export type Adapters = {
     extractor: Extractor;
     textExtractor: TextExtractor;
     ocrModels: OcrModelStore;
-    pluginDirectories: string[];
+    pluginHost: PluginHostConfig;
 };
 // src/application.ts
 import type { AdminAccess, AgendaAccess, CatalogueAccess, Cleanup, DueWork, ExtractionAccess, FamilyMemberAccess, LanguageAccess, LlmEndpointAccess, MessageAccess, RecoveryKitAccess, Retention, SecretStore, SecretSweep, ServiceSupervision, SingleSignOn, SourceAccess, SourcePolling, SourceTypeAccess, TaskAccess } from "@family-agenda/application";
@@ -67,23 +69,24 @@ export declare function assertTimeZone(timeZone: string): void;
 import { type PostgresPoolOptions, type TessdataCatalog } from "@family-agenda/adapters";
 import type { Adapters } from "./adapters";
 import type { Application } from "./application";
+import type { PluginHostConfig } from "./plugin-host-client";
 import { type Worker } from "./boot";
 export type SelfHostedConfig = {
     databaseUrl: string;
     pool?: PostgresPoolOptions;
     masterKey: Buffer;
     blobDirectory: string;
-    pluginDirectory: string;
     tessdataDirectory: string;
     bundledTessdataDirectory: string | null;
     tessdataCatalog?: TessdataCatalog;
-    workspacePackages?: string;
+    pluginHost: PluginHostConfig;
 };
 export declare function selfHostedAdapters(config: SelfHostedConfig): Promise<Adapters>;
 export declare function readMasterKeyFrom(env: NodeJS.ProcessEnv): Promise<Buffer>;
 export declare function readSelfHostedConfig(env?: NodeJS.ProcessEnv): Promise<SelfHostedConfig>;
 export declare function bootSelfHosted(env?: NodeJS.ProcessEnv): Promise<Application>;
 export declare function bootSelfHostedWorker(env?: NodeJS.ProcessEnv): Promise<Worker>;
+export declare function pluginHostFrom(env: NodeJS.ProcessEnv): PluginHostConfig;
 // src/worker-loop.ts
 import type { DueWorkReport } from "@family-agenda/application";
 import type { Worker } from "./boot";
@@ -100,13 +103,15 @@ export declare function createWorkerLoop(worker: Worker, log: WorkerLog): Worker
 // src/source-registry.ts
 import type { InstalledSourceType, LoadedSourceType, PlainConfig, SourceTypeRegistry } from "@family-agenda/application";
 import type { SourceTypeId } from "@family-agenda/domain";
+import { type PluginHostConfig } from "./plugin-host-client";
 export declare class SourceRegistry implements SourceTypeRegistry {
-    private readonly discovered;
-    private readonly plugins;
+    private readonly offered;
     private readonly loaded;
     private readonly loadFailures;
     private constructor();
-    static discover(directories: string[]): Promise<SourceRegistry>;
+    static fromPluginHost(pluginHost: PluginHostConfig, options?: {
+        hostAttempts?: number;
+    }): Promise<SourceRegistry>;
     installed(): InstalledSourceType[];
     load(id: SourceTypeId): Promise<{
         ok: true;
@@ -122,5 +127,31 @@ export declare class SourceRegistry implements SourceTypeRegistry {
         ok: false;
     }>;
     private pluginOf;
-    private import;
+}
+// src/plugin-host-client.ts
+import { type JsonObject, type SourcePlugin, type SourcePluginManifest } from "@family-agenda/source-sdk";
+export type PluginHostConfig = {
+    url: string;
+    token: string;
+    fetch?: typeof globalThis.fetch;
+};
+export type HostedPlugin = {
+    plugin: SourcePlugin;
+    migrate(fromVersion: number, plain: JsonObject): Promise<JsonObject>;
+};
+export type RemotePlugin = {
+    manifest: SourcePluginManifest;
+    hosted: HostedPlugin;
+};
+export declare class PluginHostClient {
+    private readonly config;
+    private readonly fetch;
+    constructor(config: PluginHostConfig);
+    available({ attempts, delayMs }?: {
+        attempts?: number | undefined;
+        delayMs?: number | undefined;
+    }): Promise<RemotePlugin[]>;
+    private hosted;
+    private call;
+    private request;
 }
