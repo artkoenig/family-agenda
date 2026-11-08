@@ -16,9 +16,9 @@ How to configure the containers, the address the Family opens, and single sign-o
 | `POSTGRES_PASSWORD` | `family_agenda` | Change it if the port of Postgres is ever exposed |
 | `TZ` | `Europe/Berlin` | Decides where an Agenda's days start. Required; the time zone of the process is no longer a fallback |
 | `MASTER_KEY` | none, required | 32 random bytes in base64 (`openssl rand -base64 32`) that Source credentials are encrypted with. An Instance that already has a key file in the `master-key` volume may leave it unset; Family Agenda no longer creates a key on its own |
-| `PLUGIN_HOST_TOKEN` | none | A random token (`openssl rand -hex 32`) api, worker and the `plugin-host` service share. Set, the Source Types in `PLUGIN_HOST_SOURCE_TYPES` run in the Plugin Host, each in a sandboxed process of its own user without access to the database, the master key or the blobs; unset, every plugin runs in api and worker |
+| `PLUGIN_HOST_TOKEN` | none | A random token (`openssl rand -hex 32`) api, worker and the `plugin-host` service share. Set, the plugins the Plugin Host installs from the Plugin Repository run there (they override in-process packages of the same Source Type), each in a sandboxed process of its own user without access to the database, the master key or the blobs; unset, every plugin runs in api and worker |
 | `PLUGIN_HOST_URL` | `http://plugin-host:4100` in Compose | Where api and worker reach the Plugin Host; needed with `PLUGIN_HOST_TOKEN` |
-| `PLUGIN_HOST_SOURCE_TYPES` | `ics` | The Source Types the Plugin Host runs, separated by commas |
+| `MOCK_PLUGIN_REPOSITORY` | `packages/source-ics` | `plugin-host` only: the workspace packages the mock Plugin Repository publishes, separated by commas, until there is a real one |
 
 Data lives in named volumes (`postgres-data`, `master-key`, `blobs`, ...). How to back them up, restore and upgrade is in [upgrading.md](upgrading.md). Keep the Recovery Kit, without it Source credentials cannot be restored.
 

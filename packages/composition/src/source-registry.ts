@@ -13,7 +13,7 @@ import type {
   SourceTypeRegistry,
 } from "@family-agenda/application";
 import type { SourceTypeId } from "@family-agenda/domain";
-import { bundlePlugin, PluginHostClient, type HostedPlugin, type PluginHostConfig } from "./plugin-host-client";
+import { PluginHostClient, type HostedPlugin, type PluginHostConfig } from "./plugin-host-client";
 import {
   parseManifest,
   problemsWith,
@@ -33,6 +33,8 @@ type Discovered = {
   installed: InstalledSourceType;
   /** Absent when the manifest alone keeps the plugin from loading. */
   module?: string;
+  /** Set for a plugin the Plugin Host runs. */
+  hosted?: HostedPlugin;
 };
 
 /**
@@ -46,16 +48,13 @@ export class SourceRegistry implements SourceTypeRegistry {
   private readonly loaded = new Map<string, LoadedSourceType>();
   private readonly loadFailures = new Map<string, string>();
 
-  private constructor(
-    private readonly discovered: Map<string, Discovered>,
-    private readonly host: { client: PluginHostClient; sourceTypes: Set<string> } | null,
-  ) {}
+  private constructor(private readonly discovered: Map<string, Discovered>) {}
 
   /**
    * The first package declaring a Source Type id wins; later ones are ignored with a warning. The
-   * Source Types `pluginHost` names run there, shipped as a bundle; the others in this process.
+   * plugins `pluginHost` offers run there and win over packages of the same Source Type here.
    */
-  static async discover(directories: string[], options: { pluginHost?: PluginHostConfig | null } = {}): Promise<SourceRegistry> {
+  static async discover(directories: string[], options: { pluginHost?: PluginHostConfig | null; hostAttempts?: number } = {}): Promise<SourceRegistry> {
     shareSdkWith(directories);
     const discovered = new Map<string, Discovered>();
     for (const directory of directories) {
@@ -70,9 +69,11 @@ export class SourceRegistry implements SourceTypeRegistry {
         discovered.set(id, found);
       }
     }
-    const { pluginHost } = options;
-    const host = pluginHost ? { client: new PluginHostClient(pluginHost), sourceTypes: new Set(pluginHost.sourceTypes) } : null;
-    return new SourceRegistry(discovered, host);
+    if (options.pluginHost) {
+      const remote = await new PluginHostClient(options.pluginHost).available({ attempts: options.hostAttempts });
+      for (const { manifest, hosted } of remote) discovered.set(manifest.identity.sourceTypeId, { installed: installedOf(manifest), hosted });
+    }
+    return new SourceRegistry(discovered);
   }
 
   installed(): InstalledSourceType[] {
@@ -124,8 +125,9 @@ export class SourceRegistry implements SourceTypeRegistry {
 
   private async import(id: string): Promise<HostedPlugin | null> {
     const found = this.discovered.get(id);
-    if (!found?.module || found.installed.notLoadable !== null) return null;
-    const loaded = this.host?.sourceTypes.has(id) ? await loadHosted(this.host.client, found.module, id) : await loadPlugin(found.module, id);
+    if (!found || found.installed.notLoadable !== null) return null;
+    const loaded = found.hosted ? checked(id, found.hosted) : found.module ? await loadPlugin(found.module, id) : null;
+    if (!loaded) return null;
     if ("problems" in loaded) {
       this.loadFailures.set(id, loaded.problems.join("; "));
       return null;
@@ -145,15 +147,6 @@ async function loadPlugin(module: string, id: string): Promise<Loaded> {
     return checked(id, { plugin, migrate: (from, plain) => Promise.resolve(migrationOf(plugin, from)(plain)) });
   } catch (error) {
     return { problems: [`loading the code failed: ${messageOf(error)}`] };
-  }
-}
-
-/** The plugin of an entry module, run by the Plugin Host from its bundle. */
-async function loadHosted(client: PluginHostClient, module: string, id: string): Promise<Loaded> {
-  try {
-    return checked(id, await client.hosted(id, await bundlePlugin(module)));
-  } catch (error) {
-    return { problems: [`loading the code into the Plugin Host failed: ${messageOf(error)}`] };
   }
 }
 

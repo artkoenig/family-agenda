@@ -1,9 +1,14 @@
+import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { defaultLimits, PluginManager } from "./manager";
+import { MockPluginRepository } from "./mock-repository";
+import { installFromRepository } from "./repository";
 import { createPluginHostServer } from "./server";
 
 /**
- * The Plugin Host: runs Source plugins the core installs as bundles, each in a process of its own.
- * It has no database, no master key and no blobs; the core reaches it with PLUGIN_HOST_TOKEN.
+ * The Plugin Host: installs the plugins the Plugin Repository publishes and runs each in a process
+ * of its own. It has no database, no master key and no blobs; the core reaches it with
+ * PLUGIN_HOST_TOKEN and gets the list of plugins from it.
  */
 const token = process.env.PLUGIN_HOST_TOKEN;
 if (!token) {
@@ -25,7 +30,15 @@ const manager = new PluginManager({
 // The token stays with the manager: plugin processes start with an empty environment.
 delete process.env.PLUGIN_HOST_TOKEN;
 
-const server = createPluginHostServer(manager, token);
+// Until there is a Plugin Repository, a mock one publishes packages of this workspace.
+const workspace = fileURLToPath(new URL("../../../", import.meta.url));
+const published = (process.env.MOCK_PLUGIN_REPOSITORY ?? "packages/source-ics").split(",").map((path) => path.trim()).filter((path) => path !== "");
+const repository = await MockPluginRepository.fromPackages(published.map((path) => resolve(workspace, path)));
+const { available, failures } = await installFromRepository(manager, repository);
+for (const failure of failures) console.warn(failure);
+console.log(`Plugin Host installed ${available.map(({ manifest }) => manifest.identity.sourceTypeId).join(", ") || "no plugins"}.`);
+
+const server = createPluginHostServer(manager, token, () => available);
 server.listen(port, () => {
   console.log(`Plugin Host listening on ${port}`);
 });

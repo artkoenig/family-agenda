@@ -8,8 +8,7 @@ describe("the Plugin Host setting", () => {
     expect(pluginHostFrom({ PLUGIN_HOST_TOKEN: "t" })).toBeNull();
   });
 
-  it("runs ICS there by default, or the Source Types named", () => {
-    expect(pluginHostFrom({ PLUGIN_HOST_URL: "http://h", PLUGIN_HOST_TOKEN: "t" })).toEqual({ url: "http://h", token: "t", sourceTypes: ["ics"] });
-    expect(pluginHostFrom({ PLUGIN_HOST_URL: "http://h", PLUGIN_HOST_TOKEN: "t", PLUGIN_HOST_SOURCE_TYPES: " ics, demo ,," })?.sourceTypes).toEqual(["ics", "demo"]);
+  it("is on with both", () => {
+    expect(pluginHostFrom({ PLUGIN_HOST_URL: "http://h", PLUGIN_HOST_TOKEN: "t" })).toEqual({ url: "http://h", token: "t" });
   });
 });

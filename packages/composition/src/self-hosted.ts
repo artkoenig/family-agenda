@@ -1,4 +1,3 @@
-import type { PluginHostConfig } from "./plugin-host-client";
 import { mkdir } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import {
@@ -19,6 +18,7 @@ import {
 } from "@family-agenda/adapters";
 import type { Adapters } from "./adapters";
 import type { Application } from "./application";
+import type { PluginHostConfig } from "./plugin-host-client";
 import { bootApplication, bootWorker, type Worker } from "./boot";
 import { readApplicationConfig } from "./config";
 
@@ -123,14 +123,10 @@ export async function bootSelfHostedWorker(env: NodeJS.ProcessEnv = process.env)
   return bootWorker(readApplicationConfig(env), await selfHostedAdapters(await readSelfHostedConfig(env)));
 }
 
-/**
- * The Plugin Host, when PLUGIN_HOST_URL and PLUGIN_HOST_TOKEN are both set; PLUGIN_HOST_SOURCE_TYPES
- * names the Source Types it runs, separated by commas, `ics` by default.
- */
+/** The Plugin Host, when PLUGIN_HOST_URL and PLUGIN_HOST_TOKEN are both set. */
 export function pluginHostFrom(env: NodeJS.ProcessEnv): PluginHostConfig | null {
   const url = env.PLUGIN_HOST_URL;
   const token = env.PLUGIN_HOST_TOKEN;
   if (!url || !token) return null;
-  const sourceTypes = (env.PLUGIN_HOST_SOURCE_TYPES ?? "ics").split(",").map((id) => id.trim()).filter((id) => id !== "");
-  return { url, token, sourceTypes };
+  return { url, token };
 }

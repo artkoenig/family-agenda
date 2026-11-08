@@ -8,8 +8,10 @@ import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it } from "vitest";
 import { describeSourcePluginContract } from "@family-agenda/source-sdk/testing";
 import type { SourceTypeId } from "@family-agenda/domain";
-import { bundlePlugin, PluginHostClient, SourceRegistry } from "@family-agenda/composition";
+import { PluginHostClient, SourceRegistry } from "@family-agenda/composition";
 import { PluginManager } from "../src/manager";
+import { MockPluginRepository } from "../src/mock-repository";
+import { installFromRepository } from "../src/repository";
 import { createPluginHostServer } from "../src/server";
 
 const root = fileURLToPath(new URL("../../../", import.meta.url));
@@ -21,7 +23,9 @@ const listen = async (server: Server) => {
 };
 
 const manager = new PluginManager({ workDirectory: await realpath(await mkdtemp(join(tmpdir(), "plugin-host-remote-"))), firstUserId: null, memoryMb: 256, openFiles: 256, callTimeoutMs: 20_000 });
-const host = createPluginHostServer(manager, token);
+const repository = await MockPluginRepository.fromPackages([join(root, "packages/source-ics"), join(root, "tools/demo-source")]);
+const { available, failures } = await installFromRepository(manager, repository);
+const host = createPluginHostServer(manager, token, () => available);
 const url = await listen(host);
 
 const ics = readFileSync(join(root, "packages/source-ics/test/fixtures/family-v1.ics"), "utf8");
@@ -34,24 +38,32 @@ afterAll(() => {
   calendar.close();
 });
 
-const remoteIcs = (await new PluginHostClient({ url, token }).hosted("ics", await bundlePlugin(join(root, "packages/source-ics/src/index.ts")))).plugin;
+const remote = await new PluginHostClient({ url, token }).available();
+const remoteIcs = remote.find(({ manifest }) => manifest.identity.sourceTypeId === "ics")?.hosted.plugin;
+if (!remoteIcs) throw new Error("the host offers ICS");
 
 describe("the ICS plugin run by the Plugin Host", () => {
   describeSourcePluginContract(() => remoteIcs, { config: { plain: {}, secrets: { url: calendarUrl } }, now: new Date("2026-09-14T07:00:00Z"), languages: ["de"] });
 });
 
-describe("the Plugin Host channel", () => {
-  it("refuses a wrong token", async () => {
-    const response = await fetch(`${url}/plugins/ics/poll`, { method: "POST", body: "[]", headers: { authorization: "Bearer wrong" } });
-
-    expect(response.status).toBe(401);
+describe("the Plugin Host", () => {
+  it("installs what the Plugin Repository publishes and lists it with its manifests", () => {
+    expect(failures).toEqual([]);
+    expect(remote.map(({ manifest }) => manifest.identity.sourceTypeId)).toEqual(["ics", "demo"]);
+    expect(remote[0]?.manifest.description).toMatchObject({ en: expect.any(String) as unknown });
   });
 
-  it("answers 404 for what it does not know", async () => {
+  it("refuses a wrong token", async () => {
+    expect((await fetch(`${url}/plugins`, { headers: { authorization: "Bearer wrong" } })).status).toBe(401);
+  });
+
+  it("answers 404 for what it does not know, and takes no code", async () => {
     const headers = { authorization: `Bearer ${token}` };
 
     expect((await fetch(`${url}/plugins/missing/poll`, { method: "POST", body: "[]", headers })).status).toBe(404);
     expect((await fetch(`${url}/plugins/ics/unknown`, { method: "POST", body: "[]", headers })).status).toBe(404);
+    expect((await fetch(`${url}/plugins/ics`, { method: "PUT", body: "export default {}", headers })).status).toBe(404);
+    expect((await fetch(`${url}/plugins`, { method: "POST", body: "[]", headers })).status).toBe(404);
     expect((await fetch(`${url}/other`, { headers })).status).toBe(404);
   });
 
@@ -66,8 +78,9 @@ describe("the Plugin Host channel", () => {
 });
 
 describe("a registry with a Plugin Host", () => {
-  it("polls the demo Source through the host, end to end, and the other Source Types in process", async () => {
-    const registry = await SourceRegistry.discover([join(root, "packages"), join(root, "tools")], { pluginHost: { url, token, sourceTypes: ["demo", "ics"] } });
+  it("gets the demo Source from the host and polls it there, end to end, and runs the other Source Types in process", async () => {
+    // The demo plugin is only in tools/, which the registry does not look in: it can come only from the host.
+    const registry = await SourceRegistry.discover([join(root, "packages")], { pluginHost: { url, token } });
 
     const demo = await registry.load("demo" as SourceTypeId);
     const webuntis = await registry.load("webuntis" as SourceTypeId);
@@ -77,30 +90,26 @@ describe("a registry with a Plugin Host", () => {
     expect(result).toMatchObject({ ok: true, declared: expect.arrayContaining([{ externalId: "family", name: "Family calendar" }]) as unknown });
     expect(result.ok && result.origins.length).toBeGreaterThan(10);
     expect(webuntis.ok).toBe(true);
-    expect(registry.installed().find((type) => type.id === "demo")?.notLoadable).toBeNull();
+    expect(registry.installed().find((type) => type.id === "demo")).toMatchObject({ displayName: { en: "Demo data" }, notLoadable: null });
   });
 
   it("refuses invalid Origins a hosted plugin returns", async () => {
-    const client = new PluginHostClient({ url, token });
+    const work = await realpath(await mkdtemp(join(tmpdir(), "plugin-host-bad-")));
+    const badManager = new PluginManager({ workDirectory: work, firstUserId: null, memoryMb: 64, openFiles: 64, callTimeoutMs: 5_000 });
     const bundle = `export default { identity: { sourceTypeId: "bad", displayName: "Bad", version: "1", sdkVersion: "2.0.0" }, configuration: { version: 1, fields: [] }, setupSteps: [],
       ingestion: { mode: "polling", suggestedIntervalSeconds: 60, poll: async (c) => c.config.plain.shape ? { origins: [{ externalId: 1 }], syncCursor: null } : { origins: [], syncCursor: 5 } }, health: { silentApplies: false } };`;
-    const { plugin } = await client.hosted("bad", bundle);
-    if (plugin.ingestion.mode !== "polling") throw new Error("polls");
+    const installed = await badManager.install("bad", bundle);
+    if (!installed.ok) throw new Error("installs");
+    const manifest = { entry: "./index.js", identity: installed.description.identity, description: "Bad", needsLlm: false, esModule: true };
+    const badHost = createPluginHostServer(badManager, token, () => [{ manifest, description: installed.description }]);
+    const [bad] = await new PluginHostClient({ url: await listen(badHost), token }).available();
+    const plugin = bad?.hosted.plugin;
+    if (plugin?.ingestion.mode !== "polling") throw new Error("polls");
     const context = (plain: object) => ({ config: { plain: plain as never, secrets: {} }, syncCursor: null, now: new Date(), timeZone: "UTC" });
 
     await expect(plugin.ingestion.poll(context({ shape: true }))).rejects.toMatchObject({ kind: "definite", message: expect.stringContaining("Origin 0") as unknown });
     await expect(plugin.ingestion.poll(context({}))).rejects.toMatchObject({ kind: "definite", message: expect.stringContaining("sync cursor") as unknown });
-  });
-
-  it("installs a plugin again once the host lost it", async () => {
-    const client = new PluginHostClient({ url, token });
-    const bundle = await bundlePlugin(join(root, "tools/demo-source/src/index.ts"));
-    const { plugin } = await client.hosted("demo", bundle);
-    manager.stop();
-    if (plugin.ingestion.mode !== "polling") throw new Error("polls");
-
-    const result = await plugin.ingestion.poll({ config: { plain: {}, secrets: {} }, syncCursor: null, now: new Date(), timeZone: "UTC" });
-
-    expect(result.origins.length).toBeGreaterThan(0);
+    badManager.stop();
+    badHost.close();
   });
 });

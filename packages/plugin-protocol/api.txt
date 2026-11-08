@@ -1,6 +1,6 @@
 // The public API of @family-agenda/plugin-protocol, written by `pnpm sdk-api`. Do not edit it by hand.
 // src/index.ts
-import type { CatalogueEntry, Choice, ConfigField, Health, IngestResult, JsonObject, PluginText, RunContext, SetupProgress, SourcePluginIdentity } from "@family-agenda/source-sdk";
+import type { CatalogueEntry, Choice, ConfigField, Health, IngestResult, JsonObject, PluginText, RunContext, SetupProgress, SourcePluginIdentity, SourcePluginManifest } from "@family-agenda/source-sdk";
 export declare const authorizationHeader = "authorization";
 export type PluginDescription = {
     identity: SourcePluginIdentity;
@@ -30,6 +30,10 @@ export type PluginDescription = {
     } | null;
     sourceAdded: boolean;
     sourceRemoved: boolean;
+};
+export type AvailablePlugin = {
+    manifest: SourcePluginManifest;
+    description: PluginDescription;
 };
 export type Calls = {
     poll: {

@@ -1,80 +1,76 @@
-import { build } from "esbuild";
 import {
   authorizationHeader,
   decode,
   encode,
   type CallFailure,
   type CallName,
+  type AvailablePlugin,
   type CallOutcome,
   type Calls,
   type PluginDescription,
 } from "@family-agenda/plugin-protocol";
-import { SourceError, statedKinds, type JsonObject, type RunContext, type SourcePlugin } from "@family-agenda/source-sdk";
+import { SourceError, statedKinds, type JsonObject, type RunContext, type SourcePlugin, type SourcePluginManifest } from "@family-agenda/source-sdk";
 
 export type PluginHostConfig = {
   /** Where the Plugin Host listens, such as `http://plugin-host:4100`. */
   url: string;
   /** The token shared with the Plugin Host. */
   token: string;
-  /** The Source Types run there rather than in this process. */
-  sourceTypes: string[];
   fetch?: typeof globalThis.fetch;
 };
 
 /** A plugin the Plugin Host runs, as the core calls it, with its configuration migration, which the SDK keeps synchronous. */
 export type HostedPlugin = { plugin: SourcePlugin; migrate(fromVersion: number, plain: JsonObject): Promise<JsonObject> };
 
-/** One file holding a plugin's entry module and everything it imports, the SDK included. */
-export async function bundlePlugin(entry: string): Promise<string> {
-  const result = await build({ entryPoints: [entry], bundle: true, write: false, platform: "node", format: "esm", target: "node22", logLevel: "silent" });
-  const [output] = result.outputFiles;
-  if (!output) throw new Error(`Bundling ${entry} gave no output.`);
-  return output.text;
-}
+/** A plugin the Plugin Host offers: the manifest it was published with, and the plugin to call. */
+export type RemotePlugin = { manifest: SourcePluginManifest; hosted: HostedPlugin };
 
 /** Reaches the Plugin Host's manager over its internal channel. */
 export class PluginHostClient {
   private readonly fetch: typeof globalThis.fetch;
 
-  constructor(private readonly config: Omit<PluginHostConfig, "sourceTypes">) {
+  constructor(private readonly config: PluginHostConfig) {
     this.fetch = config.fetch ?? globalThis.fetch;
   }
 
-  /** Installs a plugin's bundle and gives it back as a plugin whose functions call the host. */
-  async hosted(id: string, bundle: string): Promise<HostedPlugin> {
-    const description = await this.install(id, bundle);
-    const call = async <C extends CallName>(name: C, ...args: Calls[C]["args"]): Promise<Calls[C]["result"]> => {
-      let outcome = await this.call(id, name, args);
-      // The host lost its plugins, as on a restart: install the bundle again.
-      if (outcome === null) {
-        await this.install(id, bundle);
-        outcome = await this.call(id, name, args);
+  /**
+   * The plugins the host installed from the Plugin Repository. A host that is still starting is
+   * asked again, `attempts` times in all.
+   */
+  async available({ attempts = 30, delayMs = 1_000 } = {}): Promise<RemotePlugin[]> {
+    for (let attempt = 1; ; attempt++) {
+      try {
+        const response = await this.request("/plugins", "GET");
+        const listed = decode(await response.text()) as AvailablePlugin[];
+        return listed.map(({ manifest, description }) => ({ manifest, hosted: this.hosted(manifest.identity.sourceTypeId, description) }));
+      } catch (error) {
+        if (attempt >= attempts || !(error instanceof SourceError)) throw error;
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
       }
-      if (outcome === null) throw new Error(`The Plugin Host has no plugin "${id}".`);
+    }
+  }
+
+  private hosted(id: string, description: PluginDescription): HostedPlugin {
+    const call = async <C extends CallName>(name: C, ...args: Calls[C]["args"]): Promise<Calls[C]["result"]> => {
+      const outcome = await this.call(id, name, args);
       if (!outcome.ok) throw errorOf(outcome.failure);
       return outcome.value as Calls[C]["result"];
     };
     return { plugin: pluginOf(description, call), migrate: (from, plain) => call("migrate", from, plain) };
   }
 
-  private async install(id: string, bundle: string): Promise<PluginDescription> {
-    const response = await this.request(`/plugins/${encodeURIComponent(id)}`, "PUT", bundle);
-    const installed = decode(await response.text()) as { ok: true; description: PluginDescription } | { ok: false; failure: CallFailure };
-    if (!installed.ok) throw new Error(`The Plugin Host could not install "${id}": ${installed.failure.message}`);
-    return installed.description;
-  }
-
-  private async call(id: string, name: CallName, args: unknown[]): Promise<CallOutcome | null> {
+  private async call(id: string, name: CallName, args: unknown[]): Promise<CallOutcome> {
     const response = await this.request(`/plugins/${encodeURIComponent(id)}/${name}`, "POST", encode(args));
-    if (response.status === 404) return null;
+    // The host lost the plugin, as when it failed to start after a restart: try again later.
+    if (response.status === 404) throw SourceError.temporary(`The Plugin Host has no plugin "${id}".`);
     if (!response.ok) throw new Error(`The Plugin Host refused the call "${name}" with status ${response.status}.`);
     return decode(await response.text()) as CallOutcome;
   }
 
-  private async request(path: string, method: string, body: string): Promise<Response> {
+  private async request(path: string, method: string, body?: string): Promise<Response> {
     let response: Response;
     try {
-      response = await this.fetch(new URL(path, this.config.url), { method, body, headers: { [authorizationHeader]: `Bearer ${this.config.token}` } });
+      response = await this.fetch(new URL(path, this.config.url), { method, ...(body === undefined ? {} : { body }), headers: { [authorizationHeader]: `Bearer ${this.config.token}` } });
     } catch (error) {
       throw SourceError.temporary(`The Plugin Host cannot be reached: ${error instanceof Error ? error.message : String(error)}`);
     }

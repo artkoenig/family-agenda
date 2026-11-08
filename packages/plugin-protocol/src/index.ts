@@ -14,6 +14,7 @@ import type {
   RunContext,
   SetupProgress,
   SourcePluginIdentity,
+  SourcePluginManifest,
 } from "@family-agenda/source-sdk";
 
 /** The header the core sends the shared token in, as `Bearer <token>`. */
@@ -35,6 +36,12 @@ export type PluginDescription = {
   sourceAdded: boolean;
   sourceRemoved: boolean;
 };
+
+/**
+ * A plugin the Plugin Host installed from the Plugin Repository and offers the core, as
+ * `GET /plugins` lists it: the manifest it was published with and what it describes itself as.
+ */
+export type AvailablePlugin = { manifest: SourcePluginManifest; description: PluginDescription };
 
 /** What each call takes and gives. */
 export type Calls = {

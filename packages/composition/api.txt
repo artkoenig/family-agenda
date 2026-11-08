@@ -8,7 +8,7 @@ export { bootSelfHosted, bootSelfHostedWorker, pluginHostFrom, readSelfHostedCon
 export { connectPostgres, NewerMigrationHistoryError, OldMigrationHistoryError, runMigrations, type PostgresConnection, type PostgresPoolOptions, } from "@family-agenda/adapters";
 export { createWorkerLoop, logDueWorkReport, type WorkerLog, type WorkerLoop } from "./worker-loop";
 export { SourceRegistry } from "./source-registry";
-export { bundlePlugin, PluginHostClient, type HostedPlugin, type PluginHostConfig } from "./plugin-host-client";
+export { PluginHostClient, type HostedPlugin, type PluginHostConfig, type RemotePlugin } from "./plugin-host-client";
 // src/adapters.ts
 import type { PostgresConnection } from "@family-agenda/adapters";
 import type { PluginHostConfig } from "./plugin-host-client";
@@ -67,10 +67,10 @@ export type ApplicationConfig = {
 export declare function readApplicationConfig(env: NodeJS.ProcessEnv): ApplicationConfig;
 export declare function assertTimeZone(timeZone: string): void;
 // src/self-hosted.ts
-import type { PluginHostConfig } from "./plugin-host-client";
 import { type PostgresPoolOptions, type TessdataCatalog } from "@family-agenda/adapters";
 import type { Adapters } from "./adapters";
 import type { Application } from "./application";
+import type { PluginHostConfig } from "./plugin-host-client";
 import { type Worker } from "./boot";
 export type SelfHostedConfig = {
     databaseUrl: string;
@@ -109,13 +109,13 @@ import type { SourceTypeId } from "@family-agenda/domain";
 import { type PluginHostConfig } from "./plugin-host-client";
 export declare class SourceRegistry implements SourceTypeRegistry {
     private readonly discovered;
-    private readonly host;
     private readonly plugins;
     private readonly loaded;
     private readonly loadFailures;
     private constructor();
     static discover(directories: string[], options?: {
         pluginHost?: PluginHostConfig | null;
+        hostAttempts?: number;
     }): Promise<SourceRegistry>;
     installed(): InstalledSourceType[];
     load(id: SourceTypeId): Promise<{
@@ -135,24 +135,29 @@ export declare class SourceRegistry implements SourceTypeRegistry {
     private import;
 }
 // src/plugin-host-client.ts
-import { type JsonObject, type SourcePlugin } from "@family-agenda/source-sdk";
+import { type JsonObject, type SourcePlugin, type SourcePluginManifest } from "@family-agenda/source-sdk";
 export type PluginHostConfig = {
     url: string;
     token: string;
-    sourceTypes: string[];
     fetch?: typeof globalThis.fetch;
 };
 export type HostedPlugin = {
     plugin: SourcePlugin;
     migrate(fromVersion: number, plain: JsonObject): Promise<JsonObject>;
 };
-export declare function bundlePlugin(entry: string): Promise<string>;
+export type RemotePlugin = {
+    manifest: SourcePluginManifest;
+    hosted: HostedPlugin;
+};
 export declare class PluginHostClient {
     private readonly config;
     private readonly fetch;
-    constructor(config: Omit<PluginHostConfig, "sourceTypes">);
-    hosted(id: string, bundle: string): Promise<HostedPlugin>;
-    private install;
+    constructor(config: PluginHostConfig);
+    available({ attempts, delayMs }?: {
+        attempts?: number | undefined;
+        delayMs?: number | undefined;
+    }): Promise<RemotePlugin[]>;
+    private hosted;
     private call;
     private request;
 }

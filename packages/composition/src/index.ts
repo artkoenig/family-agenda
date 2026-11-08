@@ -13,4 +13,4 @@ export {
 } from "@family-agenda/adapters";
 export { createWorkerLoop, logDueWorkReport, type WorkerLog, type WorkerLoop } from "./worker-loop";
 export { SourceRegistry } from "./source-registry";
-export { bundlePlugin, PluginHostClient, type HostedPlugin, type PluginHostConfig } from "./plugin-host-client";
+export { PluginHostClient, type HostedPlugin, type PluginHostConfig, type RemotePlugin } from "./plugin-host-client";

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { encode, type CallOutcome, type PluginDescription } from "@family-agenda/plugin-protocol";
+import type { SourcePluginManifest } from "@family-agenda/source-sdk";
 import { PluginHostClient } from "../src/plugin-host-client";
 
 const description: PluginDescription = {
@@ -13,6 +14,8 @@ const description: PluginDescription = {
   sourceRemoved: true,
 };
 
+const manifest: SourcePluginManifest = { entry: "./index.ts", identity: description.identity, description: "Fake", needsLlm: false, esModule: true };
+
 const context = { config: { plain: {}, secrets: {} }, syncCursor: null, now: new Date(), timeZone: "UTC" };
 
 /** A host that answers each call with what `answers` gives for its name. */
@@ -21,24 +24,30 @@ function host(answers: Record<string, () => CallOutcome | Response>, described: 
   const fetch = ((url: URL, init: RequestInit) => {
     const name = url.pathname.split("/")[3];
     calls.push(`${init.method} ${name ?? ""}`);
-    if (name === undefined) return Promise.resolve(new Response(encode({ ok: true, description: described })));
+    if (name === undefined) return Promise.resolve(new Response(encode([{ manifest, description: described }])));
     const answer = answers[name]?.() ?? { ok: true, value: null };
     return Promise.resolve(answer instanceof Response ? answer : new Response(encode(answer)));
   }) as typeof globalThis.fetch;
-  return { client: new PluginHostClient({ url: "http://host", token: "t", fetch }), calls };
+  const client = new PluginHostClient({ url: "http://host", token: "t", fetch });
+  const first = async () => {
+    const [remote] = await client.available();
+    if (!remote) throw new Error("the host offers a plugin");
+    return remote.hosted;
+  };
+  return { client, first, calls, fetch };
 }
 
 const polled = (value: unknown) => host({ poll: () => ({ ok: true, value }) });
 
 describe("a plugin the Plugin Host runs, as the core calls it", () => {
   it("calls the host for choices, live setup steps, the catalogue, added and removed Sources and migrations", async () => {
-    const { client, calls } = host({
+    const { first, calls } = host({
       choices: () => ({ ok: true, value: [{ value: "x", label: "X" }] }),
       catalogueEntries: () => ({ ok: true, value: [] }),
       sourceAdded: () => ({ ok: true, value: { plain: {}, secrets: {} } }),
       migrate: () => ({ ok: true, value: { migrated: true } }),
     });
-    const hosted = await client.hosted("fake", "bundle");
+    const hosted = await first();
     const { plugin } = hosted;
 
     expect(await plugin.configuration.fields[0]?.choices?.(context)).toEqual([{ value: "x", label: "X" }]);
@@ -54,8 +63,8 @@ describe("a plugin the Plugin Host runs, as the core calls it", () => {
   });
 
   it("leaves out what the plugin does not have, and refuses pushes", async () => {
-    const { client } = host({}, { ...description, ingestion: { mode: "push" }, catalogue: null, sourceAdded: false, sourceRemoved: false });
-    const { plugin } = await client.hosted("fake", "bundle");
+    const { first } = host({}, { ...description, ingestion: { mode: "push" }, catalogue: null, sourceAdded: false, sourceRemoved: false });
+    const { plugin } = await first();
 
     expect(plugin.catalogue).toBeUndefined();
     expect("sourceAdded" in plugin).toBe(false);
@@ -64,25 +73,22 @@ describe("a plugin the Plugin Host runs, as the core calls it", () => {
     await expect(plugin.ingestion.receive({} as never, {} as never)).rejects.toThrow("cannot receive pushes");
   });
 
-  it("installs the bundle again when the host lost it, and gives up if it stays lost", async () => {
-    let lost = 2;
-    const { client, calls } = host({ catalogueEntries: () => (lost-- > 0 ? new Response(null, { status: 404 }) : { ok: true, value: [] }) });
-    const { plugin } = await client.hosted("fake", "bundle");
+  it("is a temporary failure when the host lost the plugin", async () => {
+    const { first } = host({ catalogueEntries: () => new Response(null, { status: 404 }) });
+    const { plugin } = await first();
 
-    await expect(plugin.catalogue?.entries()).rejects.toThrow('no plugin "fake"');
-    expect(await plugin.catalogue?.entries()).toEqual([]);
-    expect(calls.filter((call) => call === "PUT ")).toHaveLength(2);
+    await expect(plugin.catalogue?.entries()).rejects.toMatchObject({ kind: "temporary", message: expect.stringContaining('no plugin "fake"') as unknown });
   });
 
   it("turns failures into Source errors or plain errors", async () => {
-    const { client } = host({
+    const { first } = host({
       poll: () => ({ ok: false, failure: { sourceError: "temporary", message: "later" } }),
       catalogueEntries: () => ({ ok: false, failure: { sourceError: null, message: "broken" } }),
       choices: () => new Response(null, { status: 502 }),
       sourceAdded: () => new Response(null, { status: 401 }),
       sourceRemoved: () => new Response(null, { status: 413 }),
     });
-    const { plugin } = await client.hosted("fake", "bundle");
+    const { plugin } = await first();
     if (plugin.ingestion.mode !== "polling") throw new Error("polls");
 
     await expect(plugin.ingestion.poll(context)).rejects.toMatchObject({ name: "SourceError", kind: "temporary", message: "later" });
@@ -92,12 +98,20 @@ describe("a plugin the Plugin Host runs, as the core calls it", () => {
     await expect(plugin.sourceRemoved?.(context)).rejects.toThrow('refused the call "sourceRemoved" with status 413');
   });
 
-  it("is a temporary failure when the host cannot be reached, and refuses a bundle it cannot install", async () => {
-    const unreachable = new PluginHostClient({ url: "http://host", token: "t", fetch: () => Promise.reject(new Error("refused")) });
-    const refusing = new PluginHostClient({ url: "http://host", token: "t", fetch: () => Promise.resolve(new Response(encode({ ok: false, failure: { sourceError: null, message: "no" } }), { status: 422 })) });
+  it("asks a host that cannot be reached again, then gives up", async () => {
+    let tries = 0;
+    const unreachable = new PluginHostClient({ url: "http://host", token: "t", fetch: () => (tries++, Promise.reject(new Error("refused"))) });
 
-    await expect(unreachable.hosted("fake", "b")).rejects.toMatchObject({ kind: "temporary", message: expect.stringContaining("refused") as unknown });
-    await expect(refusing.hosted("fake", "b")).rejects.toThrow('could not install "fake": no');
+    await expect(unreachable.available({ attempts: 3, delayMs: 1 })).rejects.toMatchObject({ kind: "temporary", message: expect.stringContaining("refused") as unknown });
+    expect(tries).toBe(3);
+  });
+
+  it("lists the plugins a host offers with their manifests, once it answers", async () => {
+    let tries = 0;
+    const { fetch } = host({});
+    const flaky = new PluginHostClient({ url: "http://host", token: "t", fetch: (url, init) => (tries++ === 0 ? Promise.reject(new Error("starting")) : fetch(url, init)) });
+
+    expect((await flaky.available({ attempts: 2, delayMs: 1 })).map((remote) => remote.manifest)).toEqual([manifest]);
   });
 
   it.each([
@@ -116,7 +130,7 @@ describe("a plugin the Plugin Host runs, as the core calls it", () => {
     ["a text of no text", { origins: [{ externalId: "o", attributes: [], content: { kind: "raw-message", text: 1, attachments: [] } }], syncCursor: null }, "its text is no text"],
     ["invalid attachments", { origins: [{ externalId: "o", attributes: [], content: { kind: "raw-message", text: "", attachments: [{ filename: "f", contentType: "x", bytes: "b" }] } }], syncCursor: null }, "attachments are invalid"],
   ])("refuses a poll result with %s", async (_, value, problem) => {
-    const { plugin } = await polled(value).client.hosted("fake", "bundle");
+    const { plugin } = await polled(value).first();
     if (plugin.ingestion.mode !== "polling") throw new Error("polls");
 
     await expect(plugin.ingestion.poll(context)).rejects.toMatchObject({ kind: "definite", message: expect.stringContaining(problem) as unknown });
@@ -124,7 +138,7 @@ describe("a plugin the Plugin Host runs, as the core calls it", () => {
 
   it("passes a valid poll result on", async () => {
     const result = { origins: [{ externalId: "o", attributes: ["a"], occurredAt: new Date(), content: { kind: "raw-message", text: "t", attachments: [{ filename: "f", contentType: "x", bytes: new Uint8Array([1]) }] } }], syncCursor: "c", withdrawn: [] };
-    const { plugin } = await polled(result).client.hosted("fake", "bundle");
+    const { plugin } = await polled(result).first();
     if (plugin.ingestion.mode !== "polling") throw new Error("polls");
 
     expect(await plugin.ingestion.poll(context)).toEqual(result);

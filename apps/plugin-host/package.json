@@ -8,12 +8,12 @@
   },
   "dependencies": {
     "@family-agenda/plugin-protocol": "workspace:*",
+    "@family-agenda/source-sdk": "workspace:*",
+    "esbuild": "^0.28.2",
     "tsx": "^4.23.15"
   },
   "devDependencies": {
     "@family-agenda/composition": "workspace:*",
-    "@family-agenda/domain": "workspace:*",
-    "@family-agenda/source-sdk": "workspace:*",
-    "esbuild": "^0.28.2"
+    "@family-agenda/domain": "workspace:*"
   }
 }
