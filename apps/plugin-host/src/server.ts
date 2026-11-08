@@ -59,7 +59,12 @@ function callRouteOf(path: string): Route | null {
 }
 
 async function answer(manager: PluginManager, route: Extract<Route, { kind: "call" }>, body: string, response: ServerResponse): Promise<void> {
-  const outcome = await manager.call(route.id, route.call, decode(body) as unknown[]);
+  // A core that stops waiting closes the request; the call's process is ended then.
+  const gone = new AbortController();
+  response.on("close", () => {
+    if (!response.writableFinished) gone.abort();
+  });
+  const outcome = await manager.call(route.id, route.call, decode(body) as unknown[], gone.signal);
   if (outcome === null) response.writeHead(404).end();
   else send(response, outcome);
 }

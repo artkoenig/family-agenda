@@ -33,6 +33,7 @@ const setupProgress = new Map<string, SetupProgress>();
 const addingFails = new Set<string>();
 const removed = new Map<string, RunContext[]>();
 const holds = new Map<string, Promise<void>>();
+const givenUp = new Map<string, number>();
 let accounts = 0;
 
 /** Controls what the test plugin of a Source Type does on its next run. */
@@ -81,6 +82,10 @@ export const testPluginControls = {
       release();
     };
   },
+  /** How many of the plugin's calls were ended before they answered, as the host does with a call the core gave up. */
+  givenUp(sourceTypeId: string): number {
+    return givenUp.get(sourceTypeId) ?? 0;
+  },
   failNext(sourceTypeId: string, kind: "definite" | "temporary"): void {
     pending.set(sourceTypeId, { origins: [], failure: new SourceError(`${sourceTypeId} failed`, kind) });
   },
@@ -111,7 +116,7 @@ const answer: Ask = async (question, sourceTypeId, args) => {
     holds.delete(sourceTypeId);
     await hold;
   }
-  return answers[question](sourceTypeId, args as never) as never;
+  return answers[question](sourceTypeId, args);
 };
 
 const answers: { [Q in keyof Questions]: (sourceTypeId: string, args: Questions[Q]["args"]) => Questions[Q]["answer"] } = {
@@ -173,8 +178,6 @@ export type TestPluginPackage = {
   setupSteps?: SetupStep[];
   catalogue?: { configKey: string };
   liveSteps?: string[];
-  /** Whether loading its code never finishes, as a plugin that cannot be reached. */
-  loadHangs?: boolean;
 };
 
 const remoteModule = fileURLToPath(new URL("./test-plugin-remote.ts", import.meta.url));
@@ -189,8 +192,11 @@ async function controlUrl(): Promise<string> {
       request.on("data", (chunk: Buffer) => chunks.push(chunk));
       request.on("end", () => {
         const { question, sourceTypeId, args } = decode(Buffer.concat(chunks).toString("utf8")) as { question: keyof Questions; sourceTypeId: string; args: never };
+        response.on("close", () => {
+          if (!response.writableFinished) givenUp.set(sourceTypeId, (givenUp.get(sourceTypeId) ?? 0) + 1);
+        });
         void answer(question, sourceTypeId, args).then((value) => {
-          response.writeHead(200).end(encode(value));
+          if (!response.destroyed) response.writeHead(200).end(encode(value));
         });
       });
     });
@@ -232,7 +238,6 @@ export async function writeTestPluginPackage(directory: string, plugin: TestPlug
   await writeFile(
     join(packageDirectory, "index.ts"),
     `import { remoteTestSourcePlugin } from ${JSON.stringify(remoteModule)};\n` +
-      (plugin.loadHangs ? "await new Promise(() => {});\n" : "") +
       `export default remoteTestSourcePlugin(${JSON.stringify(await controlUrl())}, { sourceTypeId: ${JSON.stringify(plugin.sourceTypeId)}${configuration}${silentApplies}${setupSteps}${catalogue}${liveSteps} });\n`,
   );
 }

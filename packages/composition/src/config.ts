@@ -2,7 +2,7 @@
 export type ApplicationConfig = {
   /** The IANA time zone the Family lives in, such as `Europe/Berlin`; never the one of the process. */
   timeZone: string;
-  /** How long a plugin may take to load or to run a Source; `defaultPluginTimeoutMs` if absent. */
+  /** How long a plugin may take to run a Source; `defaultPluginTimeoutMs` if absent. */
   pluginTimeoutMs?: number;
 };
 

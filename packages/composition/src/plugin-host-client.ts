@@ -51,26 +51,29 @@ export class PluginHostClient {
   }
 
   private hosted(id: string, description: PluginDescription): HostedPlugin {
-    const call = async <C extends CallName>(name: C, ...args: Calls[C]["args"]): Promise<Calls[C]["result"]> => {
-      const outcome = await this.call(id, name, args);
+    const callUntil = async <C extends CallName>(signal: AbortSignal | undefined, name: C, ...args: Calls[C]["args"]): Promise<Calls[C]["result"]> => {
+      const outcome = await this.call(id, name, args, signal);
       if (!outcome.ok) throw errorOf(outcome.failure);
       return outcome.value as Calls[C]["result"];
     };
-    return { plugin: pluginOf(description, call), migrate: (from, plain) => call("migrate", from, plain) };
+    const call: Call = (name, ...args) => callUntil(undefined, name, ...args);
+    // A run's signal stays here: aborting it ends the request, and the host ends the call's process.
+    const poll = ({ signal, ...context }: RunContext) => callUntil(signal, "poll", context);
+    return { plugin: pluginOf(description, call, poll), migrate: (from, plain) => call("migrate", from, plain) };
   }
 
-  private async call(id: string, name: CallName, args: unknown[]): Promise<CallOutcome> {
-    const response = await this.request(`/plugins/${encodeURIComponent(id)}/${name}`, "POST", encode(args));
+  private async call(id: string, name: CallName, args: unknown[], signal?: AbortSignal): Promise<CallOutcome> {
+    const response = await this.request(`/plugins/${encodeURIComponent(id)}/${name}`, "POST", encode(args), signal);
     // The host lost the plugin, as when it failed to start after a restart: try again later.
     if (response.status === 404) throw SourceError.temporary(`The Plugin Host has no plugin "${id}".`);
     if (!response.ok) throw new Error(`The Plugin Host refused the call "${name}" with status ${response.status}.`);
     return decode(await response.text()) as CallOutcome;
   }
 
-  private async request(path: string, method: string, body?: string): Promise<Response> {
+  private async request(path: string, method: string, body?: string, signal?: AbortSignal): Promise<Response> {
     let response: Response;
     try {
-      response = await this.fetch(new URL(path, this.config.url), { method, ...(body === undefined ? {} : { body }), headers: { [authorizationHeader]: `Bearer ${this.config.token}` } });
+      response = await this.fetch(new URL(path, this.config.url), { method, ...(body === undefined ? {} : { body }), ...(signal ? { signal } : {}), headers: { [authorizationHeader]: `Bearer ${this.config.token}` } });
     } catch (error) {
       throw SourceError.temporary(`The Plugin Host cannot be reached: ${error instanceof Error ? error.message : String(error)}`);
     }
@@ -86,7 +89,7 @@ function errorOf(failure: CallFailure): Error {
 
 type Call = <C extends CallName>(name: C, ...args: Calls[C]["args"]) => Promise<Calls[C]["result"]>;
 
-function pluginOf(description: PluginDescription, call: Call): SourcePlugin {
+function pluginOf(description: PluginDescription, call: Call, poll: (context: RunContext) => Promise<unknown>): SourcePlugin {
   const { identity, configuration, setupSteps, ingestion, health, catalogue } = description;
   return {
     identity,
@@ -107,7 +110,7 @@ function pluginOf(description: PluginDescription, call: Call): SourcePlugin {
     })),
     ingestion:
       ingestion.mode === "polling"
-        ? { mode: "polling", suggestedIntervalSeconds: ingestion.suggestedIntervalSeconds, poll: async (context) => checkedResult(await call("poll", context)) }
+        ? { mode: "polling", suggestedIntervalSeconds: ingestion.suggestedIntervalSeconds, poll: async (context) => checkedResult(await poll(context)) }
         : { mode: "push", receive: () => Promise.reject(new Error("A hosted plugin cannot receive pushes yet.")) },
     health,
     ...(catalogue ? { catalogue: { ...catalogue, entries: () => call("catalogueEntries") } } : {}),

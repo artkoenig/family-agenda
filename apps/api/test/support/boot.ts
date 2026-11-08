@@ -45,7 +45,7 @@ export type TestOptions = {
   identityProviderClient?: IdentityProviderClient;
   /** The time zone of the Family; `Europe/Berlin` by default. */
   timeZone?: string;
-  /** How long a plugin may take to load or to run a Source; the Instance's default if absent. */
+  /** How long a plugin may take to run a Source; the Instance's default if absent. */
   pluginTimeoutMs?: number;
   /** Test plugins the Plugin Repository publishes before the first boot. */
   sourcePlugins?: TestPluginPackage[];
@@ -101,12 +101,15 @@ export async function bootForTest(options: TestOptions = {}): Promise<TestInstan
   const initialKey = randomBytes(32);
   const config: ApplicationConfig = { timeZone, ...(pluginTimeoutMs === undefined ? {} : { pluginTimeoutMs }) };
   const tessdataDirectory = join(keyDirectory, "tessdata");
-  let pluginHost: { stop(): Promise<void> } | undefined;
   /** The adapters of the Instance, built anew on each boot as a process would on each start. */
-  const adaptersFor = async (masterKey: Buffer): Promise<Adapters> => {
-    await pluginHost?.stop();
-    const host = await startPluginHost(publishedPlugins, await mkdtemp(join(keyDirectory, "plugin-host-")));
-    pluginHost = host;
+  let pluginHost: { config: PluginHostConfig; stop(): Promise<void> } | undefined;
+  /** `sharedHost` keeps the running Plugin Host, as a second process of the same Instance would. */
+  const adaptersFor = async (masterKey: Buffer, { sharedHost = false } = {}): Promise<Adapters> => {
+    if (!sharedHost || !pluginHost) {
+      await pluginHost?.stop();
+      pluginHost = await startPluginHost(publishedPlugins, await mkdtemp(join(keyDirectory, "plugin-host-")));
+    }
+    const host = pluginHost;
     const database = postgres.connect();
     const ocrModels = new TessdataDirectory({
       directory: tessdataDirectory,
@@ -147,7 +150,7 @@ export async function bootForTest(options: TestOptions = {}): Promise<TestInstan
       instance.app = await bootApplication(config, await adaptersFor(masterKey));
     },
     async bootAnother() {
-      const other = await bootApplication(config, await adaptersFor(instance.masterKey));
+      const other = await bootApplication(config, await adaptersFor(instance.masterKey, { sharedHost: true }));
       others.push(other);
       return other;
     },

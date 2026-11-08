@@ -83,11 +83,11 @@ export class PluginManager {
     return { directory, userId };
   }
 
-  /** Calls a plugin; null if none is installed under the id. */
-  async call(id: string, name: string, args: unknown[]): Promise<CallOutcome | null> {
+  /** Calls a plugin; null if none is installed under the id. Aborting `signal` ends the call's process. */
+  async call(id: string, name: string, args: unknown[], signal?: AbortSignal): Promise<CallOutcome | null> {
     const installed = this.plugins.get(id);
     if (!installed) return null;
-    return this.callIn(installed, name, args);
+    return this.callIn(installed, name, args, signal);
   }
 
   /** Ends every running call. */
@@ -97,7 +97,7 @@ export class PluginManager {
   }
 
   /** Runs one call in a process started for it, and ends the process once the call is answered. */
-  private async callIn(installed: Installed, name: string, args: unknown[]): Promise<CallOutcome> {
+  private async callIn(installed: Installed, name: string, args: unknown[], signal?: AbortSignal): Promise<CallOutcome> {
     const child = this.spawn(installed);
     installed.calls.add(child);
     const outcome = await new Promise<CallOutcome>((resolve) => {
@@ -114,6 +114,9 @@ export class PluginManager {
       });
       child.on("exit", () => {
         settle(failed("The plugin process ended.", "temporary"));
+      });
+      signal?.addEventListener("abort", () => {
+        settle(failed("The call was given up.", "temporary"));
       });
     });
     child.kill("SIGKILL");

@@ -15,7 +15,7 @@ How to configure the containers, the address the Family opens, and single sign-o
 | `MDNS_NAME` | `family-agenda.local` | Name the `mdns` service announces (Linux host only) |
 | `POSTGRES_PASSWORD` | `family_agenda` | Change it if the port of Postgres is ever exposed |
 | `TZ` | `Europe/Berlin` | Decides where an Agenda's days start. Required; the time zone of the process is no longer a fallback |
-| `PLUGIN_TIMEOUT_SECONDS` | `300` | How long a Source plugin may take to load or to read a Source. A run that takes longer is cut off and counts as a failure; a plugin that does not load in time shows as not loadable |
+| `PLUGIN_TIMEOUT_SECONDS` | `120` | How long api and worker wait for a Source plugin to read a Source or migrate its configuration. A run that takes longer is given up, its call in the Plugin Host ended, and it counts as a failure |
 | `MASTER_KEY` | none, required | 32 random bytes in base64 (`openssl rand -base64 32`) that Source credentials are encrypted with. An Instance that already has a key file in the `master-key` volume may leave it unset; Family Agenda no longer creates a key on its own |
 | `PLUGIN_HOST_TOKEN` | none, required | A random token (`openssl rand -hex 32`) api, worker and the `plugin-host` service share. Every Source plugin runs in the Plugin Host, which installs them from the Plugin Repository, each call in a sandboxed process of its own, with the plugin's own user, without access to the database, the master key or the blobs |
 | `PLUGIN_HOST_URL` | `http://plugin-host:4100` in Compose, required | Where api and worker reach the Plugin Host |

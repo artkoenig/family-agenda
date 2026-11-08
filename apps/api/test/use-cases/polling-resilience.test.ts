@@ -1,9 +1,7 @@
-import { rm } from "node:fs/promises";
-import { join } from "node:path";
 import type { SourceId } from "@family-agenda/domain";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { bootForTest, type TestInstance } from "../support/boot";
-import { testPluginControls, writeTestPluginPackage } from "../support/test-source-plugin";
+import { testPluginControls } from "../support/test-source-plugin";
 
 const minutes = 60 * 1000;
 
@@ -87,12 +85,13 @@ describe("Polling of slow and broken plugins", () => {
     expect((await health())?.problem).toEqual({ kind: "run-failed", message: "The plugin did not answer within 0.5 seconds." });
   });
 
-  it("tells the plugin of a run that hangs that the Instance no longer waits for it", async () => {
+  it("ends the plugin's call of a run that hangs once the Instance no longer waits for it", async () => {
     hold("school-portal");
+    const before = testPluginControls.givenUp("school-portal");
 
     await instance.app.polling.pollDue();
 
-    expect(testPluginControls.runs("school-portal").at(-1)?.signal?.aborted).toBe(true);
+    await vi.waitFor(() => { expect(testPluginControls.givenUp("school-portal")).toBe(before + 1); });
   });
 
   it("waits twice as long after each failed run in a row, and as usual again after a successful one", async () => {
@@ -132,18 +131,4 @@ describe("Polling of slow and broken plugins", () => {
     expect((await polling).polled.toSorted()).toEqual([source, club].toSorted());
   });
 
-  it("shows a Source as not loadable while its plugin cannot be reached, and polls the others", async () => {
-    const club = await add("club-calendar");
-    await rm(join(instance.publishedPlugins, "school-portal"), { recursive: true });
-    await writeTestPluginPackage(instance.publishedPlugins, { sourceTypeId: "school-portal", loadHangs: true });
-    await instance.restart();
-
-    const report = await instance.app.polling.pollDue();
-
-    expect(report.polled).toEqual([club]);
-    expect(await health()).toMatchObject({
-      status: "failing",
-      problem: { kind: "not-loadable", reason: "The plugin did not load within 0.5 seconds." },
-    });
-  });
 });
