@@ -92,7 +92,7 @@ describe("the LLM endpoint", () => {
   /** The API key the Extractor is given for the next message. */
   const extractedWithKey = async () => {
     if (mails === 0) {
-      await writeTestPluginPackage(instance.workspacePackages, { sourceTypeId: "mailbox", needsLlm: true });
+      await writeTestPluginPackage(instance.publishedPlugins, { sourceTypeId: "mailbox", needsLlm: true });
       await instance.restart();
       await instance.app.sourceTypes.enable("mailbox");
       await instance.app.sources.add({ sourceTypeId: "mailbox", plain: { url: "imap.example.org" }, secrets: {} });

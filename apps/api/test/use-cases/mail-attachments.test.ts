@@ -50,7 +50,7 @@ describe("Events extracted from PDF attachments", () => {
     textExtractor = new FakeTextExtractor();
     blobs = new InMemoryBlobStore();
     instance = await bootForTest({ extractor, textExtractor, blobStore: blobs, tessdataCatalog: new FakeTessdataCatalog() });
-    await writeTestPluginPackage(instance.workspacePackages, { sourceTypeId: "mailbox", needsLlm: true });
+    await writeTestPluginPackage(instance.publishedPlugins, { sourceTypeId: "mailbox", needsLlm: true });
     await instance.restart();
     await instance.app.sourceTypes.enable("mailbox");
     const added = await instance.app.sources.add({ sourceTypeId: "mailbox", plain: { url: "imap.example.org" }, secrets: {} });

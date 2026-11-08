@@ -251,9 +251,12 @@ importers:
       '@electric-sql/pglite':
         specifier: ^0.5.14
         version: 0.5.14
-      '@family-agenda/source-matrix':
+      '@family-agenda/plugin-host':
         specifier: workspace:*
-        version: link:../../packages/source-matrix
+        version: link:../plugin-host
+      '@family-agenda/plugin-protocol':
+        specifier: workspace:*
+        version: link:../../packages/plugin-protocol
       '@types/qrcode':
         specifier: ^1.5.6
         version: 1.5.6

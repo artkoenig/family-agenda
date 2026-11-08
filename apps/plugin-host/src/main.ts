@@ -12,9 +12,8 @@ import { createPluginHostServer } from "./server";
  */
 const token = process.env.PLUGIN_HOST_TOKEN;
 if (!token) {
-  // Without a token, api and worker run every plugin themselves; ending cleanly keeps Compose from restarting it.
-  console.log("PLUGIN_HOST_TOKEN is not set, so plugins run in api and worker. Set it to `openssl rand -hex 32` to isolate them here.");
-  process.exit(0);
+  console.error("PLUGIN_HOST_TOKEN is not set. Set it to the same random token for api, worker and plugin-host, such as one from: openssl rand -hex 32");
+  process.exit(1);
 }
 const port = Number(process.env.PORT ?? 4100);
 const isRoot = process.getuid?.() === 0;
@@ -30,9 +29,11 @@ const manager = new PluginManager({
 // The token stays with the manager: plugin processes start with an empty environment.
 delete process.env.PLUGIN_HOST_TOKEN;
 
-// Until there is a Plugin Repository, a mock one publishes packages of this workspace.
+// Until there is a Plugin Repository, a mock one publishes packages of this workspace. The Matrix
+// plugin is not among them: it needs services and pushes, which the Plugin Host cannot run yet.
+const defaultPublished = "packages/source-ics,packages/source-imap,packages/source-webuntis";
 const workspace = fileURLToPath(new URL("../../../", import.meta.url));
-const published = (process.env.MOCK_PLUGIN_REPOSITORY ?? "packages/source-ics").split(",").map((path) => path.trim()).filter((path) => path !== "");
+const published = (process.env.MOCK_PLUGIN_REPOSITORY ?? defaultPublished).split(",").map((path) => path.trim()).filter((path) => path !== "");
 const repository = await MockPluginRepository.fromPackages(published.map((path) => resolve(workspace, path)));
 const { available, failures } = await installFromRepository(manager, repository);
 for (const failure of failures) console.warn(failure);

@@ -33,7 +33,7 @@ describe("The worker's activity on an Agenda", () => {
   beforeEach(async () => {
     extractor = new ObservedExtractor();
     instance = await bootForTest({ extractor, blobStore: new InMemoryBlobStore() });
-    await writeTestPluginPackage(instance.workspacePackages, { sourceTypeId: "mailbox", needsLlm: true });
+    await writeTestPluginPackage(instance.publishedPlugins, { sourceTypeId: "mailbox", needsLlm: true });
     await instance.restart();
     await instance.app.sourceTypes.enable("mailbox");
     await instance.app.sources.add({ sourceTypeId: "mailbox", plain: { url: "imap.example.org" }, secrets: {} });

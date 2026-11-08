@@ -53,7 +53,7 @@ A subdivision of a Source that the Source itself reports, such as a mailbox fold
 _Avoid_: Folder (for the domain concept), channel, sub-source, label
 
 **Plugin Host**:
-The service that runs the plugins of chosen Source Types, each in an isolated process without access to the database, the master key or the blobs.
+The service that runs every Source plugin, installed from the Plugin Repository, each in an isolated process without access to the database, the master key or the blobs.
 _Avoid_: sandbox, plugin server
 
 **Source Status**:

@@ -4,7 +4,6 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { bootForTest, type TestInstance } from "../support/boot";
 import type { SourceId } from "@family-agenda/domain";
 import {
-  loadedTestPlugins,
   testPluginControls,
   writeTestPluginPackage,
   type TestPluginPackage,
@@ -13,16 +12,15 @@ import {
 describe("Source Types", () => {
   let instance: TestInstance;
   beforeEach(async () => {
-    loadedTestPlugins.length = 0;
     instance = await bootForTest();
   });
   afterEach(async () => {
     await instance.close();
   });
 
-  /** Installs plugins as workspace packages and restarts, as an update shipping them would. */
+  /** Publishes plugins and restarts, as an update bringing them would. */
   const installAndRestart = async (plugins: TestPluginPackage[]) => {
-    for (const plugin of plugins) await writeTestPluginPackage(instance.workspacePackages, plugin);
+    for (const plugin of plugins) await writeTestPluginPackage(instance.publishedPlugins, plugin);
     await instance.restart();
   };
 
@@ -33,19 +31,19 @@ describe("Source Types", () => {
       notLoadable: type.notLoadable,
     }));
 
-  it("lists the installed Source Types from workspace packages and the plugins volume, none enabled", async () => {
-    await writeTestPluginPackage(instance.workspacePackages, {
+  it("lists the Source Types the Plugin Host installed, none enabled", async () => {
+    await writeTestPluginPackage(instance.publishedPlugins, {
       sourceTypeId: "school-portal",
       displayName: "School portal",
       description: "Reads the timetable.",
     });
-    await writeTestPluginPackage(instance.pluginDirectory, {
+    await writeTestPluginPackage(instance.publishedPlugins, {
       sourceTypeId: "club-mail",
       displayName: "Club mail",
       description: "Reads the club's mails.",
       needsLlm: true,
     });
-    const other = join(instance.workspacePackages, "domain");
+    const other = join(instance.publishedPlugins, "domain");
     await mkdir(other);
     await writeFile(join(other, "package.json"), JSON.stringify({ name: "@family-agenda/domain" }));
     await instance.restart();
@@ -59,7 +57,6 @@ describe("Source Types", () => {
       { id: "club-mail", displayName: "Club mail", description: "Reads the club's mails.", needsLlm: true, enabled: false },
       { id: "school-portal", displayName: "School portal", description: "Reads the timetable.", needsLlm: false, enabled: false },
     ]);
-    expect(loadedTestPlugins).toEqual([]);
   });
 
   it("loads only the plugins an Admin has enabled", async () => {
@@ -67,7 +64,6 @@ describe("Source Types", () => {
 
     expect(await instance.app.sourceTypes.enable("school-portal")).toEqual({ ok: true });
 
-    expect(loadedTestPlugins).toEqual(["school-portal"]);
     expect(await list()).toEqual([
       { id: "club-mail", enabled: false, notLoadable: null },
       { id: "school-portal", enabled: true, notLoadable: null },
@@ -78,7 +74,6 @@ describe("Source Types", () => {
       ["club-mail", false],
       ["school-portal", true],
     ]);
-    expect(loadedTestPlugins).not.toContain("club-mail");
     expect(await instance.app.sourceTypes.enable("unknown")).toEqual({ ok: false, problem: "unknown-source-type" });
   });
 
@@ -91,7 +86,6 @@ describe("Source Types", () => {
       ok: false,
       problem: "risk-not-acknowledged",
     });
-    expect(loadedTestPlugins).toEqual([]);
 
     expect(await instance.app.sourceTypes.enable("messenger", { riskAcknowledged: true })).toEqual({ ok: true });
     expect((await list())[0]?.enabled).toBe(true);
@@ -108,14 +102,13 @@ describe("Source Types", () => {
       },
     ]);
     expect(await instance.app.sourceTypes.enable("old-portal")).toEqual({ ok: false, problem: "not-loadable" });
-    expect(loadedTestPlugins).toEqual([]);
   });
 
   it("lists Source Types an update brings as disabled, keeping the ones enabled before", async () => {
     await installAndRestart([{ sourceTypeId: "school-portal" }]);
     await instance.app.sourceTypes.enable("school-portal");
 
-    await writeTestPluginPackage(instance.pluginDirectory, { sourceTypeId: "club-mail" });
+    await writeTestPluginPackage(instance.publishedPlugins, { sourceTypeId: "club-mail" });
     await installAndRestart([{ sourceTypeId: "calendar" }]);
 
     expect((await list()).map(({ id, enabled }) => [id, enabled])).toEqual([
@@ -149,8 +142,8 @@ describe("Sources", () => {
   let instance: TestInstance;
   beforeEach(async () => {
     instance = await bootForTest();
-    await writeTestPluginPackage(instance.workspacePackages, { sourceTypeId: "school-portal" });
-    await writeTestPluginPackage(instance.workspacePackages, { sourceTypeId: "club-mail" });
+    await writeTestPluginPackage(instance.publishedPlugins, { sourceTypeId: "school-portal" });
+    await writeTestPluginPackage(instance.publishedPlugins, { sourceTypeId: "club-mail" });
     await instance.restart();
     await instance.app.sourceTypes.enable("school-portal");
   });
@@ -213,7 +206,7 @@ describe("Sources", () => {
     });
     if (!added.ok) throw new Error(`adding failed: ${added.problem}`);
 
-    await writeTestPluginPackage(instance.workspacePackages, {
+    await writeTestPluginPackage(instance.publishedPlugins, {
       sourceTypeId: "school-portal",
       directory: "school-portal-v2",
       version: "2.0.0",
@@ -223,7 +216,7 @@ describe("Sources", () => {
         migrations: { 1: (plain) => ({ address: plain.url }) },
       }`,
     });
-    await rm(join(instance.workspacePackages, "school-portal"), { recursive: true });
+    await rm(join(instance.publishedPlugins, "school-portal"), { recursive: true });
     await instance.restart();
 
     expect((await instance.app.sources.list()).map(({ id, plain }) => ({ id, plain }))).toEqual([

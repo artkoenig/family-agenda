@@ -1,5 +1,8 @@
+import { execFileSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { once } from "node:events";
+import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -20,7 +23,9 @@ import type {
   SecretStore,
   TextExtractor,
 } from "@family-agenda/application";
-import { bootApplication, type Adapters, type Application, type ApplicationConfig } from "@family-agenda/composition";
+import { bootApplication, type Adapters, type Application, type ApplicationConfig, type PluginHostConfig } from "@family-agenda/composition";
+import { createPluginHostServer, defaultLimits, installFromRepository, MockPluginRepository, PluginManager } from "@family-agenda/plugin-host";
+import { parseManifest } from "@family-agenda/source-sdk";
 import { FakeClock } from "./fake-clock";
 import { acquirePostgres } from "./in-process-postgres";
 import { writeTestPluginPackage, type TestPluginPackage } from "./test-source-plugin";
@@ -40,7 +45,7 @@ export type TestOptions = {
   identityProviderClient?: IdentityProviderClient;
   /** The time zone of the Family; `Europe/Berlin` by default. */
   timeZone?: string;
-  /** Test plugins installed as workspace packages before the first boot. */
+  /** Test plugins the Plugin Repository publishes before the first boot. */
   sourcePlugins?: TestPluginPackage[];
 };
 
@@ -49,17 +54,18 @@ export type TestInstance = {
   clock: FakeClock;
   /** The master key the Instance boots with. */
   masterKey: Buffer;
-  /** Where the SourceRegistry finds workspace packages, which hold no plugins at first. */
-  workspacePackages: string;
-  /** The `plugins/` volume, empty at first. */
-  pluginDirectory: string;
+  /**
+   * The packages the Plugin Repository publishes, none at first. On each boot a Plugin Host
+   * installs those with a Source plugin manifest, as one would on an update.
+   */
+  publishedPlugins: string;
   /** The `tessdata` volume, holding links to the bundled `deu`, `eng` and `osd` models at first. */
   tessdataDirectory: string;
   /** Runs SQL against the Instance's database, to look at what it stores. */
   query(sql: string): Promise<Record<string, unknown>[]>;
   /**
-   * Stops the application and boots it again on the same database, master key file and plugin
-   * directories, as an update would; with the given master key, should the operator have changed it.
+   * Stops the application and boots it again on the same database and master key file, with a
+   * Plugin Host installing what is published then, as an update would; with the given master key, should the operator have changed it.
    */
   restart(masterKey?: Buffer): Promise<void>;
   close(): Promise<void>;
@@ -73,10 +79,8 @@ export async function bootForTest(options: TestOptions = {}): Promise<TestInstan
   const postgres = await acquirePostgres();
   const keyDirectory = await mkdtemp(join(tmpdir(), "family-agenda-test-"));
 
-  const workspacePackages = join(keyDirectory, "packages");
-  const pluginDirectory = join(keyDirectory, "plugins");
-  await mkdir(workspacePackages);
-  await mkdir(pluginDirectory);
+  const publishedPlugins = join(keyDirectory, "published");
+  await mkdir(publishedPlugins);
   // The models the image ships, as stand-ins: the use cases never run Tesseract.
   const bundledTessdataDirectory = join(keyDirectory, "bundled-tessdata");
   await mkdir(bundledTessdataDirectory);
@@ -84,14 +88,18 @@ export async function bootForTest(options: TestOptions = {}): Promise<TestInstan
     await writeFile(join(bundledTessdataDirectory, `${model}.traineddata`), `bundled ${model} model`);
   }
   const { sourcePlugins = [], timeZone = "Europe/Berlin", ...applicationOptions } = options;
-  for (const plugin of sourcePlugins) await writeTestPluginPackage(workspacePackages, plugin);
+  for (const plugin of sourcePlugins) await writeTestPluginPackage(publishedPlugins, plugin);
 
   const clock = new FakeClock(new Date("2026-09-14T07:00:00Z"));
   const initialKey = randomBytes(32);
   const config: ApplicationConfig = { timeZone };
   const tessdataDirectory = join(keyDirectory, "tessdata");
+  let pluginHost: { stop(): Promise<void> } | undefined;
   /** The adapters of the Instance, built anew on each boot as a process would on each start. */
   const adaptersFor = async (masterKey: Buffer): Promise<Adapters> => {
+    await pluginHost?.stop();
+    const host = await startPluginHost(publishedPlugins, await mkdtemp(join(keyDirectory, "plugin-host-")));
+    pluginHost = host;
     const database = postgres.connect();
     const ocrModels = new TessdataDirectory({
       directory: tessdataDirectory,
@@ -111,7 +119,7 @@ export async function bootForTest(options: TestOptions = {}): Promise<TestInstan
       extractor: applicationOptions.extractor ?? new OpenAiCompatibleExtractor(),
       textExtractor: applicationOptions.textExtractor ?? new CommandLineTextExtractor({ tessdataDirectory }),
       ocrModels,
-      pluginDirectories: [workspacePackages, pluginDirectory],
+      pluginHost: host.config,
     };
   };
 
@@ -119,8 +127,7 @@ export async function bootForTest(options: TestOptions = {}): Promise<TestInstan
     app: await bootApplication(config, await adaptersFor(initialKey)),
     clock,
     masterKey: initialKey,
-    workspacePackages,
-    pluginDirectory,
+    publishedPlugins,
     tessdataDirectory,
     query: (sql) => postgres.query(sql),
     async restart(masterKey = instance.masterKey) {
@@ -133,9 +140,44 @@ export async function bootForTest(options: TestOptions = {}): Promise<TestInstan
     },
     async close() {
       await instance.app.close();
+      await pluginHost?.stop();
       await postgres.release();
+      // The Plugin Host leaves the plugins' directories read-only.
+      execFileSync("chmod", ["-R", "u+w", keyDirectory]);
       await rm(keyDirectory, { recursive: true, force: true });
     },
   };
   return instance;
+}
+
+/** A Plugin Host on a free port, installing the plugins of the packages in `published`. */
+async function startPluginHost(published: string, workDirectory: string): Promise<{ config: PluginHostConfig; stop(): Promise<void> }> {
+  const manager = new PluginManager({ ...defaultLimits, workDirectory: await realpath(workDirectory), firstUserId: null });
+  const repository = await MockPluginRepository.fromPackages(await pluginPackagesIn(published));
+  const { available, failures } = await installFromRepository(manager, repository);
+  if (failures.length > 0) throw new Error(failures.join("\n"));
+  const token = randomBytes(16).toString("hex");
+  const server = createPluginHostServer(manager, token, () => available);
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const { port } = server.address() as AddressInfo;
+  return {
+    config: { url: `http://127.0.0.1:${port}`, token },
+    async stop() {
+      manager.stop();
+      server.closeAllConnections();
+      server.close();
+      await once(server, "close");
+    },
+  };
+}
+
+/** The packages in `directory` that hold a Source plugin manifest, valid or not. */
+async function pluginPackagesIn(directory: string): Promise<string[]> {
+  const packages: string[] = [];
+  for (const name of (await readdir(directory)).sort()) {
+    const manifest = JSON.parse(await readFile(join(directory, name, "package.json"), "utf8")) as { familyAgenda?: unknown };
+    if (manifest.familyAgenda !== undefined && parseManifest(manifest).ok) packages.push(join(directory, name));
+  }
+  return packages;
 }

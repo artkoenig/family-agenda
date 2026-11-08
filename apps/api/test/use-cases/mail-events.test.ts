@@ -37,7 +37,7 @@ describe("Events extracted from mail", () => {
     // The clock starts on Monday 2026-09-14 at 09:00 in Berlin.
     extractor = new ScriptedExtractor();
     instance = await bootForTest({ extractor, blobStore: new InMemoryBlobStore() });
-    await writeTestPluginPackage(instance.workspacePackages, { sourceTypeId: "mailbox", needsLlm: true });
+    await writeTestPluginPackage(instance.publishedPlugins, { sourceTypeId: "mailbox", needsLlm: true });
     await instance.restart();
     await instance.app.sourceTypes.enable("mailbox");
     const added = await instance.app.sources.add({ sourceTypeId: "mailbox", plain: { url: "imap.example.org" }, secrets: {} });
@@ -195,7 +195,7 @@ describe("Events extracted from mail", () => {
   it("lets mails wait while no LLM endpoint is configured, and extracts each only once", async () => {
     const fresh = await bootForTest({ extractor, blobStore: new InMemoryBlobStore() });
     try {
-      await writeTestPluginPackage(fresh.workspacePackages, { sourceTypeId: "inbox", needsLlm: true });
+      await writeTestPluginPackage(fresh.publishedPlugins, { sourceTypeId: "inbox", needsLlm: true });
       await fresh.restart();
       await fresh.app.sourceTypes.enable("inbox");
       await fresh.app.sources.add({ sourceTypeId: "inbox", plain: { url: "imap.example.org" }, secrets: {} });
@@ -230,7 +230,7 @@ describe("Events extracted from mail", () => {
     const blobs = new InMemoryBlobStore();
     const fresh = await bootForTest({ extractor, blobStore: blobs });
     try {
-      await writeTestPluginPackage(fresh.workspacePackages, { sourceTypeId: "inbox", needsLlm: true });
+      await writeTestPluginPackage(fresh.publishedPlugins, { sourceTypeId: "inbox", needsLlm: true });
       await fresh.restart();
       await fresh.app.sourceTypes.enable("inbox");
       await fresh.app.sources.add({ sourceTypeId: "inbox", plain: { url: "imap.example.org" }, secrets: {} });
@@ -251,7 +251,7 @@ describe("Events extracted from mail", () => {
     const blobs = new InMemoryBlobStore();
     const fresh = await bootForTest({ extractor, blobStore: blobs });
     try {
-      await writeTestPluginPackage(fresh.workspacePackages, { sourceTypeId: "inbox", needsLlm: true });
+      await writeTestPluginPackage(fresh.publishedPlugins, { sourceTypeId: "inbox", needsLlm: true });
       await fresh.restart();
       await fresh.app.sourceTypes.enable("inbox");
       await fresh.app.sources.add({ sourceTypeId: "inbox", plain: { url: "imap.example.org" }, secrets: {} });

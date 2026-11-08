@@ -26,8 +26,8 @@ describe("Attribution by Source Attribute", () => {
   beforeEach(async () => {
     // The clock starts on Monday 2026-09-14 at 09:00 in Berlin.
     instance = await bootForTest();
-    await writeTestPluginPackage(instance.workspacePackages, { sourceTypeId: "calendar" });
-    await writeTestPluginPackage(instance.workspacePackages, { sourceTypeId: "club" });
+    await writeTestPluginPackage(instance.publishedPlugins, { sourceTypeId: "calendar" });
+    await writeTestPluginPackage(instance.publishedPlugins, { sourceTypeId: "club" });
     await instance.restart();
     const source = async (sourceTypeId: string) => {
       await instance.app.sourceTypes.enable(sourceTypeId);

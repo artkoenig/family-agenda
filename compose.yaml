@@ -21,23 +21,20 @@ x-app: &app
     MASTER_KEY: ${MASTER_KEY:-}
     MASTER_KEY_FILE: /var/lib/family-agenda/master-key/master.key
     BLOB_DIRECTORY: /var/lib/family-agenda/blobs
-    PLUGIN_DIRECTORY: /var/lib/family-agenda/plugins
     TESSDATA_DIRECTORY: /var/lib/family-agenda/tessdata
     # How the Matrix plugin reaches Synapse and the bridges, which the worker runs.
     MATRIX_INSTANCE_FILE: /var/lib/family-agenda/matrix/instance.json
     # The Family's time zone, which decides where an Agenda's days start.
     TZ: ${TZ:-Europe/Berlin}
-    # The Plugin Host runs the plugins it installed from the Plugin Repository, isolated from the
-    # database, the master key and the blobs. Off until PLUGIN_HOST_TOKEN is set: `openssl rand -hex 32`.
+    # Every Source plugin runs in the Plugin Host, isolated from the database, the master key and
+    # the blobs. api, worker and plugin-host share this token: `openssl rand -hex 32`.
     PLUGIN_HOST_URL: http://plugin-host:4100
-    PLUGIN_HOST_TOKEN: ${PLUGIN_HOST_TOKEN:-}
+    PLUGIN_HOST_TOKEN: ${PLUGIN_HOST_TOKEN:?Set PLUGIN_HOST_TOKEN, such as to the output of openssl rand -hex 32}
   volumes:
     # The master key that Source credentials are encrypted with; never in Postgres.
     - master-key:/var/lib/family-agenda/master-key
     # Files such as Family Member photos, kept outside Postgres.
     - blobs:/var/lib/family-agenda/blobs
-    # Source plugins added to the stock image, one package directory each.
-    - plugins:/var/lib/family-agenda/plugins
     # Tesseract models: the bundled ones linked on start, the ones Admins download, and any put
     # here by hand as <code>.traineddata for an Instance without internet access.
     - tessdata:/var/lib/family-agenda/tessdata
@@ -67,7 +64,6 @@ services:
     volumes:
       - master-key:/var/lib/family-agenda/master-key
       - blobs:/var/lib/family-agenda/blobs
-      - plugins:/var/lib/family-agenda/plugins
       - tessdata:/var/lib/family-agenda/tessdata
       # The worker writes how the api reaches Synapse and the bridges.
       - matrix-instance:/var/lib/family-agenda/matrix
@@ -85,9 +81,9 @@ services:
     command: ["node", "--import", "tsx", "src/main.ts"]
     user: "0:0"
     environment:
-      PLUGIN_HOST_TOKEN: ${PLUGIN_HOST_TOKEN:-}
+      PLUGIN_HOST_TOKEN: ${PLUGIN_HOST_TOKEN:?Set PLUGIN_HOST_TOKEN, such as to the output of openssl rand -hex 32}
       # Until there is a Plugin Repository, a mock one publishes these workspace packages.
-      MOCK_PLUGIN_REPOSITORY: ${MOCK_PLUGIN_REPOSITORY:-packages/source-ics}
+      MOCK_PLUGIN_REPOSITORY: ${MOCK_PLUGIN_REPOSITORY:-packages/source-ics,packages/source-imap,packages/source-webuntis}
       TZ: ${TZ:-Europe/Berlin}
     read_only: true
     tmpfs:
@@ -137,7 +133,6 @@ volumes:
   postgres-data:
   master-key:
   blobs:
-  plugins:
   tessdata:
   matrix-instance:
   matrix-data:

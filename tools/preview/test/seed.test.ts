@@ -1,4 +1,4 @@
-import { cp, symlink } from "node:fs/promises";
+import { cp } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { openAgendaAccess } from "@family-agenda/application";
@@ -13,11 +13,8 @@ describe("seeding a demo Family into an Instance", () => {
   let instance: TestInstance;
   beforeEach(async () => {
     instance = await bootForTest();
-    // As a preview does: the demo Source plugin sits in the plugins directory, outside the image's own packages.
-    const installed = join(instance.pluginDirectory, "demo-source");
-    await cp(demoSource, installed, { recursive: true, filter: (path) => !path.includes("node_modules") });
-    // In the image Node's loader hands the plugin the SDK; Vitest's does not, so the plugin brings its own.
-    await symlink(join(demoSource, "node_modules"), join(installed, "node_modules"));
+    // As a preview does: the Plugin Repository publishes the demo Source plugin, without its node_modules.
+    await cp(demoSource, join(instance.publishedPlugins, "demo-source"), { recursive: true, filter: (path) => !path.includes("node_modules") });
     await instance.restart();
   });
   afterEach(async () => {

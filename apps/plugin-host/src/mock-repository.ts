@@ -1,13 +1,15 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
 import { parseManifest, type SourcePluginManifest } from "@family-agenda/source-sdk";
 import type { PluginRepository, RepositoryEntry } from "./repository";
 
 /**
- * Stands in for the Plugin Repository until there is one: publishes the plugins of packages in
- * this workspace, each bundled with everything it imports, the SDK included.
+ * Stands in for the Plugin Repository until there is one: publishes the plugins of packages, such
+ * as those of this workspace, each bundled with everything it imports, the SDK included. The SDK
+ * is this workspace's, wherever the package is, so that a package needs no `node_modules`.
  */
 export class MockPluginRepository implements PluginRepository {
   private constructor(private readonly published: Map<string, { manifest: SourcePluginManifest; bundle: string }>) {}
@@ -32,8 +34,21 @@ export class MockPluginRepository implements PluginRepository {
   }
 }
 
+const sdk = fileURLToPath(import.meta.resolve("@family-agenda/source-sdk"));
+
 async function bundleOf(entry: string): Promise<string> {
-  const result = await build({ entryPoints: [entry], bundle: true, write: false, platform: "node", format: "esm", target: "node22", logLevel: "silent" });
+  const result = await build({
+    entryPoints: [entry],
+    bundle: true,
+    write: false,
+    platform: "node",
+    format: "esm",
+    target: "node22",
+    logLevel: "silent",
+    alias: { "@family-agenda/source-sdk": sdk },
+    // CommonJS dependencies require Node's built-ins, which an ES module has no `require` for.
+    banner: { js: 'import { createRequire as __createRequire } from "node:module"; const require = __createRequire(import.meta.url);' },
+  });
   const [output] = result.outputFiles;
   if (!output) throw new Error(`Bundling ${entry} gave no output.`);
   return output.text;

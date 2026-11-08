@@ -78,18 +78,15 @@ describe("the Plugin Host", () => {
 });
 
 describe("a registry with a Plugin Host", () => {
-  it("gets the demo Source from the host and polls it there, end to end, and runs the other Source Types in process", async () => {
-    // The demo plugin is only in tools/, which the registry does not look in: it can come only from the host.
-    const registry = await SourceRegistry.discover([join(root, "packages")], { pluginHost: { url, token } });
+  it("gets the demo Source from the host and polls it there, end to end", async () => {
+    const registry = await SourceRegistry.fromPluginHost({ url, token });
 
     const demo = await registry.load("demo" as SourceTypeId);
-    const webuntis = await registry.load("webuntis" as SourceTypeId);
     if (!demo.ok || demo.sourceType.ingestion.mode !== "polling") throw new Error("the demo polls");
     const result = await demo.sourceType.ingestion.poll({ plain: {}, secrets: {}, syncCursor: null, now: new Date("2026-09-14T07:00:00Z"), timeZone: "Europe/Berlin" });
 
     expect(result).toMatchObject({ ok: true, declared: expect.arrayContaining([{ externalId: "family", name: "Family calendar" }]) as unknown });
     expect(result.ok && result.origins.length).toBeGreaterThan(10);
-    expect(webuntis.ok).toBe(true);
     expect(registry.installed().find((type) => type.id === "demo")).toMatchObject({ displayName: { en: "Demo data" }, notLoadable: null });
   });
 

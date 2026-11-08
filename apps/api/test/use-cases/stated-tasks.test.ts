@@ -21,7 +21,7 @@ describe("Tasks a Source states", () => {
   beforeEach(async () => {
     // The clock starts on Monday 2026-09-14 at 09:00 in Berlin.
     instance = await bootForTest();
-    await writeTestPluginPackage(instance.workspacePackages, { sourceTypeId: "homework" });
+    await writeTestPluginPackage(instance.publishedPlugins, { sourceTypeId: "homework" });
     await instance.restart();
     await instance.app.sourceTypes.enable("homework");
     const added = await instance.app.sources.add({ sourceTypeId: "homework", plain: { url: "https://school.example.org" }, secrets: {} });

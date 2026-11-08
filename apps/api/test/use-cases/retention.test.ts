@@ -37,8 +37,8 @@ describe("Retention: purging the content of messages", () => {
     extractor.script("Turnbeutel", [], [extractedTask({ title: "Turnbeutel mitbringen", bring: ["Turnbeutel"], evidence: "Turnbeutel" })]);
     blobs = new InMemoryBlobStore();
     instance = await bootForTest({ extractor, blobStore: blobs });
-    await writeTestPluginPackage(instance.workspacePackages, { sourceTypeId: "chat", needsLlm: true });
-    await writeTestPluginPackage(instance.workspacePackages, { sourceTypeId: "calendar" });
+    await writeTestPluginPackage(instance.publishedPlugins, { sourceTypeId: "chat", needsLlm: true });
+    await writeTestPluginPackage(instance.publishedPlugins, { sourceTypeId: "calendar" });
     await instance.restart();
     for (const type of ["chat", "calendar"]) {
       await instance.app.sourceTypes.enable(type);

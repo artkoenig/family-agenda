@@ -25,7 +25,7 @@ describe("Tasks", () => {
   beforeEach(async () => {
     // The clock starts on Monday 2026-09-14 at 09:00 in Berlin.
     instance = await bootForTest();
-    await writeTestPluginPackage(instance.workspacePackages, { sourceTypeId: "school" });
+    await writeTestPluginPackage(instance.publishedPlugins, { sourceTypeId: "school" });
     await instance.restart();
     await instance.app.sourceTypes.enable("school");
     const added = await instance.app.sources.add({ sourceTypeId: "school", plain: { url: "https://school.example.org" }, secrets: {} });
@@ -284,7 +284,7 @@ describe("Tasks extracted from mail", () => {
     // The clock starts on Monday 2026-09-14 at 09:00 in Berlin.
     extractor = new ScriptedExtractor();
     instance = await bootForTest({ extractor, blobStore: new InMemoryBlobStore() });
-    await writeTestPluginPackage(instance.workspacePackages, { sourceTypeId: "mailbox", needsLlm: true });
+    await writeTestPluginPackage(instance.publishedPlugins, { sourceTypeId: "mailbox", needsLlm: true });
     await instance.restart();
     await instance.app.sourceTypes.enable("mailbox");
     const added = await instance.app.sources.add({ sourceTypeId: "mailbox", plain: { url: "imap.example.org" }, secrets: {} });

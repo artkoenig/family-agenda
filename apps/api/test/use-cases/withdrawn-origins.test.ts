@@ -31,7 +31,7 @@ describe("Origins a Source withdraws, such as deleted chat messages", () => {
     ]);
     blobs = new InMemoryBlobStore();
     instance = await bootForTest({ extractor, blobStore: blobs });
-    await writeTestPluginPackage(instance.workspacePackages, { sourceTypeId: "chat", needsLlm: true });
+    await writeTestPluginPackage(instance.publishedPlugins, { sourceTypeId: "chat", needsLlm: true });
     await instance.restart();
     await instance.app.sourceTypes.enable("chat");
     const added = await instance.app.sources.add({ sourceTypeId: "chat", plain: { url: "chat.example.org" }, secrets: {} });

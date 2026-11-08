@@ -24,8 +24,7 @@ export type Adapters = {
     extractor: Extractor;
     textExtractor: TextExtractor;
     ocrModels: OcrModelStore;
-    pluginDirectories: string[];
-    pluginHost?: PluginHostConfig | null;
+    pluginHost: PluginHostConfig;
 };
 // src/application.ts
 import type { AdminAccess, AgendaAccess, CatalogueAccess, Cleanup, DueWork, ExtractionAccess, FamilyMemberAccess, LanguageAccess, LlmEndpointAccess, MessageAccess, RecoveryKitAccess, Retention, SecretStore, SecretSweep, ServiceSupervision, SingleSignOn, SourceAccess, SourcePolling, SourceTypeAccess, TaskAccess } from "@family-agenda/application";
@@ -77,19 +76,17 @@ export type SelfHostedConfig = {
     pool?: PostgresPoolOptions;
     masterKey: Buffer;
     blobDirectory: string;
-    pluginDirectory: string;
     tessdataDirectory: string;
     bundledTessdataDirectory: string | null;
     tessdataCatalog?: TessdataCatalog;
-    workspacePackages?: string;
-    pluginHost?: PluginHostConfig | null;
+    pluginHost: PluginHostConfig;
 };
 export declare function selfHostedAdapters(config: SelfHostedConfig): Promise<Adapters>;
 export declare function readMasterKeyFrom(env: NodeJS.ProcessEnv): Promise<Buffer>;
 export declare function readSelfHostedConfig(env?: NodeJS.ProcessEnv): Promise<SelfHostedConfig>;
 export declare function bootSelfHosted(env?: NodeJS.ProcessEnv): Promise<Application>;
 export declare function bootSelfHostedWorker(env?: NodeJS.ProcessEnv): Promise<Worker>;
-export declare function pluginHostFrom(env: NodeJS.ProcessEnv): PluginHostConfig | null;
+export declare function pluginHostFrom(env: NodeJS.ProcessEnv): PluginHostConfig;
 // src/worker-loop.ts
 import type { DueWorkReport } from "@family-agenda/application";
 import type { Worker } from "./boot";
@@ -108,13 +105,11 @@ import type { InstalledSourceType, LoadedSourceType, PlainConfig, SourceTypeRegi
 import type { SourceTypeId } from "@family-agenda/domain";
 import { type PluginHostConfig } from "./plugin-host-client";
 export declare class SourceRegistry implements SourceTypeRegistry {
-    private readonly discovered;
-    private readonly plugins;
+    private readonly offered;
     private readonly loaded;
     private readonly loadFailures;
     private constructor();
-    static discover(directories: string[], options?: {
-        pluginHost?: PluginHostConfig | null;
+    static fromPluginHost(pluginHost: PluginHostConfig, options?: {
         hostAttempts?: number;
     }): Promise<SourceRegistry>;
     installed(): InstalledSourceType[];
@@ -132,7 +127,6 @@ export declare class SourceRegistry implements SourceTypeRegistry {
         ok: false;
     }>;
     private pluginOf;
-    private import;
 }
 // src/plugin-host-client.ts
 import { type JsonObject, type SourcePlugin, type SourcePluginManifest } from "@family-agenda/source-sdk";

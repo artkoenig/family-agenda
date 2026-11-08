@@ -32,8 +32,6 @@ export type Adapters = {
   textExtractor: TextExtractor;
   /** The Tesseract models, bundled, downloaded or put there by hand; where they live is its business. */
   ocrModels: OcrModelStore;
-  /** Where the SourceRegistry finds Source plugins, first match wins: the shipped ones, then the `plugins/` volume. */
-  pluginDirectories: string[];
-  /** The Plugin Host and the Source Types it runs; without it, every plugin runs in this process. */
-  pluginHost?: PluginHostConfig | null;
+  /** The Plugin Host, which runs every Source plugin. */
+  pluginHost: PluginHostConfig;
 };

@@ -1,11 +1,13 @@
 import { mkdir, writeFile } from "node:fs/promises";
+import { createServer, type Server } from "node:http";
+import type { AddressInfo } from "node:net";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { decode, encode } from "@family-agenda/plugin-protocol";
 import {
   sdkVersion,
   SourceError,
   type CatalogueEntry,
-  type Configuration,
   type IngestResult,
   type Origin,
   type PluginText,
@@ -15,9 +17,9 @@ import {
   type SetupStep,
   type SourcePlugin,
 } from "@family-agenda/source-sdk";
+import { testPluginWith, type Ask, type Questions, type TestPluginOptions } from "./test-plugin-shape";
 
-/** Source Type ids whose test plugin code has been loaded, in the order they were. */
-export const loadedTestPlugins: string[] = [];
+export type { TestPluginOptions } from "./test-plugin-shape";
 
 const pending = new Map<string, { origins: Origin[]; failure?: SourceError; withdrawn?: string[] }>();
 const runs = new Map<string, RunContext[]>();
@@ -30,9 +32,6 @@ const catalogueEntries = new Map<string, CatalogueEntry[]>();
 const setupProgress = new Map<string, SetupProgress>();
 const addingFails = new Set<string>();
 const removed = new Map<string, RunContext[]>();
-const reconciled = new Map<string, { enabled: boolean; entries: string[] }[]>();
-const stopped = new Map<string, number>();
-const reconcilingFails = new Set<string>();
 let accounts = 0;
 
 /** Controls what the test plugin of a Source Type does on its next run. */
@@ -73,18 +72,6 @@ export const testPluginControls = {
   removed(sourceTypeId: string): RunContext[] {
     return removed.get(sourceTypeId) ?? [];
   },
-  /** What the plugin's services were reconciled with so far, oldest first. */
-  reconciled(sourceTypeId: string): { enabled: boolean; entries: string[] }[] {
-    return reconciled.get(sourceTypeId) ?? [];
-  },
-  /** How often the plugin's services were stopped. */
-  stopped(sourceTypeId: string): number {
-    return stopped.get(sourceTypeId) ?? 0;
-  },
-  /** Makes reconciling the plugin's services fail next time. */
-  failReconciling(sourceTypeId: string): void {
-    reconcilingFails.add(sourceTypeId);
-  },
   failNext(sourceTypeId: string, kind: "definite" | "temporary"): void {
     pending.set(sourceTypeId, { origins: [], failure: new SourceError(`${sourceTypeId} failed`, kind) });
   },
@@ -102,128 +89,46 @@ export const testPluginControls = {
   },
 };
 
-export type TestPluginOptions = {
-  sourceTypeId: string;
-  configuration?: Configuration;
-  /** Whether its Sources count as Silent without new Origins; by default they do. */
-  silentApplies?: boolean;
-  setupSteps?: SetupStep[];
-  /** A catalogue whose entries `testPluginControls.catalogue` sets; by default it has none. */
-  catalogue?: { configKey: string };
-  /** Setup steps driven live through `testPluginControls.setupShows`. */
-  liveSteps?: string[];
-  /** Services whose reconciling `testPluginControls.reconciled` records. */
-  services?: boolean;
-};
-
-/**
- * A polling plugin that emits the Origins it was given and fails on demand. Fields set by the
- * plugin get `account-<n>` when a Source is added, and a choice field offers the values its
- * `sender` attribute knows.
- */
+/** The test plugin, run in process: it asks the test's state directly. */
 export function testSourcePlugin(options: TestPluginOptions): SourcePlugin {
-  const plugin = basicTestSourcePlugin(options);
-  const { sourceTypeId } = options;
-  const live = (options.liveSteps ?? []).map((id) => ({
-    id,
-    title: id,
-    description: `Go through ${id}.`,
-    progress: () => Promise.resolve(setupProgress.get(sourceTypeId) ?? ({ status: "waiting" } as const)),
-  }));
-  const fields = plugin.configuration.fields.map((field) =>
-    field.choices
-      ? {
-          ...field,
-          choices: () => {
-            choicesAsked.set(sourceTypeId, (choicesAsked.get(sourceTypeId) ?? 0) + 1);
-            return Promise.resolve(knownValueList(sourceTypeId));
-          },
-        }
-      : field,
-  );
-  return {
-    ...plugin,
-    configuration: { ...plugin.configuration, fields },
-    setupSteps: [...plugin.setupSteps, ...live],
-    ...(options.catalogue
-      ? {
-          catalogue: {
-            title: "Networks",
-            configKey: options.catalogue.configKey,
-            entries: () => Promise.resolve(catalogueEntries.get(sourceTypeId) ?? []),
-          },
-        }
-      : {}),
-    ...(options.services
-      ? {
-          services: {
-            reconcile: (enabled: { enabled: boolean; entries: string[] }) => {
-              reconciled.set(sourceTypeId, [...(reconciled.get(sourceTypeId) ?? []), enabled]);
-              if (reconcilingFails.delete(sourceTypeId)) return Promise.reject(new Error("the homeserver did not start"));
-              return Promise.resolve();
-            },
-            stop: () => {
-              stopped.set(sourceTypeId, (stopped.get(sourceTypeId) ?? 0) + 1);
-              return Promise.resolve();
-            },
-          },
-        }
-      : {}),
-    sourceAdded: () => {
-      if (addingFails.delete(sourceTypeId)) return Promise.reject(SourceError.temporary("the homeserver is unreachable"));
-      accounts += 1;
-      const plain: Record<string, string> = {};
-      const secrets: Record<string, string> = {};
-      for (const field of fields.filter((candidate) => candidate.setByPlugin)) {
-        (field.secret ? secrets : plain)[field.key] = `${field.key}-${accounts}`;
-      }
-      return Promise.resolve({ plain, secrets });
-    },
-    sourceRemoved: (context) => {
-      removed.set(sourceTypeId, [...(removed.get(sourceTypeId) ?? []), context]);
-      return Promise.resolve();
-    },
-  };
+  return testPluginWith(options, answer);
 }
 
-function knownValueList(sourceTypeId: string): { value: string; label: string }[] {
-  return knownValues.get(sourceTypeId) ?? [];
-}
+/** Answers what a test plugin asks, from the state `testPluginControls` sets. */
+const answer: Ask = (question, sourceTypeId, args) => Promise.resolve(answers[question](sourceTypeId, args as never) as never);
 
-/** A polling plugin that emits the Origins it was given and fails on demand. */
-function basicTestSourcePlugin(options: TestPluginOptions): SourcePlugin {
-  const { sourceTypeId } = options;
-  loadedTestPlugins.push(sourceTypeId);
-  return {
-    identity: { sourceTypeId, displayName: sourceTypeId, version: "1.0.0", sdkVersion },
-    configuration: options.configuration ?? {
-      version: 1,
-      fields: [
-        { key: "url", label: "URL", secret: false, required: true },
-        { key: "password", label: "Password", secret: true, required: false },
-      ],
-    },
-    setupSteps: options.setupSteps ?? [],
-    ingestion: {
-      mode: "polling",
-      suggestedIntervalSeconds: 600,
-      poll: (context) => {
-        const { syncCursor } = context;
-        runs.set(sourceTypeId, [...(runs.get(sourceTypeId) ?? []), context]);
-        const next = pending.get(sourceTypeId) ?? { origins: [] };
-        pending.delete(sourceTypeId);
-        if (next.failure) return Promise.reject(next.failure);
-        return Promise.resolve({
-          ...reportedAttributes(sourceTypeId, next.origins),
-          origins: next.origins,
-          syncCursor: String(Number(syncCursor ?? 0) + 1),
-          ...(next.withdrawn ? { withdrawn: next.withdrawn } : {}),
-        });
-      },
-    },
-    health: { silentApplies: options.silentApplies ?? true },
-  };
-}
+const answers: { [Q in keyof Questions]: (sourceTypeId: string, args: Questions[Q]["args"]) => Questions[Q]["answer"] } = {
+  poll: (sourceTypeId, context) => {
+    runs.set(sourceTypeId, [...(runs.get(sourceTypeId) ?? []), context]);
+    const next = pending.get(sourceTypeId) ?? { origins: [] };
+    pending.delete(sourceTypeId);
+    if (next.failure) return { sourceError: next.failure.kind, message: next.failure.message };
+    return {
+      ...reportedAttributes(sourceTypeId, next.origins),
+      origins: next.origins,
+      syncCursor: String(Number(context.syncCursor ?? 0) + 1),
+      ...(next.withdrawn ? { withdrawn: next.withdrawn } : {}),
+    };
+  },
+  choices: (sourceTypeId) => {
+    choicesAsked.set(sourceTypeId, (choicesAsked.get(sourceTypeId) ?? 0) + 1);
+    return knownValues.get(sourceTypeId) ?? [];
+  },
+  setupProgress: (sourceTypeId) => setupProgress.get(sourceTypeId) ?? { status: "waiting" },
+  catalogueEntries: (sourceTypeId) => catalogueEntries.get(sourceTypeId) ?? [],
+  sourceAdded: (sourceTypeId, fields) => {
+    if (addingFails.delete(sourceTypeId)) return { sourceError: "temporary", message: "the homeserver is unreachable" };
+    accounts += 1;
+    const plain: Record<string, string> = {};
+    const secrets: Record<string, string> = {};
+    for (const field of fields) (field.secret ? secrets : plain)[field.key] = `${field.key}-${accounts}`;
+    return { plain, secrets };
+  },
+  sourceRemoved: (sourceTypeId, context) => {
+    removed.set(sourceTypeId, [...(removed.get(sourceTypeId) ?? []), context]);
+    return null;
+  },
+};
 
 /** The Source Attributes the Origins name and those asked for to declare, and those asked for to archive. */
 function reportedAttributes(sourceTypeId: string, origins: Origin[]): Pick<IngestResult, "declaredAttributes" | "archivedAttributes"> {
@@ -252,12 +157,33 @@ export type TestPluginPackage = {
   setupSteps?: SetupStep[];
   catalogue?: { configKey: string };
   liveSteps?: string[];
-  services?: boolean;
 };
 
-const pluginModule = fileURLToPath(new URL("./test-source-plugin.ts", import.meta.url));
+const remoteModule = fileURLToPath(new URL("./test-plugin-remote.ts", import.meta.url));
 
-/** Writes a package with a test plugin into a directory the SourceRegistry looks in. */
+let control: Promise<Server> | undefined;
+
+/** Where plugins in a Plugin Host ask the test, served for as long as the test process runs. */
+async function controlUrl(): Promise<string> {
+  control ??= new Promise((resolve) => {
+    const server = createServer((request, response) => {
+      const chunks: Buffer[] = [];
+      request.on("data", (chunk: Buffer) => chunks.push(chunk));
+      request.on("end", () => {
+        const { question, sourceTypeId, args } = decode(Buffer.concat(chunks).toString("utf8")) as { question: keyof Questions; sourceTypeId: string; args: never };
+        void answer(question, sourceTypeId, args).then((value) => {
+          response.writeHead(200).end(encode(value));
+        });
+      });
+    });
+    server.unref();
+    server.listen(0, "127.0.0.1", () => { resolve(server); });
+  });
+  const { port } = (await control).address() as AddressInfo;
+  return `http://127.0.0.1:${port}/`;
+}
+
+/** Writes a package with a test plugin into a directory the test Plugin Repository publishes. */
 export async function writeTestPluginPackage(directory: string, plugin: TestPluginPackage): Promise<void> {
   const packageDirectory = join(directory, plugin.directory ?? plugin.sourceTypeId);
   await mkdir(packageDirectory, { recursive: true });
@@ -285,10 +211,9 @@ export async function writeTestPluginPackage(directory: string, plugin: TestPlug
   const setupSteps = plugin.setupSteps ? `, setupSteps: ${JSON.stringify(plugin.setupSteps)}` : "";
   const catalogue = plugin.catalogue ? `, catalogue: ${JSON.stringify(plugin.catalogue)}` : "";
   const liveSteps = plugin.liveSteps ? `, liveSteps: ${JSON.stringify(plugin.liveSteps)}` : "";
-  const services = plugin.services ? ", services: true" : "";
   await writeFile(
     join(packageDirectory, "index.ts"),
-    `import { testSourcePlugin } from ${JSON.stringify(pluginModule)};\n` +
-      `export default testSourcePlugin({ sourceTypeId: ${JSON.stringify(plugin.sourceTypeId)}${configuration}${silentApplies}${setupSteps}${catalogue}${liveSteps}${services} });\n`,
+    `import { remoteTestSourcePlugin } from ${JSON.stringify(remoteModule)};\n` +
+      `export default remoteTestSourcePlugin(${JSON.stringify(await controlUrl())}, { sourceTypeId: ${JSON.stringify(plugin.sourceTypeId)}${configuration}${silentApplies}${setupSteps}${catalogue}${liveSteps} });\n`,
   );
 }

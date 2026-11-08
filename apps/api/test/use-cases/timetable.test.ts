@@ -56,7 +56,7 @@ describe("Timetables on the timeline and in the feed", () => {
   beforeEach(async () => {
     // The clock starts on Monday 2026-09-14 at 09:00 in Berlin.
     instance = await bootForTest();
-    await writeTestPluginPackage(instance.workspacePackages, { sourceTypeId: "timetable" });
+    await writeTestPluginPackage(instance.publishedPlugins, { sourceTypeId: "timetable" });
     await instance.restart();
     await instance.app.sourceTypes.enable("timetable");
     const added = await instance.app.sources.add({ sourceTypeId: "timetable", plain: { url: "https://school.example.org" }, secrets: {} });
@@ -177,7 +177,7 @@ describe("Timetables on the timeline and in the feed", () => {
   describe("in the feed", () => {
     let leo: FamilyMemberId;
     beforeEach(async () => {
-      await writeTestPluginPackage(instance.workspacePackages, { sourceTypeId: "timetable-leo" });
+      await writeTestPluginPackage(instance.publishedPlugins, { sourceTypeId: "timetable-leo" });
       await instance.restart();
       await instance.app.sourceTypes.enable("timetable-leo");
       const added = await instance.app.sources.add({ sourceTypeId: "timetable-leo", plain: { url: "https://school.example.org" }, secrets: {} });

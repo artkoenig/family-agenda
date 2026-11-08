@@ -19,6 +19,7 @@ const firstPort = 9000;
 const largestPullRequest = 49_999;
 const previewPrefix = "fa-pr-";
 const previewMasterKey = Buffer.alloc(32, 7).toString("base64");
+const previewPluginHostToken = "preview";
 
 /**
  * What it takes to run a pull request's code as an Instance of its own, and to remove it again:
@@ -38,7 +39,7 @@ export function planPreview(pullRequest: number, repoRoot: string): PreviewPlan 
   const ref = `refs/previews/pr-${pullRequest}`;
 
   // A preview holds no real data, so its master key is the same throwaway one everywhere.
-  const env = { PORT: String(port), PUBLIC_URL: url, MASTER_KEY: previewMasterKey, PREVIEW_TOOLS: join(repoRoot, "tools"), PREVIEW_IMAGE: image };
+  const env = { PORT: String(port), PUBLIC_URL: url, MASTER_KEY: previewMasterKey, PLUGIN_HOST_TOKEN: previewPluginHostToken, PREVIEW_TOOLS: join(repoRoot, "tools"), PREVIEW_IMAGE: image };
   const compose = (...args: string[]): Command => ({
     file: "docker",
     args: ["compose", "-p", project, "--project-directory", worktree, "-f", join(worktree, "compose.yaml"), "-f", join(repoRoot, "tools", "preview", "compose.preview.yaml"), ...args],
