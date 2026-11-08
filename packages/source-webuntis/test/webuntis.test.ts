@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { describeSourcePluginContract, recordingAttributes } from "@family-agenda/source-sdk/testing";
-import type { IngestContext, IngestResult, Origin, SourcePlugin } from "@family-agenda/source-sdk";
+import type { IngestResult, RunContext, Origin, SourcePlugin } from "@family-agenda/source-sdk";
 import { createWebUntisPlugin } from "../src";
 
 type Json = Record<string, unknown>;
@@ -41,24 +41,23 @@ function server(timetables: Record<number, Json> = { 1201: fixture("timetable-mi
   return { fetch, requests, answers, timetables };
 }
 
-const poll = (plugin: SourcePlugin, context: Partial<IngestContext> = {}): Promise<IngestResult> => {
+const poll = async (plugin: SourcePlugin, { attributes = recordingAttributes(), ...context }: Partial<RunContext> & { attributes?: ReturnType<typeof recordingAttributes> } = {}): Promise<IngestResult> => {
   if (plugin.ingestion.mode !== "polling") throw new Error("the WebUntis plugin polls");
-  return plugin.ingestion.poll({ config, syncCursor: null, now, timeZone: "Europe/Berlin", attributes: recordingAttributes(), ...context });
+  const result = await plugin.ingestion.poll({ config, syncCursor: null, now, timeZone: "Europe/Berlin", ...context });
+  attributes.apply(result);
+  return result;
 };
 
-/** A Source Attribute declaration as the recording port keeps it. */
+/** The Source Attributes results report, with the names as declared even once archived. */
 const declaring = () => {
-  const attributes = recordingAttributes();
+  const recorder = recordingAttributes();
   const declared = new Map<string, string>();
   return {
-    attributes: {
-      declare: (list: { externalId: string; name: string }[]) => {
-        for (const { externalId, name } of list) declared.set(externalId, name);
-        return attributes.declare(list);
-      },
-      archive: (id: string) => attributes.archive(id),
+    ...recorder,
+    apply: (result: IngestResult) => {
+      for (const { externalId, name } of result.declaredAttributes ?? []) declared.set(externalId, name);
+      recorder.apply(result);
     },
-    active: () => attributes.active(),
     names: () => Object.fromEntries(declared),
   };
 };
@@ -252,7 +251,7 @@ describe("the WebUntis plugin", () => {
   it("declares each child of the account as a Source Attribute named by first and last name", async () => {
     const port = declaring();
 
-    await poll(createWebUntisPlugin({ fetch: server().fetch }), { attributes: port.attributes });
+    await poll(createWebUntisPlugin({ fetch: server().fetch }), { attributes: port });
 
     expect(port.names()).toEqual({ "1201": "Mia König", "1202": "Leo König" });
     expect(port.active()).toEqual(["1201", "1202"]);
@@ -271,13 +270,13 @@ describe("the WebUntis plugin", () => {
     const untis = server();
     const plugin = createWebUntisPlugin({ fetch: untis.fetch });
     const port = declaring();
-    const first = await poll(plugin, { attributes: port.attributes });
+    const first = await poll(plugin, { attributes: port });
     const userData = fixture("user-data.json");
     const children = ((userData.result as Json).userData as { children: Json[] }).children;
     ((userData.result as Json).userData as Json).children = children.filter((child) => child.id === 1201);
     untis.answers.userData = userData;
 
-    const { origins, withdrawn } = await poll(plugin, { attributes: port.attributes, syncCursor: first.syncCursor });
+    const { origins, withdrawn } = await poll(plugin, { attributes: port, syncCursor: first.syncCursor });
 
     expect(port.active()).toEqual(["1201"]);
     expect(new Set(origins.map((origin) => origin.externalId.split("/")[0]))).toEqual(new Set(["1201"]));
@@ -293,21 +292,21 @@ describe("the WebUntis plugin", () => {
     const onlyMia = fixture("user-data.json");
     ((onlyMia.result as Json).userData as Json).children = both.filter((child) => child.id === 1201);
     untis.answers.userData = onlyMia;
-    const first = await poll(plugin, { attributes: port.attributes });
+    const first = await poll(plugin, { attributes: port });
     expect(port.active()).toEqual(["1201"]);
 
     untis.answers.userData = full;
-    await poll(plugin, { attributes: port.attributes, syncCursor: first.syncCursor });
+    await poll(plugin, { attributes: port, syncCursor: first.syncCursor });
 
     expect(port.active()).toEqual(["1201", "1202"]);
   });
 
   it("archives the account's constant Source Attribute of a Source from before the children were Source Attributes", async () => {
     const port = declaring();
-    await port.attributes.declare([{ externalId: "account", name: "gym-am-park" }]);
+    port.apply({ declaredAttributes: [{ externalId: "account", name: "gym-am-park" }], origins: [], syncCursor: null });
     const legacyCursor = JSON.stringify({ children: [], known: { "1202/91001": "2026-09-15" } });
 
-    await poll(createWebUntisPlugin({ fetch: server().fetch }), { attributes: port.attributes, syncCursor: legacyCursor });
+    await poll(createWebUntisPlugin({ fetch: server().fetch }), { attributes: port, syncCursor: legacyCursor });
 
     expect(port.active()).toEqual(["1201", "1202"]);
   });

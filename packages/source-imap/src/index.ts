@@ -5,7 +5,6 @@ import {
   SourceError,
   type Attachment,
   type Choice,
-  type IngestContext,
   type IngestResult,
   type Origin,
   type RunContext,
@@ -272,7 +271,7 @@ type Read = {
 
 type ReadOptions = { gmail: boolean; labels: Set<string>; previous: Cursor | null; now: Date };
 
-async function pollMailbox(client: ImapFlow, context: IngestContext): Promise<IngestResult> {
+async function pollMailbox(client: ImapFlow, context: RunContext): Promise<IngestResult> {
   const allowed = foldersOf(context.config.plain);
   const gmail = isGmail(client);
   const options: ReadOptions = { gmail, labels: new Set(allowed), previous: parseCursor(context.syncCursor), now: context.now };
@@ -281,15 +280,16 @@ async function pollMailbox(client: ImapFlow, context: IngestContext): Promise<In
 
   const declared = gmail ? allowed.map((name) => ({ externalId: name, name })) : reads.map((read) => ({ externalId: read.key, name: read.path }));
   const current = new Set(declared.map((attribute) => attribute.externalId));
-  await context.attributes.declare(declared);
   // A Source from before folders were Source Attributes declared one for the whole mailbox.
-  for (const id of options.previous ? options.previous.declared : [legacyAttribute]) if (!current.has(id)) await context.attributes.archive(id);
+  const archivedAttributes = (options.previous ? options.previous.declared : [legacyAttribute]).filter((id) => !current.has(id));
 
   const before = membership(reads.flatMap((read) => read.before), current);
   const after = membership(reads.flatMap((read) => read.state.entries), current);
   const withdrawn = [...before.keys()].filter((id) => !after.has(id));
   const cursor: Cursor = { v: 2, declared: [...current].sort(), containers: Object.fromEntries(reads.map((read) => [read.key, read.state])) };
   return {
+    declaredAttributes: declared,
+    archivedAttributes,
     origins: await changedOrigins(client, reads, before, after, context.now),
     ...(withdrawn.length > 0 ? { withdrawn } : {}),
     syncCursor: JSON.stringify(cursor),

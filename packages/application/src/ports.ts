@@ -255,30 +255,30 @@ export type IngestedOrigin = {
 };
 
 export type SourceRunResult =
-  /** `withdrawn` are the external ids of Origins the Source deleted since, such as redacted messages. */
-  | { ok: true; origins: IngestedOrigin[]; syncCursor: string | null; withdrawn: string[] }
+  /**
+   * `declared` and `archived` are the Source Attributes the plugin reports; the core applies them
+   * before it ingests `origins`. `withdrawn` are the external ids of Origins the Source deleted
+   * since, such as redacted messages.
+   */
+  | {
+      ok: true;
+      declared: DeclaredAttribute[];
+      archived: string[];
+      origins: IngestedOrigin[];
+      syncCursor: string | null;
+      withdrawn: string[];
+    }
   /** A definite error needs an Admin; a temporary one is retried. */
   | { ok: false; kind: "definite" | "temporary"; message: string };
 
 /** A subdivision of a Source as its plugin declares it. */
 export type DeclaredAttribute = { externalId: string; name: string };
 
-/**
- * What a plugin reports the Source Attributes of its Source through, while it runs. A call takes
- * effect when it returns, whether or not the run goes on to succeed.
- */
-export type AttributeReporting = {
-  /** Inserts them; a known id gets the new name and is revived, keeping its assignment. */
-  declare(attributes: DeclaredAttribute[]): Promise<void>;
-  /** Archives one, keeping its assignment and the Items it decided. */
-  archive(externalId: string): Promise<void>;
-};
-
 export type PollingIngestion = {
   mode: "polling";
   suggestedIntervalSeconds: number;
   /** Runs the plugin; a plugin that throws or emits invalid Origins fails the run. */
-  poll(context: SourceRunContext, attributes: AttributeReporting): Promise<SourceRunResult>;
+  poll(context: SourceRunContext): Promise<SourceRunResult>;
 };
 
 /** What the core needs of a loaded plugin; it never asks which one it is. */

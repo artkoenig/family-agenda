@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { describeSourcePluginContract, recordingAttributes } from "@family-agenda/source-sdk/testing";
-import type { IngestContext, IngestResult, Origin, SourcePlugin } from "@family-agenda/source-sdk";
+import type { IngestResult, RunContext, Origin, SourcePlugin } from "@family-agenda/source-sdk";
 import { createIcsPlugin } from "../src";
 
 const fixture = (name: string) => readFileSync(new URL(`./fixtures/${name}`, import.meta.url), "utf8");
@@ -25,9 +25,11 @@ function server(...responses: (Response | Error)[]) {
 const calendar = (body: string, headers: Record<string, string> = {}) =>
   new Response(body, { status: 200, headers: { "content-type": "text/calendar", ...headers } });
 
-const poll = (plugin: SourcePlugin, context: Partial<IngestContext> = {}): Promise<IngestResult> => {
+const poll = async (plugin: SourcePlugin, { attributes = recordingAttributes(), ...context }: Partial<RunContext> & { attributes?: ReturnType<typeof recordingAttributes> } = {}): Promise<IngestResult> => {
   if (plugin.ingestion.mode !== "polling") throw new Error("the ICS plugin polls");
-  return plugin.ingestion.poll({ config, syncCursor: null, now, timeZone: "Europe/Berlin", attributes: recordingAttributes(), ...context });
+  const result = await plugin.ingestion.poll({ config, syncCursor: null, now, timeZone: "Europe/Berlin", ...context });
+  attributes.apply(result);
+  return result;
 };
 
 /** Each Origin as its UID and the Event it states. */

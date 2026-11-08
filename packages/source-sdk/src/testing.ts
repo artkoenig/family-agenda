@@ -5,11 +5,10 @@ import {
   problemsWithOrigin,
   type Catalogue,
   type ConfigField,
-  type IngestContext,
   type PluginText,
   type RunContext,
   type SetupStep,
-  type SourceAttributes,
+  type IngestResult,
   type SourcePlugin,
 } from "./index";
 
@@ -69,21 +68,22 @@ function manifestTexts(packageJson: unknown): [string, PluginText][] {
   return texts;
 }
 
-/** A `SourceAttributes` that remembers what a plugin declared, as the Instance would for a Source. */
-export function recordingAttributes(): SourceAttributes & { active(): string[]; names(): Record<string, string> } {
+/** Remembers the Source Attributes plugin results report, as the Instance would for a Source. */
+export function recordingAttributes(): {
+  apply(result: IngestResult): void;
+  active(): string[];
+  names(): Record<string, string>;
+} {
   const names = new Map<string, string>();
   const archived = new Set<string>();
   return {
-    declare(attributes) {
-      for (const { externalId, name } of attributes) {
+    /** Applies a result as the core does: its declarations, then its archivals. */
+    apply(result) {
+      for (const { externalId, name } of result.declaredAttributes ?? []) {
         names.set(externalId, name);
         archived.delete(externalId);
       }
-      return Promise.resolve();
-    },
-    archive(externalId) {
-      if (names.has(externalId)) archived.add(externalId);
-      return Promise.resolve();
+      for (const externalId of result.archivedAttributes ?? []) if (names.has(externalId)) archived.add(externalId);
     },
     /** The ids declared and not archived since. */
     active: () => [...names.keys()].filter((id) => !archived.has(id)),
@@ -94,7 +94,7 @@ export function recordingAttributes(): SourceAttributes & { active(): string[]; 
 
 /**
  * Runs a polling plugin twice, the second time with the sync cursor of the first, and returns the
- * Source Attribute ids its Origins named without being declared (and not archived) by then, in
+ * Source Attribute ids its Origins named without the results declaring them (and not archiving them) by then, in
  * the order they came. Empty for a plugin that declares before it emits.
  */
 export async function undeclaredAttributes(plugin: SourcePlugin, config: RunContext["config"], now = new Date()): Promise<string[]> {
@@ -103,8 +103,9 @@ export async function undeclaredAttributes(plugin: SourcePlugin, config: RunCont
   const undeclared: string[] = [];
   let syncCursor: string | null = null;
   for (let run = 0; run < 2; run++) {
-    const context: IngestContext = { config, syncCursor, now, timeZone: "Europe/Berlin", attributes };
+    const context: RunContext = { config, syncCursor, now, timeZone: "Europe/Berlin" };
     const result = await plugin.ingestion.poll(context);
+    attributes.apply(result);
     const known = new Set(attributes.active());
     for (const origin of result.origins) {
       for (const id of origin.attributes) if (!known.has(id) && !undeclared.includes(id)) undeclared.push(id);
@@ -160,8 +161,7 @@ export function describeSourcePluginContract(
       it("emits valid Origins and state for a Source", async () => {
         const plugin = createPlugin();
         if (plugin.ingestion.mode !== "polling") return;
-        const attributes = recordingAttributes();
-        const context = { config, now, timeZone: "Europe/Berlin", attributes };
+        const context = { config, now, timeZone: "Europe/Berlin" };
         const result = await plugin.ingestion.poll({ ...context, syncCursor: null });
         for (const origin of result.origins) expect(problemsWithOrigin(origin)).toEqual([]);
         expect(result.syncCursor === null || typeof result.syncCursor === "string").toBe(true);

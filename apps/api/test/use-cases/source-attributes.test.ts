@@ -94,6 +94,18 @@ describe("Source Attributes", () => {
       expect(await attributes()).toEqual([{ externalId: "inbox", name: "School", archived: false, concerns: [mia] }]);
     });
 
+    it("fail the run, and none is declared, when one has no name", async () => {
+      testPluginControls.declare("mailbox", [
+        { externalId: "inbox", name: "Inbox" },
+        { externalId: "blank", name: "  " },
+      ]);
+
+      const report = await run();
+
+      expect(report.failed).toEqual([{ sourceId: source, kind: "definite", message: "The plugin declared a Source Attribute without an id or a name." }]);
+      expect(await attributes()).toEqual([]);
+    });
+
     it("ignore archiving an id never declared", async () => {
       testPluginControls.archive("mailbox", ["ghost"]);
       await run();

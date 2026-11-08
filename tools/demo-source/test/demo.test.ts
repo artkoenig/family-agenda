@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { describeSourcePluginContract, recordingAttributes, undeclaredAttributes } from "@family-agenda/source-sdk/testing";
-import type { IngestContext, IngestResult, Origin, SourcePlugin, StatedItem } from "@family-agenda/source-sdk";
+import type { IngestResult, RunContext, Origin, SourcePlugin, StatedItem } from "@family-agenda/source-sdk";
 import { SourceRegistry } from "../../../packages/composition/src/source-registry";
 import { createDemoPlugin } from "../src";
 
@@ -11,9 +11,11 @@ const config = { plain: {}, secrets: {} };
 // A Monday morning.
 const now = new Date("2026-09-14T07:00:00Z");
 
-const poll = (plugin: SourcePlugin, context: Partial<IngestContext> = {}): Promise<IngestResult> => {
+const poll = async (plugin: SourcePlugin, { attributes = recordingAttributes(), ...context }: Partial<RunContext> & { attributes?: ReturnType<typeof recordingAttributes> } = {}): Promise<IngestResult> => {
   if (plugin.ingestion.mode !== "polling") throw new Error("the demo plugin polls");
-  return plugin.ingestion.poll({ config, syncCursor: null, now, timeZone: "Europe/Berlin", attributes: recordingAttributes(), ...context });
+  const result = await plugin.ingestion.poll({ config, syncCursor: null, now, timeZone: "Europe/Berlin", ...context });
+  attributes.apply(result);
+  return result;
 };
 
 const statedItems = (origins: Origin[]): StatedItem[] => origins.flatMap((origin) => (origin.content.kind === "stated" ? [origin.content.stated] : []));

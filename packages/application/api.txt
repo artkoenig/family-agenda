@@ -683,6 +683,8 @@ export type IngestedOrigin = {
 };
 export type SourceRunResult = {
     ok: true;
+    declared: DeclaredAttribute[];
+    archived: string[];
     origins: IngestedOrigin[];
     syncCursor: string | null;
     withdrawn: string[];
@@ -695,14 +697,10 @@ export type DeclaredAttribute = {
     externalId: string;
     name: string;
 };
-export type AttributeReporting = {
-    declare(attributes: DeclaredAttribute[]): Promise<void>;
-    archive(externalId: string): Promise<void>;
-};
 export type PollingIngestion = {
     mode: "polling";
     suggestedIntervalSeconds: number;
-    poll(context: SourceRunContext, attributes: AttributeReporting): Promise<SourceRunResult>;
+    poll(context: SourceRunContext): Promise<SourceRunResult>;
 };
 export type LoadedSourceType = {
     configuration: {

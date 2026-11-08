@@ -5,7 +5,6 @@ import {
   SourceError,
   statedTextLimits,
   type EventSpan,
-  type IngestContext,
   type Origin,
   type RunContext,
   type SourcePlugin,
@@ -97,16 +96,23 @@ export function createIcsPlugin(options: IcsPluginOptions = {}): SourcePlugin {
         if (!downloaded) {
           // A calendar that has not changed keeps the name an Admin gave it, should they change that.
           const configured = configuredName(context);
-          if (configured) await context.attributes.declare([{ externalId: calendarAttribute, name: configured }]);
-          return { origins: [], syncCursor: context.syncCursor };
+          return {
+            ...(configured ? { declaredAttributes: [{ externalId: calendarAttribute, name: configured }] } : {}),
+            origins: [],
+            syncCursor: context.syncCursor,
+          };
         }
         const calendar = parseCalendar(downloaded.body, context.timeZone);
-        await context.attributes.declare([{ externalId: calendarAttribute, name: nameOf(context, calendar.name) }]);
         const origins = calendar.entries.map(originOf);
         const known = calendar.entries.map((entry) => entry.uid);
         const withdrawn = previous.known.filter((uid) => !known.includes(uid));
         const state: State = { etag: downloaded.etag, known };
-        return { origins, syncCursor: JSON.stringify(state), withdrawn };
+        return {
+          declaredAttributes: [{ externalId: calendarAttribute, name: nameOf(context, calendar.name) }],
+          origins,
+          syncCursor: JSON.stringify(state),
+          withdrawn,
+        };
       },
     },
     health: { silentApplies: false },
@@ -137,12 +143,12 @@ function originOf(entry: FoundEntry): Origin {
 }
 
 /** The name an Admin gave the calendar, if they did. */
-function configuredName(context: IngestContext): string | null {
+function configuredName(context: RunContext): string | null {
   const name = context.config.plain.name;
   return typeof name === "string" && name.trim() !== "" ? name.trim() : null;
 }
 
-function nameOf(context: IngestContext, calendarName: string | null): string {
+function nameOf(context: RunContext, calendarName: string | null): string {
   return configuredName(context) ?? calendarName ?? "Calendar";
 }
 

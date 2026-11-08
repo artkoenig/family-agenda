@@ -5,7 +5,6 @@ import {
   SourceError,
   statedTextLimits,
   type Origin,
-  type IngestContext,
   type RunContext,
   type SourcePlugin,
   type StatedLesson,
@@ -107,16 +106,14 @@ export function createWebUntisPlugin(options: WebUntisPluginOptions = {}): Sourc
     throw SourceError.definite("The WebUntis account lists no children.");
   }
 
-  async function poll(context: IngestContext) {
+  async function poll(context: RunContext) {
     const previous = parseState(context.syncCursor);
     const read = await childrenOf(context);
     const current = read.map((child) => String(child.id));
-    await context.attributes.declare(read.map((child) => ({ externalId: String(child.id), name: child.name })));
+    const declaredAttributes = read.map((child) => ({ externalId: String(child.id), name: child.name }));
     // A child that is gone is archived, and so is the one Source Attribute a Source from before
     // the children were Source Attributes declared for the account.
-    for (const id of previous.declared ?? [legacyAttribute]) {
-      if (!current.includes(id)) await context.attributes.archive(id);
-    }
+    const archivedAttributes = (previous.declared ?? [legacyAttribute]).filter((id) => !current.includes(id));
     const today = localDate(context.now, context.timeZone);
     const lastDay = addDays(today, daysAhead - 1);
 
@@ -140,7 +137,7 @@ export function createWebUntisPlugin(options: WebUntisPluginOptions = {}): Sourc
     }
     const withdrawn = goneFrom(previous.known, known, today);
     const state: State = { declared: current.toSorted(), known };
-    return { origins, syncCursor: JSON.stringify(state), withdrawn };
+    return { declaredAttributes, archivedAttributes, origins, syncCursor: JSON.stringify(state), withdrawn };
   }
 
   return {

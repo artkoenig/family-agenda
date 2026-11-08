@@ -77,14 +77,9 @@ export type SourceAttributeDeclaration = {
     externalId: string;
     name: string;
 };
-export interface SourceAttributes {
-    declare(attributes: SourceAttributeDeclaration[]): Promise<void>;
-    archive(externalId: string): Promise<void>;
-}
-export type IngestContext = RunContext & {
-    attributes: SourceAttributes;
-};
 export type IngestResult = {
+    declaredAttributes?: SourceAttributeDeclaration[];
+    archivedAttributes?: string[];
     origins: Origin[];
     syncCursor: string | null;
     withdrawn?: string[];
@@ -92,10 +87,10 @@ export type IngestResult = {
 export type Ingestion = {
     mode: "polling";
     suggestedIntervalSeconds: number;
-    poll(context: IngestContext): Promise<IngestResult>;
+    poll(context: RunContext): Promise<IngestResult>;
 } | {
     mode: "push";
-    receive(context: IngestContext, payload: Uint8Array): Promise<IngestResult>;
+    receive(context: RunContext, payload: Uint8Array): Promise<IngestResult>;
 };
 export type Attachment = {
     filename: string;
@@ -219,14 +214,15 @@ export type ManifestResult = {
 export declare function parseManifest(packageJson: unknown): ManifestResult;
 export declare function problemsWithManifest(manifest: SourcePluginManifest): string[];
 // src/testing.ts
-import { type RunContext, type SourceAttributes, type SourcePlugin } from "./index";
+import { type RunContext, type IngestResult, type SourcePlugin } from "./index";
 export type ContractOptions = {
     config?: RunContext["config"];
     now?: Date;
     languages?: string[];
     packageJson?: unknown;
 };
-export declare function recordingAttributes(): SourceAttributes & {
+export declare function recordingAttributes(): {
+    apply(result: IngestResult): void;
     active(): string[];
     names(): Record<string, string>;
 };

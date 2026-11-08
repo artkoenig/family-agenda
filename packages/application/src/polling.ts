@@ -6,6 +6,7 @@ import type {
   BlobStore,
   CatalogueRepository,
   CatalogueSpec,
+  DeclaredAttribute,
   Clock,
   IngestedMessage,
   IngestedOrigin,
@@ -85,15 +86,13 @@ export function createSourcePolling(deps: PollingDeps) {
   /** Runs one Source and records what it emitted into the report. */
   async function run(source: Source, ingestion: PollingIngestion, report: PollReport): Promise<void> {
     const now = clock.now();
-    const result = await ingestion.poll(await runContextOf(source, { secrets, now, timeZone }), {
-      declare: (attributes) => sources.declareAttributes(source.id, attributes),
-      archive: (externalId) => sources.archiveAttribute(source.id, externalId),
-    });
+    const result = await ingestion.poll(await runContextOf(source, { secrets, now, timeZone }));
     if (!result.ok) {
       await sources.recordFailedRun(source.id, now, { kind: result.kind, message: result.message });
       report.failed.push({ sourceId: source.id, kind: result.kind, message: result.message });
       return;
     }
+    await applyAttributes(source.id, result);
     const origins = await buildOrigins(result.origins);
     let known: string[];
     let withdrawnFiles;
@@ -113,6 +112,12 @@ export function createSourcePolling(deps: PollingDeps) {
     report.invalid.push(...invalid.map((record) => ({ sourceId: source.id, ...record })));
     report.refused.push(...refusalsOf(source.id, refused));
     report.polled.push(source.id);
+  }
+
+  /** The Source Attributes a run reports; the Origins it emits may name them. */
+  async function applyAttributes(sourceId: SourceId, result: { declared: DeclaredAttribute[]; archived: string[] }): Promise<void> {
+    if (result.declared.length > 0) await sources.declareAttributes(sourceId, result.declared);
+    for (const externalId of result.archived) await sources.archiveAttribute(sourceId, externalId);
   }
 
   async function buildOrigins(rawOrigins: IngestedOrigin[]) {

@@ -8,9 +8,9 @@ import {
   SourceError,
   type Attachment,
   type Choice,
+  type IngestResult,
   type Origin,
   type PluginText,
-  type IngestContext,
   type RunContext,
   type SetupProgress,
   type Services,
@@ -234,7 +234,7 @@ export function createMatrixPlugin(options: MatrixPluginOptions = {}): SourcePlu
     throw SourceError.definite(`The ${name} account was logged out${reason ? ` (${reason})` : ""}. Press Fix to scan the QR code again.`);
   }
 
-  async function poll(context: IngestContext) {
+  async function poll(context: RunContext) {
     const { homeserver, messenger, bridge, instance } = await connectionOf(context.config.plain);
     const { userId, token } = accountOf(context);
     await checkLogin(bridge, messenger, userId);
@@ -252,7 +252,7 @@ export function createMatrixPlugin(options: MatrixPluginOptions = {}): SourcePlu
       // Only group chats are read: a direct chat is never one to read, even when allow-listed before.
       const allowedJids = allowedJidsOf(chatsOf(context.config.plain.chats), state);
       const allowListed = new Set(Object.keys(state.rooms).filter((roomId) => state.groups[roomId] === true && allowedJids.has(state.jids[roomId] ?? "")));
-      await declareChats(context, state, previous, allowedJids, allowListed);
+      const attributes = declareChats(state, previous, allowedJids, allowListed);
 
       const { withdrawn, events } = await collectEvents(state, homeserver, token, sync, previous, allowListed, backfillStart);
 
@@ -261,7 +261,7 @@ export function createMatrixPlugin(options: MatrixPluginOptions = {}): SourcePlu
       pruneEdits(state, events, withdrawn);
 
       const origins = await originsOf(events, withdrawn, { state, userId, token, messenger, homeserver, serverName: instance.homeserver.serverName });
-      return { origins, syncCursor: JSON.stringify(state), withdrawn: [...withdrawn] };
+      return { ...attributes, origins, syncCursor: JSON.stringify(state), withdrawn: [...withdrawn] };
     } catch (error) {
       throw homeserverError(error);
     }
@@ -567,19 +567,18 @@ function allowedJidsOf(chats: string[], state: State): Set<string> {
  * their rooms, and archives those that left the allow-list. A group stays declared while its room
  * is missing, such as between the bridge deleting it and creating it again.
  */
-async function declareChats(
-  context: IngestContext,
+function declareChats(
   state: State,
   previous: Previous | null,
   allowedJids: Set<string>,
   allowListed: Set<string>,
-): Promise<void> {
+): Pick<IngestResult, "declaredAttributes" | "archivedAttributes"> {
   const names = namesByJid(state, allowListed);
-  await context.attributes.declare([...names].map(([externalId, name]) => ({ externalId, name })));
+  const declaredAttributes = [...names].map(([externalId, name]) => ({ externalId, name }));
   // A Source from before groups were Source Attributes declared one for the whole account.
   const before = previous?.declared ?? [legacyAttribute];
   state.declared = [...new Set([...before.filter((jid) => allowedJids.has(jid)), ...names.keys()])].sort();
-  for (const jid of before) if (!state.declared.includes(jid)) await context.attributes.archive(jid);
+  return { declaredAttributes, archivedAttributes: before.filter((jid) => !state.declared.includes(jid)) };
 }
 
 /** The names of the rooms by the JID of their group; a group with several rooms has the name of the last. */

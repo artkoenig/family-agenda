@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { describeSourcePluginContract, recordingAttributes } from "@family-agenda/source-sdk/testing";
-import { SourceError, type IngestResult, type Origin, type IngestContext, type RunContext, type SourcePlugin } from "@family-agenda/source-sdk";
+import { SourceError, type IngestResult, type Origin, type RunContext, type SourcePlugin } from "@family-agenda/source-sdk";
 import { createImapPlugin } from "../src";
 import { ImapServerFixture } from "./imap-server";
 
@@ -67,9 +67,14 @@ const config = (plain: Record<string, unknown> = {}, password = account.password
 
 const plugin = () => createImapPlugin({ allowPlaintext: true });
 
-const poll = (context: Partial<IngestContext> = {}, of: SourcePlugin = plugin()): Promise<IngestResult> => {
+const poll = async (
+  { attributes = recordingAttributes(), ...context }: Partial<RunContext> & { attributes?: ReturnType<typeof recordingAttributes> } = {},
+  of: SourcePlugin = plugin(),
+): Promise<IngestResult> => {
   if (of.ingestion.mode !== "polling") throw new Error("the IMAP plugin polls");
-  return of.ingestion.poll({ config: config(), syncCursor: null, now, timeZone: "Europe/Berlin", attributes: recordingAttributes(), ...context });
+  const result = await of.ingestion.poll({ config: config(), syncCursor: null, now, timeZone: "Europe/Berlin", ...context });
+  attributes.apply(result);
+  return result;
 };
 
 const message = (origin: Origin | undefined) => {
@@ -315,10 +320,12 @@ describe("the IMAP plugin on Gmail", () => {
     plain: { host: "127.0.0.1", port: String(gmail.port), username: account.user, folders },
     secrets: { password: account.password },
   });
-  const gpoll = (context: Partial<IngestContext>): Promise<IngestResult> => {
+  const gpoll = async ({ attributes = recordingAttributes(), ...context }: Partial<RunContext> & { attributes?: ReturnType<typeof recordingAttributes> }): Promise<IngestResult> => {
     const of = plugin();
     if (of.ingestion.mode !== "polling") throw new Error("the IMAP plugin polls");
-    return of.ingestion.poll({ config: gconfig(["Schule"]), syncCursor: null, now, timeZone: "Europe/Berlin", attributes: recordingAttributes(), ...context });
+    const result = await of.ingestion.poll({ config: gconfig(["Schule"]), syncCursor: null, now, timeZone: "Europe/Berlin", ...context });
+    attributes.apply(result);
+    return result;
   };
 
   it("reads All Mail once and names only the allow-listed labels of a mail", async () => {
