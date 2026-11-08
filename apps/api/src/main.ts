@@ -11,7 +11,7 @@ const server = serve(
       trustProxy: config.trustProxy,
       version: config.version,
       ...(config.publicUrl ? { publicUrl: config.publicUrl } : {}),
-      // The only listener in v1 is the local one, where Agendas open without a secret (ADR-0005).
+      // The only listener in v1 is the local one, where Agendas open without a secret.
       agendaAccess: openAgendaAccess,
     }).fetch, port: config.port },
   (info) => {

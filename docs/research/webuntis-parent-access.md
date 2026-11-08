@@ -1,6 +1,6 @@
 # WebUntis Source: reading two children's data with one parent account
 
-> _Written before the data model was rebuilt (ADR-0016). Where it speaks of Notices, a Review Inbox, confidence or Revisions, read the current model in [GLOSSARY.md](../../GLOSSARY.md): Notices and the Review Inbox are gone, an Item is written once or not at all, and confidence is not kept. Findings about models, runtimes and APIs stand._
+> _Written before the data model was rebuilt. Where it speaks of Notices, a Review Inbox, confidence or Revisions, read the current model in [GLOSSARY.md](../../GLOSSARY.md): Notices and the Review Inbox are gone, an Item is written once or not at all, and confidence is not kept. Findings about models, runtimes and APIs stand._
 
 Question (issue #2): with one WebUntis parent account (2 children, 1 school), which APIs give programmatic access to each child's **Timetable**, **Timetable Changes** (cancellations, substitutions, room changes), homework/exams (**Tasks**) and school messages (**Notices**)? How does authentication work, what are the rate-limit and ToS risks, and which client libraries are maintained?
 

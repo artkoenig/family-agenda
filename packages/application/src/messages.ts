@@ -55,7 +55,7 @@ export function createMessageAccess(deps: { items: ItemRepository; blobs: BlobSt
       return bytes && { filename: attachment.filename, contentType: attachment.contentType, bytes };
     },
 
-    /** Deletes an Item, as an Admin's only correction (ADR-0016); nothing remembers it. Returns whether there was one. */
+    /** Deletes an Item, as an Admin's only correction; nothing remembers it. Returns whether there was one. */
     deleteItem(id: ItemId): Promise<boolean> {
       return items.remove(id);
     },

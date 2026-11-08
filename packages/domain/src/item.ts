@@ -2,15 +2,15 @@ export type ItemId = string & { readonly __brand: "ItemId" };
 
 export type OriginId = string & { readonly __brand: "OriginId" };
 
-/** A message, such as a mail, kept with its attachments for extraction (ADR-0006). */
+/** A message, such as a mail, kept with its attachments for extraction. */
 export type RawMessageId = string & { readonly __brand: "RawMessageId" };
 
-/** The kinds of Item (ADR-0016): each comes from exactly one Source Record. */
+/** The kinds of Item: each comes from exactly one Source Record. */
 export const itemKinds = ["event", "task", "lesson"] as const;
 
 export type ItemKind = (typeof itemKinds)[number];
 
-/** The kinds of Item a calendar or timetable Source states on its Source Record (ADR-0016). */
+/** The kinds of Item a calendar or timetable Source states on its Source Record. */
 export const statedItemKinds = ["event", "lesson", "task"] as const satisfies readonly ItemKind[];
 
 /**

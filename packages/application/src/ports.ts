@@ -36,7 +36,7 @@ export interface PasswordHasher {
   verify(hash: string, password: string): Promise<boolean>;
 }
 
-/** The settings of the Instance's one Family (ADR-0013). */
+/** The settings of the Instance's one Family. */
 export interface FamilyRepository {
   recoveryKitConfirmed(): Promise<boolean>;
   /** Keeps the first confirmation if there is one. */
@@ -96,7 +96,7 @@ export interface AgendaRepository {
 
 /**
  * Decides whether an Agenda opens, depending on the listener that accepted the request
- * (ADR-0005). On the local listener every Agenda opens (ADR-0003).
+ *. On the local listener every Agenda opens.
  */
 export interface AgendaAccessPolicy {
   mayOpen(agenda: AgendaId): Promise<boolean>;
@@ -130,7 +130,7 @@ export interface SignInFailureLog {
 /** Where a secret is kept in the SecretStore; stored in Postgres in the secret's place. */
 export type SecretRef = string & { readonly __brand: "SecretRef" };
 
-/** Keeps secrets, such as Source credentials, encrypted at rest (ADR-0006). */
+/** Keeps secrets, such as Source credentials, encrypted at rest. */
 export interface SecretStore {
   put(plaintext: string): Promise<SecretRef>;
   /** The plaintext, or null if no secret has this reference. */
@@ -140,7 +140,7 @@ export interface SecretStore {
   list(): Promise<{ ref: SecretRef; storedAt: Date }[]>;
 }
 
-/** Keeps files, such as photos and attachments, outside Postgres (ADR-0006). */
+/** Keeps files, such as photos and attachments, outside Postgres. */
 export interface BlobStore {
   put(contents: Uint8Array): Promise<BlobRef>;
   /** The contents, or null if no file has this reference. */
@@ -316,7 +316,7 @@ export type LoadedSourceType = {
 /** A value a plugin offers, such as a chat for a choice field, with how the plugin names it. */
 export type KnownValue = { value: string; label: string };
 
-/** The Source plugins discovered at startup (ADR-0010). */
+/** The Source plugins discovered at startup. */
 export interface SourceTypeRegistry {
   installed(): InstalledSourceType[];
   /** Loads the plugin's code once; a plugin that fails to load is not loadable from then on. */
@@ -392,7 +392,7 @@ export type Source = {
   createdAt: Date;
 };
 
-/** A subdivision of a Source that its plugin reported (ADR-0016), and the Family Members an Admin assigned to it. */
+/** A subdivision of a Source that its plugin reported, and the Family Members an Admin assigned to it. */
 export type SourceAttribute = {
   id: SourceAttributeId;
   externalId: string;
@@ -462,7 +462,7 @@ export type ReadStated = (stated: StatedJson) => { ok: true; item: StatedItem } 
 /** A Source Record whose stated Item was not written, and why. */
 export type InvalidRecord = { externalId: string; problems: string[] };
 
-/** A file of a raw message, kept in the BlobStore with a hash of its contents (ADR-0006). */
+/** A file of a raw message, kept in the BlobStore with a hash of its contents. */
 export type StoredFile = { blob: BlobRef; sha256: string; size: number };
 
 /** A message as it is recorded: its text, and its attachments already in the BlobStore. */
@@ -510,7 +510,7 @@ export type RunRecorded = {
   refused: string[];
 };
 
-/** A raw message waiting for its one successful extraction (ADR-0009). */
+/** A raw message waiting for its one successful extraction. */
 export type PendingMessage = {
   id: RawMessageId;
   sourceId: SourceId;
@@ -580,7 +580,7 @@ export type ProjectedItem = ItemDetails & {
   assignments: FamilyMemberId[][];
 };
 
-/** Items, each written from its one Source Record (ADR-0016). */
+/** Items, each written from its one Source Record. */
 export interface ItemRepository {
   /**
    * Records a run in one transaction: its Source Records, the one Item of each calendar or

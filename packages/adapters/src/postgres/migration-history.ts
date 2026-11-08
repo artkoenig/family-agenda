@@ -4,11 +4,11 @@ import { sql, type SQL } from "drizzle-orm";
 /** What the check needs of a database, whichever driver reaches it. */
 type Queryable = { execute(query: SQL): PromiseLike<unknown> };
 
-/** A database whose migration history is not the one this version starts from (ADR-0016). */
+/** A database whose migration history is not the one this version starts from. */
 export class OldMigrationHistoryError extends Error {
   constructor() {
     super(
-      "This database was created by a version of Family Agenda before the data model was rebuilt (ADR-0016), " +
+      "This database was created by a version of Family Agenda before the data model was rebuilt, " +
         "and cannot be upgraded: there is no data migration. Start over: stop the Instance, " +
         "remove its data volumes as docs/upgrading.md lists them, then start it again and set it up as new. " +
         "Keep the master key if you want to enter the Source credentials from your Recovery Kit again.",

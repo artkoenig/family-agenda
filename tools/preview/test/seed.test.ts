@@ -16,7 +16,7 @@ describe("seeding a demo Family into an Instance", () => {
     // As a preview does: the demo Source plugin sits in the plugins directory, outside the image's own packages.
     const installed = join(instance.pluginDirectory, "demo-source");
     await cp(demoSource, installed, { recursive: true, filter: (path) => !path.includes("node_modules") });
-    // In the image Node's loader hands the plugin the SDK (ADR-0010); Vitest's does not, so the plugin brings its own.
+    // In the image Node's loader hands the plugin the SDK; Vitest's does not, so the plugin brings its own.
     await symlink(join(demoSource, "node_modules"), join(installed, "node_modules"));
     await instance.restart();
   });

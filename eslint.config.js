@@ -40,7 +40,7 @@ export default tseslint.config(
     rules: { "@typescript-eslint/no-non-null-assertion": "off" },
   },
   {
-    // Two Instances live in one process without sharing state (ADR-0002): a library package reads
+    // Two Instances live in one process without sharing state: a library package reads
     // no environment, no working directory and no time zone of the process, and keeps no `let` at
     // module scope. `registerHooks` in the SourceRegistry is the one allowed global.
     files: ["packages/*/src/**/*.ts"],

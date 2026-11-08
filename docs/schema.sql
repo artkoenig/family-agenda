@@ -1,20 +1,19 @@
--- Target Postgres schema of the data model decided in ADR-0016.
+-- Target Postgres schema of the data model.
 --
 -- This document is the readable reference of the schema. The migration is
 -- packages/adapters/drizzle/0000_initial.sql, and a test (initial-migration.test.ts) fails on any
 -- difference between the two, so change both together. There is no data migration from the old
--- model: existing Instances start over (ADR-0016, docs/upgrading.md). Conventions (ADR-0014, as
--- amended by ADR-0016):
+-- model: existing Instances start over (docs/upgrading.md). Conventions:
 --   - singular table names;
 --   - closed lists are CHECK (... IN (...)), never enum types;
 --   - orders are identity columns;
---   - single-row tables have a boolean key held at true by a check (ADR-0013);
+--   - single-row tables have a boolean key held at true by a check;
 --   - UUID keys default to gen_random_uuid(), and the app may pass its own id;
---   - attachments are files behind the BlobStore (ADR-0006); Postgres holds their reference,
+--   - attachments are files behind the BlobStore; Postgres holds their reference,
 --     hash and size, never BYTEA content. A message's text is in Postgres, with no file;
---   - secrets are referenced without foreign keys, as the SecretStore is its own port (ADR-0006).
+--   - secrets are referenced without foreign keys, as the SecretStore is its own port.
 --
--- Files and secrets outside Postgres (ADR-0016). They are referred to only by:
+-- Files and secrets outside Postgres. They are referred to only by:
 --   files:   source_record_attachment.blob, family_member.photo_blob;
 --   secrets: source.secret_refs (its values), llm_endpoint.api_key_ref, identity_provider.client_secret_ref.
 -- No foreign key or trigger follows them. A transaction that drops such a reference, also through
@@ -36,7 +35,7 @@ CREATE FUNCTION texts_within(texts TEXT[], max_length INT) RETURNS BOOLEAN
 -- The Family and the Instance
 -- ---------------------------------------------------------------------------------------------
 
--- The one row holding what belongs to the Family itself (ADR-0013: still no Family id).
+-- The one row holding what belongs to the Family itself (still no Family id).
 CREATE TABLE family (
   id                         BOOLEAN PRIMARY KEY DEFAULT true,
   language                   TEXT NOT NULL DEFAULT 'en',
@@ -73,7 +72,7 @@ CREATE TABLE sign_in_failure (
 );
 CREATE INDEX sign_in_failure_key_at_idx ON sign_in_failure (key, at);
 
--- Envelope-encrypted credentials (ADR-0006). Referred to by id, without foreign keys.
+-- Envelope-encrypted credentials. Referred to by id, without foreign keys.
 CREATE TABLE secret (
   id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   wrapped_data_key  BYTEA NOT NULL,
@@ -134,7 +133,7 @@ CREATE TABLE family_member (
 -- Deleting a Family Member: see the trigger family_member_before_delete at the end.
 
 -- ---------------------------------------------------------------------------------------------
--- Source Types and Sources (ADR-0010)
+-- Source Types and Sources
 -- ---------------------------------------------------------------------------------------------
 
 -- One row per discovered plugin. A newly discovered one appears disabled; there is no "new" mark.
@@ -170,7 +169,7 @@ CREATE TABLE source (
 );
 CREATE INDEX source_source_type_id_idx ON source (source_type_id);
 
--- Run state, one row per Source, written by the worker on every run (ADR-0014).
+-- Run state, one row per Source, written by the worker on every run.
 -- sync_cursor is written in the same transaction as the run's Source Records. For ICS and WebUntis it
 -- holds only the ETag and the set of known external ids, from which the plugin reports vanished
 -- entries as withdrawn.
@@ -467,7 +466,7 @@ CREATE TABLE agenda_member (
 CREATE INDEX agenda_member_family_member_id_idx ON agenda_member (family_member_id);
 
 -- ---------------------------------------------------------------------------------------------
--- Triggers that keep invariants (ADR-0014, as amended by ADR-0016)
+-- Triggers that keep invariants
 -- ---------------------------------------------------------------------------------------------
 
 -- Deleting a Family Member:

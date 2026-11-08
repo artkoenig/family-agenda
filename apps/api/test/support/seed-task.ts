@@ -14,7 +14,7 @@ const literal = (text: string) => `'${text.replaceAll("'", "''")}'`;
 
 /**
  * Writes Tasks as extraction writes them, each on the Source Record of its own message of the first
- * Source: only messages state Tasks, and nothing changes them after (ADR-0016).
+ * Source: only messages state Tasks, and nothing changes them after.
  */
 export async function seedTasks(query: (sql: string) => Promise<unknown>, ...tasks: SeededTask[]): Promise<void> {
   for (const task of tasks) {

@@ -35,7 +35,7 @@ type Discovered = {
 };
 
 /**
- * The Source plugins found at startup (ADR-0010): packages in the given directories, such as
+ * The Source plugins found at startup: packages in the given directories, such as
  * the workspace's `packages/` and the `plugins/` volume, whose `package.json` holds a
  * `familyAgenda.sourcePlugin` manifest. Discovering reads manifests only; a plugin's code is
  * loaded when it is first asked for, which only happens for enabled Source Types.

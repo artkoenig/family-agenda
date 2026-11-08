@@ -4,7 +4,7 @@ import type { Clock, FamilyRepository } from "./ports";
 export type RecoveryKitDeps = {
   clock: Clock;
   families: FamilyRepository;
-  /** The Instance's master key, which the SecretStore wraps data keys with (ADR-0006). */
+  /** The Instance's master key, which the SecretStore wraps data keys with. */
   masterKey: Uint8Array;
 };
 

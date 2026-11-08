@@ -14,7 +14,7 @@ export type TimetableChangeKind = (typeof timetableChangeKinds)[number];
  * A deviation from the Timetable on one date: a Lesson cancelled, taught by a substitute, or moved
  * to another room. `room` and `teacher` are those the Lesson has now, `previousRoom` and
  * `previousTeacher` those it had; `note` is what the school wrote about it. It is stored on its
- * Lesson (ADR-0016).
+ * Lesson.
  */
 export type TimetableChange = {
   change: TimetableChangeKind;

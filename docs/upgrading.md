@@ -54,7 +54,7 @@ Do this before every upgrade, and before switching between `main` and a release.
    docker compose start api worker mdns
    ```
 
-Keep your **Recovery Kit**. Without it the Source credentials in a restored backup cannot be read (ADR-0006). The `master-key` volume is not part of the commands above on purpose. If you copy it as well, store that copy apart from the other backup files, because together they open every stored credential.
+Keep your **Recovery Kit**. Without it the Source credentials in a restored backup cannot be read. The `master-key` volume is not part of the commands above on purpose. If you copy it as well, store that copy apart from the other backup files, because together they open every stored credential.
 
 Keep the backup files somewhere other than the host that runs the Instance.
 

@@ -73,7 +73,7 @@ const batchSize = 20;
 export const extractionBackoffMs = 5 * 60 * 1000;
 
 /**
- * Extraction of Items from raw messages (ADR-0016): once per message, through the Family's LLM
+ * Extraction of Items from raw messages: once per message, through the Family's LLM
  * endpoint. The model only reads; code resolves dates against the send time and checks what the
  * message says. An Item failing a check has the message read once more; failing again, it is
  * not written.

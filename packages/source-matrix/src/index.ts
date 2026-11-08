@@ -155,7 +155,7 @@ function learnRoom(state: State, roomId: string, room: JoinedRoom): void {
 }
 
 /**
- * Reads Messengers such as WhatsApp through bridges on the Instance's own homeserver (ADR-0011).
+ * Reads Messengers such as WhatsApp through bridges on the Instance's own homeserver.
  * Each Source is one linked Messenger account, read by a Matrix user the plugin creates for it.
  * It only receives: its users never post, never mark a room read, and join only rooms their own
  * bridge invites them to.

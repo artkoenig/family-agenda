@@ -11,7 +11,7 @@ export type ServiceReport = { failed: { sourceTypeId: SourceTypeId; message: str
 
 /**
  * The programs Source Types run on the Instance, such as the Matrix plugin's homeserver and
- * bridges (ADR-0011), started as an Admin enables them and stopped as they are disabled. The
+ * bridges, started as an Admin enables them and stopped as they are disabled. The
  * worker reconciles them every few seconds, so that enabling a Messenger is all it takes.
  */
 export function createServiceSupervision(deps: ServiceSupervisionDeps) {

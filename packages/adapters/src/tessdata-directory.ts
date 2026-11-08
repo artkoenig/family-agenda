@@ -23,7 +23,7 @@ export type TessdataDirectoryOptions = {
 const extension = ".traineddata";
 
 /**
- * The Tesseract models in the `tessdata` volume (ADR-0012). Bundled models are links to the
+ * The Tesseract models in the `tessdata` volume. Bundled models are links to the
  * image's own; downloaded ones and those an operator put there by hand are plain files.
  */
 export class TessdataDirectory implements OcrModelStore {

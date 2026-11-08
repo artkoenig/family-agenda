@@ -1,5 +1,5 @@
 # SHA-256 of the models in tesseract-ocr/tessdata_fast at 87416418657359cb625c412a48b6e1d6d41c29bd,
-# the commit tessdata-fast-catalog.ts downloads from. See ADR-0012 to update both.
+# the commit tessdata-fast-catalog.ts downloads from.
 126d480bfae95be2a911ed4916465e27bde75fea2da631e21b96762e5f239646  afr.traineddata
 3ec3311833a108e07d58a1152b00c0cf1848752e4f85769d46e8ca2b718a2ccc  amh.traineddata
 e3206d3dc87fd50c24a0fb9f01838615911d25168f4e64415244b67d2bb3e729  ara.traineddata

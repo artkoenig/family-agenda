@@ -289,7 +289,7 @@ CREATE INDEX "source_record_pending_idx" ON "source_record" USING btree ("create
 CREATE INDEX "source_record_message_occurred_at_idx" ON "source_record" USING btree ("occurred_at") WHERE "source_record"."stated" IS NULL;--> statement-breakpoint
 CREATE INDEX "source_source_type_id_idx" ON "source" USING btree ("source_type_id");--> statement-breakpoint
 CREATE INDEX "task_status_deadline_idx" ON "task" USING btree ("status","deadline");--> statement-breakpoint
--- Triggers keep the invariants that a CHECK cannot (ADR-0016).
+-- Triggers keep the invariants that a CHECK cannot.
 CREATE FUNCTION source_record_withdrawn() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
   DELETE FROM item WHERE record_id = NEW.id;
@@ -331,7 +331,7 @@ CREATE CONSTRAINT TRIGGER task_deleted AFTER DELETE ON task
 CREATE CONSTRAINT TRIGGER lesson_deleted AFTER DELETE ON lesson
   DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION item_detail_deleted();
 --> statement-breakpoint
--- Deleting a Family Member (ADR-0016): refused while a Source Attribute is assigned to them alone,
+-- Deleting a Family Member: refused while a Source Attribute is assigned to them alone,
 -- since its Items would silently concern the whole Family; and every Agenda whose only member they
 -- are is deleted with them, so it never silently widens to the whole Family.
 CREATE FUNCTION family_member_before_delete() RETURNS trigger LANGUAGE plpgsql AS $$
@@ -353,5 +353,5 @@ END $$;--> statement-breakpoint
 CREATE TRIGGER family_member_before_delete BEFORE DELETE ON family_member
   FOR EACH ROW EXECUTE FUNCTION family_member_before_delete();
 --> statement-breakpoint
--- The one row of what belongs to the Family itself (ADR-0013).
+-- The one row of what belongs to the Family itself.
 INSERT INTO "family" DEFAULT VALUES;

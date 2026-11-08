@@ -19,7 +19,7 @@ import type { Catalogue } from "./i18n/en";
 import { useTranslation, type Translation } from "./i18n/translation";
 import { Layout } from "./layout";
 
-// The Agenda layouts (ADR-0003): a vertical timeline, or a Task List, that works on a phone, a
+// The Agenda layouts: a vertical timeline, or a Task List, that works on a phone, a
 // desktop and a wall tablet, in the Family Agenda design system (`design/design.css`).
 
 /** Where the manifest of an Agenda is. */

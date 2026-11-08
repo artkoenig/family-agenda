@@ -1,8 +1,8 @@
 import type { MultilingualText } from "@family-agenda/domain";
 
 /**
- * Something an Admin enables on its own: a Source Type (ADR-0010), or an entry of a Source Type's
- * catalogue, such as a Messenger (ADR-0011).
+ * Something an Admin enables on its own: a Source Type, or an entry of a Source Type's
+ * catalogue, such as a Messenger.
  */
 export type Enableable = {
   /** Whether it can run as far as is known without loading its code, such as a bridge that is installed. */
