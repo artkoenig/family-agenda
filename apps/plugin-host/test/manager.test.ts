@@ -94,18 +94,30 @@ describe("the plugin manager", () => {
     expect(await probe("process.dlopen({ exports: {} }, process.env.TMPDIR + '/addon.node'); return 1", "addon")).toMatch(/^denied: ERR_(DLOPEN_DISABLED|ACCESS_DENIED)/);
   });
 
+  it("runs each call in a process of its own, sharing no state", async () => {
+    await manager.install("probe", probePlugin("probe", "globalThis.calls = (globalThis.calls ?? 0) + 1; return globalThis.calls"));
+    const context = { config: { plain: {}, secrets: {} }, syncCursor: null, now: new Date(), timeZone: "UTC" };
+
+    const outcomes = await Promise.all([1, 2, 3].map(() => manager.call("probe", "poll", [context])));
+    for (const outcome of [...outcomes, await manager.call("probe", "poll", [context])]) expect(outcome).toMatchObject({ ok: true, value: { syncCursor: "1" } });
+  });
+
   it("limits memory and open files", async () => {
     manager = new PluginManager({ workDirectory: work, firstUserId: null, memoryMb: 1024, openFiles: 64, callTimeoutMs: 5_000 });
     expect(await probe('const v8 = await import("node:v8"); return Math.round(v8.getHeapStatistics().heap_size_limit / 1048576 / 100)')).toBe("12");
     expect(await probe("const f = process.env.TMPDIR + '/f'; fs.writeFileSync(f, ''); for (let i = 0; i < 100; i++) fs.openSync(f, 'r'); return 'opened'", "files")).toBe("denied: EMFILE");
   });
 
-  it("ends a plugin that does not answer in time and starts it again on the next call", async () => {
+  it("ends a call that does not answer in time, leaving the calls running beside it alone", async () => {
     manager = new PluginManager({ workDirectory: work, firstUserId: null, memoryMb: 64, openFiles: 64, callTimeoutMs: 1_000 });
     await manager.install("probe", probePlugin("probe", "return 1").replace("async poll(context) {", "async poll(context) { if (context.syncCursor === 'hang') await new Promise(() => setInterval(() => {}, 1000));"));
     const context = (syncCursor: string | null) => ({ config: { plain: {}, secrets: {} }, syncCursor, now: new Date(), timeZone: "UTC" });
 
-    expect(await manager.call("probe", "poll", [context("hang")])).toEqual({ ok: false, failure: { sourceError: "temporary", message: "The plugin did not answer in time." } });
+    const hanging = manager.call("probe", "poll", [context("hang")]);
+    const beside = manager.call("probe", "poll", [context(null)]);
+
+    expect(await hanging).toEqual({ ok: false, failure: { sourceError: "temporary", message: "The plugin did not answer in time." } });
+    expect(await beside).toMatchObject({ ok: true });
     expect(await manager.call("probe", "poll", [context(null)])).toMatchObject({ ok: true });
   });
 });

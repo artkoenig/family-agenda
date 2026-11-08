@@ -26,31 +26,26 @@ const runner = realpathSync(fileURLToPath(new URL("./plugin-process.mts", import
 
 type Reply = { id: number; ok: true; value: unknown } | { id: number; ok: false; error: { name: string; kind: unknown; message: string } };
 
-type Running = {
-  child: ChildProcess;
-  pending: Map<number, (outcome: CallOutcome) => void>;
-  ready: Promise<boolean>;
-};
-
 type Installed = {
   hash: string;
   directory: string;
   userId: number | null;
   description: PluginDescription;
-  running: Running | null;
+  /** The processes of the calls still running. */
+  calls: Set<ChildProcess>;
 };
 
 /**
- * Runs each plugin installed from a bundle in a Node process of its own: its own user, its own
+ * Runs each call of a plugin installed from a bundle in a Node process of its own, started for the
+ * call and ended after it, so calls share no state and one failing leaves the others alone. The
+ * process has the plugin's own user, its own
  * directory and temp space, an empty environment, the permission model allowing it to read only
  * its directory and to write only its temp space, without child processes, workers or native
- * addons, and with limits on memory and open files. A process that dies is started again on the
- * next call.
+ * addons, and with limits on memory and open files. Calls run in parallel without a limit.
  */
 export class PluginManager {
   private readonly plugins = new Map<string, Installed>();
   private nextSlot = 0;
-  private nextCallId = 0;
 
   constructor(private readonly options: ManagerOptions) {}
 
@@ -61,19 +56,14 @@ export class PluginManager {
     if (current?.hash === hash) return { ok: true, description: current.description };
 
     const { directory, userId } = await this.writeSlot(bundle);
-    const installed: Installed = { hash, directory, userId, description: undefined as unknown as PluginDescription, running: null };
+    const installed: Installed = { hash, directory, userId, description: undefined as unknown as PluginDescription, calls: new Set() };
     const described = await this.callIn(installed, "describe", []);
-    if (!described.ok) {
-      this.end(installed);
-      return described;
-    }
+    if (!described.ok) return described;
     installed.description = described.value as PluginDescription;
     if (installed.description.identity.sourceTypeId !== id) {
-      this.end(installed);
       return { ok: false, failure: { sourceError: null, message: `The bundle is for Source Type "${installed.description.identity.sourceTypeId}", not "${id}".` } };
     }
-    // The plugin installed before stays until its replacement described itself.
-    if (current) this.end(current);
+    // The plugin installed before stays until its replacement described itself; its running calls finish.
     this.plugins.set(id, installed);
     return { ok: true, description: installed.description };
   }
@@ -100,31 +90,38 @@ export class PluginManager {
     return this.callIn(installed, name, args);
   }
 
-  /** Ends every plugin process. */
+  /** Ends every running call. */
   stop(): void {
     for (const installed of this.plugins.values()) this.end(installed);
     this.plugins.clear();
   }
 
+  /** Runs one call in a process started for it, and ends the process once the call is answered. */
   private async callIn(installed: Installed, name: string, args: unknown[]): Promise<CallOutcome> {
-    const running = installed.running ?? this.start(installed);
-    if (!(await running.ready)) return failed("The plugin process could not start.");
-    const id = this.nextCallId++;
-    return new Promise((resolve) => {
+    const child = this.spawn(installed);
+    installed.calls.add(child);
+    const outcome = await new Promise<CallOutcome>((resolve) => {
       const timer = setTimeout(() => {
-        running.pending.delete(id);
-        this.end(installed);
         resolve(failed("The plugin did not answer in time.", "temporary"));
       }, this.options.callTimeoutMs);
-      running.pending.set(id, (outcome) => {
+      const settle = (outcome: CallOutcome) => {
         clearTimeout(timer);
         resolve(outcome);
+      };
+      child.on("message", (message: Reply | { ready: true }) => {
+        if ("ready" in message) child.send({ id: 0, call: name, args });
+        else settle(message.ok ? { ok: true, value: message.value } : { ok: false, failure: failureFrom(message.error) });
       });
-      running.child.send({ id, call: name, args });
+      child.on("exit", () => {
+        settle(failed("The plugin process ended.", "temporary"));
+      });
     });
+    child.kill("SIGKILL");
+    installed.calls.delete(child);
+    return outcome;
   }
 
-  private start(installed: Installed): Running {
+  private spawn(installed: Installed): ChildProcess {
     const { directory, userId } = installed;
     const temp = join(directory, "tmp");
     const nodeArgs = [
@@ -138,39 +135,19 @@ export class PluginManager {
       runner,
       join(directory, "plugin.mjs"),
     ];
-    const child = spawn("/bin/sh", ["-c", 'ulimit -n "$0" && exec "$@"', String(this.options.openFiles), process.execPath, ...nodeArgs], {
+    return spawn("/bin/sh", ["-c", 'ulimit -n "$0" && exec "$@"', String(this.options.openFiles), process.execPath, ...nodeArgs], {
       cwd: directory,
       env: { TMPDIR: temp },
       stdio: ["ignore", "inherit", "inherit", "ipc"],
       serialization: "advanced",
       ...(userId === null ? {} : { uid: userId, gid: userId }),
     });
-    const pending = new Map<number, (outcome: CallOutcome) => void>();
-    const ready = new Promise<boolean>((resolve) => {
-      child.on("message", (message: Reply | { ready: true }) => {
-        if ("ready" in message) {
-          resolve(true);
-          return;
-        }
-        const settle = pending.get(message.id);
-        pending.delete(message.id);
-        settle?.(message.ok ? { ok: true, value: message.value } : { ok: false, failure: failureFrom(message.error) });
-      });
-      child.on("exit", () => {
-        resolve(false);
-        for (const settle of pending.values()) settle(failed("The plugin process ended.", "temporary"));
-        pending.clear();
-        if (installed.running?.child === child) installed.running = null;
-      });
-    });
-    const running = { child, pending, ready };
-    installed.running = running;
-    return running;
   }
 
+  /** Ends the processes of the plugin's running calls. */
   private end(installed: Installed): void {
-    installed.running?.child.kill("SIGKILL");
-    installed.running = null;
+    for (const child of installed.calls) child.kill("SIGKILL");
+    installed.calls.clear();
   }
 }
 
