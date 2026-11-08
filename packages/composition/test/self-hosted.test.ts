@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { bootSelfHosted, bootSelfHostedWorker, selfHostedAdapters } from "../src/self-hosted";
+import { bootSelfHosted, bootSelfHostedWorker, readFamilyDatabase, readSharedWorkerConfig, selfHostedAdapters, workerFrom } from "../src/self-hosted";
 
 describe("the adapters of a self-hosted Instance", () => {
   let directory: string;
@@ -40,6 +40,43 @@ describe("booting from the environment", () => {
   });
 
   it("fails at start without a master key, before it touches Postgres", async () => {
-    await expect(bootSelfHostedWorker({ TZ: "Europe/Berlin", DATABASE_URL: "postgres://unused/family" })).rejects.toThrow(/master key is not set/);
+    await expect(readFamilyDatabase({ TZ: "Europe/Berlin", DATABASE_URL: "postgres://unused/family" })).rejects.toThrow(/master key is not set/);
+  });
+});
+
+describe("the worker shared by Families", () => {
+  const pluginHost = { PLUGIN_HOST_URL: "http://plugin-host:4100", PLUGIN_HOST_TOKEN: "t" };
+
+  it("needs no database, master key or time zone of its own", async () => {
+    expect(readSharedWorkerConfig({ ...pluginHost, TESSDATA_DIRECTORY: "/t", BUNDLED_TESSDATA_DIRECTORY: "", PLUGIN_TIMEOUT_SECONDS: "5" })).toEqual({
+      tessdataDirectory: "/t",
+      bundledTessdataDirectory: null,
+      pluginHost: { url: "http://plugin-host:4100", token: "t" },
+      pluginTimeoutMs: 5000,
+    });
+    expect(readSharedWorkerConfig(pluginHost).pluginTimeoutMs).toBeUndefined();
+    const service = bootSelfHostedWorker(pluginHost);
+    await service.close();
+  });
+
+  it("boots a Family from the database its trigger names, and fails for one it cannot reach", async () => {
+    const service = bootSelfHostedWorker({ ...pluginHost, TESSDATA_DIRECTORY: join(tmpdir(), "family-agenda-tessdata"), BUNDLED_TESSDATA_DIRECTORY: "", PLUGIN_TIMEOUT_SECONDS: "5" });
+    const family = { databaseUrl: "postgres://nobody@127.0.0.1:1/none", masterKey: randomBytes(32), blobDirectory: join(tmpdir(), "family-agenda-blobs"), timeZone: "Europe/Berlin" };
+
+    await expect(service.poll(family)).rejects.toThrow();
+    await service.close();
+  });
+
+  it("is triggered by api with the Family's database and the worker's address", async () => {
+    const masterKey = randomBytes(32);
+    expect(await readFamilyDatabase({ TZ: "Asia/Tokyo", DATABASE_URL: "postgres://db/f", MASTER_KEY: masterKey.toString("base64"), BLOB_DIRECTORY: "/b", ...pluginHost })).toEqual({
+      databaseUrl: "postgres://db/f",
+      masterKey,
+      blobDirectory: "/b",
+      timeZone: "Asia/Tokyo",
+    });
+    expect(workerFrom({ WORKER_URL: "http://worker:4200", WORKER_TOKEN: "w" })).toEqual({ url: "http://worker:4200", token: "w" });
+    expect(() => workerFrom({ WORKER_TOKEN: "w" })).toThrow(/WORKER_URL is not set/);
+    expect(() => workerFrom({ WORKER_URL: "http://worker:4200" })).toThrow(/WORKER_TOKEN is not set/);
   });
 });

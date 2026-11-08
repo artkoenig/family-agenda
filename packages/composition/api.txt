@@ -4,9 +4,11 @@ export type { Adapters } from "./adapters";
 export type { Application } from "./application";
 export { bootApplication, bootWorker, type Worker } from "./boot";
 export { readApplicationConfig, type ApplicationConfig } from "./config";
-export { bootSelfHosted, bootSelfHostedWorker, pluginHostFrom, readSelfHostedConfig, selfHostedAdapters, type SelfHostedConfig } from "./self-hosted";
+export { bootSelfHosted, bootSelfHostedWorker, pluginHostFrom, readFamilyDatabase, readSelfHostedConfig, readSharedWorkerConfig, selfHostedAdapters, selfHostedWorkerService, workerFrom, type SelfHostedConfig, type SharedWorkerConfig, } from "./self-hosted";
 export { connectPostgres, NewerMigrationHistoryError, OldMigrationHistoryError, runMigrations, type PostgresConnection, type PostgresPoolOptions, } from "@family-agenda/adapters";
-export { createWorkerLoop, logDueWorkReport, type WorkerLog, type WorkerLoop } from "./worker-loop";
+export { cleanupTickMs, createWorkScheduler, logDueWorkReport, type WorkerLog, type WorkScheduler, type WorkSchedulerDeps } from "./work-scheduler";
+export { createWorkerHandler, WorkerClient, type WorkerConfig } from "./worker-channel";
+export { createWorkerService, type CleanupReport, type FamilyDatabase, type WorkerService } from "./worker-service";
 export { SourceRegistry } from "./source-registry";
 export { PluginHostClient, type HostedPlugin, type PluginHostConfig, type RemotePlugin } from "./plugin-host-client";
 // src/adapters.ts
@@ -71,7 +73,8 @@ import { type PostgresPoolOptions, type TessdataCatalog } from "@family-agenda/a
 import type { Adapters } from "./adapters";
 import type { Application } from "./application";
 import type { PluginHostConfig } from "./plugin-host-client";
-import { type Worker } from "./boot";
+import type { WorkerConfig } from "./worker-channel";
+import { type FamilyDatabase, type WorkerService } from "./worker-service";
 export type SelfHostedConfig = {
     databaseUrl: string;
     pool?: PostgresPoolOptions;
@@ -86,21 +89,89 @@ export declare function selfHostedAdapters(config: SelfHostedConfig): Promise<Ad
 export declare function readMasterKeyFrom(env: NodeJS.ProcessEnv): Promise<Buffer>;
 export declare function readSelfHostedConfig(env?: NodeJS.ProcessEnv): Promise<SelfHostedConfig>;
 export declare function bootSelfHosted(env?: NodeJS.ProcessEnv): Promise<Application>;
-export declare function bootSelfHostedWorker(env?: NodeJS.ProcessEnv): Promise<Worker>;
+export type SharedWorkerConfig = Omit<SelfHostedConfig, "databaseUrl" | "masterKey" | "blobDirectory"> & {
+    pluginTimeoutMs?: number;
+};
+export declare function readSharedWorkerConfig(env?: NodeJS.ProcessEnv): SharedWorkerConfig;
+export declare function selfHostedWorkerService(shared: SharedWorkerConfig): WorkerService;
+export declare function bootSelfHostedWorker(env?: NodeJS.ProcessEnv): WorkerService;
+export declare function readFamilyDatabase(env?: NodeJS.ProcessEnv): Promise<FamilyDatabase>;
+export declare function workerFrom(env: NodeJS.ProcessEnv): WorkerConfig;
 export declare function pluginHostFrom(env: NodeJS.ProcessEnv): PluginHostConfig;
-// src/worker-loop.ts
-import type { DueWorkReport } from "@family-agenda/application";
-import type { Worker } from "./boot";
+// src/work-scheduler.ts
+import { type DueWorkReport } from "@family-agenda/application";
+import type { WorkerClient } from "./worker-channel";
+import type { FamilyDatabase } from "./worker-service";
 export type WorkerLog = {
     warn(message: string): void;
     error(message: string, error?: unknown): void;
 };
 export declare function logDueWorkReport(report: DueWorkReport, log: WorkerLog): void;
-export type WorkerLoop = {
-    reconcile(): Promise<void>;
+export declare const cleanupTickMs: number;
+export type WorkSchedulerDeps = {
+    worker: Pick<WorkerClient, "poll" | "extract" | "cleanup">;
+    family: FamilyDatabase;
+    log: WorkerLog;
+    now?: () => number;
+};
+export type WorkScheduler = {
+    round(): Promise<number>;
+    cleanup(): Promise<void>;
+    start(): void;
     stop(): Promise<void>;
 };
-export declare function createWorkerLoop(worker: Worker, log: WorkerLog): WorkerLoop;
+export declare function createWorkScheduler(deps: WorkSchedulerDeps): WorkScheduler;
+// src/worker-channel.ts
+import type { ExtractionReport, PollReport } from "@family-agenda/application";
+import type { CleanupReport, FamilyDatabase, WorkerService } from "./worker-service";
+export type WorkerConfig = {
+    url: string;
+    token: string;
+    fetch?: typeof globalThis.fetch;
+};
+export declare class WorkerClient {
+    private readonly config;
+    private readonly fetch;
+    constructor(config: WorkerConfig);
+    poll(family: FamilyDatabase): Promise<{
+        report: PollReport;
+        nextDueAt: Date | null;
+    }>;
+    extract(family: FamilyDatabase): Promise<{
+        report: ExtractionReport;
+        nextDueAt: Date | null;
+    }>;
+    cleanup(family: FamilyDatabase): Promise<CleanupReport>;
+    private trigger;
+}
+export declare function createWorkerHandler(service: WorkerService, token: string): (request: Request) => Promise<Response>;
+// src/worker-service.ts
+import type { ExtractionReport, PollReport } from "@family-agenda/application";
+import type { Worker } from "./boot";
+export type FamilyDatabase = {
+    databaseUrl: string;
+    masterKey: Buffer;
+    blobDirectory: string;
+    timeZone: string;
+};
+export type CleanupReport = {
+    purged: number;
+    deleted: number;
+    swept: number;
+};
+export type WorkerService = {
+    poll(family: FamilyDatabase): Promise<{
+        report: PollReport;
+        nextDueAt: Date | null;
+    }>;
+    extract(family: FamilyDatabase): Promise<{
+        report: ExtractionReport;
+        nextDueAt: Date | null;
+    }>;
+    cleanup(family: FamilyDatabase): Promise<CleanupReport>;
+    close(): Promise<void>;
+};
+export declare function createWorkerService(boot: (family: FamilyDatabase) => Promise<Worker>): WorkerService;
 // src/source-registry.ts
 import type { InstalledSourceType, LoadedSourceType, PlainConfig, SourceTypeRegistry } from "@family-agenda/application";
 import type { SourceTypeId } from "@family-agenda/domain";

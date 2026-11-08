@@ -19,6 +19,9 @@ How to configure the containers, the address the Family opens, and single sign-o
 | `MASTER_KEY` | none, required | 32 random bytes in base64 (`openssl rand -base64 32`) that Source credentials are encrypted with. An Instance that already has a key file in the `master-key` volume may leave it unset; Family Agenda no longer creates a key on its own |
 | `PLUGIN_HOST_TOKEN` | none, required | A random token (`openssl rand -hex 32`) api, worker and the `plugin-host` service share. Every Source plugin runs in the Plugin Host, which installs them from the Plugin Repository, each call in a sandboxed process of its own, with the plugin's own user, without access to the database, the master key or the blobs |
 | `PLUGIN_HOST_URL` | `http://plugin-host:4100` in Compose, required | Where api and worker reach the Plugin Host |
+| `WORKER_TOKEN` | none, required | A random token (`openssl rand -hex 32`) api and worker share. api keeps the Family's schedule and triggers the worker over HTTP (`/poll`, `/extract`, `/cleanup`), sending the Family's database, master key, blob directory and time zone; the worker holds no schedule or Family of its own |
+| `WORKER_URL` | `http://worker:4200` in Compose, required | api only: where api triggers the worker |
+| `WORKER_PORT` | `4200` | worker only: the port the worker listens on |
 | `MOCK_PLUGIN_REPOSITORY` | `packages/source-ics,packages/source-imap,packages/source-webuntis` | `plugin-host` only: the workspace packages the mock Plugin Repository publishes, separated by commas, until there is a real one |
 
 Data lives in named volumes (`postgres-data`, `master-key`, `blobs`, ...). How to back them up, restore and upgrade is in [upgrading.md](upgrading.md). Keep the Recovery Kit, without it Source credentials cannot be restored.
