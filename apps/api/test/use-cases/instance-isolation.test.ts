@@ -1,7 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { SourceTypeId } from "@family-agenda/domain";
-import { createDueWork } from "@family-agenda/application";
-import { createWorkerLoop, type Worker } from "@family-agenda/composition";
+import { createWorkerHandler, createWorkerService, createWorkScheduler, WorkerClient, type Worker } from "@family-agenda/composition";
 import { bootForTest, type TestInstance } from "../support/boot";
 
 const password = "correct horse battery";
@@ -35,7 +33,7 @@ describe("two Instances in one process", () => {
     expect(await tokyo.app.admins.authenticate(created.sessionToken)).toBeNull();
   });
 
-  it("do not share the state of their background work", async () => {
+  it("share one worker without sharing the state of their background work", async () => {
     const warnings: string[] = [];
     const log = (name: string) => ({
       warn: (message: string) => warnings.push(`${name}: ${message}`),
@@ -45,29 +43,28 @@ describe("two Instances in one process", () => {
     const hanging = new Promise<never>((_resolve, reject) => {
       release = () => { reject(new Error("released")); };
     });
-    const failing: Worker["services"]["reconcile"] = () => Promise.resolve({ failed: [{ sourceTypeId: "bridged" as SourceTypeId, message: "no program" }] });
-    const blocked: Worker = {
-      ...berlin.app,
-      dueWork: createDueWork({ clock: berlin.clock, polling: { ...berlin.app.polling, pollDue: () => hanging }, extraction: berlin.app.extraction }),
-      services: { ...berlin.app.services, reconcile: failing },
+    const instances: Record<string, Worker> = {
+      "postgres://berlin": { ...berlin.app, polling: { ...berlin.app.polling, pollDue: () => hanging } },
+      "postgres://tokyo": tokyo.app,
     };
-    const first = createWorkerLoop(blocked, log("first"));
-    const second = createWorkerLoop({ ...tokyo.app, services: { ...tokyo.app.services, reconcile: failing } }, log("second"));
+    // One worker, which knows neither Family until each triggers it with its database.
+    const handler = createWorkerHandler(
+      createWorkerService((family) => Promise.resolve(instances[family.databaseUrl] as Worker)),
+      "token",
+    );
+    const worker = new WorkerClient({ url: "http://worker:4200", token: "token", fetch: (input, init) => handler(new Request(input, init)) });
+    const family = (name: string, timeZone: string) => ({ databaseUrl: `postgres://${name}`, masterKey: Buffer.alloc(32), blobDirectory: `/blobs/${name}`, timeZone });
+    const first = createWorkScheduler({ worker, family: family("berlin", "Europe/Berlin"), log: log("first") });
+    const second = createWorkScheduler({ worker, family: family("tokyo", "Asia/Tokyo"), log: log("second") });
 
-    const stuck = blocked.dueWork.run();
-    const secondReport = await tokyo.app.dueWork.run();
-    // The second Instance ran its round although the first one's is still running.
-    expect(secondReport.errors).toEqual([]);
-
-    // A failure that stays is logged once per Instance, not once for both.
-    await first.reconcile();
-    await first.reconcile();
-    await second.reconcile();
-    await second.reconcile();
-    expect(warnings.filter((line) => line.includes("Services of Source Type bridged failed"))).toHaveLength(2);
+    const stuck = first.round();
+    // The second Family's round runs on the same worker although the first one's is still running.
+    expect(await second.round()).toBeGreaterThanOrEqual(0);
+    expect(warnings).toEqual([]);
 
     release();
-    expect((await stuck).errors).toHaveLength(1);
+    await stuck;
+    expect(warnings).toContain("first: Polling Sources failed:");
     await Promise.all([first.stop(), second.stop()]);
   });
 

@@ -22,14 +22,18 @@ x-app: &app
     MASTER_KEY_FILE: /var/lib/family-agenda/master-key/master.key
     BLOB_DIRECTORY: /var/lib/family-agenda/blobs
     TESSDATA_DIRECTORY: /var/lib/family-agenda/tessdata
-    # How the Matrix plugin reaches Synapse and the bridges, which the worker runs.
-    MATRIX_INSTANCE_FILE: /var/lib/family-agenda/matrix/instance.json
     # The Family's time zone, which decides where an Agenda's days start.
     TZ: ${TZ:-Europe/Berlin}
     # Every Source plugin runs in the Plugin Host, isolated from the database, the master key and
     # the blobs. api, worker and plugin-host share this token: `openssl rand -hex 32`.
     PLUGIN_HOST_URL: http://plugin-host:4100
     PLUGIN_HOST_TOKEN: ${PLUGIN_HOST_TOKEN:?Set PLUGIN_HOST_TOKEN, such as to the output of openssl rand -hex 32}
+    # api keeps the Family's schedule and triggers the worker over HTTP, naming the Family's database;
+    # the worker holds no schedule of its own. api and worker share this token: `openssl rand -hex 32`.
+    WORKER_URL: http://worker:4200
+    WORKER_TOKEN: ${WORKER_TOKEN:?Set WORKER_TOKEN, such as to the output of openssl rand -hex 32}
+    # How long api and worker wait for a Source plugin to read a Source; empty for 120 seconds.
+    PLUGIN_TIMEOUT_SECONDS: ${PLUGIN_TIMEOUT_SECONDS:-}
   volumes:
     # The master key that Source credentials are encrypted with; never in Postgres.
     - master-key:/var/lib/family-agenda/master-key
@@ -38,8 +42,6 @@ x-app: &app
     # Tesseract models: the bundled ones linked on start, the ones Admins download, and any put
     # here by hand as <code>.traineddata for an Instance without internet access.
     - tessdata:/var/lib/family-agenda/tessdata
-    # Empty until an Admin enables a Messenger; then it holds how to reach Synapse and the bridges.
-    - matrix-instance:/var/lib/family-agenda/matrix:ro
   depends_on:
     postgres:
       condition: service_healthy
@@ -55,21 +57,11 @@ services:
       timeout: 5s
       start_period: 20s
 
+  # Polls, extracts and cleans up when api triggers it; it holds no schedule and runs no Matrix
+  # homeserver or bridges.
   worker:
     <<: *app
     working_dir: /app/apps/worker
-    # Reaps the processes of Synapse and the bridges, which the worker starts while a Messenger is
-    # enabled. They are reachable only on the Instance's own network, at `worker`.
-    init: true
-    volumes:
-      - master-key:/var/lib/family-agenda/master-key
-      - blobs:/var/lib/family-agenda/blobs
-      - tessdata:/var/lib/family-agenda/tessdata
-      # The worker writes how the api reaches Synapse and the bridges.
-      - matrix-instance:/var/lib/family-agenda/matrix
-      # Synapse's configuration and media and the bridges' Messenger sessions, in SQLite outside
-      # Postgres. Synapse's own database is on the Postgres server, created by the worker.
-      - matrix-data:/var/lib/family-agenda/matrix-data
 
   # Runs Source plugins, each as a Node process of its own user, with an empty environment, its own
   # temp space, the permission model and limits. It holds no database, master key or blobs, and
@@ -134,5 +126,3 @@ volumes:
   master-key:
   blobs:
   tessdata:
-  matrix-instance:
-  matrix-data:

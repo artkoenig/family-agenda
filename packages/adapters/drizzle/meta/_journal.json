@@ -29,6 +29,13 @@
       "when": 1794081945668,
       "tag": "0003_extraction_backoff",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1794156307924,
+      "tag": "0004_polling_lease_backoff",
+      "breakpoints": true
     }
   ]
 }

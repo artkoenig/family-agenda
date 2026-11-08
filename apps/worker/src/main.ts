@@ -1,63 +1,23 @@
-import { bootSelfHostedWorker, createWorkerLoop, logDueWorkReport } from "@family-agenda/composition";
+import { serve } from "@hono/node-server";
+import { bootSelfHostedWorker, createWorkerHandler } from "@family-agenda/composition";
 
-/** How often the worker starts and stops the programs of Source Types as Admins enable them. */
-const servicesTickMs = 5_000;
+/**
+ * The worker holds no schedule and no Family of its own: api triggers each kind of work over HTTP,
+ * naming the Family's database, and the worker answers once the work is done.
+ */
+const token = process.env.WORKER_TOKEN;
+if (!token) throw new Error("WORKER_TOKEN is not set. Set it to the same random token for api and worker, such as one from: openssl rand -hex 32");
+const port = Number(process.env.WORKER_PORT ?? 4200);
 
-/** How often the worker deletes messages past their retention and sweeps secrets nothing refers to. */
-const cleanupTickMs = 24 * 60 * 60 * 1000;
-
-const worker = await bootSelfHostedWorker();
-const log = {
-  warn: (message: string) => {
-    console.warn(message);
-  },
-  error: (message: string, error?: unknown) => {
-    console.error(message, error);
-  },
-};
-const loop = createWorkerLoop(worker, log);
-console.log("Family Agenda worker started");
-
-const cleanup = () => {
-  worker.cleanup.run().catch((error: unknown) => {
-    console.error("Cleaning up (retention, secrets nothing refers to) failed:", error);
-  });
-};
-cleanup();
-const cleanupTimer = setInterval(cleanup, cleanupTickMs);
-
-void loop.reconcile();
-const servicesTimer = setInterval(() => void loop.reconcile(), servicesTickMs);
-
-const stopping = new AbortController();
-const isStopping = () => stopping.signal.aborted;
-let wake = () => {};
-
-/** Rounds of due work, each followed by a sleep until the next work is due. */
-const working = (async () => {
-  while (!isStopping()) {
-    logDueWorkReport(await worker.dueWork.run(), log);
-    if (isStopping()) break;
-    const sleepMs = await worker.dueWork.sleepMs().catch(() => servicesTickMs);
-    await new Promise<void>((resolve) => {
-      const timer = setTimeout(resolve, sleepMs);
-      wake = () => {
-        clearTimeout(timer);
-        resolve();
-      };
-    });
-  }
-})();
+const service = bootSelfHostedWorker();
+const server = serve({ fetch: createWorkerHandler(service, token), port }, (info) => {
+  console.log(`Family Agenda worker listening on port ${info.port}`);
+});
 
 const shutdown = () => {
-  stopping.abort();
-  wake();
-  clearInterval(servicesTimer);
-  clearInterval(cleanupTimer);
-  void working
-    .then(() => loop.stop())
-    .then(() => worker.close())
-    .then(() => process.exit(0));
+  server.close(() => {
+    void service.close().then(() => process.exit(0));
+  });
 };
 process.on("SIGTERM", shutdown);
 process.on("SIGINT", shutdown);

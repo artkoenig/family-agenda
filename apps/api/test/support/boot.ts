@@ -45,6 +45,8 @@ export type TestOptions = {
   identityProviderClient?: IdentityProviderClient;
   /** The time zone of the Family; `Europe/Berlin` by default. */
   timeZone?: string;
+  /** How long a plugin may take to run a Source; the Instance's default if absent. */
+  pluginTimeoutMs?: number;
   /** Test plugins the Plugin Repository publishes before the first boot. */
   sourcePlugins?: TestPluginPackage[];
 };
@@ -68,6 +70,11 @@ export type TestInstance = {
    * Plugin Host installing what is published then, as an update would; with the given master key, should the operator have changed it.
    */
   restart(masterKey?: Buffer): Promise<void>;
+  /**
+   * Boots a second application on the same database, master key and plugin directories, with its
+   * own connection, as a second worker process would; closed with the Instance.
+   */
+  bootAnother(): Promise<Application>;
   close(): Promise<void>;
 };
 
@@ -87,19 +94,22 @@ export async function bootForTest(options: TestOptions = {}): Promise<TestInstan
   for (const model of ["deu", "eng", "osd"]) {
     await writeFile(join(bundledTessdataDirectory, `${model}.traineddata`), `bundled ${model} model`);
   }
-  const { sourcePlugins = [], timeZone = "Europe/Berlin", ...applicationOptions } = options;
+  const { sourcePlugins = [], timeZone = "Europe/Berlin", pluginTimeoutMs, ...applicationOptions } = options;
   for (const plugin of sourcePlugins) await writeTestPluginPackage(publishedPlugins, plugin);
 
   const clock = new FakeClock(new Date("2026-09-14T07:00:00Z"));
   const initialKey = randomBytes(32);
-  const config: ApplicationConfig = { timeZone };
+  const config: ApplicationConfig = { timeZone, ...(pluginTimeoutMs === undefined ? {} : { pluginTimeoutMs }) };
   const tessdataDirectory = join(keyDirectory, "tessdata");
-  let pluginHost: { stop(): Promise<void> } | undefined;
   /** The adapters of the Instance, built anew on each boot as a process would on each start. */
-  const adaptersFor = async (masterKey: Buffer): Promise<Adapters> => {
-    await pluginHost?.stop();
-    const host = await startPluginHost(publishedPlugins, await mkdtemp(join(keyDirectory, "plugin-host-")));
-    pluginHost = host;
+  let pluginHost: { config: PluginHostConfig; stop(): Promise<void> } | undefined;
+  /** `sharedHost` keeps the running Plugin Host, as a second process of the same Instance would. */
+  const adaptersFor = async (masterKey: Buffer, { sharedHost = false } = {}): Promise<Adapters> => {
+    if (!sharedHost || !pluginHost) {
+      await pluginHost?.stop();
+      pluginHost = await startPluginHost(publishedPlugins, await mkdtemp(join(keyDirectory, "plugin-host-")));
+    }
+    const host = pluginHost;
     const database = postgres.connect();
     const ocrModels = new TessdataDirectory({
       directory: tessdataDirectory,
@@ -123,6 +133,7 @@ export async function bootForTest(options: TestOptions = {}): Promise<TestInstan
     };
   };
 
+  const others: Application[] = [];
   const instance: TestInstance = {
     app: await bootApplication(config, await adaptersFor(initialKey)),
     clock,
@@ -138,7 +149,13 @@ export async function bootForTest(options: TestOptions = {}): Promise<TestInstan
       instance.masterKey = masterKey;
       instance.app = await bootApplication(config, await adaptersFor(masterKey));
     },
+    async bootAnother() {
+      const other = await bootApplication(config, await adaptersFor(instance.masterKey, { sharedHost: true }));
+      others.push(other);
+      return other;
+    },
     async close() {
+      for (const other of others) await other.close();
       await instance.app.close();
       await pluginHost?.stop();
       await postgres.release();

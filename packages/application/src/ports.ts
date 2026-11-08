@@ -225,6 +225,8 @@ export type SourceRunContext = {
   syncCursor: string | null;
   now: Date;
   timeZone: string;
+  /** Aborted once the Instance stops waiting for the run; absent outside runs. */
+  signal?: AbortSignal;
 };
 
 /** The Item a calendar or timetable entry states, as JSON the way its plugin states it, with its `kind`. */
@@ -391,6 +393,8 @@ export type Source = {
   lastSuccessAt: Date | null;
   /** Its failed runs since the last successful one; null if the last run succeeded. */
   failure: SourceFailure | null;
+  /** How many runs in a row failed since the last successful one, which make the next run wait longer. */
+  consecutiveFailures: number;
   /** When its last Origin not seen before came; null before the first. */
   lastNewRecordAt: Date | null;
   /** The external ids of its Source Records whose stated Item was invalid, so that none was written. */
@@ -429,6 +433,13 @@ export interface SourceRepository {
    * first failed run after its last successful one, and definitely once any of them did.
    */
   recordFailedRun(id: SourceId, at: Date, error: RunError): Promise<void>;
+  /**
+   * Takes the Source for a run until `until`, unless another worker holds it past `now` or it ran
+   * since `lastRunAt` was read; whether it was taken. A worker that died lets go when its lease ends.
+   */
+  lease(id: SourceId, lease: { now: Date; until: Date; lastRunAt: Date | null }): Promise<boolean>;
+  /** Lets go of a Source taken with `lease` until `until`, unless another worker has taken it since. */
+  release(id: SourceId, until: Date): Promise<void>;
   /** Records that extracting one of the Source's messages failed at `at`; a successful extraction clears it. */
   recordFailedExtraction(id: SourceId, at: Date): Promise<void>;
   /** Shows or hides the Source's Items on the timeline and in the feeds. */

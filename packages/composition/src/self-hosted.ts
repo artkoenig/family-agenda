@@ -18,8 +18,10 @@ import {
 import type { Adapters } from "./adapters";
 import type { Application } from "./application";
 import type { PluginHostConfig } from "./plugin-host-client";
-import { bootApplication, bootWorker, type Worker } from "./boot";
+import { bootApplication, bootWorker } from "./boot";
 import { readApplicationConfig } from "./config";
+import type { WorkerConfig } from "./worker-channel";
+import { createWorkerService, type FamilyDatabase, type WorkerService } from "./worker-service";
 
 /** What an Instance on its own server, with Postgres and volumes, needs to know. */
 export type SelfHostedConfig = {
@@ -109,9 +111,49 @@ export async function bootSelfHosted(env: NodeJS.ProcessEnv = process.env): Prom
   return bootApplication(readApplicationConfig(env), await selfHostedAdapters(await readSelfHostedConfig(env)));
 }
 
-/** Boots the Worker from the environment. */
-export async function bootSelfHostedWorker(env: NodeJS.ProcessEnv = process.env): Promise<Worker> {
-  return bootWorker(readApplicationConfig(env), await selfHostedAdapters(await readSelfHostedConfig(env)));
+/** What the worker shares across Families, from the environment; each Family's database comes with its trigger. */
+export type SharedWorkerConfig = Omit<SelfHostedConfig, "databaseUrl" | "masterKey" | "blobDirectory"> & { pluginTimeoutMs?: number };
+
+/** Reads what the worker shares across Families from environment variables; no database or master key. */
+export function readSharedWorkerConfig(env: NodeJS.ProcessEnv = process.env): SharedWorkerConfig {
+  const { pluginTimeoutMs } = readApplicationConfig({ ...env, TZ: "UTC" });
+  return {
+    tessdataDirectory: env.TESSDATA_DIRECTORY ?? "/var/lib/family-agenda/tessdata",
+    bundledTessdataDirectory: (env.BUNDLED_TESSDATA_DIRECTORY ?? "/usr/share/tesseract-ocr/5/tessdata") || null,
+    pluginHost: pluginHostFrom(env),
+    ...(pluginTimeoutMs === undefined ? {} : { pluginTimeoutMs }),
+  };
+}
+
+/** The worker's work for any Family that triggers it, each booted from the database it names. */
+export function selfHostedWorkerService(shared: SharedWorkerConfig): WorkerService {
+  const { pluginTimeoutMs, ...adapters } = shared;
+  return createWorkerService(async (family) =>
+    bootWorker(
+      { timeZone: family.timeZone, ...(pluginTimeoutMs === undefined ? {} : { pluginTimeoutMs }) },
+      await selfHostedAdapters({ ...adapters, databaseUrl: family.databaseUrl, masterKey: family.masterKey, blobDirectory: family.blobDirectory }),
+    ),
+  );
+}
+
+/** The worker service from the environment. */
+export function bootSelfHostedWorker(env: NodeJS.ProcessEnv = process.env): WorkerService {
+  return selfHostedWorkerService(readSharedWorkerConfig(env));
+}
+
+/** The Family's database as api sends it to the worker with each trigger. */
+export async function readFamilyDatabase(env: NodeJS.ProcessEnv = process.env): Promise<FamilyDatabase> {
+  const { databaseUrl, masterKey, blobDirectory } = await readSelfHostedConfig(env);
+  return { databaseUrl, masterKey, blobDirectory, timeZone: readApplicationConfig(env).timeZone };
+}
+
+/** The worker from WORKER_URL and WORKER_TOKEN, which are both needed. */
+export function workerFrom(env: NodeJS.ProcessEnv): WorkerConfig {
+  const url = env.WORKER_URL;
+  const token = env.WORKER_TOKEN;
+  if (!url) throw new Error("WORKER_URL is not set; it is where api triggers the worker, such as http://worker:4200.");
+  if (!token) throw new Error("WORKER_TOKEN is not set. Set it to the same random token for api and worker, such as one from: openssl rand -hex 32");
+  return { url, token };
 }
 
 /** The Plugin Host from PLUGIN_HOST_URL and PLUGIN_HOST_TOKEN, which are both needed. */

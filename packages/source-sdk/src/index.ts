@@ -120,6 +120,11 @@ export type RunContext = {
   now: Date;
   /** The IANA time zone the Family lives in, for times a Source gives without one. */
   timeZone: string;
+  /**
+   * Aborted once the Instance stops waiting for a run, such as after its timeout; a plugin hands
+   * it on to what it waits for, such as `fetch`. Absent outside runs.
+   */
+  signal?: AbortSignal;
 };
 
 /** A subdivision of a Source a plugin reports, such as a mail folder, a chat or a child of a school account. */

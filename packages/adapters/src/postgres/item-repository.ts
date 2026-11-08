@@ -145,6 +145,7 @@ export class PostgresItemRepository implements ItemRepository {
           lastRunAt: run.at,
           lastSuccessAt: run.at,
           ...failureColumns(null),
+          consecutiveFailures: 0,
           lastNewRecordAt: sql`(${lastNewRecord})`,
           ...(await invalidColumns(tx, run, outcome, withdrawn)),
           ...(await unknownColumns(tx, run, [...refused])),

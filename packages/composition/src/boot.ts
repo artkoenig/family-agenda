@@ -36,6 +36,8 @@ import {
   createSourceAccess,
   createSourceHealth,
   createSourcePolling,
+  defaultPluginTimeoutMs,
+  timeBoundRegistry,
   createSourceTypeAccess,
   createTaskAccess,
   signInLimits,
@@ -92,7 +94,8 @@ export async function bootApplication(config: ApplicationConfig, adapters: Adapt
 
   const items = new PostgresItemRepository(postgres.db);
   const activity = createActivityLog({ clock, activities: new PostgresActivityRepository(postgres.db) });
-  const registry = await SourceRegistry.fromPluginHost(adapters.pluginHost);
+  const pluginTimeoutMs = config.pluginTimeoutMs ?? defaultPluginTimeoutMs;
+  const registry = timeBoundRegistry(await SourceRegistry.fromPluginHost(adapters.pluginHost), pluginTimeoutMs);
   const sourceTypeRepository = new PostgresSourceTypeRepository(postgres.db);
   const sourceRepository = new PostgresSourceRepository(postgres.db);
   const sourceHealth = createSourceHealth({
@@ -148,6 +151,7 @@ export async function bootApplication(config: ApplicationConfig, adapters: Adapt
     items,
     blobs,
     activity,
+    pluginTimeoutMs,
   });
   const services = createServiceSupervision({ registry, sourceTypes: sourceTypeRepository, catalogues: catalogueRepository });
   const endpoints = new PostgresLlmEndpointRepository(postgres.db);

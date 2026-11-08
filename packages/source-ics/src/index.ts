@@ -40,7 +40,7 @@ export function createIcsPlugin(options: IcsPluginOptions = {}): SourcePlugin {
     try {
       response = await fetch(url, {
         headers: etag ? { "if-none-match": etag } : {},
-        signal: AbortSignal.timeout(timeoutMs),
+        signal: context.signal ? AbortSignal.any([context.signal, AbortSignal.timeout(timeoutMs)]) : AbortSignal.timeout(timeoutMs),
       });
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);

@@ -65,7 +65,7 @@ export function createWebUntisPlugin(options: WebUntisPluginOptions = {}): Sourc
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ id: "family-agenda", method, params: [{ ...params, auth }], jsonrpc: "2.0" }),
-        signal: AbortSignal.timeout(timeoutMs),
+        signal: context.signal ? AbortSignal.any([context.signal, AbortSignal.timeout(timeoutMs)]) : AbortSignal.timeout(timeoutMs),
       });
     } catch (error) {
       throw SourceError.temporary(`WebUntis could not be reached: ${messageOf(error)}`);
