@@ -185,6 +185,8 @@ CREATE TABLE source_run (
   sync_cursor               JSONB,
   last_run_at               TIMESTAMPTZ,
   last_extraction_failure_at TIMESTAMPTZ,   -- extraction of the Source's messages waits a while after it
+  consecutive_failures INTEGER NOT NULL DEFAULT 0, -- failed runs in a row; the next run waits longer
+  leased_until TIMESTAMPTZ,                 -- a worker runs it until then; no other does meanwhile
   last_success_at           TIMESTAMPTZ,
   failing_since             TIMESTAMPTZ,
   last_error_kind           TEXT,

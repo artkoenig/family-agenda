@@ -45,7 +45,7 @@ import type {
   AgendaLayout,
 } from "@family-agenda/domain";
 import { defaultFamilyLanguage, isFamilyLanguage } from "@family-agenda/domain";
-import { and, asc, eq, gt, inArray, lt, lte, sql, type SQL } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, isNull, lt, lte, or, sql, type SQL } from "drizzle-orm";
 import { uuidPattern } from "../uuid";
 import type { Database } from "./database";
 import {
@@ -532,8 +532,31 @@ export class PostgresSourceRepository implements SourceRepository {
         failingSince: sql`coalesce(${sourceRuns.failingSince}, ${at})`,
         lastErrorKind: sql`CASE WHEN ${sourceRuns.lastErrorKind} = 'definite' THEN 'definite' ELSE ${error.kind} END`,
         lastError: error.message,
+        consecutiveFailures: sql`${sourceRuns.consecutiveFailures} + 1`,
       })
       .where(eq(sourceRuns.sourceId, id));
+  }
+
+  async lease(id: SourceId, { now, until, lastRunAt }: { now: Date; until: Date; lastRunAt: Date | null }): Promise<boolean> {
+    const taken = await this.db
+      .update(sourceRuns)
+      .set({ leasedUntil: until })
+      .where(
+        and(
+          eq(sourceRuns.sourceId, id),
+          or(isNull(sourceRuns.leasedUntil), lte(sourceRuns.leasedUntil, now)),
+          lastRunAt ? eq(sourceRuns.lastRunAt, lastRunAt) : isNull(sourceRuns.lastRunAt),
+        ),
+      )
+      .returning({ sourceId: sourceRuns.sourceId });
+    return taken.length === 1;
+  }
+
+  async release(id: SourceId, until: Date): Promise<void> {
+    await this.db
+      .update(sourceRuns)
+      .set({ leasedUntil: null })
+      .where(and(eq(sourceRuns.sourceId, id), eq(sourceRuns.leasedUntil, until)));
   }
 
   async recordFailedExtraction(id: SourceId, at: Date): Promise<void> {
@@ -635,6 +658,7 @@ export class PostgresSourceRepository implements SourceRepository {
         run.failingSince && run.lastError !== null
           ? { kind: run.lastErrorKind === "definite" ? "definite" : "temporary", message: run.lastError, since: run.failingSince }
           : null,
+      consecutiveFailures: run.consecutiveFailures,
       lastNewRecordAt: run.lastNewRecordAt,
       invalidRecords: run.invalidRecords,
       unknownAttributes: run.unknownAttributes,

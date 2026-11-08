@@ -329,6 +329,12 @@ export declare class PostgresSourceRepository implements SourceRepository {
     migrateConfig(id: SourceId, fromVersion: number, plain: PlainConfig, configVersion: number): Promise<void>;
     update(source: Source): Promise<void>;
     recordFailedRun(id: SourceId, at: Date, error: RunError): Promise<void>;
+    lease(id: SourceId, { now, until, lastRunAt }: {
+        now: Date;
+        until: Date;
+        lastRunAt: Date | null;
+    }): Promise<boolean>;
+    release(id: SourceId, until: Date): Promise<void>;
     recordFailedExtraction(id: SourceId, at: Date): Promise<void>;
     setShown(id: SourceId, shown: boolean): Promise<void>;
     rename(id: SourceId, name: string | null): Promise<void>;

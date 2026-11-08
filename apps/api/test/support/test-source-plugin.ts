@@ -32,6 +32,7 @@ const catalogueEntries = new Map<string, CatalogueEntry[]>();
 const setupProgress = new Map<string, SetupProgress>();
 const addingFails = new Set<string>();
 const removed = new Map<string, RunContext[]>();
+const holds = new Map<string, Promise<void>>();
 let accounts = 0;
 
 /** Controls what the test plugin of a Source Type does on its next run. */
@@ -72,6 +73,14 @@ export const testPluginControls = {
   removed(sourceTypeId: string): RunContext[] {
     return removed.get(sourceTypeId) ?? [];
   },
+  /** Makes the plugin's next run wait until the returned function is called, as a slow or hanging service would. */
+  hold(sourceTypeId: string): () => void {
+    let release = () => {};
+    holds.set(sourceTypeId, new Promise<void>((resolve) => (release = resolve)));
+    return () => {
+      release();
+    };
+  },
   failNext(sourceTypeId: string, kind: "definite" | "temporary"): void {
     pending.set(sourceTypeId, { origins: [], failure: new SourceError(`${sourceTypeId} failed`, kind) });
   },
@@ -95,11 +104,18 @@ export function testSourcePlugin(options: TestPluginOptions): SourcePlugin {
 }
 
 /** Answers what a test plugin asks, from the state `testPluginControls` sets. */
-const answer: Ask = (question, sourceTypeId, args) => Promise.resolve(answers[question](sourceTypeId, args as never) as never);
+const answer: Ask = async (question, sourceTypeId, args) => {
+  if (question === "poll") {
+    runs.set(sourceTypeId, [...(runs.get(sourceTypeId) ?? []), args as RunContext]);
+    const hold = holds.get(sourceTypeId);
+    holds.delete(sourceTypeId);
+    await hold;
+  }
+  return answers[question](sourceTypeId, args as never) as never;
+};
 
 const answers: { [Q in keyof Questions]: (sourceTypeId: string, args: Questions[Q]["args"]) => Questions[Q]["answer"] } = {
   poll: (sourceTypeId, context) => {
-    runs.set(sourceTypeId, [...(runs.get(sourceTypeId) ?? []), context]);
     const next = pending.get(sourceTypeId) ?? { origins: [] };
     pending.delete(sourceTypeId);
     if (next.failure) return { sourceError: next.failure.kind, message: next.failure.message };
@@ -157,6 +173,8 @@ export type TestPluginPackage = {
   setupSteps?: SetupStep[];
   catalogue?: { configKey: string };
   liveSteps?: string[];
+  /** Whether loading its code never finishes, as a plugin that cannot be reached. */
+  loadHangs?: boolean;
 };
 
 const remoteModule = fileURLToPath(new URL("./test-plugin-remote.ts", import.meta.url));
@@ -214,6 +232,7 @@ export async function writeTestPluginPackage(directory: string, plugin: TestPlug
   await writeFile(
     join(packageDirectory, "index.ts"),
     `import { remoteTestSourcePlugin } from ${JSON.stringify(remoteModule)};\n` +
+      (plugin.loadHangs ? "await new Promise(() => {});\n" : "") +
       `export default remoteTestSourcePlugin(${JSON.stringify(await controlUrl())}, { sourceTypeId: ${JSON.stringify(plugin.sourceTypeId)}${configuration}${silentApplies}${setupSteps}${catalogue}${liveSteps} });\n`,
   );
 }

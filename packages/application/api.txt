@@ -24,6 +24,7 @@ export * from "./source-health";
 export * from "./source-types";
 export * from "./sources";
 export * from "./tasks";
+export * from "./time-limit";
 export * from "./agendas";
 // src/activity.ts
 import type { ActivityKind, ActivityRepository, BackgroundActivity, Clock } from "./ports";
@@ -476,6 +477,8 @@ export declare function isPollInterval(seconds: number | null | undefined): bool
 import type { SourceId } from "@family-agenda/domain";
 import type { ActivityLog } from "./activity";
 import type { BlobStore, CatalogueRepository, Clock, ItemRepository, SecretStore, SourceRepository, SourceTypeRegistry, SourceTypeRepository } from "./ports";
+export declare const pollsPerSourceType = 2;
+export declare const maximumBackoffMs: number;
 export type PollingDeps = {
     clock: Clock;
     timeZone: string;
@@ -487,6 +490,7 @@ export type PollingDeps = {
     items: ItemRepository;
     blobs: BlobStore;
     activity: ActivityLog;
+    pluginTimeoutMs?: number;
 };
 export type PollReport = {
     polled: SourceId[];
@@ -782,6 +786,7 @@ export type Source = {
     lastRunAt: Date | null;
     lastSuccessAt: Date | null;
     failure: SourceFailure | null;
+    consecutiveFailures: number;
     lastNewRecordAt: Date | null;
     invalidRecords: string[];
     unknownAttributes: string[];
@@ -802,6 +807,12 @@ export interface SourceRepository {
     migrateConfig(id: SourceId, fromVersion: number, plain: PlainConfig, configVersion: number): Promise<void>;
     update(source: Source): Promise<void>;
     recordFailedRun(id: SourceId, at: Date, error: RunError): Promise<void>;
+    lease(id: SourceId, lease: {
+        now: Date;
+        until: Date;
+        lastRunAt: Date | null;
+    }): Promise<boolean>;
+    release(id: SourceId, until: Date): Promise<void>;
     recordFailedExtraction(id: SourceId, at: Date): Promise<void>;
     setShown(id: SourceId, shown: boolean): Promise<void>;
     rename(id: SourceId, name: string | null): Promise<void>;
@@ -1409,6 +1420,12 @@ export declare function createTaskAccess(deps: TasksDeps): {
     }>;
 };
 export type TaskAccess = ReturnType<typeof createTaskAccess>;
+// src/time-limit.ts
+import type { SourceTypeRegistry } from "./ports";
+export declare const defaultPluginTimeoutMs: number;
+export declare function withinTime<T>(promise: Promise<T>, ms: number, late: () => T): Promise<T>;
+export declare function noAnswerWithin(ms: number): string;
+export declare function timeBoundRegistry(registry: SourceTypeRegistry, ms: number): SourceTypeRegistry;
 // src/agendas.ts
 import { type Attribution, type FamilyLanguage, type FamilyMemberId, type ItemId, type LocalDate, type LocalTime, type MultilingualText, type RawMessageId, type TaskStatus, type TimeSpan, type TimetableChangeKind, type AgendaId, type AgendaLayout } from "@family-agenda/domain";
 import type { ActivityLog, CurrentActivity } from "./activity";

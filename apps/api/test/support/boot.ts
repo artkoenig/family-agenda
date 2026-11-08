@@ -45,6 +45,8 @@ export type TestOptions = {
   identityProviderClient?: IdentityProviderClient;
   /** The time zone of the Family; `Europe/Berlin` by default. */
   timeZone?: string;
+  /** How long a plugin may take to load or to run a Source; the Instance's default if absent. */
+  pluginTimeoutMs?: number;
   /** Test plugins the Plugin Repository publishes before the first boot. */
   sourcePlugins?: TestPluginPackage[];
 };
@@ -87,12 +89,12 @@ export async function bootForTest(options: TestOptions = {}): Promise<TestInstan
   for (const model of ["deu", "eng", "osd"]) {
     await writeFile(join(bundledTessdataDirectory, `${model}.traineddata`), `bundled ${model} model`);
   }
-  const { sourcePlugins = [], timeZone = "Europe/Berlin", ...applicationOptions } = options;
+  const { sourcePlugins = [], timeZone = "Europe/Berlin", pluginTimeoutMs, ...applicationOptions } = options;
   for (const plugin of sourcePlugins) await writeTestPluginPackage(publishedPlugins, plugin);
 
   const clock = new FakeClock(new Date("2026-09-14T07:00:00Z"));
   const initialKey = randomBytes(32);
-  const config: ApplicationConfig = { timeZone };
+  const config: ApplicationConfig = { timeZone, ...(pluginTimeoutMs === undefined ? {} : { pluginTimeoutMs }) };
   const tessdataDirectory = join(keyDirectory, "tessdata");
   let pluginHost: { stop(): Promise<void> } | undefined;
   /** The adapters of the Instance, built anew on each boot as a process would on each start. */

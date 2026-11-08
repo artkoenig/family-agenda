@@ -251,6 +251,10 @@ export const sourceRuns = pgTable(
     lastRunAt: timestamptz("last_run_at"),
     /** When extracting one of its messages last failed; the extraction of its messages waits a while after that. Null after a successful one. */
     lastExtractionFailureAt: timestamptz("last_extraction_failure_at"),
+    /** Its failed runs in a row since the last successful one, which make the next run wait longer. */
+    consecutiveFailures: integer("consecutive_failures").notNull().default(0),
+    /** Until when a worker runs it, so that no other does meanwhile; null while none does. */
+    leasedUntil: timestamptz("leased_until"),
     /** When it last ran successfully, which the Admin area shows. */
     lastSuccessAt: timestamptz("last_success_at"),
     /** The first failed run since the last successful one; null while it runs successfully. */

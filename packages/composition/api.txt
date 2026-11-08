@@ -62,6 +62,7 @@ export declare function bootWorker(config: ApplicationConfig, adapters: Adapters
 // src/config.ts
 export type ApplicationConfig = {
     timeZone: string;
+    pluginTimeoutMs?: number;
 };
 export declare function readApplicationConfig(env: NodeJS.ProcessEnv): ApplicationConfig;
 export declare function assertTimeZone(timeZone: string): void;
