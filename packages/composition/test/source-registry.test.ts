@@ -99,6 +99,29 @@ describe("the Source registry", () => {
     });
   });
 
+  it("migrates a stored configuration asynchronously, step by step to the plugin's version", async () => {
+    await writePackage(
+      "migrating",
+      plugin("migrating").replace(
+        "configuration: { version: 1, fields: [] }",
+        "configuration: { version: 3, fields: [], migrations: { 1: (plain) => ({ ...plain, one: true }), 2: (plain) => ({ ...plain, two: true }) } }",
+      ),
+    );
+    const registry = await SourceRegistry.discover([directory]);
+
+    expect(await registry.migrateConfig(idOf("migrating"), { a: 1 }, 1)).toEqual({ ok: true, plain: { a: 1, one: true, two: true }, configVersion: 3 });
+    expect(await registry.migrateConfig(idOf("migrating"), { a: 1 }, 3)).toEqual({ ok: true, plain: { a: 1 }, configVersion: 3 });
+  });
+
+  it("does not migrate for a Source Type that cannot be loaded or lacks a migration step", async () => {
+    await writePackage("broken", "throw new Error('boom');");
+    await writePackage("gap", plugin("gap").replace("version: 1, fields: []", "version: 2, fields: [], migrations: {}"));
+    const registry = await SourceRegistry.discover([directory]);
+
+    expect(await registry.migrateConfig(idOf("broken"), {}, 1)).toEqual({ ok: false });
+    expect(await registry.migrateConfig(idOf("gap"), {}, 1)).toEqual({ ok: false });
+  });
+
   it("cannot load an unknown Source Type", async () => {
     const registry = await SourceRegistry.discover([directory]);
 

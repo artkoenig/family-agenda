@@ -98,11 +98,12 @@ export type WorkerLoop = {
 };
 export declare function createWorkerLoop(worker: Worker, log: WorkerLog): WorkerLoop;
 // src/source-registry.ts
-import type { InstalledSourceType, LoadedSourceType, SourceTypeRegistry } from "@family-agenda/application";
+import type { InstalledSourceType, LoadedSourceType, PlainConfig, SourceTypeRegistry } from "@family-agenda/application";
 import type { SourceTypeId } from "@family-agenda/domain";
 export declare class SourceRegistry implements SourceTypeRegistry {
     private readonly discovered;
-    private readonly loading;
+    private readonly plugins;
+    private readonly loaded;
     private readonly loadFailures;
     private constructor();
     static discover(directories: string[]): Promise<SourceRegistry>;
@@ -113,5 +114,13 @@ export declare class SourceRegistry implements SourceTypeRegistry {
     } | {
         ok: false;
     }>;
+    migrateConfig(id: SourceTypeId, plain: PlainConfig, fromVersion: number): Promise<{
+        ok: true;
+        plain: PlainConfig;
+        configVersion: number;
+    } | {
+        ok: false;
+    }>;
+    private pluginOf;
     private import;
 }

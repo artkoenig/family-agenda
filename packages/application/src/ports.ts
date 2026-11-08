@@ -289,8 +289,6 @@ export type LoadedSourceType = {
   };
   /** Interactive steps the form shows, such as pairing an account by QR code. */
   setupSteps: SetupStepSpec[];
-  /** The plain configuration of `fromVersion` migrated to the current version. */
-  migrateConfig: (plain: PlainConfig, fromVersion: number) => PlainConfig;
   ingestion: PollingIngestion | { mode: "push" };
   /** Whether its Sources count as Silent when no new Origin comes for a while. */
   silentApplies: boolean;
@@ -321,6 +319,16 @@ export interface SourceTypeRegistry {
   installed(): InstalledSourceType[];
   /** Loads the plugin's code once; a plugin that fails to load is not loadable from then on. */
   load(id: SourceTypeId): Promise<{ ok: true; sourceType: LoadedSourceType } | { ok: false }>;
+  /**
+   * The plain configuration of `fromVersion` migrated to the plugin's current version, with that
+   * version. Asynchronous, so that the plugin may run elsewhere; not ok if the Source Type cannot be
+   * loaded or the configuration cannot be migrated.
+   */
+  migrateConfig(
+    id: SourceTypeId,
+    plain: PlainConfig,
+    fromVersion: number,
+  ): Promise<{ ok: true; plain: PlainConfig; configVersion: number } | { ok: false }>;
 }
 
 /** What the Instance stores per Source Type id, installed or not. */
