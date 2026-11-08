@@ -23,19 +23,11 @@ export function createSourceTypeAccess(deps: SourceTypesDeps) {
 
   /** Brings the stored configuration of a Source Type's Sources to its plugin's version. */
   async function migrateSources(id: SourceTypeId): Promise<void> {
-    const loaded = await registry.load(id);
-    if (!loaded.ok) return;
-    const { configuration, migrateConfig } = loaded.sourceType;
     for (const source of await sources.listOfType(id)) {
-      if (source.configVersion >= configuration.version) continue;
-      let plain;
-      try {
-        plain = migrateConfig(source.plain, source.configVersion);
-      } catch {
-        // The Source keeps its configuration; it fails when it runs, where its status shows it.
-        continue;
-      }
-      await sources.migrateConfig(source.id, source.configVersion, plain, configuration.version);
+      const migrated = await registry.migrateConfig(id, source.plain, source.configVersion);
+      // A Source that cannot be migrated keeps its configuration; it fails when it runs, where its status shows it.
+      if (!migrated.ok || migrated.configVersion <= source.configVersion) continue;
+      await sources.migrateConfig(source.id, source.configVersion, migrated.plain, migrated.configVersion);
     }
   }
 

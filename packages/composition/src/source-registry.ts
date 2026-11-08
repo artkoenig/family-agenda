@@ -41,7 +41,8 @@ type Discovered = {
  * loaded when it is first asked for, which only happens for enabled Source Types.
  */
 export class SourceRegistry implements SourceTypeRegistry {
-  private readonly loading = new Map<string, Promise<LoadedSourceType | null>>();
+  private readonly plugins = new Map<string, Promise<SourcePlugin | null>>();
+  private readonly loaded = new Map<string, LoadedSourceType>();
   private readonly loadFailures = new Map<string, string>();
 
   private constructor(private readonly discovered: Map<string, Discovered>) {}
@@ -73,16 +74,47 @@ export class SourceRegistry implements SourceTypeRegistry {
   }
 
   async load(id: SourceTypeId): Promise<{ ok: true; sourceType: LoadedSourceType } | { ok: false }> {
-    let loading = this.loading.get(id);
-    if (!loading) {
-      loading = this.import(id);
-      this.loading.set(id, loading);
+    const plugin = await this.pluginOf(id);
+    if (!plugin) return { ok: false };
+    let sourceType = this.loaded.get(id);
+    if (!sourceType) {
+      sourceType = loadedSourceType(plugin);
+      this.loaded.set(id, sourceType);
     }
-    const sourceType = await loading;
-    return sourceType ? { ok: true, sourceType } : { ok: false };
+    return { ok: true, sourceType };
   }
 
-  private async import(id: string): Promise<LoadedSourceType | null> {
+  async migrateConfig(
+    id: SourceTypeId,
+    plain: PlainConfig,
+    fromVersion: number,
+  ): Promise<{ ok: true; plain: PlainConfig; configVersion: number } | { ok: false }> {
+    const plugin = await this.pluginOf(id);
+    if (!plugin) return { ok: false };
+    const { configuration } = plugin;
+    let migrated = plain as JsonObject;
+    try {
+      for (let version = fromVersion; version < configuration.version; version++) {
+        const migrate = configuration.migrations?.[version];
+        if (!migrate) return { ok: false };
+        migrated = migrate(migrated);
+      }
+    } catch {
+      return { ok: false };
+    }
+    return { ok: true, plain: migrated, configVersion: Math.max(fromVersion, configuration.version) };
+  }
+
+  private pluginOf(id: SourceTypeId): Promise<SourcePlugin | null> {
+    let plugin = this.plugins.get(id);
+    if (!plugin) {
+      plugin = this.import(id);
+      this.plugins.set(id, plugin);
+    }
+    return plugin;
+  }
+
+  private async import(id: string): Promise<SourcePlugin | null> {
     const found = this.discovered.get(id);
     if (!found?.module || found.installed.notLoadable !== null) return null;
     const loaded = await loadPlugin(found.module, id);
@@ -90,7 +122,7 @@ export class SourceRegistry implements SourceTypeRegistry {
       this.loadFailures.set(id, loaded.problems.join("; "));
       return null;
     }
-    return loadedSourceType(loaded.plugin);
+    return loaded.plugin;
   }
 }
 
@@ -237,15 +269,6 @@ function loadedSourceType(plugin: SourcePlugin): LoadedSourceType {
           }
         : { mode: "push" },
     silentApplies: health.silentApplies,
-    migrateConfig(plain: PlainConfig, fromVersion: number): PlainConfig {
-      let migrated = plain as JsonObject;
-      for (let version = fromVersion; version < configuration.version; version++) {
-        const migrate = configuration.migrations?.[version];
-        if (!migrate) throw new Error(`no configuration migration from version ${version}`);
-        migrated = migrate(migrated);
-      }
-      return migrated;
-    },
   };
 }
 

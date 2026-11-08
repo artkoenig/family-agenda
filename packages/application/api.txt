@@ -708,7 +708,6 @@ export type LoadedSourceType = {
         fields: ConfigFieldSpec[];
     };
     setupSteps: SetupStepSpec[];
-    migrateConfig: (plain: PlainConfig, fromVersion: number) => PlainConfig;
     ingestion: PollingIngestion | {
         mode: "push";
     };
@@ -736,6 +735,13 @@ export interface SourceTypeRegistry {
     load(id: SourceTypeId): Promise<{
         ok: true;
         sourceType: LoadedSourceType;
+    } | {
+        ok: false;
+    }>;
+    migrateConfig(id: SourceTypeId, plain: PlainConfig, fromVersion: number): Promise<{
+        ok: true;
+        plain: PlainConfig;
+        configVersion: number;
     } | {
         ok: false;
     }>;
