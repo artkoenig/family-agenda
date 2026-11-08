@@ -59,8 +59,6 @@ export class PluginManager {
     const hash = createHash("sha256").update(bundle).digest("hex");
     const current = this.plugins.get(id);
     if (current?.hash === hash) return { ok: true, description: current.description };
-    if (current) this.end(current);
-    this.plugins.delete(id);
 
     const { directory, userId } = await this.writeSlot(bundle);
     const installed: Installed = { hash, directory, userId, description: undefined as unknown as PluginDescription, running: null };
@@ -74,6 +72,8 @@ export class PluginManager {
       this.end(installed);
       return { ok: false, failure: { sourceError: null, message: `The bundle is for Source Type "${installed.description.identity.sourceTypeId}", not "${id}".` } };
     }
+    // The plugin installed before stays until its replacement described itself.
+    if (current) this.end(current);
     this.plugins.set(id, installed);
     return { ok: true, description: installed.description };
   }

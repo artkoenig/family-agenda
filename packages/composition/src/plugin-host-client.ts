@@ -67,6 +67,7 @@ export class PluginHostClient {
   private async call(id: string, name: CallName, args: unknown[]): Promise<CallOutcome | null> {
     const response = await this.request(`/plugins/${encodeURIComponent(id)}/${name}`, "POST", encode(args));
     if (response.status === 404) return null;
+    if (!response.ok) throw new Error(`The Plugin Host refused the call "${name}" with status ${response.status}.`);
     return decode(await response.text()) as CallOutcome;
   }
 

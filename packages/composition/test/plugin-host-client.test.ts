@@ -80,6 +80,7 @@ describe("a plugin the Plugin Host runs, as the core calls it", () => {
       catalogueEntries: () => ({ ok: false, failure: { sourceError: null, message: "broken" } }),
       choices: () => new Response(null, { status: 502 }),
       sourceAdded: () => new Response(null, { status: 401 }),
+      sourceRemoved: () => new Response(null, { status: 413 }),
     });
     const { plugin } = await client.hosted("fake", "bundle");
     if (plugin.ingestion.mode !== "polling") throw new Error("polls");
@@ -88,6 +89,7 @@ describe("a plugin the Plugin Host runs, as the core calls it", () => {
     await expect(plugin.catalogue?.entries()).rejects.toMatchObject({ name: "Error", message: "broken" });
     await expect(plugin.configuration.fields[0]?.choices?.(context)).rejects.toMatchObject({ kind: "temporary", message: expect.stringContaining("502") as unknown });
     await expect(plugin.sourceAdded?.(context)).rejects.toThrow("refused the token");
+    await expect(plugin.sourceRemoved?.(context)).rejects.toThrow('refused the call "sourceRemoved" with status 413');
   });
 
   it("is a temporary failure when the host cannot be reached, and refuses a bundle it cannot install", async () => {
