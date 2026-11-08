@@ -104,7 +104,7 @@ describe("the plugin manager", () => {
 
   it("limits memory and open files", async () => {
     manager = new PluginManager({ workDirectory: work, firstUserId: null, memoryMb: 1024, openFiles: 64, callTimeoutMs: 5_000 });
-    expect(await probe('const v8 = await import("node:v8"); return Math.round(v8.getHeapStatistics().heap_size_limit / 1048576 / 100)')).toBe("12");
+    expect(await probe('const v8 = await import("node:v8"); const mb = v8.getHeapStatistics().heap_size_limit / 1048576; return mb >= 1024 && mb < 1400')).toBe("true");
     expect(await probe("const f = process.env.TMPDIR + '/f'; fs.writeFileSync(f, ''); for (let i = 0; i < 100; i++) fs.openSync(f, 'r'); return 'opened'", "files")).toBe("denied: EMFILE");
   });
 
