@@ -1,3 +1,4 @@
+import { parseEgressTokens, parsePluginEgress } from "./egress/allowlist";
 import { parsePluginUrls, type PluginBinding } from "./plugin-containers/bindings";
 import { versionOf } from "./version";
 
@@ -9,6 +10,10 @@ export type Config = {
   pluginDirectory: string;
   /** Source Types whose plugins run in containers, from `PLUGIN_URLS` such as `demo=http://demo:8080`. */
   pluginContainers: PluginBinding[];
+  /** The declared egress hosts per plugin container, from `PLUGIN_EGRESS`, which their egress proxies allow. */
+  pluginEgress: Map<string, string[]>;
+  /** The token per egress proxy's container, from `PLUGIN_EGRESS_TOKENS`, with which it fetches its allowlist. */
+  egressTokens: Map<string, string>;
   /** The `tessdata` volume of Tesseract models (ADR-0012). */
   tessdataDirectory: string;
   /** Where the image keeps the Tesseract models it ships; empty for none. */
@@ -30,6 +35,8 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): Config {
     blobDirectory: env.BLOB_DIRECTORY ?? "/var/lib/family-agenda/blobs",
     pluginDirectory: env.PLUGIN_DIRECTORY ?? "/var/lib/family-agenda/plugins",
     pluginContainers: parsePluginUrls(env.PLUGIN_URLS),
+    pluginEgress: parsePluginEgress(env.PLUGIN_EGRESS),
+    egressTokens: parseEgressTokens(env.PLUGIN_EGRESS_TOKENS),
     tessdataDirectory: env.TESSDATA_DIRECTORY ?? "/var/lib/family-agenda/tessdata",
     bundledTessdataDirectory: (env.BUNDLED_TESSDATA_DIRECTORY ?? "/usr/share/tesseract-ocr/5/tessdata") || null,
     port: Number(env.PORT ?? 3000),

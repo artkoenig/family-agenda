@@ -1,6 +1,6 @@
 import type { AddressInfo } from "node:net";
 import type { Server } from "node:http";
-import { limits, type RunContext } from "@family-agenda/plugin-contract";
+import { contractVersion, limits, type RunContext } from "@family-agenda/plugin-contract";
 import { PluginError, type PluginImplementation } from "@family-agenda/plugin-kit";
 import { servePlugin } from "@family-agenda/plugin-kit/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -342,7 +342,7 @@ describe("The description of a plugin container", () => {
   });
 
   it("is refused for a plugin contract the core does not implement", () => {
-    expect(descriptionProblem(binding, { ...description, contractVersion: "2.0" })).toBe("built for plugin contract 2.0, but the core implements 1.0");
+    expect(descriptionProblem(binding, { ...description, contractVersion: "2.0" })).toBe(`built for plugin contract 2.0, but the core implements ${contractVersion}`);
   });
 });
 

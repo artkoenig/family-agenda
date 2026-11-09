@@ -2,6 +2,8 @@ import { serve } from "@hono/node-server";
 import { openAgendaAccess } from "@family-agenda/application";
 import { bootApplication } from "./composition-root";
 import { readConfig } from "./config";
+import { createAllowlistApp } from "./egress/allowlist-server";
+import { allowlistPort } from "./egress/wiring";
 import { createHttpApp } from "./http/app";
 
 const config = readConfig();
@@ -19,7 +21,18 @@ const server = serve(
   },
 );
 
+// Where each plugin container's egress proxy fetches what it allows (ADR-0001).
+const allowlistServer = serve({
+  fetch: createAllowlistApp({
+    declared: config.pluginEgress,
+    bindings: config.pluginContainers,
+    hostsOf: (sourceTypeId) => application.egressHosts.ofSourceType(sourceTypeId),
+  }, config.egressTokens).fetch,
+  port: allowlistPort,
+});
+
 const shutdown = () => {
+  allowlistServer.close();
   server.close(() => {
     void application.close().then(() => process.exit(0));
   });

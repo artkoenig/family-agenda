@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Family Agenda plugin contract",
-    "version": "1.0",
+    "version": "1.1",
     "description": "What a plugin container answers; the core calls, plugins never call the core (ADR-0001). Bodies are at most 10485760 bytes."
   },
   "paths": {
@@ -485,6 +485,9 @@
             "type": "boolean"
           },
           "hasChoices": {
+            "type": "boolean"
+          },
+          "host": {
             "type": "boolean"
           }
         },

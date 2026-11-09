@@ -1,5 +1,5 @@
 import { parse, stringify } from "yaml";
-import { composeOf, nameCollisionsOf, passwordVariablesOf } from "./compose";
+import { composeOf, proxyImageOf, nameCollisionsOf, passwordVariablesOf } from "./compose";
 import { pluginsFileSchema } from "./schema";
 
 export type Generated = { ok: true; compose: string; dotEnv: string | null } | { ok: false; errors: string[] };
@@ -9,8 +9,9 @@ const header = "# Generated from plugins.yml by `plugins generate` (docs/configu
 /**
  * Validates `plugins.yml` and turns it into `compose.plugins.yaml`. `dotEnv` is the current `.env`,
  * null for none; the result's `dotEnv` adds a password for each new database, null if unchanged.
+ * `version` is the core's, whose image runs the egress proxies.
  */
-export function generatePluginsCompose(pluginsYml: string, dotEnv: string | null, newPassword: () => string): Generated {
+export function generatePluginsCompose(pluginsYml: string, dotEnv: string | null, newPassword: () => string, version = "dev"): Generated {
   let raw: unknown;
   try {
     raw = parse(pluginsYml) ?? {};
@@ -25,7 +26,7 @@ export function generatePluginsCompose(pluginsYml: string, dotEnv: string | null
   if (collisions.length > 0) return { ok: false, errors: collisions };
   return {
     ok: true,
-    compose: header + stringify(composeOf(result.data)),
+    compose: header + stringify(composeOf(result.data, proxyImageOf(version))),
     dotEnv: withPasswords(dotEnv ?? "", passwordVariablesOf(result.data), newPassword),
   };
 }

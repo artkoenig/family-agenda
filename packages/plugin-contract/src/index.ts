@@ -9,7 +9,7 @@ import { z } from "zod";
  * `major.minor`. A minor change is additive only, such as an optional field or an optional new
  * endpoint; anything else is a new major. CI compares `openapi.json` with the last release.
  */
-export const contractVersion = "1.0";
+export const contractVersion = "1.1";
 
 export type ContractVersion = { major: number; minor: number };
 
@@ -85,6 +85,11 @@ export const configFieldSchema = z
     setByPlugin: z.boolean().optional(),
     /** Whether `fieldChoices` offers its values for an existing Source. */
     hasChoices: z.boolean(),
+    /**
+     * Whether its value is a host the plugin connects to, such as `imap.example.org` or
+     * `imap.example.org:993`; the plugin's egress proxy allows it, on any port without one.
+     */
+    host: z.boolean().optional(),
   })
   .meta({ id: "ConfigField" });
 

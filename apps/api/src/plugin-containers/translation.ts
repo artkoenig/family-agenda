@@ -16,13 +16,14 @@ export function loadedSourceType(description: Description, call: PluginCall): Lo
   return {
     configuration: {
       version: configuration.version,
-      fields: configuration.fields.map(({ key, label, secret, required, description: about, setByPlugin, hasChoices }) => ({
+      fields: configuration.fields.map(({ key, label, secret, required, description: about, setByPlugin, hasChoices, host }) => ({
         key,
         label,
         secret,
         required,
         description: about ?? null,
         setByPlugin: setByPlugin === true,
+        host: host === true,
         choice: hasChoices,
       })),
     },
