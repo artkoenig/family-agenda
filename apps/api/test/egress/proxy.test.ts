@@ -2,7 +2,7 @@ import { once } from "node:events";
 import { request, type Server } from "node:http";
 import { connect, createServer as createTcpServer, type AddressInfo, type Server as TcpServer } from "node:net";
 import { afterEach, describe, expect, it } from "vitest";
-import { createEgressProxy, targetOf, type AllowlistFetch } from "../../src/egress/proxy";
+import { createEgressProxy, isPublicAddress, targetOf, type AllowlistFetch, type EgressProxyOptions } from "../../src/egress/proxy";
 
 const servers: (Server | TcpServer)[] = [];
 afterEach(async () => {
@@ -40,9 +40,8 @@ async function connectThrough(proxyPort: number, authority: string, send = ""): 
   return { status: head.split("\r\n")[0] ?? "", body };
 }
 
-async function proxy(allowlist: AllowlistFetch): Promise<number> {
-  const lines: string[] = [];
-  return listening(createEgressProxy(allowlist, (line) => lines.push(line)));
+async function proxy(allowlist: AllowlistFetch, options: Partial<EgressProxyOptions> = { isReachable: () => true }): Promise<number> {
+  return listening(createEgressProxy({ allowlist, log: () => {}, ...options }));
 }
 
 describe("the egress proxy", () => {
@@ -53,11 +52,37 @@ describe("the egress proxy", () => {
     expect(await connectThrough(proxyPort, `127.0.0.1:${port}`, "ping")).toEqual({ status: "HTTP/1.1 200 Connection Established", body: "helloping" });
   });
 
+  it("tunnels an allowed name to the address it resolves to", async () => {
+    const port = await upstream();
+    const proxyPort = await proxy(() => Promise.resolve([`api.example.com:${port}`]), { resolve: () => Promise.resolve(["127.0.0.1"]), isReachable: () => true });
+
+    expect((await connectThrough(proxyPort, `api.example.com:${port}`)).status).toBe("HTTP/1.1 200 Connection Established");
+  });
+
   it("refuses a host not allowed", async () => {
     const port = await upstream();
     const proxyPort = await proxy(() => Promise.resolve(["example.org:443"]));
 
     expect((await connectThrough(proxyPort, `127.0.0.1:${port}`)).status).toBe("HTTP/1.1 403 Forbidden");
+  });
+
+  it("refuses an allowed internal address by default", async () => {
+    const proxyPort = await proxy(() => Promise.resolve(["127.0.0.1:8080", "10.0.0.1:80"]), {});
+
+    expect((await connectThrough(proxyPort, "127.0.0.1:8080")).status).toBe("HTTP/1.1 403 Forbidden");
+    expect((await connectThrough(proxyPort, "10.0.0.1:80")).status).toBe("HTTP/1.1 403 Forbidden");
+  });
+
+  it("refuses an allowed name that resolves to an internal address", async () => {
+    const proxyPort = await proxy(() => Promise.resolve(["rebind.example.com:443"]), { resolve: () => Promise.resolve(["93.184.216.34", "192.168.1.5"]) });
+
+    expect((await connectThrough(proxyPort, "rebind.example.com:443")).status).toBe("HTTP/1.1 403 Forbidden");
+  });
+
+  it("answers 502 when an allowed name does not resolve", async () => {
+    const proxyPort = await proxy(() => Promise.resolve(["gone.example.com:443"]), { resolve: () => Promise.reject(new Error("ENOTFOUND")) });
+
+    expect((await connectThrough(proxyPort, "gone.example.com:443")).status).toBe("HTTP/1.1 502 Bad Gateway");
   });
 
   it("fails closed when the allowlist cannot be fetched", async () => {
@@ -75,10 +100,11 @@ describe("the egress proxy", () => {
     expect((await connectThrough(proxyPort, `127.0.0.1:${closed}`)).status).toBe("HTTP/1.1 502 Bad Gateway");
   });
 
-  it("refuses a malformed target and any plain request", async () => {
-    const proxyPort = await proxy(() => Promise.resolve(["*"]));
+  it("refuses a malformed target, a single-label name and any plain request", async () => {
+    const proxyPort = await proxy(() => Promise.resolve(["api:3001"]));
 
     expect((await connectThrough(proxyPort, "no-port")).status).toBe("HTTP/1.1 400 Bad Request");
+    expect((await connectThrough(proxyPort, "api:3001")).status).toBe("HTTP/1.1 400 Bad Request");
     const response = await new Promise<number | undefined>((resolve, reject) => {
       request({ host: "127.0.0.1", port: proxyPort, path: "http://example.org/" }, (answer) => {
         answer.resume();
@@ -94,11 +120,38 @@ describe("the egress proxy", () => {
 describe("targetOf", () => {
   it.each([
     ["example.org:443", { host: "example.org", port: 443 }],
+    ["Example.ORG:443", { host: "example.org", port: 443 }],
     ["[::1]:8443", { host: "::1", port: 8443 }],
+    ["[1.2.3.4]:8443", null],
+    ["10.0.0.1:80", { host: "10.0.0.1", port: 80 }],
+    ["api:3001", null],
     ["example.org", null],
     ["example.org:0", null],
     ["example.org:70000", null],
   ])("%s", (authority, target) => {
     expect(targetOf(authority)).toEqual(target);
+  });
+});
+
+describe("isPublicAddress", () => {
+  it.each([
+    ["93.184.216.34", true],
+    ["2606:2800:220:1:248:1893:25c8:1946", true],
+    ["127.0.0.1", false],
+    ["10.1.2.3", false],
+    ["172.17.0.2", false],
+    ["192.168.0.1", false],
+    ["169.254.169.254", false],
+    ["100.64.0.1", false],
+    ["0.0.0.0", false],
+    ["224.0.0.1", false],
+    ["::1", false],
+    ["::", false],
+    ["::ffff:127.0.0.1", false],
+    ["fd00::1", false],
+    ["fe80::1", false],
+    ["not-an-ip", false],
+  ])("%s → %s", (address, isPublic) => {
+    expect(isPublicAddress(address)).toBe(isPublic);
   });
 });

@@ -128,6 +128,18 @@ _Avoid_: Server, deployment, tenant
 A container a plugin needs beside its own, such as Synapse for the Matrix plugin, declared with the plugin in `plugins.yml`; reachable only on that plugin's network.
 _Avoid_: Sidecar, plugin service
 
+**Egress Proxy**:
+The only way out to the internet for a plugin container or a Companion with egress hosts; it lets through only what that container's Allowlist names, and only to public addresses.
+_Avoid_: Firewall, gateway, sidecar
+
+**Allowlist**:
+The hosts one Egress Proxy lets through: those declared in `plugins.yml`, plus, for the plugin's own container, the values of Host Fields of its Sources. The api serves it to that proxy alone.
+_Avoid_: Whitelist, egress rules
+
+**Host Field**:
+A configuration field of a Source Type whose value is a host the plugin connects to, such as an IMAP server; its value joins the plugin's Allowlist.
+_Avoid_: Server field, URL field
+
 **Recovery Kit**:
 What an Admin prints or saves at first start to recover the Instance; without it, a backup cannot restore Source credentials.
 _Avoid_: Recovery key, master key (for the document), backup code

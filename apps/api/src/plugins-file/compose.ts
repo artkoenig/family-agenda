@@ -1,3 +1,7 @@
+import { pluginServiceOf, proxyOf } from "../egress/wiring";
+import { allProxiedContainersOf, egressProxyOf, egressTokensOf, proxiedContainersOf, tokenVariablesOf } from "./egress-proxies";
+
+export { proxyImageOf } from "./egress-proxies";
 import type { Companion, Plugin, PluginsFile } from "./schema";
 
 type Service = Record<string, unknown>;
@@ -7,25 +11,9 @@ export type Compose = {
   volumes: Record<string, Record<string, never>>;
 };
 
-const serviceOf = (plugin: Plugin) => `plugin-${plugin.id}`;
+const serviceOf = (plugin: Plugin) => pluginServiceOf(plugin.id);
 const databaseNetworkOf = (plugin: Plugin) => `plugin-${plugin.id}-database`;
 const volumeOf = (plugin: Plugin, volume: string) => `${serviceOf(plugin)}-${volume}`;
-/** The egress proxy of container `service`, and the internal network it shares with that container only. */
-const proxyOf = (service: string) => `${service}-egress`;
-const proxyPort = 3128;
-/** Where the api serves the allowlists, on a port compose does not publish. */
-const allowlistPort = 3001;
-
-/**
- * The image the egress proxies run: the core image of the release that generates the file, as
- * compose.yaml names it, so `FAMILY_AGENDA_VERSION` moves them along; the local build for `dev`.
- */
-export function proxyImageOf(version: string): string {
-  if (version === "dev") return "family-agenda:local";
-  const release = /^\d+\.\d+\.\d+$/.test(version) ? version : "main";
-  return `ghcr.io/artkoenig/family-agenda:\${FAMILY_AGENDA_VERSION:-${release}}`;
-}
-
 /** The names derived for one companion. */
 type CompanionNames = {
   service: string;
@@ -45,9 +33,12 @@ function namesOf(plugin: Plugin, companion: Companion): CompanionNames {
 
 const databaseCompanionsOf = (plugin: Plugin) => plugin.companions.filter((companion) => companion.database);
 
-/** Every `.env` variable the generated file needs: a database password each. */
+/** Every `.env` secret the generated file needs: a password per database, a token per egress proxy. */
 export function passwordVariablesOf(file: PluginsFile): string[] {
-  return file.plugins.flatMap((plugin) => databaseCompanionsOf(plugin).map((companion) => namesOf(plugin, companion).passwordVariable));
+  return [
+    ...file.plugins.flatMap((plugin) => databaseCompanionsOf(plugin).map((companion) => namesOf(plugin, companion).passwordVariable)),
+    ...tokenVariablesOf(file),
+  ];
 }
 
 type Kind = "service" | "network" | "volume" | "database";
@@ -73,7 +64,10 @@ function takePlugin(plugin: Plugin, take: (kind: Kind, name: string, by: string)
   const by = `plugin ${plugin.id}`;
   take("service", serviceOf(plugin), by);
   take("network", serviceOf(plugin), by);
-  takeProxy(serviceOf(plugin), by, take);
+  for (const { service } of proxiedContainersOf(plugin)) {
+    take("service", proxyOf(service), by);
+    take("network", proxyOf(service), by);
+  }
   if (databaseCompanionsOf(plugin).length > 0) take("network", databaseNetworkOf(plugin), by);
   const volumes = new Set(plugin.companions.flatMap((companion) => Object.keys(companion.volumes)));
   for (const volume of volumes) take("volume", volumeOf(plugin, volume), by);
@@ -81,22 +75,17 @@ function takePlugin(plugin: Plugin, take: (kind: Kind, name: string, by: string)
     const names = namesOf(plugin, companion);
     const companionBy = `companion ${companion.name} of plugin ${plugin.id}`;
     take("service", names.service, companionBy);
-    if (companion.egress.length > 0) takeProxy(names.service, companionBy, take);
     if (!companion.database) continue;
     take("service", names.databaseService, companionBy);
     take("database", names.database, companionBy);
   }
 }
 
-function takeProxy(service: string, by: string, take: (kind: Kind, name: string, by: string) => void): void {
-  take("service", proxyOf(service), by);
-  take("network", proxyOf(service), by);
-}
-
 /** `compose.plugins.yaml`: the plugin containers, and what api, worker and postgres need to reach them. */
 export function composeOf(file: PluginsFile, proxyImage: string): Compose {
   const compose: Compose = { services: {}, networks: {}, volumes: {} };
-  for (const plugin of file.plugins) addPlugin(compose, plugin, proxyImage);
+  for (const plugin of file.plugins) addPlugin(compose, plugin);
+  for (const container of allProxiedContainersOf(file)) addProxy(compose, egressProxyOf(container, proxyImage), container.service);
   const core = coreServiceOf(file);
   compose.services.api = core;
   compose.services.worker = core;
@@ -105,56 +94,35 @@ export function composeOf(file: PluginsFile, proxyImage: string): Compose {
   return compose;
 }
 
-function addPlugin(compose: Compose, plugin: Plugin, proxyImage: string): void {
-  const containers = [serviceOf(plugin), ...plugin.companions.map((companion) => namesOf(plugin, companion).service)];
+function addPlugin(compose: Compose, plugin: Plugin): void {
   compose.networks[serviceOf(plugin)] = { internal: true };
-  compose.services[serviceOf(plugin)] = withProxy(
-    compose,
-    { image: plugin.image, restart: "unless-stopped", networks: [serviceOf(plugin)], mem_limit: plugin.limits.memory, cpus: plugin.limits.cpus },
-    serviceOf(plugin),
-    containers,
-    proxyImage,
-  );
+  compose.services[serviceOf(plugin)] = {
+    image: plugin.image,
+    restart: "unless-stopped",
+    networks: [serviceOf(plugin)],
+    mem_limit: plugin.limits.memory,
+    cpus: plugin.limits.cpus,
+  };
   for (const companion of plugin.companions) {
     for (const volume of Object.keys(companion.volumes)) compose.volumes[volumeOf(plugin, volume)] = {};
     const names = namesOf(plugin, companion);
-    const service = companionServiceOf(plugin, companion, names);
-    compose.services[names.service] = companion.egress.length > 0 ? withProxy(compose, service, names.service, containers, proxyImage) : service;
+    compose.services[names.service] = companionServiceOf(plugin, companion, names);
     if (!companion.database) continue;
     compose.networks[databaseNetworkOf(plugin)] = { internal: true };
     compose.services[names.databaseService] = databaseInitOf(plugin, names);
   }
 }
 
-/**
- * Adds the egress proxy of container `name` (ADR-0001): on the Instance's default network, which
- * reaches the internet and the api, and on an internal network shared with that container alone.
- * The container gets that network and the proxy in its environment; the other `containers` of its
- * plugin it reaches directly. Without the proxy it reaches nothing outside.
- */
-function withProxy(compose: Compose, service: Service, name: string, containers: string[], proxyImage: string): Service {
-  const proxy = proxyOf(name);
-  compose.networks[proxy] = { internal: true };
-  compose.services[proxy] = {
-    image: proxyImage,
-    restart: "unless-stopped",
-    command: ["node", "--import", "tsx", "src/egress-proxy-main.ts"],
-    environment: { EGRESS_ALLOWLIST_URL: `http://api:${allowlistPort}/egress/${name}`, PORT: String(proxyPort) },
-    networks: ["default", proxy],
-    mem_limit: "128m",
+/** Adds a proxy and its network, and joins container `service` to them. */
+function addProxy(compose: Compose, { name, proxy, container }: ReturnType<typeof egressProxyOf>, service: string): void {
+  compose.networks[name] = { internal: true };
+  compose.services[name] = proxy;
+  const proxied = compose.services[service] ?? {};
+  compose.services[service] = {
+    ...proxied,
+    networks: [...((proxied.networks as string[] | undefined) ?? []), container.network],
+    environment: { ...(proxied.environment as Record<string, string> | undefined), ...container.environment },
   };
-  const url = `http://${proxy}:${proxyPort}`;
-  const noProxy = ["localhost", "127.0.0.1", ...containers.filter((container) => container !== name)].join(",");
-  const environment = {
-    ...(service.environment as Record<string, string> | undefined),
-    HTTPS_PROXY: url,
-    HTTP_PROXY: url,
-    https_proxy: url,
-    http_proxy: url,
-    NO_PROXY: noProxy,
-    no_proxy: noProxy,
-  };
-  return { ...service, networks: [...(service.networks as string[]), proxy], environment };
 }
 
 function companionServiceOf(plugin: Plugin, companion: Companion, names: CompanionNames): Service {
@@ -223,6 +191,7 @@ function coreServiceOf(file: PluginsFile): Service {
     environment: {
       PLUGIN_URLS: file.plugins.map((plugin) => `${plugin.id}=http://${serviceOf(plugin)}:8080`).join(","),
       PLUGIN_EGRESS: egressOf(file),
+      PLUGIN_EGRESS_TOKENS: egressTokensOf(file),
     },
     networks: ["default", ...file.plugins.map(serviceOf)],
   };

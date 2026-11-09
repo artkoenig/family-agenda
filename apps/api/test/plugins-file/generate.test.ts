@@ -72,6 +72,8 @@ describe("generatePluginsCompose", () => {
       expect(core?.environment).toEqual({
         PLUGIN_URLS: "demo=http://plugin-demo:8080,matrix=http://plugin-matrix:8080",
         PLUGIN_EGRESS: "plugin-demo=api.example.com:443,plugin-matrix-synapse=*.whatsapp.net:443",
+        PLUGIN_EGRESS_TOKENS:
+          "plugin-demo=${PLUGIN_DEMO_EGRESS_TOKEN},plugin-matrix=${PLUGIN_MATRIX_EGRESS_TOKEN},plugin-matrix-synapse=${PLUGIN_MATRIX_SYNAPSE_EGRESS_TOKEN}",
       });
       expect(core?.networks).toEqual(["default", "plugin-demo", "plugin-matrix"]);
     }
@@ -113,7 +115,11 @@ describe("generatePluginsCompose", () => {
         image: "family-agenda:local",
         restart: "unless-stopped",
         command: ["node", "--import", "tsx", "src/egress-proxy-main.ts"],
-        environment: { EGRESS_ALLOWLIST_URL: `http://api:3001/egress/${container}`, PORT: "3128" },
+        environment: {
+          EGRESS_ALLOWLIST_URL: `http://api:3001/egress/${container}`,
+          EGRESS_TOKEN: `\${${container.replaceAll("-", "_").toUpperCase()}_EGRESS_TOKEN}`,
+          PORT: "3128",
+        },
         networks: ["default", `${container}-egress`],
         mem_limit: "128m",
       });
@@ -140,17 +146,19 @@ describe("generatePluginsCompose", () => {
     expect(compose.services["plugin-a-b-egress"]).toBeUndefined();
   });
 
-  it("adds a password to .env for each new database and keeps those already there", () => {
-    expect(generated(matrix).dotEnv).toBe("PLUGIN_MATRIX_SYNAPSE_DATABASE_PASSWORD=secret\n");
-    expect(generated(matrix, "PORT=8080").dotEnv).toBe("PORT=8080\nPLUGIN_MATRIX_SYNAPSE_DATABASE_PASSWORD=secret\n");
-    expect(generated(matrix, "PLUGIN_MATRIX_SYNAPSE_DATABASE_PASSWORD=old\n").dotEnv).toBeNull();
+  it("adds a password to .env for each new database and a token for each new proxy, and keeps those already there", () => {
+    const secrets = ["PLUGIN_MATRIX_SYNAPSE_DATABASE_PASSWORD", "PLUGIN_DEMO_EGRESS_TOKEN", "PLUGIN_MATRIX_EGRESS_TOKEN", "PLUGIN_MATRIX_SYNAPSE_EGRESS_TOKEN"];
+    const lines = secrets.map((variable) => `${variable}=secret\n`).join("");
+    expect(generated(matrix).dotEnv).toBe(lines);
+    expect(generated(matrix, "PORT=8080").dotEnv).toBe(`PORT=8080\n${lines}`);
+    expect(generated(matrix, secrets.map((variable) => `${variable}=old\n`).join("")).dotEnv).toBeNull();
   });
 
   it("leaves postgres alone and binds nothing for an empty file", () => {
     const { compose, dotEnv } = generated("");
 
     expect(compose.services.postgres).toBeUndefined();
-    expect(compose.services.api?.environment).toEqual({ PLUGIN_URLS: "", PLUGIN_EGRESS: "" });
+    expect(compose.services.api?.environment).toEqual({ PLUGIN_URLS: "", PLUGIN_EGRESS: "", PLUGIN_EGRESS_TOKENS: "" });
     expect(dotEnv).toBeNull();
   });
 

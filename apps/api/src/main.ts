@@ -3,6 +3,7 @@ import { openAgendaAccess } from "@family-agenda/application";
 import { bootApplication } from "./composition-root";
 import { readConfig } from "./config";
 import { createAllowlistApp } from "./egress/allowlist-server";
+import { allowlistPort } from "./egress/wiring";
 import { createHttpApp } from "./http/app";
 
 const config = readConfig();
@@ -26,8 +27,8 @@ const allowlistServer = serve({
     declared: config.pluginEgress,
     bindings: config.pluginContainers,
     hostsOf: (sourceTypeId) => application.egressHosts.ofSourceType(sourceTypeId),
-  }).fetch,
-  port: config.egressAllowlistPort,
+  }, config.egressTokens).fetch,
+  port: allowlistPort,
 });
 
 const shutdown = () => {
