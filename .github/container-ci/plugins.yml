@@ -1,0 +1,6 @@
+# The plugin containers of CI's `containers` job (.github/workflows/ci.yml): the demo Source,
+# built in that job, allowed to reach example.com and nothing else.
+plugins:
+  - id: demo
+    image: family-agenda-demo-source:ci
+    egress: [example.com:443]

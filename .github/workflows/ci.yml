@@ -52,18 +52,33 @@ jobs:
       - uses: ./.github/actions/setup
       - run: pnpm crap
 
-  demo-source-image:
-    # The demo Source's plugin container builds and describes itself.
+  containers:
+    # The core with the demo Source as a plugin container, wired by the generator from
+    # .github/container-ci/plugins.yml (ADR-0001): the core reaches the plugin's /description, and
+    # the plugin reaches its declared egress host through its proxy and nothing else.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - run: docker build -f tools/demo-source/Dockerfile -t demo-source .
-      - name: Ask it for its description
+      # Set through GITHUB_ENV, not `env:`, so that generating compose.plugins.yaml can extend it.
+      - run: echo "COMPOSE_FILE=compose.yaml:compose.dev.yaml" >> "$GITHUB_ENV"
+      - run: docker build -f tools/demo-source/Dockerfile -t family-agenda-demo-source:ci .
+      - run: docker compose build api
+      - name: Generate compose.plugins.yaml
+        # The generated file names the egress tokens as ${...} only; their values stay in .env.
         run: |
-          docker run -d -p 8080:8080 --name demo-source demo-source
-          for _ in $(seq 30); do curl -fsS http://localhost:8080/description && exit 0; sleep 1; done
-          docker logs demo-source
-          exit 1
+          cp .github/container-ci/plugins.yml plugins.yml
+          docker compose run --rm --no-deps --user "$(id -u):$(id -g)" -v "$PWD:/deployment" api plugins generate
+          cat compose.plugins.yaml
+          echo "COMPOSE_FILE=compose.yaml:compose.dev.yaml:compose.plugins.yaml" >> "$GITHUB_ENV"
+      - name: Start the Instance with its plugin containers
+        run: docker compose up --detach --wait --scale mdns=0
+      - name: The core describes the demo Source from its container
+        run: .github/container-ci/check-core.sh http://localhost:8080
+      - name: The demo Source reaches example.com through its egress proxy, and nothing else
+        run: docker compose exec -T plugin-demo node --input-type=module - < .github/container-ci/check-egress.mjs
+      - name: Logs
+        if: failure()
+        run: docker compose logs
 
   mutation:
     # Mutation testing of `domain`.

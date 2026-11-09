@@ -17,7 +17,10 @@ function run({ file, args, env }: Command): number {
 }
 
 function pullRequestOf(value: string | undefined) {
-  return planPreview(Number(value), repoRoot);
+  // The generator writes into the worktree as the developer, not as the image's user.
+  // Previews need Docker on Linux or macOS, where these exist.
+  const user = `${process.getuid?.() ?? 1000}:${process.getgid?.() ?? 1000}`;
+  return planPreview(Number(value), repoRoot, user);
 }
 
 function up(value: string | undefined): number {
