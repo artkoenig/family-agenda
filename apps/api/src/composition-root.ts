@@ -78,6 +78,7 @@ import {
   type TaskAccess,
   type AgendaAccess,
 } from "@family-agenda/application";
+import { CombinedRegistry, PluginContainers, type PluginBinding, type PluginContainerOptions } from "./plugin-containers";
 import { SourceRegistry } from "./source-registry";
 
 const defaultWorkspacePackages = fileURLToPath(new URL("../../../packages", import.meta.url));
@@ -103,6 +104,10 @@ export type ApplicationConfig = DatabaseConfig & {
   bundledTessdataDirectory: string | null;
   /** Replaces downloading from `tessdata_fast`, such as with canned models and their checksums. */
   tessdataCatalog?: TessdataCatalog;
+  /** Source Types whose plugins run in containers of their own, by URL (ADR-0001); they win over plugins in-process. */
+  pluginContainers?: PluginBinding[];
+  /** Replaces the timeouts of the plugin contract, such as in a test of a plugin that does not answer. */
+  pluginContainerOptions?: PluginContainerOptions;
   /** Where the Source plugins shipped with Family Agenda are; by default the workspace's packages. */
   workspacePackages?: string;
   /** The IANA time zone the Family lives in; by default the one of the process (`TZ`). */
@@ -229,9 +234,9 @@ export async function bootApplication(config: ApplicationConfig): Promise<Applic
 
   const items = new PostgresItemRepository(postgres.db);
   const activity = createActivityLog({ clock, activities: new PostgresActivityRepository(postgres.db) });
-  const registry = await SourceRegistry.discover([
-    workspacePackages,
-    config.pluginDirectory,
+  const registry = new CombinedRegistry([
+    await PluginContainers.connect(config.pluginContainers ?? [], config.pluginContainerOptions),
+    await SourceRegistry.discover([workspacePackages, config.pluginDirectory]),
   ]);
   const sourceTypeRepository = new PostgresSourceTypeRepository(postgres.db);
   const sourceRepository = new PostgresSourceRepository(postgres.db);

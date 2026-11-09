@@ -1,3 +1,4 @@
+import { parsePluginUrls, type PluginBinding } from "./plugin-containers";
 import { versionOf } from "./version";
 
 export type Config = {
@@ -6,6 +7,8 @@ export type Config = {
   blobDirectory: string;
   /** The `plugins/` volume, for Source plugins an operator adds to a stock image. */
   pluginDirectory: string;
+  /** Source Types whose plugins run in containers, from `PLUGIN_URLS` such as `demo=http://demo:8080`. */
+  pluginContainers: PluginBinding[];
   /** The `tessdata` volume of Tesseract models (ADR-0012). */
   tessdataDirectory: string;
   /** Where the image keeps the Tesseract models it ships; empty for none. */
@@ -26,6 +29,7 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): Config {
     masterKeyFile: env.MASTER_KEY_FILE ?? "/var/lib/family-agenda/master-key/master.key",
     blobDirectory: env.BLOB_DIRECTORY ?? "/var/lib/family-agenda/blobs",
     pluginDirectory: env.PLUGIN_DIRECTORY ?? "/var/lib/family-agenda/plugins",
+    pluginContainers: parsePluginUrls(env.PLUGIN_URLS),
     tessdataDirectory: env.TESSDATA_DIRECTORY ?? "/var/lib/family-agenda/tessdata",
     bundledTessdataDirectory: (env.BUNDLED_TESSDATA_DIRECTORY ?? "/usr/share/tesseract-ocr/5/tessdata") || null,
     port: Number(env.PORT ?? 3000),

@@ -978,7 +978,9 @@ export function SourcesPage(props: { admin: SignedInAdmin; sourceTypes: SourceTy
             <a class={type.enabled ? "fam-type-card" : "fam-type-card fam-type-card--off"} href={sourceTypeHref(type.id)}>
               <span class="fam-type-card__name">{text(type.displayName)}</span>
               <span class="fam-type-card__description">{text(type.description)}</span>
-              {type.notLoadable !== null ? (
+              {type.notReachable !== null ? (
+                <span class="fam-status fam-status--problem">{s.notReachable}</span>
+              ) : type.notLoadable !== null ? (
                 <span class="fam-status fam-status--problem">{s.cannotLoad}</span>
               ) : type.enabled ? (
                 <SourcesSummary sources={sourcesOf(type.id)} />
@@ -1099,8 +1101,15 @@ function sourceTypeListed(sources: SourceSummary[], configKey: string | undefine
   return sources.filter((source) => configKey === undefined || !entryIds.has(String(source.plain[configKey])));
 }
 
+/** What keeps a Source Type from working, as its chip says; null if nothing does. */
+function loadabilityProblem(sourceType: SourceTypeSummary | null, s: Translation["t"]["sources"]): string | null {
+  if (sourceType?.notReachable != null) return s.notReachable;
+  return sourceType?.notLoadable != null ? s.cannotLoad : null;
+}
+
 function sourceTypeLoadability(sourceType: SourceTypeSummary | null, s: Translation["t"]["sources"]) {
-  const status = sourceType && sourceType.notLoadable !== null ? <span class="fam-chip fam-chip--problem">{s.cannotLoad}</span> : undefined;
+  const problem = loadabilityProblem(sourceType, s);
+  const status = problem === null ? undefined : <span class="fam-chip fam-chip--problem">{problem}</span>;
   const switchable = sourceType && sourceType.notLoadable === null ? sourceType : undefined;
   return { status, switchable };
 }
@@ -1196,6 +1205,16 @@ function AddSourceButton(props: {
   );
 }
 
+/** Why the core cannot reach a Source Type's plugin, and why it cannot load it. */
+function LoadabilityProblems({ sourceType, types }: { sourceType: SourceTypeSummary; types: Translation["t"]["sourceTypes"] }) {
+  return (
+    <>
+      {sourceType.notReachable !== null ? <p class="fam-problem">{types.notReachable(sourceType.notReachable)}</p> : null}
+      {sourceType.notLoadable !== null ? <p class="fam-problem">{types.notLoadable(sourceType.notLoadable)}</p> : null}
+    </>
+  );
+}
+
 export function SourceTypePage(props: {
   admin: SignedInAdmin;
   sourceTypeId: string;
@@ -1236,7 +1255,7 @@ export function SourceTypePage(props: {
         status={status}
         description={sourceType ? text(sourceType.description) : s.notInstalled}
       />
-      {sourceType && sourceType.notLoadable !== null ? <p class="fam-problem">{types.notLoadable(sourceType.notLoadable)}</p> : null}
+      {sourceType ? <LoadabilityProblems sourceType={sourceType} types={types} /> : null}
       <Problem message={props.problem} />
       {switchable ? <SourceSwitchSection switchable={switchable} name={name} sources={props.sources} href={href} types={types} /> : null}
       {catalogue && configKey !== undefined ? (
