@@ -29,7 +29,7 @@ plugins:
     image: ghcr.io/example/school-portal:1.2.0 # pinned: a tag other than latest, or a digest
     egress: [portal.example.com:443, "*.example.org:443"]
     limits: { memory: 512m, cpus: 1 }          # optional; these are the defaults
-    volumes: { config: /config }               # optional, as for companions
+    volumes: { config: /config }               # optional, as for companions: such as configuration the plugin writes for a companion
     companions:                                # optional containers the plugin needs
       - name: synapse
         image: matrixdotorg/synapse:v1.163.2
@@ -56,7 +56,7 @@ What the generated file does:
 - Runs plugin `<id>` as service `plugin-<id>` and each companion as `plugin-<id>-<name>`, on an internal network `plugin-<id>` without published ports, with `restart: unless-stopped`. Plugins get the limits above; there are no health checks for plugins.
 - Gives `api` and `worker` that network, `PLUGIN_URLS` (`<id>=http://plugin-<id>:8080`) and `PLUGIN_EGRESS`, the declared egress hosts per container.
 - Gives each plugin, and each companion with egress hosts, an egress proxy `<service>-egress` (HTTP CONNECT on port 3128, from the core image), on an internal network shared with that container alone and on the Instance's default network. The container gets `HTTPS_PROXY`/`HTTP_PROXY` pointing at it; a companion without egress hosts gets none. The proxy is the container's only way out: it allows the declared hosts and, for the plugin's own container, the hosts an Admin entered in host fields of that plugin's Sources (such as an IMAP server), on any port unless the value names one. It fetches that allowlist from the api on every connection, at `http://api:3001/egress/<service>` (not published), with a token of its own (`<SERVICE>_EGRESS_TOKEN`, such as `PLUGIN_IMAP_EGRESS_TOKEN`, in `.env`, filled by the generator), so it reads no other container's allowlist. It connects only to public addresses: a name resolving to a private, loopback or link-local address is refused, and so is a name without a dot, such as a compose service. A host field value must be a host name with an optional port (no URL, path or wildcard); otherwise it is ignored. A host `*.example.org` stands for the names below example.org. When the proxy is down or cannot fetch the allowlist, the container has no internet access.
-- For a companion with `database: true`: a role and database `plugin_<id>_<name>` (UTF8, C collation) on the Instance's Postgres, created or updated by a one-shot `plugin-<id>-<name>-database` service before the companion starts, which also revokes access to it and to the core's database from every other role; a random password added to `.env` as `PLUGIN_<ID>_<NAME>_DATABASE_PASSWORD`; and `DATABASE_URL` in the companion's environment. Postgres joins a separate internal network `plugin-<id>-database` with that companion only.
+- For a companion with `database: true`: a role and database `plugin_<id>_<name>` (UTF8, C collation; only a newly created database gets these, an existing one keeps its own) on the Instance's Postgres, created or updated by a one-shot `plugin-<id>-<name>-database` service before the companion starts, which also revokes access to it and to the core's database from every other role; a random password added to `.env` as `PLUGIN_<ID>_<NAME>_DATABASE_PASSWORD`; and `DATABASE_URL` in the companion's environment. Postgres joins a separate internal network `plugin-<id>-database` with that companion only.
 
 ## Address of the Instance
 

@@ -94,17 +94,17 @@ export function composeOf(file: PluginsFile, proxyImage: string): Compose {
   return compose;
 }
 
-/** A container's logical volumes as `volume:path` mounts; declares the volumes in `compose`. */
-function mountsOf(compose: Compose, plugin: Plugin, volumes: Record<string, string>): string[] {
-  return Object.entries(volumes).map(([volume, path]) => {
-    compose.volumes[volumeOf(plugin, volume)] = {};
-    return `${volumeOf(plugin, volume)}:${path}`;
-  });
+/** A container's logical volumes as `volume:path` mounts. */
+function mountsOf(plugin: Plugin, volumes: Record<string, string>): string[] {
+  return Object.entries(volumes).map(([volume, path]) => `${volumeOf(plugin, volume)}:${path}`);
 }
 
 function addPlugin(compose: Compose, plugin: Plugin): void {
   compose.networks[serviceOf(plugin)] = { internal: true };
-  const mounts = mountsOf(compose, plugin, plugin.volumes);
+  for (const container of [plugin, ...plugin.companions]) {
+    for (const volume of Object.keys(container.volumes)) compose.volumes[volumeOf(plugin, volume)] = {};
+  }
+  const mounts = mountsOf(plugin, plugin.volumes);
   compose.services[serviceOf(plugin)] = {
     image: plugin.image,
     restart: "unless-stopped",
@@ -115,7 +115,7 @@ function addPlugin(compose: Compose, plugin: Plugin): void {
   };
   for (const companion of plugin.companions) {
     const names = namesOf(plugin, companion);
-    compose.services[names.service] = companionServiceOf(plugin, companion, names, mountsOf(compose, plugin, companion.volumes));
+    compose.services[names.service] = companionServiceOf(plugin, companion, names, mountsOf(plugin, companion.volumes));
     if (!companion.database) continue;
     compose.networks[databaseNetworkOf(plugin)] = { internal: true };
     compose.services[names.databaseService] = databaseInitOf(plugin, names);
@@ -157,7 +157,8 @@ function databaseOf(plugin: Plugin, names: CompanionNames): { service: Service; 
 }
 
 /**
- * Creates the role and database (UTF8 with C collation, which Synapse requires), or sets the role's password again, and keeps every other role out
+ * Creates the role and database (UTF8 with C collation, which Synapse requires; a database created
+ * before keeps its collation), or sets the role's password again, and keeps every other role out
  * of it and of the core's database. It runs before the companion on every start, so a plugin added
  * later gets its database too.
  */
