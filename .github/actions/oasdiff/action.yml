@@ -1,0 +1,12 @@
+name: oasdiff
+description: Puts oasdiff on the PATH, which compares the plugin contract's openapi.json with the last release.
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        VERSION: 1.37.0
+      run: |
+        mkdir -p "$RUNNER_TEMP/oasdiff"
+        curl -fsSL "https://github.com/oasdiff/oasdiff/releases/download/v$VERSION/oasdiff_${VERSION}_linux_amd64.tar.gz" | tar -xz -C "$RUNNER_TEMP/oasdiff" oasdiff
+        echo "$RUNNER_TEMP/oasdiff" >> "$GITHUB_PATH"

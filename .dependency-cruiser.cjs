@@ -34,6 +34,13 @@ module.exports = {
       to: { pathNot: ["^packages/contracts/", "/node_modules/zod/"] },
     },
     {
+      name: "plugin-contract-imports-only-zod",
+      comment: "The plugin contract is what plugins in other repositories build against (ADR-0001).",
+      severity: "error",
+      from: { path: "^packages/plugin-contract/" },
+      to: { pathNot: ["^packages/plugin-contract/", "/node_modules/zod/"], dependencyTypesNot: ["core"] },
+    },
+    {
       name: "source-sdk-imports-no-family-agenda-package",
       severity: "error",
       from: { path: "^packages/source-sdk/" },
