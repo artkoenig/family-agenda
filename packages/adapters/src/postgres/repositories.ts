@@ -472,6 +472,7 @@ export class PostgresSourceRepository implements SourceRepository {
         config: source.plain,
         configVersion: source.configVersion,
         secretRefs: source.secrets,
+        secretHosts: source.secretHosts,
         pollIntervalSeconds: source.pollIntervalSeconds,
         shown: source.shown,
         name: source.name,
@@ -517,6 +518,7 @@ export class PostgresSourceRepository implements SourceRepository {
           config: source.plain,
           configVersion: source.configVersion,
           secretRefs: source.secrets,
+          secretHosts: source.secretHosts,
           pollIntervalSeconds: source.pollIntervalSeconds,
         })
         .where(eq(sources.id, source.id));
@@ -623,6 +625,7 @@ export class PostgresSourceRepository implements SourceRepository {
       plain: source.config,
       configVersion: source.configVersion,
       secrets: source.secretRefs as Record<string, SecretRef>,
+      secretHosts: source.secretHosts,
       syncCursor,
       pollIntervalSeconds: source.pollIntervalSeconds,
       shown: source.shown,

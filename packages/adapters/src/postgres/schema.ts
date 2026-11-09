@@ -217,6 +217,8 @@ export const sources = pgTable(
     configVersion: integer("config_version").notNull(),
     /** The SecretStore references of the secret fields, by field key. */
     secretRefs: jsonb("secret_refs").$type<Record<string, string>>().notNull().default({}),
+    /** The host of each secret host field's value, by field key, in the clear for the egress proxy. */
+    secretHosts: jsonb("secret_hosts").$type<Record<string, string>>().notNull().default({}),
     /** As an Admin set it; null for the plugin's suggestion. */
     pollIntervalSeconds: integer("poll_interval_seconds"),
     /** Whether its Items show on the timeline; a hidden Source is still read. */

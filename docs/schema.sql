@@ -162,6 +162,7 @@ CREATE TABLE source (
   config                 JSONB NOT NULL DEFAULT '{}',
   config_version         INT NOT NULL,
   secret_refs            JSONB NOT NULL DEFAULT '{}',  -- field name -> secret.id
+  secret_hosts           JSONB NOT NULL DEFAULT '{}',  -- secret host field name -> its host, in the clear for the egress proxy
   poll_interval_seconds  INT,
   shown                  BOOLEAN NOT NULL DEFAULT true,
   created_at             TIMESTAMPTZ NOT NULL DEFAULT now(),

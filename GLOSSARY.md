@@ -137,7 +137,7 @@ The hosts one Egress Proxy lets through: those declared in `plugins.yml`, plus, 
 _Avoid_: Whitelist, egress rules
 
 **Host Field**:
-A configuration field of a Source Type whose value is a host the plugin connects to, such as an IMAP server; its value joins the plugin's Allowlist. A pasted URL counts as its host: the scheme and everything from the first `/`, `?` or `#` are dropped.
+A configuration field of a Source Type whose value is a host the plugin connects to, such as an IMAP server; its value joins the plugin's Allowlist. A pasted URL counts as its host: the scheme and everything from the first `/`, `?` or `#` are dropped. A secret field can be one too, such as a calendar address with a token in it: the core keeps its host in the clear, without user, password or path, as the Admin enters the value.
 _Avoid_: Server field, URL field
 
 **Recovery Kit**:

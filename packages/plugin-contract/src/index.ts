@@ -9,7 +9,7 @@ import { z } from "zod";
  * `major.minor`. A minor change is additive only, such as an optional field or an optional new
  * endpoint; anything else is a new major. CI compares `openapi.json` with the last release.
  */
-export const contractVersion = "1.1";
+export const contractVersion = "1.2";
 
 export type ContractVersion = { major: number; minor: number };
 
@@ -87,7 +87,9 @@ export const configFieldSchema = z
     hasChoices: z.boolean(),
     /**
      * Whether its value is a host the plugin connects to, such as `imap.example.org` or
-     * `imap.example.org:993`; the plugin's egress proxy allows it, on any port without one.
+     * `imap.example.org:993`; the plugin's egress proxy allows it, on any port without one. A URL
+     * counts as its host. A secret field may be one too, such as an address with a token in it: the
+     * core keeps its host apart, in the clear, as the Admin enters it (since 1.2).
      */
     host: z.boolean().optional(),
   })

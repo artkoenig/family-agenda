@@ -381,6 +381,11 @@ export type Source = {
   configVersion: number;
   /** Where each secret field's value is kept in the SecretStore. */
   secrets: Record<string, SecretRef>;
+  /**
+   * The host of each secret host field's value, by field key, kept in the clear when an Admin
+   * enters the value, so that the egress proxy allows it without reading the secret.
+   */
+  secretHosts: Record<string, string>;
   /** Where the plugin resumes on its next run, such as a sync token; opaque to the Instance. */
   syncCursor: string | null;
   /** How often the worker polls it, as an Admin set it; null for the plugin's suggestion. */

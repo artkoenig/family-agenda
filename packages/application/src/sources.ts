@@ -24,6 +24,7 @@ import type {
 import { usableEntries } from "./catalogues";
 import { enabledSourceType } from "./enabled-source-type";
 import { isPollInterval } from "./poll-interval";
+import { secretHostsOf } from "./secret-hosts";
 import { healthOf, type SourceHealth } from "./source-health";
 
 export type SourcesDeps = {
@@ -317,6 +318,7 @@ export function createSourceAccess(deps: SourcesDeps) {
       plain: { ...plainOf(input), ...keptPlain },
       configVersion: sourceType.configuration.version,
       secrets: refs,
+      secretHosts: secretHostsOf(sourceType.configuration.fields, input.secrets, source.secretHosts),
       pollIntervalSeconds: input.pollIntervalSeconds ?? null,
       lastRunAt: null,
     });
@@ -356,6 +358,7 @@ export function createSourceAccess(deps: SourcesDeps) {
       plain: { ...given.plain, ...Object.fromEntries(ofPlugin(prepared.plain)) },
       configVersion: sourceType.configuration.version,
       secrets: refs,
+      secretHosts: secretHostsOf(sourceType.configuration.fields, given.secrets, {}),
       syncCursor: null,
       pollIntervalSeconds: input.pollIntervalSeconds ?? null,
       shown: true,
