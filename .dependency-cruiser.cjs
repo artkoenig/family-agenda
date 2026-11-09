@@ -41,6 +41,13 @@ module.exports = {
       to: { pathNot: ["^packages/plugin-contract/", "/node_modules/zod/"], dependencyTypesNot: ["core"] },
     },
     {
+      name: "plugin-kit-imports-only-the-plugin-contract",
+      comment: "Plugin repositories consume the kit as a git dependency, beside the plugin contract (ADR-0001).",
+      severity: "error",
+      from: { path: "^packages/plugin-kit/" },
+      to: { pathNot: ["^packages/(plugin-kit|plugin-contract)/", "/node_modules/(zod|vitest)/"], dependencyTypesNot: ["core"] },
+    },
+    {
       name: "source-sdk-imports-no-family-agenda-package",
       severity: "error",
       from: { path: "^packages/source-sdk/" },

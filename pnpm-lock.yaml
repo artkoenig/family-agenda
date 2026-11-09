@@ -327,6 +327,19 @@ importers:
         specifier: ^4.6.7
         version: 4.6.7
 
+  packages/plugin-kit:
+    dependencies:
+      vitest:
+        specifier: ^5
+        version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/coverage-v8@5.1.0)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
+      zod:
+        specifier: ^4.6.7
+        version: 4.6.7
+    devDependencies:
+      '@family-agenda/plugin-contract':
+        specifier: workspace:*
+        version: link:../plugin-contract
+
   packages/source-ics:
     dependencies:
       '@family-agenda/source-sdk':
@@ -379,9 +392,18 @@ importers:
 
   tools/demo-source:
     dependencies:
+      '@family-agenda/plugin-contract':
+        specifier: workspace:*
+        version: link:../../packages/plugin-contract
+      '@family-agenda/plugin-kit':
+        specifier: workspace:*
+        version: link:../../packages/plugin-kit
       '@family-agenda/source-sdk':
         specifier: workspace:*
         version: link:../../packages/source-sdk
+      tsx:
+        specifier: ^4.23.15
+        version: 4.23.15
 
   tools/preview:
     dependencies:
