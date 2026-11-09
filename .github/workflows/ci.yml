@@ -20,7 +20,8 @@ jobs:
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm depcruise
-      - run: pnpm api-version
+      - name: The SDK version follows its API
+        run: node --import tsx tools/release/src/main.ts check-sdk --previous "$(git describe --tags --abbrev=0 --match 'v*' 2> /dev/null || true)"
 
   crap:
     # All tests with coverage, and the CRAP score.
