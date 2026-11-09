@@ -66,6 +66,20 @@ export function createLlmEndpointAccess(deps: LlmEndpointDeps) {
     },
 
     /**
+     * The models an endpoint the Admin is entering offers, before it is saved; none if the URL is
+     * not one or it cannot be asked. The stored API key goes only to the endpoint it was saved for.
+     */
+    async modelsAt(input: { baseUrl: string; apiKey: string }): Promise<string[]> {
+      const url = endpointUrl(input.baseUrl);
+      if (!url) return [];
+      const baseUrl = url.href.replace(/\/+$/, ""); // eslint-disable-line sonarjs/super-linear-regex -- single-char quantifier anchored at end is O(n)
+      const typed = input.apiKey.trim();
+      const saved = await llmEndpointOf({ endpoints, secrets });
+      const apiKey = typed !== "" ? typed : saved?.baseUrl === baseUrl ? saved.apiKey : null;
+      return deps.extractor.models({ baseUrl, model: "", apiKey });
+    },
+
+    /**
      * Saves the Family's one LLM endpoint. One that is not on the home network receives the text
      * of third parties' messages, such as teachers' mails, so saving it needs an acknowledgement.
      */

@@ -2368,7 +2368,20 @@ function ConnectionFields(props: {
     <div class="fam-group__fields">
       <div class="fam-field">
         <label for="baseUrl">{l.baseUrl}</label>
-        <input id="baseUrl" name="baseUrl" type="url" required value={shown?.baseUrl} />
+        <input
+          id="baseUrl"
+          name="baseUrl"
+          type="url"
+          required
+          value={shown?.baseUrl}
+          hx-post="/admin/llm/models"
+          hx-trigger="input changed delay:600ms"
+          hx-include="#baseUrl, #apiKey, #model"
+          hx-target="#model-field"
+          hx-swap="outerHTML"
+          hx-disabled-elt="#model"
+          hx-sync="this:replace"
+        />
         <small>{l.baseUrlHint}</small>
       </div>
       <ModelField shown={shown} models={models} />
@@ -2377,11 +2390,12 @@ function ConnectionFields(props: {
   );
 }
 
-function ModelField(props: { shown: { model: string } | null; models: string[] }) {
+/** The model field; swapped for a fresh one once the models of a newly entered URL are known. */
+export function ModelField(props: { shown: { model: string } | null; models: string[] }) {
   const { t } = useTranslation();
   const { shown, models } = props;
   return (
-    <div class="fam-field">
+    <div class="fam-field" id="model-field">
       <label for="model">{t.llm.model}</label>
       {models.length > 0 ? (
         <select id="model" name="model" required>

@@ -47,6 +47,7 @@ import {
   DisplayPage,
   LiveStepProgress,
   LlmEndpointPage,
+  ModelField,
   SingleSignOnPage,
   MessagePage,
   RecoveryKitPage,
@@ -1086,6 +1087,13 @@ function shownStatus(status: 200 | 400 | 413 | undefined, problems: (string | un
   });
 
   app.get("/admin/llm", (c) => llmEndpointPage(c));
+
+  // The model field for the endpoint being entered, asked while the Admin types its URL.
+  app.post("/admin/llm/models", async (c) => {
+    const form = await c.req.parseBody();
+    const models = await llmEndpoint.modelsAt({ baseUrl: field(form, "baseUrl"), apiKey: field(form, "apiKey") });
+    return render(c, <ModelField shown={{ model: field(form, "model") }} models={models} />);
+  });
 
   app.post("/admin/llm", async (c) => {
     const form = await c.req.parseBody();

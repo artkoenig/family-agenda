@@ -50,4 +50,22 @@ describe("choosing the model on the AI page", () => {
 
     expect(await page()).toContain('<input id="model"');
   });
+
+  it("loads the models of a URL as it is entered, keeping what was typed as model", async () => {
+    extractor.offerModels("gemma3");
+
+    const response = await instance.post("/admin/llm/models", { baseUrl: "http://ollama:11434/v1", apiKey: "", model: "mine" }, { cookie });
+    const html = await response.text();
+
+    expect(html).toContain('id="model-field"');
+    expect(html).toContain('<option value="mine" selected="">');
+    expect(html).toContain('<option value="gemma3">');
+  });
+
+  it("asks the page to load models while the URL is typed, the model field disabled meanwhile", async () => {
+    const html = await page();
+
+    expect(html).toContain('hx-post="/admin/llm/models"');
+    expect(html).toContain('hx-disabled-elt="#model"');
+  });
 });
