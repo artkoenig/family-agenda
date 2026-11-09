@@ -20,11 +20,15 @@ function readOptional(repo: string, ref: string, file: string): string | null {
   return git(repo, "ls-tree", "--name-only", ref, file).trim() === "" ? null : git(repo, "show", `${ref}:${file}`);
 }
 
-/** The version of the SDK and its API file at a ref; null where the ref has no SDK package or no API file yet. */
+/** The version of the SDK at a ref; null where the ref has no SDK package. */
 function readSdk(repo: string, ref: string): SdkSnapshot | null {
   const manifest = readOptional(repo, ref, `${sdkFolder}/package.json`);
-  const api = readOptional(repo, ref, `${sdkFolder}/api.txt`);
-  return manifest === null || api === null ? null : { version: (JSON.parse(manifest) as { version: string }).version, api };
+  return manifest === null ? null : { version: (JSON.parse(manifest) as { version: string }).version };
+}
+
+/** The plugin contract's `openapi.json` at a ref; null where the ref has none yet. */
+export function readContract(repo: string, ref: string): string | null {
+  return readOptional(repo, ref, "packages/plugin-contract/openapi.json");
 }
 
 /** The migrations, the `compose.yaml` and the SDK as they are at a Git ref, such as a tag or `HEAD`. */

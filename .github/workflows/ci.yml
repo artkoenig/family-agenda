@@ -8,9 +8,10 @@ on:
 # The three jobs together are `pnpm check`; they run in parallel.
 jobs:
   static:
-    # Lint, typecheck, dependency rules, and the SDK version against its API: a change to the SDK's
-    # public API since the last release needs a higher SDK version (packages/source-sdk/package.json),
-    # so that plugins built for the old one are told apart.
+    # Lint, typecheck, dependency rules, and the plugin contract's version against its OpenAPI
+    # document: a change to packages/plugin-contract/openapi.json since the last release needs a
+    # higher contractVersion (breaking: major, additive: minor), so that plugins built for the old
+    # one are told apart.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -20,8 +21,9 @@ jobs:
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm depcruise
-      - name: The SDK version follows its API
-        run: node --import tsx tools/release/src/main.ts check-sdk --previous "$(git describe --tags --abbrev=0 --match 'v*' 2> /dev/null || true)"
+      - uses: ./.github/actions/oasdiff
+      - name: The plugin contract version follows its OpenAPI document
+        run: node --import tsx tools/release/src/main.ts check-contract --previous "$(git describe --tags --abbrev=0 --match 'v*' 2> /dev/null || true)"
 
   crap:
     # All tests with coverage, and the CRAP score.

@@ -8,6 +8,7 @@ pnpm workspace, Node >=22.12. Run from repo root.
 
 - `pnpm check` — the one command CI runs: lint + typecheck + depcruise + `crap` (all tests with coverage, CRAP ≤ 8) + `mutation` (Stryker on `packages/domain`). Run before finishing
 - `pnpm preview up|down <pr>` / `list` — runs a PR as a throwaway Instance with demo data, to try it by hand. See `docs/preview.md`
+- `pnpm openapi` — regenerates `packages/plugin-contract/openapi.json` after a change to the plugin contract's schemas; raise `contractVersion` too (breaking: major, additive: minor), which CI checks against the last release
 - Individually: `pnpm lint`, `pnpm typecheck`, `pnpm depcruise`, `pnpm crap`, `pnpm mutation`
 
 The `api` project uses an in-process Postgres (migrated once via `apps/api/test/support/postgres-snapshot.ts`); no external DB needed. Tests live in `{packages,apps,tools}/*/test/`.

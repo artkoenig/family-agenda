@@ -1,0 +1,1423 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Family Agenda plugin contract",
+    "version": "1.0",
+    "description": "What a plugin container answers; the core calls, plugins never call the core (ADR-0001). Bodies are at most 10485760 bytes."
+  },
+  "paths": {
+    "/description": {
+      "get": {
+        "operationId": "description",
+        "summary": "Describes the plugin; fetched uncached. Timeout 10 s.",
+        "responses": {
+          "200": {
+            "description": "OK.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Description"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "A definite error when kind is definite.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "5XX": {
+            "description": "A temporary error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/poll": {
+      "post": {
+        "operationId": "poll",
+        "summary": "Polls one Source. Timeout 60 s.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunContext"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IngestResult"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "A definite error when kind is definite.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "5XX": {
+            "description": "A temporary error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/receive": {
+      "post": {
+        "operationId": "receive",
+        "summary": "Ingests a payload pushed to the core for one Source. Timeout 60 s.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReceiveRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IngestResult"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "A definite error when kind is definite.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "5XX": {
+            "description": "A temporary error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/sources/added": {
+      "post": {
+        "operationId": "sourceAdded",
+        "summary": "Prepares a Source an Admin adds; a definite error refuses it. Timeout 10 s.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SourceAddedRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceAddedResponse"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "A definite error when kind is definite.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "5XX": {
+            "description": "A temporary error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/sources/removed": {
+      "post": {
+        "operationId": "sourceRemoved",
+        "summary": "Cleans up after a Source was removed; a failure is ignored. Timeout 10 s.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunContext"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Done."
+          },
+          "4XX": {
+            "description": "A definite error when kind is definite.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "5XX": {
+            "description": "A temporary error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/field-choices": {
+      "post": {
+        "operationId": "fieldChoices",
+        "summary": "The values a choice field offers for an existing Source. Timeout 10 s.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FieldChoicesRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FieldChoicesResponse"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "A definite error when kind is definite.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "5XX": {
+            "description": "A temporary error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/catalogue/entries": {
+      "get": {
+        "operationId": "catalogueEntries",
+        "summary": "Every Catalogue entry and whether it is installed. Timeout 10 s.",
+        "responses": {
+          "200": {
+            "description": "OK.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogueEntriesResponse"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "A definite error when kind is definite.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "5XX": {
+            "description": "A temporary error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/setup-steps/progress": {
+      "post": {
+        "operationId": "setupProgress",
+        "summary": "What a live setup step shows now. Timeout 10 s.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetupProgressRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetupProgress"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "A definite error when kind is definite.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "5XX": {
+            "description": "A temporary error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/config-migration": {
+      "post": {
+        "operationId": "configMigration",
+        "summary": "Migrates a plain configuration one version up. Timeout 10 s.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfigMigrationRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigMigrationResponse"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "A definite error when kind is definite.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "5XX": {
+            "description": "A temporary error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "CatalogueEntriesResponse": {
+        "type": "object",
+        "properties": {
+          "entries": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "displayName": {
+                  "$ref": "#/components/schemas/PluginText"
+                },
+                "description": {
+                  "$ref": "#/components/schemas/PluginText"
+                },
+                "installed": {
+                  "type": "boolean"
+                },
+                "riskNotice": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/PluginText"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "id",
+                "displayName",
+                "description",
+                "installed"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "entries"
+        ],
+        "additionalProperties": false
+      },
+      "ConfigField": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "minLength": 1
+          },
+          "label": {
+            "$ref": "#/components/schemas/PluginText"
+          },
+          "secret": {
+            "type": "boolean"
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "description": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PluginText"
+              }
+            ]
+          },
+          "setByPlugin": {
+            "type": "boolean"
+          },
+          "hasChoices": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "secret",
+          "required",
+          "hasChoices"
+        ],
+        "additionalProperties": false
+      },
+      "ConfigMigrationRequest": {
+        "type": "object",
+        "properties": {
+          "fromVersion": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "plain": {
+            "$ref": "#/components/schemas/JsonObject"
+          }
+        },
+        "required": [
+          "fromVersion",
+          "plain"
+        ],
+        "additionalProperties": false,
+        "description": "Turns the plain configuration of fromVersion into that of fromVersion + 1."
+      },
+      "ConfigMigrationResponse": {
+        "type": "object",
+        "properties": {
+          "plain": {
+            "$ref": "#/components/schemas/JsonObject"
+          }
+        },
+        "required": [
+          "plain"
+        ],
+        "additionalProperties": false
+      },
+      "Description": {
+        "type": "object",
+        "properties": {
+          "contractVersion": {
+            "type": "string",
+            "pattern": "^\\d+\\.\\d+$"
+          },
+          "sourceTypeId": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]*$"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "stateless",
+              "singleton"
+            ]
+          },
+          "displayName": {
+            "$ref": "#/components/schemas/PluginText"
+          },
+          "version": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": {
+            "$ref": "#/components/schemas/PluginText"
+          },
+          "needsLlm": {
+            "type": "boolean"
+          },
+          "riskNotice": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PluginText"
+              }
+            ]
+          },
+          "configuration": {
+            "type": "object",
+            "properties": {
+              "version": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "fields": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ConfigField"
+                }
+              }
+            },
+            "required": [
+              "version",
+              "fields"
+            ],
+            "additionalProperties": false
+          },
+          "setupSteps": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SetupStep"
+            }
+          },
+          "ingestion": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "mode": {
+                    "type": "string",
+                    "enum": [
+                      "polling"
+                    ]
+                  },
+                  "suggestedIntervalSeconds": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "exclusiveMinimum": true,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": [
+                  "mode",
+                  "suggestedIntervalSeconds"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "mode": {
+                    "type": "string",
+                    "enum": [
+                      "push"
+                    ]
+                  }
+                },
+                "required": [
+                  "mode"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          },
+          "silentApplies": {
+            "type": "boolean"
+          },
+          "catalogue": {
+            "type": "object",
+            "properties": {
+              "title": {
+                "$ref": "#/components/schemas/PluginText"
+              },
+              "configKey": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "title",
+              "configKey"
+            ],
+            "additionalProperties": false
+          },
+          "endpoints": {
+            "type": "object",
+            "properties": {
+              "sourceAdded": {
+                "type": "boolean"
+              },
+              "sourceRemoved": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "sourceAdded",
+              "sourceRemoved"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "contractVersion",
+          "sourceTypeId",
+          "kind",
+          "displayName",
+          "version",
+          "description",
+          "needsLlm",
+          "configuration",
+          "setupSteps",
+          "ingestion",
+          "silentApplies",
+          "endpoints"
+        ],
+        "additionalProperties": false
+      },
+      "Error": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "definite",
+              "temporary"
+            ]
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "message"
+        ],
+        "additionalProperties": false,
+        "description": "4xx with kind definite is a definite error; 5xx, a timeout or no answer is a temporary one."
+      },
+      "FieldChoicesRequest": {
+        "type": "object",
+        "properties": {
+          "field": {
+            "type": "string",
+            "minLength": 1
+          },
+          "context": {
+            "$ref": "#/components/schemas/RunContext"
+          }
+        },
+        "required": [
+          "field",
+          "context"
+        ],
+        "additionalProperties": false
+      },
+      "FieldChoicesResponse": {
+        "type": "object",
+        "properties": {
+          "choices": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "value": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "value",
+                "label"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "choices"
+        ],
+        "additionalProperties": false
+      },
+      "IngestResult": {
+        "type": "object",
+        "properties": {
+          "sourceRecords": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SourceRecord"
+            }
+          },
+          "syncCursor": {
+            "nullable": true,
+            "type": "string"
+          },
+          "withdrawn": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "attributes": {
+            "type": "object",
+            "properties": {
+              "declared": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "externalId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "externalId",
+                    "name"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "archived": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "declared",
+              "archived"
+            ],
+            "additionalProperties": false
+          },
+          "secrets": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Secrets"
+              }
+            ]
+          }
+        },
+        "required": [
+          "sourceRecords",
+          "syncCursor"
+        ],
+        "additionalProperties": false
+      },
+      "JsonObject": {
+        "type": "object",
+        "additionalProperties": {
+          "$ref": "#/components/schemas/JsonValue"
+        }
+      },
+      "JsonValue": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "number"
+          },
+          {
+            "type": "boolean"
+          },
+          {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              null
+            ]
+          },
+          {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/JsonValue"
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue"
+            }
+          }
+        ]
+      },
+      "PluginText": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "en": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "en"
+            ],
+            "additionalProperties": {
+              "type": "string"
+            }
+          }
+        ],
+        "description": "Plain, or per language such as { en, de }; English is the fallback."
+      },
+      "ReceiveRequest": {
+        "type": "object",
+        "properties": {
+          "context": {
+            "$ref": "#/components/schemas/RunContext"
+          },
+          "payload": {
+            "type": "string",
+            "format": "base64",
+            "contentEncoding": "base64",
+            "pattern": "^$|^(?:[0-9a-zA-Z+/]{4})*(?:(?:[0-9a-zA-Z+/]{2}==)|(?:[0-9a-zA-Z+/]{3}=))?$"
+          }
+        },
+        "required": [
+          "context",
+          "payload"
+        ],
+        "additionalProperties": false
+      },
+      "RunContext": {
+        "type": "object",
+        "properties": {
+          "config": {
+            "$ref": "#/components/schemas/SourceConfig"
+          },
+          "syncCursor": {
+            "nullable": true,
+            "type": "string"
+          },
+          "now": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+          },
+          "timeZone": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "config",
+          "syncCursor",
+          "now",
+          "timeZone"
+        ],
+        "additionalProperties": false
+      },
+      "Secrets": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "string"
+        },
+        "description": "Decrypted secret fields. A plugin MUST NOT persist them."
+      },
+      "SetupProgress": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": [
+                  "waiting"
+                ]
+              },
+              "qrCode": {
+                "type": "string"
+              },
+              "message": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/PluginText"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "status"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": [
+                  "done"
+                ]
+              },
+              "message": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/PluginText"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "status"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": [
+                  "failed"
+                ]
+              },
+              "message": {
+                "$ref": "#/components/schemas/PluginText"
+              }
+            },
+            "required": [
+              "status",
+              "message"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "SetupProgressRequest": {
+        "type": "object",
+        "properties": {
+          "stepId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "context": {
+            "$ref": "#/components/schemas/RunContext"
+          }
+        },
+        "required": [
+          "stepId",
+          "context"
+        ],
+        "additionalProperties": false
+      },
+      "SetupStep": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "title": {
+            "$ref": "#/components/schemas/PluginText"
+          },
+          "description": {
+            "$ref": "#/components/schemas/PluginText"
+          },
+          "live": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "description",
+          "live"
+        ],
+        "additionalProperties": false
+      },
+      "SourceAddedRequest": {
+        "type": "object",
+        "properties": {
+          "config": {
+            "$ref": "#/components/schemas/SourceConfig"
+          },
+          "now": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+          },
+          "timeZone": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "config",
+          "now",
+          "timeZone"
+        ],
+        "additionalProperties": false
+      },
+      "SourceAddedResponse": {
+        "description": "Values of the fields set by the plugin.",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/SourceConfig"
+          }
+        ]
+      },
+      "SourceConfig": {
+        "type": "object",
+        "properties": {
+          "plain": {
+            "$ref": "#/components/schemas/JsonObject"
+          },
+          "secrets": {
+            "$ref": "#/components/schemas/Secrets"
+          }
+        },
+        "required": [
+          "plain",
+          "secrets"
+        ],
+        "additionalProperties": false
+      },
+      "SourceRecord": {
+        "type": "object",
+        "properties": {
+          "externalId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "occurredAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+          },
+          "attributes": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "sender": {
+            "type": "string"
+          },
+          "subject": {
+            "type": "string"
+          },
+          "link": {
+            "type": "string",
+            "format": "uri"
+          },
+          "content": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "raw-message"
+                    ]
+                  },
+                  "text": {
+                    "type": "string"
+                  },
+                  "attachments": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "filename": {
+                          "type": "string"
+                        },
+                        "contentType": {
+                          "type": "string"
+                        },
+                        "bytes": {
+                          "type": "string",
+                          "format": "base64",
+                          "contentEncoding": "base64",
+                          "pattern": "^$|^(?:[0-9a-zA-Z+/]{4})*(?:(?:[0-9a-zA-Z+/]{2}==)|(?:[0-9a-zA-Z+/]{3}=))?$"
+                        }
+                      },
+                      "required": [
+                        "filename",
+                        "contentType",
+                        "bytes"
+                      ],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "required": [
+                  "kind",
+                  "text",
+                  "attachments"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "stated"
+                    ]
+                  },
+                  "stated": {
+                    "$ref": "#/components/schemas/StatedItem"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "stated"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          }
+        },
+        "required": [
+          "externalId",
+          "attributes",
+          "content"
+        ],
+        "additionalProperties": false
+      },
+      "StatedItem": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "event"
+                ]
+              },
+              "title": {
+                "type": "string",
+                "maxLength": 500
+              },
+              "span": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "allDay": {
+                        "type": "boolean",
+                        "enum": [
+                          false
+                        ]
+                      },
+                      "start": {
+                        "type": "string",
+                        "format": "date-time",
+                        "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                      },
+                      "end": {
+                        "type": "string",
+                        "format": "date-time",
+                        "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                      }
+                    },
+                    "required": [
+                      "allDay",
+                      "start",
+                      "end"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "allDay": {
+                        "type": "boolean",
+                        "enum": [
+                          true
+                        ]
+                      },
+                      "firstDay": {
+                        "type": "string",
+                        "format": "date",
+                        "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+                      },
+                      "lastDay": {
+                        "type": "string",
+                        "format": "date",
+                        "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+                      }
+                    },
+                    "required": [
+                      "allDay",
+                      "firstDay",
+                      "lastDay"
+                    ],
+                    "additionalProperties": false
+                  }
+                ]
+              },
+              "place": {
+                "nullable": true,
+                "type": "string",
+                "maxLength": 500
+              },
+              "cancelled": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "kind",
+              "title",
+              "span",
+              "place",
+              "cancelled"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "lesson"
+                ]
+              },
+              "subject": {
+                "type": "string",
+                "maxLength": 200
+              },
+              "span": {
+                "type": "object",
+                "properties": {
+                  "allDay": {
+                    "type": "boolean",
+                    "enum": [
+                      false
+                    ]
+                  },
+                  "start": {
+                    "type": "string",
+                    "format": "date-time",
+                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                  },
+                  "end": {
+                    "type": "string",
+                    "format": "date-time",
+                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                  }
+                },
+                "required": [
+                  "allDay",
+                  "start",
+                  "end"
+                ],
+                "additionalProperties": false
+              },
+              "room": {
+                "nullable": true,
+                "type": "string",
+                "maxLength": 200
+              },
+              "teacher": {
+                "nullable": true,
+                "type": "string",
+                "maxLength": 200
+              },
+              "change": {
+                "nullable": true,
+                "type": "string",
+                "enum": [
+                  "cancellation",
+                  "substitution",
+                  "room-change"
+                ]
+              },
+              "previousRoom": {
+                "nullable": true,
+                "type": "string",
+                "maxLength": 200
+              },
+              "previousTeacher": {
+                "nullable": true,
+                "type": "string",
+                "maxLength": 200
+              },
+              "note": {
+                "nullable": true,
+                "type": "string",
+                "maxLength": 200
+              }
+            },
+            "required": [
+              "kind",
+              "subject",
+              "span",
+              "room",
+              "teacher",
+              "change",
+              "previousRoom",
+              "previousTeacher",
+              "note"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "task"
+                ]
+              },
+              "title": {
+                "type": "string",
+                "maxLength": 500
+              },
+              "deadline": {
+                "nullable": true,
+                "type": "string",
+                "format": "date",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+              },
+              "bring": {
+                "maxItems": 50,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "maxLength": 500
+                }
+              }
+            },
+            "required": [
+              "kind",
+              "title",
+              "deadline",
+              "bring"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      }
+    }
+  }
+}

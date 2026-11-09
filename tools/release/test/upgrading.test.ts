@@ -3,7 +3,7 @@ import { deriveUpgrading, postgresMajorOf, type Snapshot } from "../src/upgradin
 
 const docs = "https://github.com/artkoenig/family-agenda/blob/v0.3.0/docs/upgrading.md";
 const compose = (postgres: string) => `services:\n  postgres:\n    image: ${postgres}\n    restart: unless-stopped\n`;
-const sdk = (version: string) => ({ version, api: "export type A = {};\n" });
+const sdk = (version: string) => ({ version });
 const snapshot = (migrations: Record<string, string>, postgres = "postgres:17", sdkVersion: string | null = "1.0.0"): Snapshot => ({
   migrations,
   compose: compose(postgres),

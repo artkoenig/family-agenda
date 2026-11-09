@@ -1,0 +1,16 @@
+{
+  "name": "@family-agenda/plugin-contract",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "The contract between the core and a plugin container (ADR-0001): schemas of every endpoint, from which openapi.json is generated.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "openapi": "node --import tsx src/write-openapi.ts"
+  },
+  "dependencies": {
+    "zod": "^4.6.7"
+  }
+}

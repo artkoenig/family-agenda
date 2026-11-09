@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { readSnapshot } from "../src/snapshot";
+import { readContract, readSnapshot } from "../src/snapshot";
 
 const repos: string[] = [];
 afterEach(() => {
@@ -35,7 +35,7 @@ describe("reading the snapshot of a release from Git", () => {
         "compose.yaml": "image: postgres:18\n",
         "packages/adapters/drizzle/0001_more.sql": "CREATE TABLE b (id int);",
         "packages/source-sdk/package.json": JSON.stringify({ name: "sdk", version: "1.2.0" }),
-        "packages/source-sdk/api.txt": "export type A = {};\n",
+        "packages/plugin-contract/openapi.json": '{"info":{"version":"1.0"}}\n',
       },
       "second",
     );
@@ -61,11 +61,18 @@ describe("reading the snapshot of a release from Git", () => {
     expect(compose).toBe("image: postgres:18\n");
   });
 
-  it("reads the SDK's version and API file where the ref has them, and none where it has not", () => {
+  it("reads the SDK's version where the ref has it, and none where it has not", () => {
     const repo = repoWithTwoReleases();
 
-    expect(readSnapshot(repo, "HEAD").sdk).toEqual({ version: "1.2.0", api: "export type A = {};\n" });
+    expect(readSnapshot(repo, "HEAD").sdk).toEqual({ version: "1.2.0" });
     expect(readSnapshot(repo, "v0.1.0").sdk).toBeNull();
+  });
+
+  it("reads the plugin contract's openapi.json where the ref has it, and none where it has not", () => {
+    const repo = repoWithTwoReleases();
+
+    expect(readContract(repo, "HEAD")).toBe('{"info":{"version":"1.0"}}\n');
+    expect(readContract(repo, "v0.1.0")).toBeNull();
   });
 
   it("fails for a ref that does not exist, instead of reading nothing", () => {

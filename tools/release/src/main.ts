@@ -4,21 +4,20 @@
  *   upgrading --docs <address of docs/upgrading.md> [--previous <ref>] [--current <ref>]
  *       prints the "Upgrading" section of a GitHub Release. `--previous` is the tag of the release
  *       before it and is left out for the first release; `--current` defaults to HEAD.
- *   check-sdk [--previous <ref>] [--current <ref>]
- *       fails if the SDK's public API changed since `--previous` without its version being raised.
- *   sdk-api [--write]
- *       prints the SDK's public API, or writes it to packages/source-sdk/api.txt (`pnpm sdk-api`).
+ *   check-contract [--previous <ref>] [--current <ref>]
+ *       fails if the plugin contract's openapi.json changed since `--previous` without its
+ *       contractVersion being raised: a breaking change needs a new major, an addition a new minor.
+ *       Needs `oasdiff` on the PATH.
  *   ghcr-plan --versions <versions.json> --children <children.json>
  *       prints the ids of the versions of the image package that the weekly clean-up deletes, one per line.
  */
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { parseArgs } from "node:util";
 import { planCleanup, versionsFromApi, type Children } from "./cleanup";
-import { describeSdkApi, sdkVersionProblem } from "./sdk";
-import { readSnapshot } from "./snapshot";
+import { classifyContractChange, contractVersionProblem } from "./contract";
+import { oasdiff } from "./oasdiff";
+import { readContract, readSnapshot } from "./snapshot";
 import { deriveUpgrading } from "./upgrading";
-
-const sdkDirectory = "packages/source-sdk";
 
 const { values, positionals } = parseArgs({
   allowPositionals: true,
@@ -26,7 +25,6 @@ const { values, positionals } = parseArgs({
     previous: { type: "string" },
     current: { type: "string", default: "HEAD" },
     docs: { type: "string" },
-    write: { type: "boolean", default: false },
     versions: { type: "string" },
     children: { type: "string" },
   },
@@ -36,7 +34,7 @@ const repo = process.cwd();
 const previousRef = values.previous || undefined;
 
 function usage(): never {
-  console.error("Usage: main.ts upgrading --docs <address> [--previous <ref>] [--current <ref>] | check-sdk [--previous <ref>] [--current <ref>] | sdk-api [--write] | ghcr-plan --versions <file> --children <file>");
+  console.error("Usage: main.ts upgrading --docs <address> [--previous <ref>] [--current <ref>] | check-contract [--previous <ref>] [--current <ref>] | ghcr-plan --versions <file> --children <file>");
   process.exit(2);
 }
 
@@ -46,26 +44,21 @@ function upgrading(): void {
   process.stdout.write(deriveUpgrading(previous, readSnapshot(repo, values.current), values.docs));
 }
 
-function checkSdk(): void {
-  const before = previousRef === undefined ? null : readSnapshot(repo, previousRef).sdk;
+function checkContract(): void {
+  const before = previousRef === undefined ? null : readContract(repo, previousRef);
   if (before === null) {
-    console.log("There is no earlier release with an SDK API file to compare the SDK with.");
+    console.log("There is no earlier release with an openapi.json to compare the plugin contract with.");
     return;
   }
-  const current = readSnapshot(repo, values.current).sdk;
-  if (current === null) throw new Error(`${values.current} has no ${sdkDirectory}/api.txt: run pnpm sdk-api`);
-  const problem = sdkVersionProblem(before, current);
+  const current = readContract(repo, values.current);
+  if (current === null) throw new Error(`${values.current} has no packages/plugin-contract/openapi.json: run pnpm openapi`);
+  const versionOf = (document: string) => (JSON.parse(document) as { info: { version: string } }).info.version;
+  const problem = contractVersionProblem(versionOf(before), versionOf(current), classifyContractChange(before, current, oasdiff));
   if (problem !== null) {
     console.error(`::error::${problem}`);
     process.exit(1);
   }
-  console.log(`The SDK is at ${current.version}, and its API agrees with the change since ${previousRef}.`);
-}
-
-function sdkApi(): void {
-  const api = describeSdkApi(`${repo}/${sdkDirectory}`);
-  if (values.write) writeFileSync(`${repo}/${sdkDirectory}/api.txt`, api);
-  else process.stdout.write(api);
+  console.log(`The plugin contract is at ${versionOf(current)}, and its version agrees with the change since ${previousRef}.`);
 }
 
 /** What the weekly clean-up keeps: the newest 30 images tagged only with a commit, and untagged versions that are a day old. */
@@ -79,5 +72,5 @@ function ghcrPlan(): void {
   process.stdout.write(plan.delete.map((version) => `${version.id}\n`).join(""));
 }
 
-const commands: Record<string, () => void> = { upgrading, "check-sdk": checkSdk, "sdk-api": sdkApi, "ghcr-plan": ghcrPlan };
+const commands: Record<string, () => void> = { upgrading, "check-contract": checkContract, "ghcr-plan": ghcrPlan };
 (commands[positionals[0] ?? ""] ?? usage)();

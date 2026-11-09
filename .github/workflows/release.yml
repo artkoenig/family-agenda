@@ -151,6 +151,8 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      - uses: ./.github/actions/oasdiff
+
       - id: commit
         env:
           VERSION: ${{ needs.preflight.outputs.version }}
@@ -160,7 +162,8 @@ jobs:
 
           # The version of the packages that make up the app, and the version compose.yaml runs by default.
           # The Source plugins and demo-source keep the versions of their own identities (ADR-0010),
-          # source-sdk the one of its API (`sdkVersion`), and tools/ is not shipped.
+          # source-sdk the one of its API (`sdkVersion`), plugin-contract is versioned by `contractVersion`,
+          # and tools/ is not shipped.
           for file in apps/*/package.json packages/adapters/package.json packages/application/package.json packages/contracts/package.json packages/domain/package.json; do
             sed -i -E "s/^  \"version\": \"[^\"]*\"/  \"version\": \"$VERSION\"/" "$file"
             grep -q "^  \"version\": \"$VERSION\"" "$file" || fail "$file has no version to set"
@@ -174,8 +177,8 @@ jobs:
           git commit -a -q -m "Release $VERSION"
           echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
-          # The SDK version has to follow a change of the SDK's API since the last release.
-          node --import tsx tools/release/src/main.ts check-sdk --previous "$PREVIOUS" --current HEAD
+          # The plugin contract version has to follow a change of openapi.json since the last release.
+          node --import tsx tools/release/src/main.ts check-contract --previous "$PREVIOUS" --current HEAD
 
           # The Upgrading section is written when the release is created. Writing it now means a
           # problem with it stops the release before anything is built.
