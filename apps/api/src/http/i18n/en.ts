@@ -380,6 +380,7 @@ export const en = {
     statusOk: "OK",
     statusFailing: "Failing",
     connectionError: "Connection error",
+    remove: "Switch AI off",
   },
 
   display: {

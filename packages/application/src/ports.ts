@@ -672,6 +672,7 @@ export type StoredLlmEndpoint = {
 export interface LlmEndpointRepository {
   find(): Promise<StoredLlmEndpoint | null>;
   save(endpoint: StoredLlmEndpoint): Promise<void>;
+  remove(): Promise<void>;
 }
 
 /** The Identity Provider as stored, its client secret in the SecretStore. */

@@ -68,4 +68,15 @@ describe("choosing the model on the AI page", () => {
     expect(html).toContain('hx-post="/admin/llm/models"');
     expect(html).toContain('hx-disabled-elt="#model"');
   });
+
+  it("switches the AI off, forgetting the endpoint and its API key", async () => {
+    await instance.app.llmEndpoint.save({ baseUrl: "http://ollama:11434/v1", model: "gemma3", apiKey: "secret" });
+    expect(await page()).toContain('action="/admin/llm/remove"');
+
+    const response = await instance.post("/admin/llm/remove", {}, { cookie });
+
+    expect(response.status).toBe(303);
+    expect(await instance.app.llmEndpoint.current()).toBeNull();
+    expect(await page()).not.toContain('action="/admin/llm/remove"');
+  });
 });

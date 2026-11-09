@@ -714,6 +714,10 @@ export class PostgresLlmEndpointRepository implements LlmEndpointRepository {
       .values(values)
       .onConflictDoUpdate({ target: llmEndpoints.id, set: values });
   }
+
+  async remove(): Promise<void> {
+    await this.db.delete(llmEndpoints);
+  }
 }
 
 export class PostgresIdentityProviderRepository implements IdentityProviderRepository {

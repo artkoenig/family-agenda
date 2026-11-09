@@ -366,6 +366,7 @@ export const de: Catalogue = {
     statusOk: "OK",
     statusFailing: "Gestört",
     connectionError: "Verbindungsfehler",
+    remove: "KI abschalten",
   },
 
   display: {
