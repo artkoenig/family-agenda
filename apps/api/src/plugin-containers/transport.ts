@@ -10,6 +10,8 @@ type CallError = Extract<CallResult, { ok: false }>;
 export type PluginContainerOptions = {
   /** Replaces the timeouts of the plugin contract, such as for a test of a plugin that does not answer. */
   timeoutsMs?: Partial<Record<EndpointName, number>>;
+  /** How long a plugin's description is used before it is asked again; 0 asks every time a Source Type is loaded. */
+  descriptionMaxAgeMs?: number;
 };
 
 function messageOf(error: unknown): string {

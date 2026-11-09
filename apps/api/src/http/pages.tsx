@@ -1035,7 +1035,13 @@ export type LiveStep = { sourceId: string; stepId: string; progress: SetupProgre
  * dialog over it; a Source opens on a page of its own.
  */
 function sourceTypeDialog(
-  props: { adding?: SourceAdding; settingUp?: SourceSummary; form: SourceForm | undefined; liveSteps?: LiveStep[]; members: FamilyMemberSummary[] },
+  props: {
+    adding?: SourceAdding;
+    settingUp?: SourceSummary;
+    form: SourceForm | undefined;
+    liveSteps?: LiveStep[];
+    members: FamilyMemberSummary[];
+  },
   s: Translation["t"]["sources"],
   text: Translation["text"],
   href: string,
@@ -1166,6 +1172,7 @@ function SourceListSection(props: {
   sourceType: SourceTypeSummary | null;
   catalogue: CatalogueSummary | undefined;
   listed: SourceSummary[];
+  addings: Adding[];
   form: SourceForm | undefined;
   name: string;
   sourceTypeId: string;
@@ -1173,12 +1180,16 @@ function SourceListSection(props: {
   timeZone: string;
   s: Translation["t"]["sources"];
 }) {
-  const { sourceType, catalogue, listed, form, name, sourceTypeId, members, timeZone, s } = props;
-  if (!(sourceType?.enabled && !catalogue) && listed.length === 0) return null;
+  const { sourceType, catalogue, listed, addings, form, name, sourceTypeId, members, timeZone, s } = props;
+  if (!(sourceType?.enabled && !catalogue) && listed.length === 0 && addings.length === 0) return null;
   return (
     <section class="fam-sheet">
       <Group title={s.title} level={2} intro={s.sourcesIntro}>
-        <SourceRows sources={listed} form={form} members={members} timeZone={timeZone} empty={s.noSources} />
+        <SourceRows sources={listed} form={form} members={members} timeZone={timeZone} empty={addings.length > 0 ? null : s.noSources}>
+          {addings.map((adding) => (
+            <AddingRow adding={adding} form={form} />
+          ))}
+        </SourceRows>
         <AddSourceButton sourceType={sourceType} form={form} name={name} sourceTypeId={sourceTypeId} s={s} />
       </Group>
     </section>
@@ -1234,6 +1245,8 @@ export function SourceTypePage(props: {
   settingUp?: SourceSummary;
   /** What the live setup steps of the Source being set up show. */
   liveSteps?: LiveStep[];
+  /** Its Sources still being added in the background, or whose adding failed. */
+  addings?: Adding[];
 }) {
   const { sourceType } = props;
   const { t, text } = useTranslation();
@@ -1259,7 +1272,7 @@ export function SourceTypePage(props: {
       {catalogue && configKey !== undefined ? (
         <CatalogueEntries catalogue={catalogue} form={props.form} configKey={configKey} sources={props.sources} members={props.members} timeZone={props.timeZone} />
       ) : null}
-      <SourceListSection sourceType={sourceType} catalogue={catalogue} listed={listed} form={props.form} name={name} sourceTypeId={props.sourceTypeId} members={props.members} timeZone={props.timeZone} s={s} />
+      <SourceListSection sourceType={sourceType} catalogue={catalogue} listed={listed} addings={props.addings ?? []} form={props.form} name={name} sourceTypeId={props.sourceTypeId} members={props.members} timeZone={props.timeZone} s={s} />
     </AdminLayout>
   );
 }
@@ -1535,14 +1548,18 @@ function SourceRows(props: {
   form: SourceForm | undefined;
   members: FamilyMemberSummary[];
   timeZone: string;
-  empty: string;
+  /** Shown while there are none; null when `children` stand in for them. */
+  empty: string | null;
+  /** Rows after the Sources', such as those of Sources still being added. */
+  children?: Child;
 }) {
-  if (props.sources.length === 0) return <p class="fam-group__empty">{props.empty}</p>;
+  if (props.sources.length === 0 && props.empty !== null) return <p class="fam-group__empty">{props.empty}</p>;
   return (
     <ul class="fam-rows">
       {props.sources.map((source) => (
         <SourceRow source={source} form={props.form} members={props.members} timeZone={props.timeZone} />
       ))}
+      {props.children}
     </ul>
   );
 }
@@ -1928,6 +1945,48 @@ const liveStepPollSeconds = 3;
 
 function stepMessage(message: MultilingualText | null, fallback: string, text: (t: MultilingualText) => string): string {
   return message !== null ? text(message) : fallback;
+}
+
+/** A Source being added in the background, or whose adding failed. */
+export type Adding = {
+  id: string;
+  progress: { status: "running"; plain: Record<string, unknown> } | { status: "failed"; plain: Record<string, unknown>; message: string };
+};
+
+/**
+ * The row of a Source being added: a spinner while its plugin prepares it, asking again every few
+ * seconds until the page goes on; once that failed, why, with a button to fix what was entered.
+ */
+export function AddingRow(props: { adding: Adding; form: SourceForm | undefined }) {
+  const { t, text } = useTranslation();
+  const { id, progress } = props.adding;
+  const href = `/admin/sources/adding/${encodeURIComponent(id)}`;
+  const configKey = props.form?.catalogue?.configKey;
+  const [name] = plainValues(props.form?.fields.filter((field) => !field.secret && field.key !== configKey), progress.plain);
+  const label = name ?? (props.form ? text(props.form.displayName) : "");
+  if (progress.status === "failed") {
+    return (
+      <li class="fam-row">
+        <span class="fam-row__main">
+          <span class="fam-row__label">{label}</span>
+          <span class="fam-row__hint">{progress.message}</span>
+        </span>
+        <span class="fam-status fam-status--problem">{t.sources.status.failing}</span>
+        <a class="fam-button fam-button--secondary" href={href}>
+          {t.sources.fix}
+        </a>
+      </li>
+    );
+  }
+  return (
+    <li class="fam-row" hx-get={`${href}/row`} hx-trigger={`load delay:${liveStepPollSeconds}s`} hx-swap="outerHTML" aria-live="polite">
+      <span class="fam-row__main">
+        <span class="fam-row__label">{label}</span>
+        <span class="fam-row__hint">{t.sources.settingUp}</span>
+      </span>
+      <span class="fam-spinner" role="status" aria-label={t.sources.settingUp}></span>
+    </li>
+  );
 }
 
 /**

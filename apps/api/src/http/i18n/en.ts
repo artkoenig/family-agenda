@@ -355,6 +355,7 @@ export const en = {
     choicesFailed: "The plugin could not offer anything to choose from.",
     setupEyebrow: "Set up a Source",
     setupWaiting: "Waiting …",
+    settingUp: "Setting up …",
     setupDone: "Done.",
     qrCode: "QR code to scan",
     finish: "Finish",
