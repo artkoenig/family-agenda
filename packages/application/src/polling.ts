@@ -10,8 +10,10 @@ import type {
   IngestedMessage,
   IngestedOrigin,
   ItemRepository,
+  AttributeReporting,
   PollingIngestion,
   SecretStore,
+  SourceRunContext,
   Source,
   SourceRepository,
   SecretRef,
@@ -21,6 +23,7 @@ import type {
   StoredFile,
   StoredMessage,
 } from "./ports";
+import { enabledSourceType } from "./enabled-source-type";
 import { readStated } from "./stated-items";
 import { runContextOf } from "./sources";
 
@@ -41,9 +44,10 @@ export type PollingDeps = {
   activity: ActivityLog;
 };
 
-export type PollReport = {
+/** What a round of runs came to, by polling or by a pushed payload. */
+export type RunReport = {
   /** The Sources run successfully. */
-  polled: SourceId[];
+  ran: SourceId[];
   failed: { sourceId: SourceId; kind: "definite" | "temporary"; message: string }[];
   /** The entries whose stated Item was invalid, so that none was written, and why. */
   invalid: { sourceId: SourceId; externalId: string; problems: string[] }[];
@@ -52,7 +56,7 @@ export type PollReport = {
 };
 
 /** The refusal to report for a run, none if it refused nothing. */
-function refusalsOf(sourceId: SourceId, attributes: string[]): PollReport["refused"] {
+function refusalsOf(sourceId: SourceId, attributes: string[]): RunReport["refused"] {
   return attributes.length > 0 ? [{ sourceId, attributes }] : [];
 }
 
@@ -84,10 +88,32 @@ export function createSourcePolling(deps: PollingDeps) {
     for (const file of message.attachments) await blobs.remove(file.blob);
   }
 
-  /** Runs one Source and records what it emitted into the report. */
-  async function run(source: Source, ingestion: PollingIngestion, report: PollReport): Promise<void> {
+  /** The run of each Source under way or queued in this process, which the next run of it waits for. */
+  const runs = new Map<SourceId, Promise<void>>();
+
+  /**
+   * Runs one Source, by polling it or handing it a pushed payload, and records what it emitted into
+   * the report. Runs of one Source take turns, a poll as well as a push, each reading the Source
+   * afresh, so that none starts from a Source Cursor another is about to replace.
+   */
+  async function run(sourceId: SourceId, ingest: Ingest, report: RunReport): Promise<void> {
+    const previous = runs.get(sourceId) ?? Promise.resolve();
+    const current = previous.then(async () => {
+      const source = await sources.findById(sourceId);
+      if (source) await runNow(source, ingest, report);
+    });
+    const settled = current.catch(() => undefined);
+    runs.set(sourceId, settled);
+    try {
+      await current;
+    } finally {
+      if (runs.get(sourceId) === settled) runs.delete(sourceId);
+    }
+  }
+
+  async function runNow(source: Source, ingest: Ingest, report: RunReport): Promise<void> {
     const now = clock.now();
-    const result = await ingestion.poll(await runContextOf(source, { secrets, now, timeZone }), {
+    const result = await ingest(await runContextOf(source, { secrets, now, timeZone }), {
       declare: (attributes) => sources.declareAttributes(source.id, attributes),
       archive: (externalId) => sources.archiveAttribute(source.id, externalId),
     });
@@ -103,7 +129,7 @@ export function createSourcePolling(deps: PollingDeps) {
     await removeLeftovers(origins.flatMap((origin) => (origin.message && known.includes(origin.externalId) ? [origin.message] : [])), withdrawnFiles, replacedSecrets);
     report.invalid.push(...invalid.map((record) => ({ sourceId: source.id, ...record })));
     report.refused.push(...refusalsOf(source.id, refused));
-    report.polled.push(source.id);
+    report.ran.push(source.id);
   }
 
   /** Removes what a recorded run left over: files of messages already known, withdrawn files and replaced secrets. */
@@ -194,8 +220,8 @@ function isDue(
      * run, as the worker does on each tick. A failed run waits for the next interval too. A Source
      * using a catalogue entry, such as a Messenger, is polled at the entry's interval.
      */
-    async pollDue(): Promise<PollReport> {
-      const report: PollReport = { polled: [], failed: [], invalid: [], refused: [] };
+    async pollDue(): Promise<RunReport> {
+      const report: RunReport = { ran: [], failed: [], invalid: [], refused: [] };
       const enabled = new Set((await sourceTypes.list()).filter((type) => type.enabled).map((type) => type.id));
       const now = clock.now().getTime();
       const due = await findDue(enabled, now);
@@ -203,7 +229,7 @@ function isDue(
       const progress = await activity.begin("polling", due.length);
       try {
         for (const { source, ingestion } of due) {
-          await run(source, ingestion, report);
+          await run(source.id, (context, attributes) => ingestion.poll(context, attributes), report);
           await progress.advance();
         }
       } finally {
@@ -211,7 +237,32 @@ function isDue(
       }
       return report;
     },
+
+    /**
+     * Hands a payload pushed to the core for a Source to its plugin, and records what it emitted as
+     * a poll would, taking turns with its other runs. Only a Source whose Source Type is enabled,
+     * loadable and ingests by push receives one.
+     */
+    async receive(sourceId: SourceId, payload: Uint8Array): Promise<ReceiveResult> {
+      const source = await sources.findById(sourceId);
+      if (!source) return { ok: false, problem: "unknown-source" };
+      const sourceType = await enabledSourceType(source.sourceTypeId, { registry, sourceTypes });
+      if (!sourceType) return { ok: false, problem: "source-type-not-available" };
+      const { ingestion } = sourceType;
+      if (ingestion.mode !== "push") return { ok: false, problem: "not-push" };
+      const report: RunReport = { ran: [], failed: [], invalid: [], refused: [] };
+      await run(source.id, (context, attributes) => ingestion.receive(context, payload, attributes), report);
+      return { ok: true, report };
+    },
   };
 }
+
+type Ingest = (context: SourceRunContext, attributes: AttributeReporting) => Promise<SourceRunResult>;
+
+/**
+ * What receiving a pushed payload came to: the run as a poll reports it, or why there was none:
+ * no such Source, its Source Type is not enabled or its plugin not loadable, or it polls instead.
+ */
+export type ReceiveResult = { ok: true; report: RunReport } | { ok: false; problem: "unknown-source" | "source-type-not-available" | "not-push" };
 
 export type SourcePolling = ReturnType<typeof createSourcePolling>;

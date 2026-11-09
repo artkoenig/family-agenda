@@ -1,10 +1,10 @@
 import type { AddressInfo } from "node:net";
 import type { Server } from "node:http";
-import type { RunContext } from "@family-agenda/plugin-contract";
+import { limits, type RunContext } from "@family-agenda/plugin-contract";
 import { PluginError, type PluginImplementation } from "@family-agenda/plugin-kit";
 import { servePlugin } from "@family-agenda/plugin-kit/server";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { SourceTypeId } from "@family-agenda/domain";
+import type { SourceId, SourceTypeId } from "@family-agenda/domain";
 import { parsePluginUrls } from "../../src/plugin-containers/bindings";
 import { descriptionProblem, PluginContainers } from "../../src/plugin-containers/registry";
 import { bootForTest, type TestInstance } from "../support/boot";
@@ -107,7 +107,7 @@ describe("A Source Type whose plugin runs in a container", () => {
     const report = await poll();
 
     expect(report.failed).toEqual([]);
-    expect(report.polled).toHaveLength(1);
+    expect(report.ran).toHaveLength(1);
     expect(state.runs[0]).toEqual({
       config: { plain: { url: "https://portal.example.org" }, secrets: { token: "first" } },
       syncCursor: null,
@@ -121,6 +121,12 @@ describe("A Source Type whose plugin runs in a container", () => {
 
     expect(state.runs[1]).toMatchObject({ syncCursor: "cursor-1", config: { secrets: { token: "second" } } });
     expect((await instance.query("SELECT sync_cursor FROM source_run"))[0]?.sync_cursor).toBe("cursor-2");
+  });
+
+  it("receives no pushed payload for its Sources", async () => {
+    const source = (await instance.app.sources.list())[0];
+    if (!source) throw new Error("no Source");
+    expect(await instance.app.polling.receive(source.id, new Uint8Array())).toEqual({ ok: false, problem: "not-push" });
   });
 
   it("fails a run definitely on a definite error of its plugin", async () => {
@@ -164,6 +170,134 @@ describe("A Source Type whose plugin runs in a container", () => {
     state.poll = () => Promise.resolve({ sourceRecords: [{ externalId: "mail", attributes: ["main"], content: { kind: "raw-message", text: "Hello", attachments: [] } }], syncCursor: null });
 
     expectFailure(await poll(), "definite", "without a time");
+  });
+});
+
+describe("A Source Type whose plugin receives pushed payloads", () => {
+  type Receive = (request: { context: RunContext; payload: string }) => Promise<unknown>;
+  let instance: TestInstance;
+  let server: Server;
+  let receive: Receive;
+  let sourceId: SourceId;
+  let description: PluginImplementation["description"];
+  const removed: unknown[] = [];
+
+  beforeEach(async () => {
+    receive = () => Promise.resolve({ sourceRecords: [], syncCursor: null });
+    removed.length = 0;
+    const base = fakePlugin({ runs: [], poll: () => Promise.resolve({}) }, "chat-relay");
+    description = { ...base.description, ingestion: { mode: "push" } };
+    server = await servePlugin(
+      {
+        description,
+        receive: async (request) => (await receive(request)) as never,
+        sourceRemoved: (context) => {
+          removed.push(context.config.plain);
+        },
+      },
+      { host: "127.0.0.1" },
+    );
+    instance = await bootForTest({
+      pluginContainers: [{ sourceTypeId: "chat-relay" as SourceTypeId, url: urlOf(server) }],
+      pluginContainerOptions: { timeoutsMs: { receive: 200 } },
+    });
+    expect(await instance.app.sourceTypes.enable("chat-relay")).toEqual({ ok: true });
+    const added = await instance.app.sources.add({ sourceTypeId: "chat-relay", plain: { url: "https://chat.example.org" }, secrets: { token: "first" } });
+    if (!added.ok) throw new Error(`adding failed: ${added.problem}`);
+    sourceId = added.id;
+  });
+  afterEach(async () => {
+    await instance.close();
+    if (server.listening) await closed(server);
+  });
+
+  const payload = new TextEncoder().encode("hello");
+
+  it("forwards a pushed payload to its plugin and records what it emitted as for a poll", async () => {
+    const requests: { context: RunContext; payload: string }[] = [];
+    receive = (request) => {
+      requests.push(request);
+      return Promise.resolve({ sourceRecords: [evening], syncCursor: "cursor-1", attributes: { declared: [{ externalId: "main", name: "Class 3b" }], archived: [] } });
+    };
+
+    const result = await instance.app.polling.receive(sourceId, payload);
+
+    expect(result).toMatchObject({ ok: true, report: { ran: [sourceId], failed: [] } });
+    expect(requests).toEqual([{ context: { config: { plain: { url: "https://chat.example.org" }, secrets: { token: "first" } }, syncCursor: null, now: "2026-09-14T07:00:00.000Z", timeZone: "Europe/Berlin" }, payload: "aGVsbG8=" }]);
+    expect(await instance.query("SELECT external_id FROM source_record")).toEqual([{ external_id: "evening" }]);
+    expect((await instance.query("SELECT sync_cursor FROM source_run"))[0]?.sync_cursor).toBe("cursor-1");
+  });
+
+  it("is not polled", async () => {
+    instance.clock.advance(60 * minutes);
+    expect((await instance.app.polling.pollDue()).ran).toEqual([]);
+  });
+
+  it("fails the run temporarily when its plugin answers with a server error or not in time", async () => {
+    receive = () => Promise.reject(new Error("The relay is down."));
+    expect(await instance.app.polling.receive(sourceId, payload)).toMatchObject({ ok: true, report: { failed: [{ kind: "temporary", message: "The relay is down." }] } });
+
+    receive = () => new Promise((resolve) => {
+        setTimeout(() => {
+          resolve({ sourceRecords: [], syncCursor: null });
+        }, 1000);
+      });
+    const late = await instance.app.polling.receive(sourceId, payload);
+    expect(late.ok && late.report.failed[0]?.message).toContain("no answer within 0.2 s");
+
+    await closed(server);
+    const gone = await instance.app.polling.receive(sourceId, payload);
+    expect(gone.ok && gone.report.failed[0]).toMatchObject({ kind: "temporary", message: expect.stringContaining("is not reachable") as string });
+  });
+
+  it("fails the run definitely on a definite error of its plugin", async () => {
+    receive = () => Promise.reject(new PluginError("definite", "The payload is no chat message."));
+    expect(await instance.app.polling.receive(sourceId, payload)).toMatchObject({ ok: true, report: { failed: [{ kind: "definite", message: "The payload is no chat message." }] } });
+  });
+
+  it("refuses a payload too large for the plugin contract without calling the plugin", async () => {
+    let called = false;
+    receive = () => {
+      called = true;
+      return Promise.resolve({ sourceRecords: [], syncCursor: null });
+    };
+    const result = await instance.app.polling.receive(sourceId, new Uint8Array(limits.maxPayloadBytes));
+    expect(result.ok && result.report.failed[0]).toMatchObject({ kind: "definite", message: expect.stringContaining("more than the 10485760 bytes the plugin contract allows") as string });
+    expect(called).toBe(false);
+  });
+
+  it("runs a pushed payload after the run under way, from the Source Cursor that run left", async () => {
+    const cursors: (string | null)[] = [];
+    receive = async ({ context, payload: sent }) => {
+      cursors.push(context.syncCursor);
+      if (sent === "Zmlyc3Q=") await new Promise((resolve) => setTimeout(resolve, 100));
+      return { sourceRecords: [], syncCursor: sent };
+    };
+
+    await Promise.all([instance.app.polling.receive(sourceId, new TextEncoder().encode("first")), instance.app.polling.receive(sourceId, payload)]);
+
+    expect(cursors).toEqual([null, "Zmlyc3Q="]);
+  });
+
+  it("receives nothing while its plugin is not loadable", async () => {
+    description.sourceTypeId = "other-relay";
+    expect(await instance.app.polling.receive(sourceId, payload)).toEqual({ ok: false, problem: "source-type-not-available" });
+  });
+
+  it("receives nothing for an unknown Source", async () => {
+    expect(await instance.app.polling.receive("unknown" as SourceId, payload)).toEqual({ ok: false, problem: "unknown-source" });
+  });
+
+  it("notifies its plugin when a Source is removed, and removes it even when the plugin is gone", async () => {
+    await instance.app.sources.remove(sourceId);
+    expect(removed).toEqual([{ url: "https://chat.example.org" }]);
+    expect(await instance.app.sources.list()).toEqual([]);
+
+    const again = await instance.app.sources.add({ sourceTypeId: "chat-relay", plain: { url: "https://other.example.org" }, secrets: { token: "first" } });
+    if (!again.ok) throw new Error("adding failed");
+    await closed(server);
+    await instance.app.sources.remove(again.id);
+    expect(await instance.app.sources.list()).toEqual([]);
   });
 });
 
