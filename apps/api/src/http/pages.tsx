@@ -2370,8 +2370,9 @@ export function LlmEndpointPage(props: {
           <ConnectionBanner health={props.health} />
           <ConnectionFields shown={shown} endpoint={endpoint} models={props.models} />
         </Group>
-        <OptionsGroup />
+        <OptionsGroup configured={endpoint !== null} />
       </form>
+      {endpoint ? <form method="post" action="/admin/llm/remove" id="remove-llm" /> : null}
       {endpoint && props.waiting > 0 ? (
         <section class="fam-sheet">
           <WaitingGroup label={l.waitingTitle} waiting={props.waiting} />
@@ -2501,7 +2502,7 @@ function ApiKeyFields(props: { endpoint: LlmEndpointSummary | null }) {
   );
 }
 
-function OptionsGroup() {
+function OptionsGroup(props: { configured: boolean }) {
   const { t } = useTranslation();
   const l = t.llm;
   return (
@@ -2512,6 +2513,11 @@ function OptionsGroup() {
         </label>
       </div>
       <div class="fam-group__actions">
+        {props.configured ? (
+          <button type="submit" form="remove-llm" class="fam-button fam-button--danger" formnovalidate>
+            {l.remove}
+          </button>
+        ) : null}
         <button type="submit" class="fam-button fam-button--primary">
           {t.common.save}
         </button>

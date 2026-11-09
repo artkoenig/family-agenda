@@ -1141,6 +1141,12 @@ function shownStatus(status: 200 | 400 | 413 | undefined, problems: (string | un
 
   app.get("/admin/llm", (c) => llmEndpointPage(c));
 
+  app.post("/admin/llm/remove", async (c) => {
+    await llmEndpoint.remove();
+    llmHealthAsked = null;
+    return c.redirect("/admin/llm", 303);
+  });
+
   // The model field for the endpoint being entered, asked while the Admin types its URL.
   app.post("/admin/llm/models", async (c) => {
     const form = await c.req.parseBody();

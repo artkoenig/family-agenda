@@ -102,6 +102,14 @@ export function createLlmEndpointAccess(deps: LlmEndpointDeps) {
       if (replacing && stored?.apiKey) await secrets.remove(stored.apiKey);
       return { ok: true };
     },
+
+    /** Switches the AI off: forgets the endpoint and its API key; messages then wait to be read. */
+    async remove(): Promise<void> {
+      const stored = await endpoints.find();
+      if (!stored) return;
+      await endpoints.remove();
+      if (stored.apiKey) await secrets.remove(stored.apiKey);
+    },
   };
 }
 
