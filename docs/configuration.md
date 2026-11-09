@@ -21,7 +21,7 @@ Data lives in named volumes (`postgres-data`, `master-key`, `blobs`, ...). How t
 
 ## Plugins
 
-Each Source Type runs as a plugin container (ADR-0001). List them in `plugins.yml` next to `compose.yaml`; [`plugins.schema.json`](../plugins.schema.json) is its JSON schema. It is not versioned.
+Each Source Type runs as a plugin container (ADR-0001). List them in `plugins.yml` next to `compose.yaml`; [`plugins.schema.json`](../plugins.schema.json) is its JSON schema. The repository ships a default [`plugins.yml`](../plugins.yml) with the plugins that come with the app (ICS, IMAP, WebUntis, Matrix with Synapse and the WhatsApp bridge), their images pinned and kept up to date by Renovate; copy it next to `compose.yaml`, drop the ones you do not need, and add the egress hosts your Sources need (the ICS plugin has none by default). Your copy is not versioned.
 
 ```yaml
 plugins:

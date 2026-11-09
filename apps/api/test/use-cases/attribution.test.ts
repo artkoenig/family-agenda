@@ -1,10 +1,10 @@
-import type { Origin } from "@family-agenda/source-sdk";
+import type { Origin } from "../support/test-source-plugin";
 import { openAgendaAccess, type Showing } from "@family-agenda/application";
 import type { FamilyMemberId, SourceAttributeId, SourceId, AgendaId } from "@family-agenda/domain";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { assignSource } from "../support/assign";
 import { bootForTest, type TestInstance } from "../support/boot";
-import { testPluginControls, writeTestPluginPackage } from "../support/test-source-plugin";
+import { testPluginControls } from "../support/test-source-plugin";
 import { openTimeline } from "../support/timeline";
 
 const minutes = 60 * 1000;
@@ -26,8 +26,8 @@ describe("Attribution by Source Attribute", () => {
   beforeEach(async () => {
     // The clock starts on Monday 2026-09-14 at 09:00 in Berlin.
     instance = await bootForTest();
-    await writeTestPluginPackage(instance.workspacePackages, { sourceTypeId: "calendar" });
-    await writeTestPluginPackage(instance.workspacePackages, { sourceTypeId: "club" });
+    await instance.installPlugin({ sourceTypeId: "calendar" });
+    await instance.installPlugin({ sourceTypeId: "club" });
     await instance.restart();
     const source = async (sourceTypeId: string) => {
       await instance.app.sourceTypes.enable(sourceTypeId);

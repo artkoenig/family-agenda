@@ -6,8 +6,6 @@ export type Config = {
   databaseUrl: string;
   masterKeyFile: string;
   blobDirectory: string;
-  /** The `plugins/` volume, for Source plugins an operator adds to a stock image. */
-  pluginDirectory: string;
   /** Source Types whose plugins run in containers, from `PLUGIN_URLS` such as `demo=http://demo:8080`. */
   pluginContainers: PluginBinding[];
   /** The declared egress hosts per plugin container, from `PLUGIN_EGRESS`, which their egress proxies allow. */
@@ -33,7 +31,6 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): Config {
     databaseUrl,
     masterKeyFile: env.MASTER_KEY_FILE ?? "/var/lib/family-agenda/master-key/master.key",
     blobDirectory: env.BLOB_DIRECTORY ?? "/var/lib/family-agenda/blobs",
-    pluginDirectory: env.PLUGIN_DIRECTORY ?? "/var/lib/family-agenda/plugins",
     pluginContainers: parsePluginUrls(env.PLUGIN_URLS),
     pluginEgress: parsePluginEgress(env.PLUGIN_EGRESS),
     egressTokens: parseEgressTokens(env.PLUGIN_EGRESS_TOKENS),

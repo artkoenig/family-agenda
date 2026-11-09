@@ -1,21 +1,11 @@
-# The WhatsApp bridge, built on the Debian release the image runs on, with Go's own olm, so it needs
-# no libolm. The worker runs it while an Admin has WhatsApp enabled (ADR-0011). The Go version is the
-# toolchain the bridge's go.mod asks for (go1.27.1); Renovate raises it.
-FROM golang:1.27.1-bookworm AS whatsapp-bridge
-RUN CGO_ENABLED=1 go install -tags goolm -ldflags "-s -w" go.mau.fi/mautrix-whatsapp/cmd/mautrix-whatsapp@v0.2609.0
-
 FROM node:26-bookworm-slim
 
 ENV NODE_ENV=production
 # poppler and Tesseract turn PDF attachments into text. The image ships the German and English
 # models and osd; start-up links them into the tessdata volume, where Admins add others (ADR-0012).
-# Python runs Synapse, the homeserver of the Messengers' bridges, in a virtual environment of its own.
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends poppler-utils tesseract-ocr tesseract-ocr-deu tesseract-ocr-eng tesseract-ocr-osd python3 python3-venv \
+  && apt-get install -y --no-install-recommends poppler-utils tesseract-ocr tesseract-ocr-deu tesseract-ocr-eng tesseract-ocr-osd \
   && rm -rf /var/lib/apt/lists/*
-RUN python3 -m venv /opt/synapse \
-  && /opt/synapse/bin/pip install --no-cache-dir matrix-synapse==1.163.2 psycopg2-binary==2.9.13
-COPY --from=whatsapp-bridge /go/bin/mautrix-whatsapp /usr/local/bin/mautrix-whatsapp
 # Node.js has not shipped Corepack since version 25, so it comes from npm. It reads the pnpm version
 # from the packageManager field of package.json.
 RUN npm install --global corepack@0.36.0 && corepack enable
@@ -27,9 +17,9 @@ RUN pnpm install --frozen-lockfile --prod \
   && chmod +x /usr/local/bin/family-agenda \
   && printf '#!/bin/sh\ncd /app/apps/api && exec node --import tsx src/plugins-cli.ts "$@"\n' > /usr/local/bin/plugins \
   && chmod +x /usr/local/bin/plugins \
-  && mkdir -p /var/lib/family-agenda/master-key /var/lib/family-agenda/blobs /var/lib/family-agenda/plugins /var/lib/family-agenda/tessdata /var/lib/family-agenda/matrix /var/lib/family-agenda/matrix-data \
-  && chown node:node /var/lib/family-agenda/master-key /var/lib/family-agenda/blobs /var/lib/family-agenda/plugins /var/lib/family-agenda/tessdata /var/lib/family-agenda/matrix /var/lib/family-agenda/matrix-data \
-  && chmod 700 /var/lib/family-agenda/master-key /var/lib/family-agenda/blobs /var/lib/family-agenda/matrix-data
+  && mkdir -p /var/lib/family-agenda/master-key /var/lib/family-agenda/blobs /var/lib/family-agenda/tessdata \
+  && chown node:node /var/lib/family-agenda/master-key /var/lib/family-agenda/blobs /var/lib/family-agenda/tessdata \
+  && chmod 700 /var/lib/family-agenda/master-key /var/lib/family-agenda/blobs
 
 # The release this image is built from, such as 0.3.1 or main-1a2b3c4; `dev` when built from a working tree.
 # It comes last, so that a new version does not invalidate the layers above. The app names it in

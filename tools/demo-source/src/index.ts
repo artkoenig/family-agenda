@@ -1,4 +1,4 @@
-import { sdkVersion, type IngestContext, type IngestResult, type Origin, type SourcePlugin, type StatedItem } from "@family-agenda/source-sdk";
+import type { SourceRecord } from "@family-agenda/plugin-contract";
 
 /** The days from the run's day on that the demo states Items for. */
 const daysAhead = 7;
@@ -14,33 +14,14 @@ export const demoAttributes = [
 ] as const;
 
 type Day = { date: string; weekday: number; timeZone: string };
+type Origin = SourceRecord;
+type StatedItem = Extract<SourceRecord["content"], { kind: "stated" }>["stated"];
 
 /**
- * States a week of made-up Events and Lessons, and two Tasks, starting on the day of the run, so that a preview
- * always shows an Agenda with something on today and in the days ahead. It is a developer tool
- * (`pnpm preview`) and lives outside `packages/`, so an Instance only finds it when a preview
- * mounts it into the plugins directory.
+ * A week of made-up Events and Lessons, and two Tasks, starting on the day of the run, so that a
+ * preview always shows an Agenda with something on today and in the days ahead. It is a developer
+ * tool (`pnpm preview`), served as a plugin container by the preview only.
  */
-export function createDemoPlugin(): SourcePlugin {
-  return {
-    identity: { sourceTypeId: "demo", displayName: { en: "Demo data", de: "Demodaten" }, version: "0.1.0", sdkVersion },
-    configuration: { version: 1, fields: [] },
-    setupSteps: [],
-    ingestion: {
-      mode: "polling",
-      suggestedIntervalSeconds: 3600,
-      async poll(context: IngestContext): Promise<IngestResult> {
-        await context.attributes.declare([...demoAttributes]);
-        return { origins: demoOrigins(context.now, context.timeZone), syncCursor: null };
-      },
-    },
-    health: { silentApplies: false },
-  };
-}
-
-export default createDemoPlugin();
-
-/** What the demo states for a run at `now` in the Family's time zone, in-process or over HTTP. */
 export function demoOrigins(now: Date, timeZone: string): Origin[] {
   return originsFor(daysFrom(now, timeZone));
 }

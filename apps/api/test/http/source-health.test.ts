@@ -1,5 +1,3 @@
-import { rm } from "node:fs/promises";
-import { join } from "node:path";
 import type { SourceId } from "@family-agenda/domain";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { bootHttpForTest, sessionCookieOf, type HttpTestInstance } from "../support/http";
@@ -108,7 +106,7 @@ describe("Source health in the Admin area and on Agendas", () => {
   });
 
   it("shows a Source whose plugin is no longer installed as Failing", async () => {
-    await rm(join(instance.workspacePackages, "calendar"), { recursive: true });
+    instance.uninstallPlugin("calendar");
     await instance.restart();
 
     const page = await sourcesPage();

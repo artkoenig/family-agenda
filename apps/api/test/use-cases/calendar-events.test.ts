@@ -1,11 +1,9 @@
-import { rm } from "node:fs/promises";
-import { join } from "node:path";
-import type { Origin, StatedEvent } from "@family-agenda/source-sdk";
+import type { Origin, StatedEvent } from "../support/test-source-plugin";
 import { openAgendaAccess } from "@family-agenda/application";
 import type { AgendaId } from "@family-agenda/domain";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { bootForTest, type TestInstance } from "../support/boot";
-import { testPluginControls, writeTestPluginPackage } from "../support/test-source-plugin";
+import { testPluginControls } from "../support/test-source-plugin";
 import { openTimeline } from "../support/timeline";
 
 const minutes = 60 * 1000;
@@ -26,7 +24,7 @@ describe("calendar Events on the timeline", () => {
   beforeEach(async () => {
     // The clock starts on Monday 2026-09-14 at 09:00 in Berlin.
     instance = await bootForTest();
-    await writeTestPluginPackage(instance.workspacePackages, { sourceTypeId: "calendar" });
+    await instance.installPlugin({ sourceTypeId: "calendar" });
     await instance.restart();
     await instance.app.sourceTypes.enable("calendar");
     const added = await instance.app.sources.add({
@@ -184,7 +182,7 @@ describe("calendar Events on the timeline", () => {
     const [source] = await instance.app.sources.list();
     await arrive(piano());
 
-    testPluginControls.emit("calendar", [piano({ title: "x".repeat(501) }), entry("dentist", { title: "Dentist", span: timed("2026-09-14T13:00:00Z", "2026-09-14T13:30:00Z") })]);
+    testPluginControls.emit("calendar", [piano({ title: " " }), entry("dentist", { title: "Dentist", span: timed("2026-09-14T13:00:00Z", "2026-09-14T13:30:00Z") })]);
     instance.clock.advance(15 * minutes);
     const report = await instance.app.polling.pollDue();
 
@@ -195,7 +193,7 @@ describe("calendar Events on the timeline", () => {
     const [since] = await instance.query("SELECT invalid_records_since FROM source_run");
 
     // Still invalid on the next run, the warning stays as it was.
-    await arrive(piano({ title: "x".repeat(501) }));
+    await arrive(piano({ title: " " }));
     expect(await instance.query("SELECT invalid_records_since FROM source_run")).toEqual([since]);
 
     await arrive(piano());
@@ -246,7 +244,7 @@ describe("polling Sources", () => {
   beforeEach(async () => {
     instance = await bootForTest();
     for (const sourceTypeId of ["school-cal", "club-cal", "idle-cal"]) {
-      await writeTestPluginPackage(instance.workspacePackages, { sourceTypeId });
+      await instance.installPlugin({ sourceTypeId });
     }
     await instance.restart();
     await instance.app.sourceTypes.enable("school-cal");
@@ -325,16 +323,15 @@ describe("polling Sources", () => {
 
     const report = await instance.app.polling.pollDue();
 
-    expect(report.failed).toEqual([
-      { sourceId: school, kind: "definite", message: "The plugin emitted invalid Origins: the Origin has no external id" },
-    ]);
+    // The plugin kit refuses to send them, so the run fails with the plugin's own error.
+    expect(report.failed).toEqual([{ sourceId: school, kind: "temporary", message: expect.stringContaining("the plugin answered invalidly") as unknown }]);
     const page = await openTimeline(instance.app, created.id, { access: openAgendaAccess });
     expect(page?.days.flatMap((day) => day.items)).toEqual([]);
   });
 
   it("does not run a Source whose plugin was removed", async () => {
     await add("school-cal");
-    await rm(join(instance.workspacePackages, "school-cal"), { recursive: true });
+    instance.uninstallPlugin("school-cal");
     await instance.restart();
 
     expect(await instance.app.polling.pollDue()).toEqual({ ran: [], failed: [], invalid: [], refused: [] });

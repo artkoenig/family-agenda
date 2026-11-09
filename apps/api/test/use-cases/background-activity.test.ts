@@ -1,11 +1,11 @@
-import type { Origin } from "@family-agenda/source-sdk";
+import type { Origin } from "../support/test-source-plugin";
 import { openAgendaAccess, type CurrentActivity, type ExtractionRequest, type ExtractionResult } from "@family-agenda/application";
 import type { AgendaId } from "@family-agenda/domain";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { bootForTest, type TestInstance } from "../support/boot";
 import { InMemoryBlobStore } from "../support/in-memory-blob-store";
 import { ScriptedExtractor } from "../support/scripted-extractor";
-import { testPluginControls, writeTestPluginPackage } from "../support/test-source-plugin";
+import { testPluginControls } from "../support/test-source-plugin";
 
 const minutes = 60 * 1000;
 
@@ -33,7 +33,7 @@ describe("The worker's activity on an Agenda", () => {
   beforeEach(async () => {
     extractor = new ObservedExtractor();
     instance = await bootForTest({ extractor, blobStore: new InMemoryBlobStore() });
-    await writeTestPluginPackage(instance.workspacePackages, { sourceTypeId: "mailbox", needsLlm: true });
+    await instance.installPlugin({ sourceTypeId: "mailbox", needsLlm: true });
     await instance.restart();
     await instance.app.sourceTypes.enable("mailbox");
     await instance.app.sources.add({ sourceTypeId: "mailbox", plain: { url: "imap.example.org" }, secrets: {} });

@@ -119,14 +119,14 @@ describe("the pages in the Family Language", () => {
       displayName: { en: "Calendar", de: "Kalender" },
       description: { en: "Reads a calendar.", de: "Liest einen Kalender." },
       riskNotice: { en: "Reads everything.", de: "Liest alles." },
-      configuration: `{ version: 1, fields: [{ key: "url", label: { en: "Address", de: "Adresse" }, secret: false, required: true, description: { en: "Where it lives.", fr: "Où il vit." } }] }`,
+      configuration: { version: 1, fields: [{ key: "url", label: { en: "Address", de: "Adresse" }, secret: false, required: true, description: { en: "Where it lives.", fr: "Où il vit." } }] },
     };
     const plain: TestPluginPackage = {
       sourceTypeId: "mailbox",
       displayName: "Mailbox",
       description: "Reads a mailbox.",
       riskNotice: "Reads all mail.",
-      configuration: `{ version: 1, fields: [{ key: "host", label: "Mail server", secret: false, required: true, description: "Such as imap.example.org." }] }`,
+      configuration: { version: 1, fields: [{ key: "host", label: "Mail server", secret: false, required: true, description: "Such as imap.example.org." }] },
     };
 
     it("are shown in the Family Language, in English where a language is missing", async () => {

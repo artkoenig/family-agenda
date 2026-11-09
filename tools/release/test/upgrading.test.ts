@@ -3,11 +3,10 @@ import { deriveUpgrading, postgresMajorOf, type Snapshot } from "../src/upgradin
 
 const docs = "https://github.com/artkoenig/family-agenda/blob/v0.3.0/docs/upgrading.md";
 const compose = (postgres: string) => `services:\n  postgres:\n    image: ${postgres}\n    restart: unless-stopped\n`;
-const sdk = (version: string) => ({ version });
-const snapshot = (migrations: Record<string, string>, postgres = "postgres:17", sdkVersion: string | null = "1.0.0"): Snapshot => ({
+const snapshot = (migrations: Record<string, string>, postgres = "postgres:17", inProcessPlugins = false): Snapshot => ({
   migrations,
   compose: compose(postgres),
-  sdk: sdkVersion === null ? null : sdk(sdkVersion),
+  inProcessPlugins,
 });
 
 const initial = "CREATE TABLE family (id uuid PRIMARY KEY);";
@@ -120,7 +119,7 @@ describe("the Upgrading section of a release", () => {
   it("says nothing about Postgres when only its minor version, its tag style or neither side names a major version", () => {
     expect(section(released, snapshot(released.migrations, "postgres:17.5"))).not.toContain("Postgres");
     expect(section(released, snapshot(released.migrations, "postgres:latest"))).not.toContain("Postgres");
-    const noCompose = { migrations: released.migrations, compose: "services: {}", sdk: null };
+    const noCompose = { migrations: released.migrations, compose: "services: {}", inProcessPlugins: false };
     expect(section(noCompose, noCompose)).not.toContain("Postgres");
   });
 
@@ -135,37 +134,30 @@ describe("the Upgrading section of a release", () => {
   });
 });
 
-describe("the SDK in the Upgrading section", () => {
-  const withSdk = (from: string | null, to: string | null) => section(snapshot(released.migrations, "postgres:17", from), snapshot(released.migrations, "postgres:17", to));
+describe("the switch-over to plugin containers in the Upgrading section", () => {
+  it("requires a start over, not that data is kept, when plugins no longer run in-process", () => {
+    const previous = snapshot(released.migrations, "postgres:17", true);
 
-  it("says nothing when the SDK did not change, or one side has no SDK to compare", () => {
-    expect(withSdk("1.0.0", "1.0.0")).toBe("## Upgrading\n\n- **Data is kept.**\n");
-    expect(withSdk(null, "1.0.0")).not.toContain("SDK");
-    expect(withSdk("1.0.0", null)).not.toContain("SDK");
+    const text = section(previous, released);
+
+    expect(text).toContain("- **Start over required.** Source Types now run as plugin containers, listed in `plugins.yml` (ADR-0001)");
+    expect(text).toContain(`${docs}#start-over`);
+    expect(text).not.toContain("Data is kept");
   });
 
-  it("says that plugins keep working when the SDK got a new minor version", () => {
-    expect(withSdk("1.0.0", "1.1.0")).toContain("- **SDK 1.0.0 → 1.1.0.** Source plugins built for SDK 1.0.0 keep working.\n");
+  it("says nothing of it once both releases run plugin containers, or both in-process", () => {
+    expect(section(released, released)).toBe("## Upgrading\n\n- **Data is kept.**\n");
+    const inProcess = snapshot(released.migrations, "postgres:17", true);
+    expect(section(inProcess, inProcess)).toBe("## Upgrading\n\n- **Data is kept.**\n");
   });
 
-  it.each([
-    ["1.4.0", "2.0.0"],
-    ["0.2.0", "0.3.0"],
-    ["1.2.0", "1.1.0"],
-  ])("says that plugins built for SDK %s will not load on %s", (from, to) => {
-    const text = withSdk(from, to);
-
-    expect(text).toContain(`**Source plugins built for SDK ${from} will not load.** The SDK changed from ${from} to ${to}.`);
-    expect(text).toContain("update the ones you added to the `plugins` volume");
-  });
-
-  it("lists the SDK after the data and Postgres lines", () => {
-    const previous = snapshot(released.migrations, "postgres:17", "1.0.0");
-    const current = snapshot({ "0000_initial.sql": "CREATE TABLE x (id int);" }, "postgres:18", "2.0.0");
+  it("lists a Postgres change after it", () => {
+    const previous = snapshot(released.migrations, "postgres:17", true);
+    const current = snapshot(released.migrations, "postgres:18");
 
     const lines = section(previous, current).split("\n").filter((line) => line.startsWith("- "));
 
-    expect(lines.map((line) => /\*\*([^*]+)\*\*/.exec(line)?.[1])).toEqual(["Start over required.", "Postgres major upgrade: dump and restore required.", "Source plugins built for SDK 1.0.0 will not load."]);
+    expect(lines.map((line) => /\*\*([^*]+)\*\*/.exec(line)?.[1])).toEqual(["Start over required.", "Postgres major upgrade: dump and restore required."]);
   });
 });
 

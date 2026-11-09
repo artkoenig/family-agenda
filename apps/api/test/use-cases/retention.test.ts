@@ -1,9 +1,9 @@
-import type { Origin } from "@family-agenda/source-sdk";
+import type { Origin } from "../support/test-source-plugin";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { bootForTest, type TestInstance } from "../support/boot";
 import { InMemoryBlobStore } from "../support/in-memory-blob-store";
 import { extracted, extractedTask, ScriptedExtractor } from "../support/scripted-extractor";
-import { testPluginControls, writeTestPluginPackage } from "../support/test-source-plugin";
+import { testPluginControls } from "../support/test-source-plugin";
 
 const minutes = 60 * 1000;
 const days = 24 * 60 * minutes;
@@ -37,8 +37,8 @@ describe("Retention: purging the content of messages", () => {
     extractor.script("Turnbeutel", [], [extractedTask({ title: "Turnbeutel mitbringen", bring: ["Turnbeutel"], evidence: "Turnbeutel" })]);
     blobs = new InMemoryBlobStore();
     instance = await bootForTest({ extractor, blobStore: blobs });
-    await writeTestPluginPackage(instance.workspacePackages, { sourceTypeId: "chat", needsLlm: true });
-    await writeTestPluginPackage(instance.workspacePackages, { sourceTypeId: "calendar" });
+    await instance.installPlugin({ sourceTypeId: "chat", needsLlm: true });
+    await instance.installPlugin({ sourceTypeId: "calendar" });
     await instance.restart();
     for (const type of ["chat", "calendar"]) {
       await instance.app.sourceTypes.enable(type);

@@ -1,18 +1,18 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { bootHttpForTest, sessionCookieOf, type HttpTestInstance } from "../support/http";
-import { testPluginControls } from "../support/test-source-plugin";
+import { testPluginControls, type TestConfiguration } from "../support/test-source-plugin";
 
 const password = "correct horse battery";
 
 /** A Source Type whose Sources each use one Messenger and pick their chats once set up. */
-const configuration = `{
+const configuration: TestConfiguration = {
   version: 1,
   fields: [
     { key: "messenger", label: "Messenger", secret: false, required: true },
-    { key: "chats", label: "Chats", secret: false, required: false, choices: () => Promise.resolve([]) },
+    { key: "chats", label: "Chats", secret: false, required: false, choices: true },
     { key: "account", label: "Account", secret: false, required: true, setByPlugin: true },
   ],
-}`;
+};
 
 describe("Sources of a Source Type with a catalogue and a live setup step", () => {
   let instance: HttpTestInstance;

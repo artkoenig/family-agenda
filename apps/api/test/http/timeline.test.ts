@@ -1,4 +1,4 @@
-import type { Origin, StatedEvent } from "@family-agenda/source-sdk";
+import type { Origin, StatedEvent } from "../support/test-source-plugin";
 import ICAL from "ical.js";
 import { assignSource } from "../support/assign";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";

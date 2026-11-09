@@ -3,7 +3,6 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { bootHttpForTest, sessionCookieOf, type HttpTestInstance } from "../support/http";
 import { assignSource } from "../support/assign";
 import { photos } from "../support/photos";
-import { writeTestPluginPackage } from "../support/test-source-plugin";
 
 const password = "correct horse battery";
 
@@ -229,7 +228,7 @@ describe("Agendas over HTTP", () => {
 
   it("tells an Admin which Source Attributes keep a Family Member from being removed", async () => {
     const cookie = await signIn();
-    await writeTestPluginPackage(instance.workspacePackages, { sourceTypeId: "calendar" });
+    await instance.installPlugin({ sourceTypeId: "calendar" });
     await instance.restart();
     await instance.app.sourceTypes.enable("calendar");
     const added = await instance.app.sources.add({ sourceTypeId: "calendar", plain: { url: "https://calendar.example.org" }, secrets: {} });

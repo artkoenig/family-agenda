@@ -1,11 +1,11 @@
-import type { Origin } from "@family-agenda/source-sdk";
+import type { Origin } from "../support/test-source-plugin";
 import { openAgendaAccess } from "@family-agenda/application";
 import type { AgendaId } from "@family-agenda/domain";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { bootForTest, type TestInstance } from "../support/boot";
 import { InMemoryBlobStore } from "../support/in-memory-blob-store";
 import { extracted, ScriptedExtractor } from "../support/scripted-extractor";
-import { testPluginControls, writeTestPluginPackage } from "../support/test-source-plugin";
+import { testPluginControls } from "../support/test-source-plugin";
 import { openTimeline } from "../support/timeline";
 
 const minutes = 60 * 1000;
@@ -37,7 +37,7 @@ describe("Events extracted from mail", () => {
     // The clock starts on Monday 2026-09-14 at 09:00 in Berlin.
     extractor = new ScriptedExtractor();
     instance = await bootForTest({ extractor, blobStore: new InMemoryBlobStore() });
-    await writeTestPluginPackage(instance.workspacePackages, { sourceTypeId: "mailbox", needsLlm: true });
+    await instance.installPlugin({ sourceTypeId: "mailbox", needsLlm: true });
     await instance.restart();
     await instance.app.sourceTypes.enable("mailbox");
     const added = await instance.app.sources.add({ sourceTypeId: "mailbox", plain: { url: "imap.example.org" }, secrets: {} });
@@ -195,7 +195,7 @@ describe("Events extracted from mail", () => {
   it("lets mails wait while no LLM endpoint is configured, and extracts each only once", async () => {
     const fresh = await bootForTest({ extractor, blobStore: new InMemoryBlobStore() });
     try {
-      await writeTestPluginPackage(fresh.workspacePackages, { sourceTypeId: "inbox", needsLlm: true });
+      await fresh.installPlugin({ sourceTypeId: "inbox", needsLlm: true });
       await fresh.restart();
       await fresh.app.sourceTypes.enable("inbox");
       await fresh.app.sources.add({ sourceTypeId: "inbox", plain: { url: "imap.example.org" }, secrets: {} });
@@ -229,7 +229,7 @@ describe("Events extracted from mail", () => {
     const blobs = new InMemoryBlobStore();
     const fresh = await bootForTest({ extractor, blobStore: blobs });
     try {
-      await writeTestPluginPackage(fresh.workspacePackages, { sourceTypeId: "inbox", needsLlm: true });
+      await fresh.installPlugin({ sourceTypeId: "inbox", needsLlm: true });
       await fresh.restart();
       await fresh.app.sourceTypes.enable("inbox");
       await fresh.app.sources.add({ sourceTypeId: "inbox", plain: { url: "imap.example.org" }, secrets: {} });
@@ -250,7 +250,7 @@ describe("Events extracted from mail", () => {
     const blobs = new InMemoryBlobStore();
     const fresh = await bootForTest({ extractor, blobStore: blobs });
     try {
-      await writeTestPluginPackage(fresh.workspacePackages, { sourceTypeId: "inbox", needsLlm: true });
+      await fresh.installPlugin({ sourceTypeId: "inbox", needsLlm: true });
       await fresh.restart();
       await fresh.app.sourceTypes.enable("inbox");
       await fresh.app.sources.add({ sourceTypeId: "inbox", plain: { url: "imap.example.org" }, secrets: {} });

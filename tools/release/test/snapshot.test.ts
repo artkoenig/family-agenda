@@ -48,7 +48,7 @@ describe("reading the snapshot of a release from Git", () => {
     expect(readSnapshot(repo, "v0.1.0")).toEqual({
       migrations: { "0000_initial.sql": "CREATE TABLE a (id int);" },
       compose: "image: postgres:17\n",
-      sdk: null,
+      inProcessPlugins: false,
     });
   });
 
@@ -61,11 +61,11 @@ describe("reading the snapshot of a release from Git", () => {
     expect(compose).toBe("image: postgres:18\n");
   });
 
-  it("reads the SDK's version where the ref has it, and none where it has not", () => {
+  it("reads whether a ref ran Source plugins in-process, by its SDK package", () => {
     const repo = repoWithTwoReleases();
 
-    expect(readSnapshot(repo, "HEAD").sdk).toEqual({ version: "1.2.0" });
-    expect(readSnapshot(repo, "v0.1.0").sdk).toBeNull();
+    expect(readSnapshot(repo, "HEAD").inProcessPlugins).toBe(true);
+    expect(readSnapshot(repo, "v0.1.0").inProcessPlugins).toBe(false);
   });
 
   it("reads the plugin contract's openapi.json where the ref has it, and none where it has not", () => {

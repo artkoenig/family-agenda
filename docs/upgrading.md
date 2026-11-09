@@ -11,10 +11,8 @@ Every GitHub Release has an **Upgrading** section that is written from the chang
 
 - **Data is kept.** The database is migrated when the Instance starts, if the release has new migrations.
 - **This migration removes data**, with the name of the migration file. Make a backup first and read the release.
-- **Start over required.** The data model changed in a way that cannot be migrated. See [Start over](#start-over).
+- **Start over required.** The data model changed in a way that cannot be migrated, or Source Types moved from in-process plugins to plugin containers listed in `plugins.yml`. See [Start over](#start-over).
 - **Postgres major upgrade: dump and restore required.** The Postgres version of the compose file changed. See [Restore](#restore).
-- **Source plugins built for SDK X will not load.** The SDK that Source plugins are built against got a new major version. The plugins that come with the app are updated with it; rebuild the ones you added to the `plugins` volume.
-- **SDK X → Y.** The SDK got a new minor version. Source plugins built for the old one keep working.
 
 Releases before 1.0.0 may ask you to start over. Read the section before every upgrade.
 
@@ -22,7 +20,7 @@ Releases before 1.0.0 may ask you to start over. Read the section before every u
 
 Do this before every upgrade, and before switching between `main` and a release. The backup is a dump of all Postgres databases plus the volumes below. Run the commands in the folder of your `compose.yaml`.
 
-1. Dump Postgres. Use `pg_dumpall`, not a dump of one database: Synapse, which the Messengers use, keeps its own database on the same Postgres server.
+1. Dump Postgres. Use `pg_dumpall`, not a dump of one database: plugin companions with `database: true`, such as the Messengers' Synapse, keep their own databases on the same Postgres server.
 
    ```bash
    docker compose exec -T postgres pg_dumpall -U family_agenda > family-agenda-postgres.sql
@@ -34,10 +32,10 @@ Do this before every upgrade, and before switching between `main` and a release.
    docker compose stop api worker mdns
    ```
 
-3. Copy the volumes that hold data. `tessdata` is left out: Tesseract models can be downloaded again.
+3. Copy the volumes that hold data: `blobs` and the plugin volumes (`plugin-<id>-<name>`, see [Plugins](configuration.md#plugins)), and keep `plugins.yml`. `tessdata` is left out: Tesseract models can be downloaded again.
 
    ```bash
-   for volume in blobs matrix-data matrix-instance plugins; do
+   for volume in blobs $(docker volume ls -q --filter name=family-agenda_plugin- | sed s/^family-agenda_//); do
      docker run --rm -v "family-agenda_${volume}:/data:ro" -v "$PWD:/backup" alpine \
        tar czf "/backup/family-agenda-${volume}.tar.gz" -C /data .
    done
@@ -81,11 +79,11 @@ When a release says **Start over required**, or an Instance refuses to start bec
 
 ```bash
 docker compose down
-docker volume rm family-agenda_postgres-data family-agenda_blobs family-agenda_matrix-data family-agenda_matrix-instance
+docker volume rm family-agenda_postgres-data family-agenda_blobs
 docker compose up -d
 ```
 
-The `master-key`, `plugins` and `tessdata` volumes can stay. Keep the `master-key` volume if you want the Recovery Kit you saved to stay valid for the credentials you enter again. If you remove it, the first start creates a new master key and a new Recovery Kit, and the old kit opens nothing.
+Remove the volumes of plugins you start over with too (`docker volume ls`, those named `family-agenda_plugin-*`); coming from in-process plugins, also remove the old `plugins`, `matrix-data` and `matrix-instance` volumes, and set up `plugins.yml` (see [Plugins](configuration.md#plugins)). The `master-key` and `tessdata` volumes can stay. Keep the `master-key` volume if you want the Recovery Kit you saved to stay valid for the credentials you enter again. If you remove it, the first start creates a new master key and a new Recovery Kit, and the old kit opens nothing.
 
 Then open the Instance, create the first Admin, keep the Recovery Kit it shows, and add Family Members, Agendas and Sources again.
 
@@ -103,7 +101,7 @@ docker compose exec -T postgres psql -U family_agenda -d postgres < family-agend
 Messages that something exists already (the `family_agenda` role and database are created on the first start) can be ignored. Then put the volumes back, each from its archive, and start the rest:
 
 ```bash
-for volume in blobs matrix-data matrix-instance plugins; do
+for archive in family-agenda-*.tar.gz; do volume="${archive#family-agenda-}"; volume="${volume%.tar.gz}"
   docker run --rm -v "family-agenda_${volume}:/data" -v "$PWD:/backup" alpine \
     sh -c "cd /data && tar xzf /backup/family-agenda-${volume}.tar.gz"
 done

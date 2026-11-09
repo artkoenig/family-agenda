@@ -7,6 +7,15 @@
   "internalChecksFilter": "strict",
   "minimumReleaseAgeBehaviour": "timestamp-optional",
   "separateMajorMinor": false,
+  "customManagers": [
+    {
+      "description": "The images the default plugins.yml pins: a tag, and a digest where there is one",
+      "customType": "regex",
+      "managerFilePatterns": ["/^plugins\\.yml$/"],
+      "matchStrings": ["image:\\s*(?<depName>[^\\s@:]+):(?<currentValue>[^\\s@]+)(?:@(?<currentDigest>sha256:[a-f0-9]{64}))?"],
+      "datasourceTemplate": "docker"
+    }
+  ],
   "packageRules": [
     {
       "description": "typescript-eslint and dependency-cruiser do not support TypeScript 7 yet",

@@ -112,14 +112,12 @@ jobs:
 
       - name: Check the tools the image ships
         run: |
-          docker run --rm --entrypoint mautrix-whatsapp "$IMAGE:smoke" --version
           docker run --rm --entrypoint tesseract "$IMAGE:smoke" --version
           languages=$(docker run --rm --entrypoint tesseract "$IMAGE:smoke" --list-langs)
           for language in deu eng osd; do
             grep -qx "$language" <<< "$languages" || { echo "::error::Tesseract has no $language model"; exit 1; }
           done
           docker run --rm --entrypoint sh "$IMAGE:smoke" -c 'command -v pdftotext pdftoppm'
-          docker run --rm --entrypoint /opt/synapse/bin/python "$IMAGE:smoke" -c 'import synapse, psycopg2'
 
       # compose.yaml takes its image from FAMILY_AGENDA_VERSION, so the tag above stands in for a
       # release. mdns needs the host network and multicast, which a runner does not offer: the

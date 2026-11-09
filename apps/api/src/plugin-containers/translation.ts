@@ -68,7 +68,6 @@ export function loadedSourceType(description: Description, call: PluginCall): Lo
           },
         }
       : null,
-    services: null,
     async choices(field, context) {
       const answer = await call("fieldChoices", { field, context: runContextOf(context) });
       return answer.ok ? { ok: true, value: answer.body.choices } : { ok: false, message: answer.message };

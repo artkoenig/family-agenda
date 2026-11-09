@@ -1,11 +1,11 @@
-import type { Origin, StatedEvent } from "@family-agenda/source-sdk";
+import type { Origin, StatedEvent } from "../support/test-source-plugin";
 import { openAgendaAccess } from "@family-agenda/application";
 import type { AgendaId } from "@family-agenda/domain";
 import ICAL from "ical.js";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { icsFeed } from "../../src/http/ics-feed";
 import { bootForTest, type TestInstance } from "../support/boot";
-import { testPluginControls, writeTestPluginPackage } from "../support/test-source-plugin";
+import { testPluginControls } from "../support/test-source-plugin";
 
 const minutes = 60 * 1000;
 const days = 24 * 60 * minutes;
@@ -29,7 +29,7 @@ describe("the ICS feed of an Agenda", () => {
   beforeEach(async () => {
     // The clock starts on Monday 2026-09-14 at 09:00 in Berlin.
     instance = await bootForTest();
-    await writeTestPluginPackage(instance.workspacePackages, { sourceTypeId: "calendar" });
+    await instance.installPlugin({ sourceTypeId: "calendar" });
     await instance.restart();
     await instance.app.sourceTypes.enable("calendar");
     const added = await instance.app.sources.add({
@@ -163,12 +163,6 @@ describe("the ICS feed of an Agenda", () => {
 
     // With no Source assigned to anyone, every Event concerns the whole Family.
     expect((await feed(forMia.id))?.map((event) => event.summary)).toEqual([]);
-    expect((await feed())?.map((event) => event.summary)).toEqual(["Piano lesson"]);
-  });
-
-  it("leaves out entries stated without a time", async () => {
-    await arrive(piano, entry("broken", { title: "No time" }));
-
     expect((await feed())?.map((event) => event.summary)).toEqual(["Piano lesson"]);
   });
 

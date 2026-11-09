@@ -8,6 +8,7 @@
     "@family-agenda/api": "workspace:*",
     "@family-agenda/application": "workspace:*",
     "@family-agenda/demo-source": "workspace:*",
-    "@family-agenda/domain": "workspace:*"
+    "@family-agenda/domain": "workspace:*",
+    "@family-agenda/plugin-kit": "workspace:*"
   }
 }

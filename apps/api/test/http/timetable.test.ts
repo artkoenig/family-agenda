@@ -1,4 +1,4 @@
-import type { Origin, StatedLesson } from "@family-agenda/source-sdk";
+import type { Origin, StatedLesson } from "../support/test-source-plugin";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { assignSource } from "../support/assign";
 import { bootHttpForTest, type HttpTestInstance } from "../support/http";

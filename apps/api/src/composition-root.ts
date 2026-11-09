@@ -1,5 +1,4 @@
 import { mkdir } from "node:fs/promises";
-import { fileURLToPath } from "node:url";
 import {
   Argon2idPasswordHasher,
   CommandLineTextExtractor,
@@ -48,7 +47,6 @@ import {
   createSecretSweep,
   createSourceAccess,
   createSourceHealth,
-  createServiceSupervision,
   createSourcePolling,
   createSourceTypeAccess,
   createTaskAccess,
@@ -73,7 +71,6 @@ import {
   type Retention,
   type SecretSweep,
   type SourceAccess,
-  type ServiceSupervision,
   type SourcePolling,
   type SourceTypeAccess,
   type TextExtractor,
@@ -81,12 +78,8 @@ import {
   type AgendaAccess,
 } from "@family-agenda/application";
 import type { PluginBinding } from "./plugin-containers/bindings";
-import { CombinedRegistry } from "./plugin-containers/combined-registry";
 import { PluginContainers } from "./plugin-containers/registry";
 import type { PluginContainerOptions } from "./plugin-containers/transport";
-import { SourceRegistry } from "./source-registry";
-
-const defaultWorkspacePackages = fileURLToPath(new URL("../../../packages", import.meta.url));
 
 /** Where the Instance keeps its data: a Postgres server, or a connection made some other way. */
 export type DatabaseConfig =
@@ -101,20 +94,16 @@ export type ApplicationConfig = DatabaseConfig & {
   masterKeyFile: string;
   /** Where files such as photos are kept, outside Postgres. */
   blobDirectory: string;
-  /** The `plugins/` volume, for Source plugins an operator adds to a stock image. */
-  pluginDirectory: string;
   /** The `tessdata` volume of Tesseract models, bundled and downloaded (ADR-0012). */
   tessdataDirectory: string;
   /** Where the image keeps the Tesseract models it ships, linked into the volume on start. */
   bundledTessdataDirectory: string | null;
   /** Replaces downloading from `tessdata_fast`, such as with canned models and their checksums. */
   tessdataCatalog?: TessdataCatalog;
-  /** Source Types whose plugins run in containers of their own, by URL (ADR-0001); they win over plugins in-process. */
+  /** The Source Types, whose plugins run in containers of their own, by URL (ADR-0001). */
   pluginContainers?: PluginBinding[];
   /** Replaces the timeouts of the plugin contract, such as in a test of a plugin that does not answer. */
   pluginContainerOptions?: PluginContainerOptions;
-  /** Where the Source plugins shipped with Family Agenda are; by default the workspace's packages. */
-  workspacePackages?: string;
   /** The IANA time zone the Family lives in; by default the one of the process (`TZ`). */
   timeZone?: string;
   clock?: Clock;
@@ -152,8 +141,6 @@ export type Application = {
   /** Which Family Members the Items of a Source's Origins concern. */
   /** Runs the Sources that are due; the worker does on each tick. */
   polling: SourcePolling;
-  /** Starts and stops the programs of Source Types, such as a homeserver; only the worker does. */
-  services: ServiceSupervision;
   llmEndpoint: LlmEndpointAccess;
   /** Signing in through the Identity Provider, alongside the password. */
   singleSignOn: SingleSignOn;
@@ -168,14 +155,12 @@ export type Application = {
 function resolveDefaults(config: ApplicationConfig): {
   clock: Clock;
   timeZone: string;
-  workspacePackages: string;
   extractor: Extractor;
   textExtractor: TextExtractor;
 } {
   return {
     clock: config.clock ?? new SystemClock(),
     timeZone: config.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
-    workspacePackages: config.workspacePackages ?? defaultWorkspacePackages,
     extractor: config.extractor ?? new OpenAiCompatibleExtractor(),
     textExtractor: config.textExtractor ?? new CommandLineTextExtractor({ tessdataDirectory: config.tessdataDirectory }),
   };
@@ -210,7 +195,7 @@ export async function bootApplication(config: ApplicationConfig): Promise<Applic
     return await loadMasterKey(postgres, config.masterKeyFile);
   });
 
-  const { clock, timeZone, workspacePackages, extractor, textExtractor } = resolveDefaults(config);
+  const { clock, timeZone, extractor, textExtractor } = resolveDefaults(config);
   const { secrets, blobs, tessdataCatalog } = resolveStores(config, postgres, masterKey);
   const families = new PostgresFamilyRepository(postgres.db);
 
@@ -241,10 +226,7 @@ export async function bootApplication(config: ApplicationConfig): Promise<Applic
 
   const items = new PostgresItemRepository(postgres.db);
   const activity = createActivityLog({ clock, activities: new PostgresActivityRepository(postgres.db) });
-  const registry = new CombinedRegistry([
-    await PluginContainers.connect(config.pluginContainers ?? [], config.pluginContainerOptions),
-    await SourceRegistry.discover([workspacePackages, config.pluginDirectory]),
-  ]);
+  const registry = await PluginContainers.connect(config.pluginContainers ?? [], config.pluginContainerOptions);
   const sourceTypeRepository = new PostgresSourceTypeRepository(postgres.db);
   const sourceRepository = new PostgresSourceRepository(postgres.db);
   const sourceHealth = createSourceHealth({
@@ -302,7 +284,6 @@ export async function bootApplication(config: ApplicationConfig): Promise<Applic
     blobs,
     activity,
   });
-  const services = createServiceSupervision({ registry, sourceTypes: sourceTypeRepository, catalogues: catalogueRepository });
   const endpoints = new PostgresLlmEndpointRepository(postgres.db);
   const llmEndpoint = createLlmEndpointAccess({
     clock,
@@ -361,7 +342,6 @@ export async function bootApplication(config: ApplicationConfig): Promise<Applic
     catalogues,
     sources,
     polling,
-    services,
     llmEndpoint,
     singleSignOn,
     extraction,

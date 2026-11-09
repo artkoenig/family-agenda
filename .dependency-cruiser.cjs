@@ -22,10 +22,10 @@ module.exports = {
     },
     {
       name: "adapters-implement-application-ports",
-      comment: "Adapters know the domain and application, never the apps, contracts or plugins.",
+      comment: "Adapters know the domain and application, never the apps or contracts.",
       severity: "error",
       from: { path: "^packages/adapters/" },
-      to: { path: "^(apps/|packages/(contracts|source-[^/]+)/)" },
+      to: { path: "^(apps/|packages/contracts/)" },
     },
     {
       name: "contracts-import-only-zod",
@@ -46,22 +46,6 @@ module.exports = {
       severity: "error",
       from: { path: "^packages/plugin-kit/" },
       to: { pathNot: ["^packages/(plugin-kit|plugin-contract)/", "/node_modules/(zod|vitest)/"], dependencyTypesNot: ["core"] },
-    },
-    {
-      name: "source-sdk-imports-no-family-agenda-package",
-      severity: "error",
-      from: { path: "^packages/source-sdk/" },
-      to: { path: "^(apps/|packages/(?!source-sdk/)|@family-agenda/(?!source-sdk$))" },
-    },
-    {
-      name: "source-plugins-import-only-source-sdk",
-      comment: "The SDK is the only Family Agenda package a plugin may import (ADR-0010).",
-      severity: "error",
-      from: { path: "^packages/(source-(?!sdk/)[^/]+)/" },
-      to: {
-        path: "^(apps/|packages/|@family-agenda/(?!source-sdk$))",
-        pathNot: "^packages/($1|source-sdk)/",
-      },
     },
     {
       name: "packages-do-not-import-apps",

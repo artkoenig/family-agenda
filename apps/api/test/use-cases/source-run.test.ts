@@ -1,4 +1,4 @@
-import type { Origin } from "@family-agenda/source-sdk";
+import type { Origin } from "../support/test-source-plugin";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { bootForTest, type TestInstance } from "../support/boot";
 import { testPluginControls } from "../support/test-source-plugin";

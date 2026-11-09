@@ -161,8 +161,7 @@ jobs:
           fail() { echo "::error::$1"; exit 1; }
 
           # The version of the packages that make up the app, and the version compose.yaml runs by default.
-          # The Source plugins and demo-source keep the versions of their own identities (ADR-0010),
-          # source-sdk the one of its API (`sdkVersion`), plugin-contract is versioned by `contractVersion`,
+          # demo-source keeps the version of its own identity, plugin-contract is versioned by `contractVersion`,
           # and tools/ is not shipped.
           for file in apps/*/package.json packages/adapters/package.json packages/application/package.json packages/contracts/package.json packages/domain/package.json; do
             sed -i -E "s/^  \"version\": \"[^\"]*\"/  \"version\": \"$VERSION\"/" "$file"

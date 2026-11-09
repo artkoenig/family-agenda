@@ -1,27 +1,26 @@
-import { cp, symlink } from "node:fs/promises";
-import { join } from "node:path";
-import { fileURLToPath } from "node:url";
+import type { Server } from "node:http";
+import type { AddressInfo } from "node:net";
 import { openAgendaAccess } from "@family-agenda/application";
+import type { SourceTypeId } from "@family-agenda/domain";
+import { servePlugin } from "@family-agenda/plugin-kit/server";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { bootForTest, type TestInstance } from "../../../apps/api/test/support/boot";
 import { openTimeline } from "../../../apps/api/test/support/timeline";
+import { demoPlugin } from "../../demo-source/src/plugin";
 import { seedDemoFamily } from "../src/seed";
-
-const demoSource = fileURLToPath(new URL("../../demo-source", import.meta.url));
 
 describe("seeding a demo Family into an Instance", () => {
   let instance: TestInstance;
+  let server: Server;
   beforeEach(async () => {
-    instance = await bootForTest();
-    // As a preview does: the demo Source plugin sits in the plugins directory, outside the image's own packages.
-    const installed = join(instance.pluginDirectory, "demo-source");
-    await cp(demoSource, installed, { recursive: true, filter: (path) => !path.includes("node_modules") });
-    // In the image Node's loader hands the plugin the SDK (ADR-0010); Vitest's does not, so the plugin brings its own.
-    await symlink(join(demoSource, "node_modules"), join(installed, "node_modules"));
-    await instance.restart();
+    // As a preview does: the demo Source runs as a plugin container of its own.
+    server = await servePlugin(demoPlugin, { host: "127.0.0.1" });
+    const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    instance = await bootForTest({ pluginContainers: [{ sourceTypeId: "demo" as SourceTypeId, url }] });
   });
   afterEach(async () => {
     await instance.close();
+    await new Promise((resolve) => server.close(resolve));
   });
 
   it("gives the Family Agendas that show Events and Lessons on the days ahead", async () => {
