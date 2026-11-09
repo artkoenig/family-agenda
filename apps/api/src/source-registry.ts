@@ -230,7 +230,10 @@ function loadedSourceType(plugin: SourcePlugin): LoadedSourceType {
             suggestedIntervalSeconds: ingestion.suggestedIntervalSeconds,
             poll: (context, attributes) => run(() => ingestion.poll({ ...runContextOf(context), attributes: checkedAttributes(attributes) })),
           }
-        : { mode: "push" },
+        : {
+            mode: "push",
+            receive: (context, payload, attributes) => run(() => ingestion.receive({ ...runContextOf(context), attributes: checkedAttributes(attributes) }, payload)),
+          },
     silentApplies: health.silentApplies,
     migrateConfig(plain: PlainConfig, fromVersion: number): PlainConfig {
       let migrated = plain as JsonObject;

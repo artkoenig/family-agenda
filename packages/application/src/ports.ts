@@ -284,6 +284,12 @@ export type PollingIngestion = {
   poll(context: SourceRunContext, attributes: AttributeReporting): Promise<SourceRunResult>;
 };
 
+export type PushIngestion = {
+  mode: "push";
+  /** Hands the plugin a payload pushed to the core for a Source; fails like a poll. */
+  receive(context: SourceRunContext, payload: Uint8Array, attributes: AttributeReporting): Promise<SourceRunResult>;
+};
+
 /** What the core needs of a loaded plugin; it never asks which one it is. */
 export type LoadedSourceType = {
   configuration: {
@@ -294,7 +300,7 @@ export type LoadedSourceType = {
   setupSteps: SetupStepSpec[];
   /** The plain configuration of `fromVersion` migrated to the current version. */
   migrateConfig: (plain: PlainConfig, fromVersion: number) => PlainConfig;
-  ingestion: PollingIngestion | { mode: "push" };
+  ingestion: PollingIngestion | PushIngestion;
   /** Whether its Sources count as Silent when no new Origin comes for a while. */
   silentApplies: boolean;
   /** What an Admin enables within it, such as Messengers; null if it has none. */

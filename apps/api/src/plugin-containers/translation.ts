@@ -1,5 +1,5 @@
 import type { AttributeReporting, LoadedSourceType, SetupProgress, SourceRunContext, SourceRunResult } from "@family-agenda/application";
-import type { Description, EndpointName, EndpointResponse, IngestResult, RunContext } from "@family-agenda/plugin-contract";
+import { limits, type Description, type EndpointName, type EndpointResponse, type IngestResult, type RunContext } from "@family-agenda/plugin-contract";
 import type { CallResult } from "./transport";
 
 /** Calls one endpoint of a Source Type's plugin. */
@@ -42,7 +42,18 @@ export function loadedSourceType(description: Description, call: PluginCall): Lo
               return ingested(answer.body, attributes);
             },
           }
-        : { mode: "push" },
+        : {
+            mode: "push",
+            receive: async (context, payload, attributes) => {
+              const encoded = Buffer.from(payload).toString("base64");
+              if (encoded.length > limits.maxPayloadBytes) {
+                return { ok: false, kind: "definite", message: `The payload of ${payload.byteLength} bytes is too large for the plugin` };
+              }
+              const answer = await call("receive", { context: runContextOf(context), payload: encoded });
+              if (!answer.ok) return { ok: false, kind: answer.kind, message: answer.message };
+              return ingested(answer.body, attributes);
+            },
+          },
     silentApplies: description.silentApplies,
     catalogue: catalogue
       ? {

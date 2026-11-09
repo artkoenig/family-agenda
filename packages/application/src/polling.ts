@@ -10,8 +10,10 @@ import type {
   IngestedMessage,
   IngestedOrigin,
   ItemRepository,
+  AttributeReporting,
   PollingIngestion,
   SecretStore,
+  SourceRunContext,
   Source,
   SourceRepository,
   SecretRef,
@@ -21,6 +23,7 @@ import type {
   StoredFile,
   StoredMessage,
 } from "./ports";
+import { enabledSourceType } from "./enabled-source-type";
 import { readStated } from "./stated-items";
 import { runContextOf } from "./sources";
 
@@ -84,10 +87,10 @@ export function createSourcePolling(deps: PollingDeps) {
     for (const file of message.attachments) await blobs.remove(file.blob);
   }
 
-  /** Runs one Source and records what it emitted into the report. */
-  async function run(source: Source, ingestion: PollingIngestion, report: PollReport): Promise<void> {
+  /** Runs one Source, by polling it or handing it a pushed payload, and records what it emitted into the report. */
+  async function run(source: Source, ingest: Ingest, report: PollReport): Promise<void> {
     const now = clock.now();
-    const result = await ingestion.poll(await runContextOf(source, { secrets, now, timeZone }), {
+    const result = await ingest(await runContextOf(source, { secrets, now, timeZone }), {
       declare: (attributes) => sources.declareAttributes(source.id, attributes),
       archive: (externalId) => sources.archiveAttribute(source.id, externalId),
     });
@@ -203,7 +206,7 @@ function isDue(
       const progress = await activity.begin("polling", due.length);
       try {
         for (const { source, ingestion } of due) {
-          await run(source, ingestion, report);
+          await run(source, (context, attributes) => ingestion.poll(context, attributes), report);
           await progress.advance();
         }
       } finally {
@@ -211,7 +214,26 @@ function isDue(
       }
       return report;
     },
+
+    /**
+     * Hands a payload pushed to the core for a Source to its plugin, and records what it emitted as
+     * a poll would. Only a Source whose Source Type is enabled, loadable and ingests by push receives one.
+     */
+    async receive(sourceId: SourceId, payload: Uint8Array): Promise<ReceiveResult> {
+      const source = await sources.findById(sourceId);
+      if (!source) return { ok: false, problem: "unknown-source" };
+      const ingestion = (await enabledSourceType(source.sourceTypeId, { registry, sourceTypes }))?.ingestion;
+      if (ingestion?.mode !== "push") return { ok: false, problem: "not-push" };
+      const report: PollReport = { polled: [], failed: [], invalid: [], refused: [] };
+      await run(source, (context, attributes) => ingestion.receive(context, payload, attributes), report);
+      return { ok: true, report };
+    },
   };
 }
+
+type Ingest = (context: SourceRunContext, attributes: AttributeReporting) => Promise<SourceRunResult>;
+
+/** What receiving a pushed payload came to: the run as a poll reports it, or why there was none. */
+export type ReceiveResult = { ok: true; report: PollReport } | { ok: false; problem: "unknown-source" | "not-push" };
 
 export type SourcePolling = ReturnType<typeof createSourcePolling>;
