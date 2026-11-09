@@ -25,6 +25,8 @@ COPY . .
 RUN pnpm install --frozen-lockfile --prod \
   && printf '#!/bin/sh\ncd /app/apps/api && exec node --import tsx src/cli.ts "$@"\n' > /usr/local/bin/family-agenda \
   && chmod +x /usr/local/bin/family-agenda \
+  && printf '#!/bin/sh\ncd /app/apps/api && exec node --import tsx src/plugins-cli.ts "$@"\n' > /usr/local/bin/plugins \
+  && chmod +x /usr/local/bin/plugins \
   && mkdir -p /var/lib/family-agenda/master-key /var/lib/family-agenda/blobs /var/lib/family-agenda/plugins /var/lib/family-agenda/tessdata /var/lib/family-agenda/matrix /var/lib/family-agenda/matrix-data \
   && chown node:node /var/lib/family-agenda/master-key /var/lib/family-agenda/blobs /var/lib/family-agenda/plugins /var/lib/family-agenda/tessdata /var/lib/family-agenda/matrix /var/lib/family-agenda/matrix-data \
   && chmod 700 /var/lib/family-agenda/master-key /var/lib/family-agenda/blobs /var/lib/family-agenda/matrix-data

@@ -15,7 +15,8 @@
     "mutation": "stryker run",
     "crap": "vitest run --coverage --coverage.provider=v8 --coverage.reporter=json && crap-typescript --exclude .stryker-tmp/** --format text --threshold 8",
     "preview": "node --import tsx tools/preview/src/main.ts",
-    "openapi": "pnpm --filter @family-agenda/plugin-contract openapi"
+    "openapi": "pnpm --filter @family-agenda/plugin-contract openapi",
+    "plugins-schema": "node --import tsx apps/api/src/plugins-file/write-schema.ts"
   },
   "devDependencies": {
     "@barney-media/crap-typescript": "2.0.0",

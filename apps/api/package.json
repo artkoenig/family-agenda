@@ -24,7 +24,9 @@
     "hono": "^4.13.14",
     "htmx.org": "^2.0.11",
     "qrcode": "^1.5.4",
-    "tsx": "^4.23.15"
+    "tsx": "^4.23.15",
+    "yaml": "^2.9.1",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.14",
