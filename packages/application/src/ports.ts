@@ -329,6 +329,11 @@ export type LoadedSourceType = {
 /** What a plugin answered, or why asking it failed, in words an Admin can act on. */
 export type PluginAnswer<T> = { ok: true; value: T } | { ok: false; message: string };
 
+/** What the plugin answered, or `fallback` where asking it failed. */
+export function valueOr<T>(answer: PluginAnswer<T>, fallback: T): T {
+  return answer.ok ? answer.value : fallback;
+}
+
 /** A value a plugin offers, such as a chat for a choice field, with how the plugin names it. */
 export type KnownValue = { value: string; label: string };
 

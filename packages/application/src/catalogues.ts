@@ -1,4 +1,5 @@
 import { textIn, type MultilingualText, type SourceTypeId } from "@family-agenda/domain";
+import { valueOr } from "./ports";
 import type {
   CatalogueEntrySpec,
   CatalogueRepository,
@@ -46,8 +47,8 @@ export async function usableEntries(
 ): Promise<CatalogueEntrySpec[]> {
   if (!sourceType.catalogue) return [];
   const enabled = new Set((await catalogues.list(sourceTypeId)).filter((record) => record.enabled).map((record) => record.entryId));
-  const answer = await sourceType.catalogue.entries();
-  return (answer.ok ? answer.value : []).filter((entry) => entry.installed && enabled.has(entry.id));
+  // The Source form offers no entries then; the Source Type page shows why (`CatalogueSummary.problem`).
+  return valueOr(await sourceType.catalogue.entries(), []).filter((entry) => entry.installed && enabled.has(entry.id));
 }
 
 /**
@@ -73,8 +74,9 @@ export function createCatalogueAccess(deps: CataloguesDeps) {
     const { catalogue } = sourceType;
     if (!catalogue) return null;
     const answer = await catalogue.entries();
-    const entries = answer.ok ? answer.value : [];
-    await catalogues.recordDiscovered(id, entries.map((entry) => entry.id));
+    const entries = valueOr(answer, []);
+    // A plugin that failed to answer discovered nothing.
+    if (answer.ok) await catalogues.recordDiscovered(id, entries.map((entry) => entry.id));
     const records = new Map((await catalogues.list(id)).map((record) => [record.entryId, record]));
     return {
       sourceTypeId: id,

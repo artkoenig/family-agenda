@@ -187,7 +187,7 @@ describe("a Source Type's catalogue and the Sources that use it", () => {
     testPluginControls.knowValues("bridged", [{ value: "!class:local", label: "Klasse 5b" }]);
 
     const [source] = await instance.app.sources.listOfType("bridged");
-    expect(source?.choices).toEqual({ chats: [{ value: "!class:local", label: "Klasse 5b" }] });
+    expect(source?.choices).toEqual({ chats: { ok: true, value: [{ value: "!class:local", label: "Klasse 5b" }] } });
     expect(await instance.app.sources.listOfType("other")).toEqual([]);
   });
 
@@ -195,7 +195,7 @@ describe("a Source Type's catalogue and the Sources that use it", () => {
     const { id } = await addWhatsApp();
     testPluginControls.knowValues("bridged", [{ value: "!class:local", label: "Klasse 5b" }]);
 
-    expect((await instance.app.sources.find(id))?.choices).toEqual({ chats: [{ value: "!class:local", label: "Klasse 5b" }] });
+    expect((await instance.app.sources.find(id))?.choices).toEqual({ chats: { ok: true, value: [{ value: "!class:local", label: "Klasse 5b" }] } });
     expect(await instance.app.sources.edit(id, { plain: { chats: "!class:local" }, secrets: {} })).toEqual({
       ok: false,
       problem: "invalid-config",

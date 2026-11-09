@@ -520,7 +520,10 @@ describe("The Source wizard of a Source Type whose plugin runs in a container", 
         if (failing) throw new PluginError("temporary", "The portal is down.");
         return { entries: [{ id: "north", displayName: "North", description: "The north school", installed: true }] };
       },
-      configMigration: ({ plain }) => ({ plain: { ...plain, school: plain.campus, campus: null } }),
+      configMigration: ({ plain }) => {
+        if (failing) throw new PluginError("definite", "The old campus is unknown.");
+        return { plain: { ...plain, school: plain.campus, campus: null } };
+      },
     };
     server = await servePlugin(plugin, { host: "127.0.0.1" });
     instance = await bootForTest({ pluginContainers: [{ sourceTypeId: "school-portal" as SourceTypeId, url: urlOf(server) }] });
@@ -542,7 +545,7 @@ describe("The Source wizard of a Source Type whose plugin runs in a container", 
   it("creates and edits a Source with the choices its plugin offers", async () => {
     const id = await added();
 
-    expect(await instance.app.sources.find(id)).toMatchObject({ choices: { classes: [{ value: "3b", label: "Class 3b" }] }, choiceProblems: {} });
+    expect(await instance.app.sources.find(id)).toMatchObject({ choices: { classes: { ok: true, value: [{ value: "3b", label: "Class 3b" }] } } });
     expect(await instance.app.sources.edit(id, { plain: { school: "north", classes: ["3b"] }, secrets: {} })).toMatchObject({ ok: true });
     expect((await instance.app.sources.find(id))?.plain).toMatchObject({ classes: ["3b"] });
   });
@@ -551,8 +554,11 @@ describe("The Source wizard of a Source Type whose plugin runs in a container", 
     const id = await added();
     failing = true;
 
-    expect(await instance.app.sources.find(id)).toMatchObject({ choices: { classes: [] }, choiceProblems: { classes: "The account is signed out." } });
+    expect(await instance.app.sources.find(id)).toMatchObject({ choices: { classes: { ok: false, message: "The account is signed out." } } });
     expect((await instance.app.catalogues.list())[0]).toMatchObject({ problem: "The portal is down.", entries: [] });
+
+    failing = false;
+    expect((await instance.app.catalogues.list())[0]?.entries, "an entry stays enabled through the outage").toMatchObject([{ id: "north", enabled: true }]);
   });
 
   it("migrates the configuration of its Sources over REST when it is enabled", async () => {
@@ -564,5 +570,18 @@ describe("The Source wizard of a Source Type whose plugin runs in a container", 
 
     expect((await instance.app.sources.find(id))?.plain).toMatchObject({ school: "north", campus: null });
     expect(await instance.query(`select config_version from source where id = '${id}'`)).toEqual([{ config_version: 2 }]);
+  });
+
+  it("shows on a Source why its plugin could not migrate its configuration", async () => {
+    const id = await added();
+    await instance.query(`update source set config = '{"campus":"north"}', config_version = 1 where id = '${id}'`);
+    await instance.query(`update source_type set enabled = false where id = 'school-portal'`);
+    failing = true;
+
+    expect(await instance.app.sourceTypes.enable("school-portal")).toEqual({ ok: true });
+
+    const source = await instance.app.sources.find(id);
+    expect(source?.plain).toEqual({ campus: "north" });
+    expect(source?.health.problem).toEqual({ kind: "run-failed", message: expect.stringContaining("The old campus is unknown.") as unknown });
   });
 });

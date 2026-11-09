@@ -1,6 +1,7 @@
 import { textIn, type SourceTypeId } from "@family-agenda/domain";
 import { disableIfUnused, enableIfAllowed, type DisableResult, type Enableable, type EnableResult } from "./enablement";
 import type {
+  Clock,
   InstalledSourceType,
   SourceRepository,
   SourceTypeRegistry,
@@ -11,6 +12,7 @@ export type SourceTypesDeps = {
   registry: SourceTypeRegistry;
   sourceTypes: SourceTypeRepository;
   sources: SourceRepository;
+  clock: Clock;
 };
 
 export type SourceTypeSummary = InstalledSourceType & { enabled: boolean };
@@ -19,7 +21,7 @@ export type SourceTypeSummary = InstalledSourceType & { enabled: boolean };
 const problems = { unknown: "unknown-source-type", unavailable: "not-loadable", inUse: "has-sources" } as const;
 
 export function createSourceTypeAccess(deps: SourceTypesDeps) {
-  const { registry, sourceTypes, sources } = deps;
+  const { registry, sourceTypes, sources, clock } = deps;
 
   /** Brings the stored configuration of a Source Type's Sources to its plugin's version. */
   async function migrateSources(id: SourceTypeId): Promise<void> {
@@ -31,8 +33,10 @@ export function createSourceTypeAccess(deps: SourceTypesDeps) {
       let plain;
       try {
         plain = await migrateConfig(source.plain, source.configVersion);
-      } catch {
-        // The Source keeps its configuration; it fails when it runs, where its status shows it.
+      } catch (error) {
+        // The Source keeps its configuration; its status shows why, as for a failed run.
+        const message = error instanceof Error ? error.message : String(error);
+        await sources.recordFailedRun(source.id, clock.now(), { kind: "definite", message });
         continue;
       }
       await sources.migrateConfig(source.id, source.configVersion, plain, configuration.version);
