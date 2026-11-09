@@ -29,7 +29,7 @@ const previewPrefix = "fa-pr-";
  * The plugin containers come from the pull request's own generator (`plugins generate`), run in
  * its image as `user` (uid:gid), so that it writes into the worktree as the developer.
  */
-export function planPreview(pullRequest: number, repoRoot: string, user = "1000:1000"): PreviewPlan {
+export function planPreview(pullRequest: number, repoRoot: string, user: string): PreviewPlan {
   if (!Number.isInteger(pullRequest) || pullRequest < 1 || pullRequest > largestPullRequest) {
     throw new Error(`"${pullRequest}" is no pull request number`);
   }
@@ -51,24 +51,16 @@ export function planPreview(pullRequest: number, repoRoot: string, user = "1000:
     EGRESS_PROXY_IMAGE: image,
   };
   const overlay = join(repoRoot, "tools", "preview", "compose.preview.yaml");
-  /** Compose over the pull request's compose.yaml, then the generated plugins file if `withPlugins`, and the overlay last. */
-  const compose = (withPlugins: boolean, ...args: string[]): Command => ({
+  const composeWith = (files: string[], args: string[]): Command => ({
     file: "docker",
-    args: [
-      "compose",
-      "-p",
-      project,
-      "--project-directory",
-      worktree,
-      "-f",
-      join(worktree, "compose.yaml"),
-      ...(withPlugins ? ["-f", join(worktree, "compose.plugins.yaml")] : []),
-      "-f",
-      overlay,
-      ...args,
-    ],
+    args: ["compose", "-p", project, "--project-directory", worktree, ...files.flatMap((file) => ["-f", file]), ...args],
     env,
   });
+  /** Compose over the pull request's compose.yaml and the overlay, before the plugins file is generated. */
+  const composeBase = (...args: string[]) => composeWith([join(worktree, "compose.yaml"), overlay], args);
+  /** Compose with the generated plugins file too, the overlay last so that it names the preview's images. */
+  const composeWithPlugins = (...args: string[]) =>
+    composeWith([join(worktree, "compose.yaml"), join(worktree, "compose.plugins.yaml"), overlay], args);
 
   return {
     project,
@@ -81,10 +73,10 @@ export function planPreview(pullRequest: number, repoRoot: string, user = "1000:
       { file: "git", args: ["fetch", "origin", `+pull/${pullRequest}/head:${ref}`] },
       { file: "git", args: ["worktree", "add", "--force", "--detach", worktree, ref] },
       { file: "cp", args: [join(repoRoot, "tools", "preview", "plugins.yml"), join(worktree, "plugins.yml")] },
-      compose(false, "build", "api", "plugin-demo"),
-      compose(false, "run", "--rm", "--no-deps", "--user", user, "-v", `${worktree}:/deployment`, "api", "plugins", "generate"),
-      compose(true, "up", "--detach", "--wait"),
-      compose(true, "exec", "-T", "api", "node", "--import", "tsx", "/preview-tools/preview/src/seed-main.ts"),
+      composeBase("build", "api", "plugin-demo"),
+      composeBase("run", "--rm", "--no-deps", "--user", user, "-v", `${worktree}:/deployment`, "api", "plugins", "generate"),
+      composeWithPlugins("up", "--detach", "--wait"),
+      composeWithPlugins("exec", "-T", "api", "node", "--import", "tsx", "/preview-tools/preview/src/seed-main.ts"),
     ],
     down: [
       { file: "docker", args: ["compose", "-p", project, "down", "--volumes", "--remove-orphans"] },

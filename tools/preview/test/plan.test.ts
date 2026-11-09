@@ -1,12 +1,28 @@
 import { describe, expect, it } from "vitest";
-import { describePreviews, planPreview } from "../src/plan";
+import { describePreviews, planPreview, type Command } from "../src/plan";
 
 const repo = "/work/family-agenda";
+const user = "501:20";
+
+/** The docker compose steps of `up`, found by what they run. */
+function composeSteps(up: Command[]) {
+  const step = (matches: (args: string[]) => boolean) => {
+    const found = up.find(({ file, args }) => file === "docker" && matches(args));
+    if (!found) throw new Error("no such step");
+    return found;
+  };
+  return {
+    build: step((args) => args.includes("build")),
+    generate: step((args) => args.includes("generate")),
+    start: step((args) => args.includes("up")),
+    seed: step((args) => args.includes("exec")),
+  };
+}
 
 describe("planning a preview of a pull request", () => {
   it("gives each pull request its own project, port, worktree and image, so two previews run side by side", () => {
-    const a = planPreview(189, repo);
-    const b = planPreview(190, repo);
+    const a = planPreview(189, repo, user);
+    const b = planPreview(190, repo, user);
 
     expect(a).toMatchObject({
       project: "fa-pr-189",
@@ -24,7 +40,7 @@ describe("planning a preview of a pull request", () => {
   });
 
   it("checks the pull request's code out, builds it and the demo Source, generates the plugin containers and waits until it is healthy before seeding", () => {
-    const { up } = planPreview(189, repo, "501:20");
+    const { up } = planPreview(189, repo, user);
 
     expect(up.map(({ file, args }) => [file, ...args].slice(0, 4).join(" "))).toEqual([
       "git fetch origin +pull/189/head:refs/previews/pr-189",
@@ -35,33 +51,34 @@ describe("planning a preview of a pull request", () => {
       "docker compose -p fa-pr-189",
       "docker compose -p fa-pr-189",
     ]);
-    const [, , , build, generate, start, seed] = up;
-    expect(build?.args.slice(-3)).toEqual(["build", "api", "plugin-demo"]);
-    expect(generate?.args.slice(-10)).toEqual(["run", "--rm", "--no-deps", "--user", "501:20", "-v", "/work/family-agenda/.previews/pr-189:/deployment", "api", "plugins", "generate"]);
-    expect(start?.args).toContain("--wait");
-    expect(start?.env).toMatchObject({ PORT: "9189", PUBLIC_URL: "http://localhost:9189" });
-    expect(seed?.args).toEqual(expect.arrayContaining(["exec", "-T", "api", "node", "--import", "tsx"]));
+    const { build, generate, start, seed } = composeSteps(up);
+    expect(build.args.slice(-3)).toEqual(["build", "api", "plugin-demo"]);
+    expect(generate.args.slice(-10)).toEqual(["run", "--rm", "--no-deps", "--user", user, "-v", "/work/family-agenda/.previews/pr-189:/deployment", "api", "plugins", "generate"]);
+    expect(up.indexOf(build)).toBeLessThan(up.indexOf(generate));
+    expect(up.indexOf(generate)).toBeLessThan(up.indexOf(start));
+    expect(up.indexOf(start)).toBeLessThan(up.indexOf(seed));
+    expect(start.args).toContain("--wait");
+    expect(start.env).toMatchObject({ PORT: "9189", PUBLIC_URL: "http://localhost:9189" });
   });
 
   it("starts the generated plugin containers, with the overlay last so that it names the preview's own images", () => {
     const worktree = "/work/family-agenda/.previews/pr-189";
     const overlay = ["-f", "/work/family-agenda/tools/preview/compose.preview.yaml"];
-    const { up } = planPreview(189, repo);
+    const { build, generate, start, seed } = composeSteps(planPreview(189, repo, user).up);
 
-    const [, , , build, generate, start, seed] = up;
     for (const beforeGenerating of [build, generate]) {
-      expect(beforeGenerating?.args).toEqual(expect.arrayContaining(["-f", `${worktree}/compose.yaml`, ...overlay]));
-      expect(beforeGenerating?.args).not.toContain(`${worktree}/compose.plugins.yaml`);
+      expect(beforeGenerating.args).toEqual(expect.arrayContaining(["-f", `${worktree}/compose.yaml`, ...overlay]));
+      expect(beforeGenerating.args).not.toContain(`${worktree}/compose.plugins.yaml`);
     }
     for (const afterGenerating of [start, seed]) {
-      expect(afterGenerating?.args).toEqual(expect.arrayContaining(["-f", `${worktree}/compose.yaml`, "-f", `${worktree}/compose.plugins.yaml`, ...overlay]));
+      expect(afterGenerating.args).toEqual(expect.arrayContaining(["-f", `${worktree}/compose.yaml`, "-f", `${worktree}/compose.plugins.yaml`, ...overlay]));
     }
   });
 
   it("keeps the preview off the real Instance: its own port and images, also for the egress proxies", () => {
-    const { up } = planPreview(189, repo);
+    const { start } = composeSteps(planPreview(189, repo, user).up);
 
-    expect(up[5]?.env).toMatchObject({
+    expect(start.env).toMatchObject({
       PREVIEW_ROOT: repo,
       PREVIEW_TOOLS: "/work/family-agenda/tools",
       PREVIEW_IMAGE: "family-agenda-preview:pr-189",
@@ -71,7 +88,7 @@ describe("planning a preview of a pull request", () => {
   });
 
   it("removes everything the preview made when it comes down", () => {
-    const { down } = planPreview(189, repo);
+    const { down } = planPreview(189, repo, user);
 
     expect(down.map(({ file, args }) => [file, ...args].join(" "))).toEqual([
       "docker compose -p fa-pr-189 down --volumes --remove-orphans",
@@ -82,7 +99,7 @@ describe("planning a preview of a pull request", () => {
   });
 
   it.each([0, -1, 1.5, Number.NaN, 50_000])("refuses %s as a pull request number", (pr) => {
-    expect(() => planPreview(pr, repo)).toThrow(/pull request number/);
+    expect(() => planPreview(pr, repo, user)).toThrow(/pull request number/);
   });
 });
 

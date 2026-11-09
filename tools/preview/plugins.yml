@@ -1,7 +1,8 @@
 # The plugin containers of a preview. `pnpm preview up` copies this file into the pull request's
-# worktree and generates compose.plugins.yaml from it with the pull request's own generator. The
-# demo Source is built from this clone (compose.preview.yaml names the image it is built into);
-# other plugins added here with pinned images are pulled.
+# worktree and generates compose.plugins.yaml from it with the pull request's own generator. Other
+# plugins added here with pinned images are pulled.
 plugins:
   - id: demo
-    image: family-agenda-demo-source-preview:local
+    # A placeholder: the demo Source is built from this clone, and compose.preview.yaml overrides
+    # this image with the one it is built into (PREVIEW_DEMO_IMAGE). The generator wants a pinned tag.
+    image: overridden-by-compose-preview:placeholder
