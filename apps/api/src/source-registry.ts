@@ -155,13 +155,14 @@ function loadedSourceType(plugin: SourcePlugin): LoadedSourceType {
   return {
     configuration: {
       version: configuration.version,
-      fields: configuration.fields.map(({ key, label, secret, required, description, setByPlugin, choices }) => ({
+      fields: configuration.fields.map(({ key, label, secret, required, description, setByPlugin, choices, host }) => ({
         key,
         label,
         secret,
         required,
         description: description ?? null,
         setByPlugin: setByPlugin === true,
+        host: host === true,
         choice: choices !== undefined,
       })),
     },

@@ -45,6 +45,12 @@ export type ConfigField = {
    */
   setByPlugin?: boolean;
   /**
+   * A plain field whose value is a host the plugin connects to, such as `imap.example.org` or
+   * `imap.example.org:993`. A plugin in a container reaches it through its egress proxy, on any
+   * port when the value names none.
+   */
+  host?: boolean;
+  /**
    * Makes a plain field a choice among values the plugin knows for an existing Source, such as
    * the chats of a linked account; its value is the list of the chosen ones. A Source being added
    * has none to offer yet.

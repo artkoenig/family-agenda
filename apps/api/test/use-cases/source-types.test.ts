@@ -256,8 +256,8 @@ describe("Sources", () => {
         sourceTypeId: "school-portal",
         displayName: "school-portal",
         fields: [
-          { key: "url", label: "URL", secret: false, required: true, description: null, setByPlugin: false, choice: false },
-          { key: "password", label: "Password", secret: true, required: false, description: null, setByPlugin: false, choice: false },
+          { key: "url", label: "URL", secret: false, required: true, description: null, setByPlugin: false, choice: false, host: false },
+          { key: "password", label: "Password", secret: true, required: false, description: null, setByPlugin: false, choice: false, host: false },
         ],
         catalogue: null,
         setupSteps: [],

@@ -178,6 +178,8 @@ export type ConfigFieldSpec = {
   setByPlugin: boolean;
   /** A choice among values the plugin offers for an existing Source; its value is the list of the chosen ones. */
   choice: boolean;
+  /** Its value is a host the plugin connects to, which the plugin's egress proxy allows. */
+  host: boolean;
 };
 
 /** An interactive step of a Source's form, as a plugin declares it. */

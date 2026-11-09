@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { generatePluginsCompose } from "./plugins-file/generate";
+import { versionOf } from "./version";
 
 const directory = process.env.DEPLOYMENT_DIRECTORY ?? "/deployment";
 
@@ -16,7 +17,7 @@ if (pluginsYml === null) {
   console.error(`No plugins.yml in ${directory}, where to mount the directory of compose.yaml: docker compose run --rm -v "$PWD:/deployment" api plugins generate`);
   process.exit(1);
 }
-const generated = generatePluginsCompose(pluginsYml, read(".env"), () => randomBytes(24).toString("base64url"));
+const generated = generatePluginsCompose(pluginsYml, read(".env"), () => randomBytes(24).toString("base64url"), versionOf(process.env));
 if (!generated.ok) {
   for (const error of generated.errors) console.error(error);
   process.exit(1);

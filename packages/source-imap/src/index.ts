@@ -133,6 +133,7 @@ export function createImapPlugin(options: ImapPluginOptions = {}): SourcePlugin 
           key: "host",
           label: { en: "Mail server", de: "Mailserver" },
           secret: false,
+          host: true,
           required: true,
           description: { en: "Such as imap.gmx.net or imap.gmail.com.", de: "Etwa imap.gmx.net oder imap.gmail.com." },
         },
