@@ -302,12 +302,12 @@ describe("polling Sources", () => {
     instance.clock.advance(10 * minutes);
     testPluginControls.failNext("school-cal", "definite");
     expect(await instance.app.polling.pollDue()).toEqual({
-      polled: [club],
+      ran: [club],
       failed: [{ sourceId: school, kind: "definite", message: "school-cal failed" }],
       invalid: [],
       refused: [],
     });
-    expect(await instance.app.polling.pollDue()).toEqual({ polled: [], failed: [], invalid: [], refused: [] });
+    expect(await instance.app.polling.pollDue()).toEqual({ ran: [], failed: [], invalid: [], refused: [] });
 
     instance.clock.advance(10 * minutes);
     await instance.app.polling.pollDue();
@@ -337,6 +337,6 @@ describe("polling Sources", () => {
     await rm(join(instance.workspacePackages, "school-cal"), { recursive: true });
     await instance.restart();
 
-    expect(await instance.app.polling.pollDue()).toEqual({ polled: [], failed: [], invalid: [], refused: [] });
+    expect(await instance.app.polling.pollDue()).toEqual({ ran: [], failed: [], invalid: [], refused: [] });
   });
 });

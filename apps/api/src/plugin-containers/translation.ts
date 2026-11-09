@@ -36,22 +36,17 @@ export function loadedSourceType(description: Description, call: PluginCall): Lo
         ? {
             mode: "polling",
             suggestedIntervalSeconds: ingestion.suggestedIntervalSeconds,
-            poll: async (context, attributes) => {
-              const answer = await call("poll", runContextOf(context));
-              if (!answer.ok) return { ok: false, kind: answer.kind, message: answer.message };
-              return ingested(answer.body, attributes);
-            },
+            poll: async (context, attributes) => runOf(await call("poll", runContextOf(context)), attributes),
           }
         : {
             mode: "push",
             receive: async (context, payload, attributes) => {
-              const encoded = Buffer.from(payload).toString("base64");
-              if (encoded.length > limits.maxPayloadBytes) {
-                return { ok: false, kind: "definite", message: `The payload of ${payload.byteLength} bytes is too large for the plugin` };
+              const request = { context: runContextOf(context), payload: Buffer.from(payload).toString("base64") };
+              const size = Buffer.byteLength(JSON.stringify(request));
+              if (size > limits.maxPayloadBytes) {
+                return { ok: false, kind: "definite", message: `The request to receive is ${size} bytes, more than the ${limits.maxPayloadBytes} bytes the plugin contract allows` };
               }
-              const answer = await call("receive", { context: runContextOf(context), payload: encoded });
-              if (!answer.ok) return { ok: false, kind: answer.kind, message: answer.message };
-              return ingested(answer.body, attributes);
+              return runOf(await call("receive", request), attributes);
             },
           },
     silentApplies: description.silentApplies,
@@ -96,6 +91,12 @@ function progressOf(progress: EndpointResponse<"setupProgress">): SetupProgress 
   if (progress.status === "waiting") return { status: "waiting", qrCode: progress.qrCode ?? null, message: progress.message ?? null };
   if (progress.status === "done") return { status: "done", message: progress.message ?? null };
   return progress;
+}
+
+/** A plugin's answer to `poll` or `receive` as the core records it, or the error it came to. */
+async function runOf(answer: CallResult<"poll" | "receive">, attributes: AttributeReporting): Promise<SourceRunResult> {
+  if (!answer.ok) return { ok: false, kind: answer.kind, message: answer.message };
+  return ingested(answer.body, attributes);
 }
 
 /** A plugin's answer to `poll` as the core records it, its Source Attributes reported first. */

@@ -107,7 +107,7 @@ describe("A Source Type whose plugin runs in a container", () => {
     const report = await poll();
 
     expect(report.failed).toEqual([]);
-    expect(report.polled).toHaveLength(1);
+    expect(report.ran).toHaveLength(1);
     expect(state.runs[0]).toEqual({
       config: { plain: { url: "https://portal.example.org" }, secrets: { token: "first" } },
       syncCursor: null,
@@ -179,15 +179,17 @@ describe("A Source Type whose plugin receives pushed payloads", () => {
   let server: Server;
   let receive: Receive;
   let sourceId: SourceId;
+  let description: PluginImplementation["description"];
   const removed: unknown[] = [];
 
   beforeEach(async () => {
     receive = () => Promise.resolve({ sourceRecords: [], syncCursor: null });
     removed.length = 0;
     const base = fakePlugin({ runs: [], poll: () => Promise.resolve({}) }, "chat-relay");
+    description = { ...base.description, ingestion: { mode: "push" } };
     server = await servePlugin(
       {
-        description: { ...base.description, ingestion: { mode: "push" } },
+        description,
         receive: async (request) => (await receive(request)) as never,
         sourceRemoved: (context) => {
           removed.push(context.config.plain);
@@ -220,7 +222,7 @@ describe("A Source Type whose plugin receives pushed payloads", () => {
 
     const result = await instance.app.polling.receive(sourceId, payload);
 
-    expect(result).toMatchObject({ ok: true, report: { polled: [sourceId], failed: [] } });
+    expect(result).toMatchObject({ ok: true, report: { ran: [sourceId], failed: [] } });
     expect(requests).toEqual([{ context: { config: { plain: { url: "https://chat.example.org" }, secrets: { token: "first" } }, syncCursor: null, now: "2026-09-14T07:00:00.000Z", timeZone: "Europe/Berlin" }, payload: "aGVsbG8=" }]);
     expect(await instance.query("SELECT external_id FROM source_record")).toEqual([{ external_id: "evening" }]);
     expect((await instance.query("SELECT sync_cursor FROM source_run"))[0]?.sync_cursor).toBe("cursor-1");
@@ -228,7 +230,7 @@ describe("A Source Type whose plugin receives pushed payloads", () => {
 
   it("is not polled", async () => {
     instance.clock.advance(60 * minutes);
-    expect((await instance.app.polling.pollDue()).polled).toEqual([]);
+    expect((await instance.app.polling.pollDue()).ran).toEqual([]);
   });
 
   it("fails the run temporarily when its plugin answers with a server error or not in time", async () => {
@@ -260,8 +262,26 @@ describe("A Source Type whose plugin receives pushed payloads", () => {
       return Promise.resolve({ sourceRecords: [], syncCursor: null });
     };
     const result = await instance.app.polling.receive(sourceId, new Uint8Array(limits.maxPayloadBytes));
-    expect(result.ok && result.report.failed[0]).toMatchObject({ kind: "definite", message: expect.stringContaining("too large") as string });
+    expect(result.ok && result.report.failed[0]).toMatchObject({ kind: "definite", message: expect.stringContaining("more than the 10485760 bytes the plugin contract allows") as string });
     expect(called).toBe(false);
+  });
+
+  it("runs a pushed payload after the run under way, from the Source Cursor that run left", async () => {
+    const cursors: (string | null)[] = [];
+    receive = async ({ context, payload: sent }) => {
+      cursors.push(context.syncCursor);
+      if (sent === "Zmlyc3Q=") await new Promise((resolve) => setTimeout(resolve, 100));
+      return { sourceRecords: [], syncCursor: sent };
+    };
+
+    await Promise.all([instance.app.polling.receive(sourceId, new TextEncoder().encode("first")), instance.app.polling.receive(sourceId, payload)]);
+
+    expect(cursors).toEqual([null, "Zmlyc3Q="]);
+  });
+
+  it("receives nothing while its plugin is not loadable", async () => {
+    description.sourceTypeId = "other-relay";
+    expect(await instance.app.polling.receive(sourceId, payload)).toEqual({ ok: false, problem: "source-type-not-available" });
   });
 
   it("receives nothing for an unknown Source", async () => {

@@ -284,6 +284,10 @@ export type PollingIngestion = {
   poll(context: SourceRunContext, attributes: AttributeReporting): Promise<SourceRunResult>;
 };
 
+/**
+ * A Source Type whose Sources are not polled: something outside the core pushes payloads to it
+ * for a Source, and the core hands each to the plugin, recording what it emits as for a poll.
+ */
 export type PushIngestion = {
   mode: "push";
   /** Hands the plugin a payload pushed to the core for a Source; fails like a poll. */
