@@ -13,7 +13,7 @@ function generated(yml: string, dotEnv: string | null = null) {
   return { compose: parse(result.compose) as ParsedCompose, text: result.compose, dotEnv: result.dotEnv };
 }
 
-type ParsedService = { image?: string; command?: string[]; mem_limit?: string; environment?: Record<string, string>; networks?: string[]; depends_on?: unknown; ports?: unknown; healthcheck?: unknown; volumes?: string[] };
+type ParsedService = { image?: string; entrypoint?: string[]; command?: string[]; mem_limit?: string; environment?: Record<string, string>; networks?: string[]; depends_on?: unknown; ports?: unknown; healthcheck?: unknown; volumes?: string[] };
 type ParsedCompose = { services: Record<string, ParsedService>; networks: Record<string, unknown>; volumes: Record<string, unknown> };
 
 function errorsOf(yml: string): string[] {
@@ -36,6 +36,7 @@ plugins:
         image: matrixdotorg/synapse:v1.163.2
         env: { SYNAPSE_REPORT_STATS: "no" }
         volumes: { data: /data, config: /config }
+        entrypoint: [sh, -c]
         command: [run]
         egress: ["*.whatsapp.net:443"]
         database: true
@@ -81,7 +82,7 @@ describe("generatePluginsCompose", () => {
     }
   });
 
-  it("runs companions with their volumes, command, healthcheck and a database of their own", () => {
+  it("runs companions with their volumes, entrypoint, command, healthcheck and a database of their own", () => {
     const { compose } = generated(matrix);
 
     expect(compose.services["plugin-matrix-synapse"]).toEqual({
@@ -89,6 +90,7 @@ describe("generatePluginsCompose", () => {
       restart: "unless-stopped",
       networks: ["plugin-matrix", "plugin-matrix-database", "plugin-matrix-synapse-egress"],
       volumes: ["plugin-matrix-data:/data", "plugin-matrix-config:/config"],
+      entrypoint: ["sh", "-c"],
       command: ["run"],
       healthcheck: { test: ["CMD", "curl", "-f", "http://localhost:8008/health"] },
       depends_on: { "plugin-matrix-synapse-database": { condition: "service_completed_successfully" } },
@@ -217,6 +219,17 @@ describe("the default plugins.yml", () => {
 
     const { compose } = generated(yml);
 
-    expect(Object.keys(compose.services)).toEqual(expect.arrayContaining(["plugin-ics", "plugin-imap", "plugin-webuntis", "plugin-matrix"]));
+    expect(Object.keys(compose.services)).toEqual(expect.arrayContaining(["plugin-ics", "plugin-imap", "plugin-webuntis"]));
+    expect(compose.services["plugin-matrix"]).toBeUndefined();
+  });
+
+  it("generates Matrix, which is opt-in, once its block is uncommented", () => {
+    const yml = readFileSync(new URL("../../../../plugins.yml", import.meta.url), "utf8");
+    const uncommented = yml.replaceAll(/^ {2}# (?=[ -])/gm, "  ");
+
+    const { compose } = generated(uncommented);
+
+    expect(compose.services["plugin-matrix-synapse"]?.entrypoint).toEqual(["sh", "-c", expect.stringContaining("exec sh /config/start.sh")]);
+    expect(compose.services["plugin-matrix-whatsapp"]).toBeDefined();
   });
 });

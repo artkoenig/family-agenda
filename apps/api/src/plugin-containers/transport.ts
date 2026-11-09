@@ -43,19 +43,24 @@ export async function callPlugin<N extends EndpointName>(url: string, name: N, b
     return { ok: false, kind: "definite", message: `The core asked the plugin at ${url} for ${name} invalidly: ${request.error.message}`, unreachable: false };
   }
   const timeoutMs = options.timeoutsMs?.[name] ?? endpoint.timeoutMs;
-  const response = await send(url, endpoint, body, timeoutMs);
-  return response instanceof Response ? answerOf(url, name, endpoint, response) : response;
+  const sent = await send(url, endpoint, body, timeoutMs);
+  return "response" in sent ? answerOf(url, name, endpoint, sent.response) : sent;
 }
 
-async function send(url: string, endpoint: Endpoint, body: unknown, timeoutMs: number): Promise<Response | CallError> {
+/**
+ * Wraps the answer rather than telling it apart with `instanceof Response`: the HTTP server
+ * replaces the global `Response`, which `fetch` does not return.
+ */
+async function send(url: string, endpoint: Endpoint, body: unknown, timeoutMs: number): Promise<{ response: Response } | CallError> {
   try {
-    return await fetch(url + endpoint.path, {
+    const response = await fetch(url + endpoint.path, {
       method: endpoint.method.toUpperCase(),
       headers: { "content-type": "application/json" },
       cache: "no-store",
       signal: AbortSignal.timeout(timeoutMs),
       ...(endpoint.request === undefined ? {} : { body: JSON.stringify(body) }),
     });
+    return { response };
   } catch (error) {
     const why = error instanceof Error && error.name === "TimeoutError" ? `no answer within ${timeoutMs / 1000} s` : messageOf(error);
     return { ok: false, kind: "temporary", message: `The plugin at ${url} is not reachable: ${why}`, unreachable: true };

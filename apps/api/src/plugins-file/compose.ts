@@ -137,6 +137,7 @@ function addProxy(compose: Compose, { name, proxy, container }: ReturnType<typeo
 function companionServiceOf(plugin: Plugin, companion: Companion, names: CompanionNames, volumes: string[]): Service {
   const service: Service = { image: companion.image, restart: "unless-stopped", networks: [serviceOf(plugin)] };
   if (volumes.length > 0) service.volumes = volumes;
+  if (companion.entrypoint !== undefined) service.entrypoint = companion.entrypoint;
   if (companion.command !== undefined) service.command = companion.command;
   if (companion.healthcheck !== undefined) service.healthcheck = companion.healthcheck;
   const database = companion.database ? databaseOf(plugin, names) : { service: {}, environment: {} };
