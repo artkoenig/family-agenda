@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { bootForTest, type TestInstance } from "../support/boot";
 import { InMemorySecretStore } from "../support/in-memory-secret-store";
 import { ScriptedExtractor } from "../support/scripted-extractor";
-import { testPluginControls, writeTestPluginPackage } from "../support/test-source-plugin";
+import { testPluginControls } from "../support/test-source-plugin";
 
 describe("the LLM endpoint", () => {
   let instance: TestInstance;
@@ -92,7 +92,7 @@ describe("the LLM endpoint", () => {
   /** The API key the Extractor is given for the next message. */
   const extractedWithKey = async () => {
     if (mails === 0) {
-      await writeTestPluginPackage(instance.workspacePackages, { sourceTypeId: "mailbox", needsLlm: true });
+      await instance.installPlugin({ sourceTypeId: "mailbox", needsLlm: true });
       await instance.restart();
       await instance.app.sourceTypes.enable("mailbox");
       await instance.app.sources.add({ sourceTypeId: "mailbox", plain: { url: "imap.example.org" }, secrets: {} });

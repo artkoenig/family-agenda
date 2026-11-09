@@ -5,7 +5,7 @@ import type { BlobStore } from "@family-agenda/application";
 import type { BlobRef } from "@family-agenda/domain";
 import { uuidPattern } from "./uuid";
 
-/** Keeps each blob as a file named by its reference, in the blob volume (ADR-0006). */
+/** Keeps each blob as a file named by its reference, in the blob volume (ADR-0003). */
 export class FileBlobStore implements BlobStore {
   constructor(private readonly directory: string) {}
 

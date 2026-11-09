@@ -1,4 +1,4 @@
-import type { Origin } from "@family-agenda/source-sdk";
+import type { Origin } from "../support/test-source-plugin";
 import { openAgendaAccess } from "@family-agenda/application";
 import type { ItemId, LocalDate, AgendaId } from "@family-agenda/domain";
 import ICAL from "ical.js";
@@ -7,7 +7,7 @@ import { icsFeed } from "../../src/http/ics-feed";
 import { bootForTest, type TestInstance } from "../support/boot";
 import { InMemoryBlobStore } from "../support/in-memory-blob-store";
 import { extractedTask, ScriptedExtractor } from "../support/scripted-extractor";
-import { testPluginControls, writeTestPluginPackage } from "../support/test-source-plugin";
+import { testPluginControls } from "../support/test-source-plugin";
 import { seedTasks, type SeededTask } from "../support/seed-task";
 import { openTimeline } from "../support/timeline";
 
@@ -25,7 +25,7 @@ describe("Tasks", () => {
   beforeEach(async () => {
     // The clock starts on Monday 2026-09-14 at 09:00 in Berlin.
     instance = await bootForTest();
-    await writeTestPluginPackage(instance.workspacePackages, { sourceTypeId: "school" });
+    await instance.installPlugin({ sourceTypeId: "school" });
     await instance.restart();
     await instance.app.sourceTypes.enable("school");
     const added = await instance.app.sources.add({ sourceTypeId: "school", plain: { url: "https://school.example.org" }, secrets: {} });
@@ -253,7 +253,7 @@ describe("Tasks", () => {
     ]);
     instance.clock.advance(15 * minutes);
 
-    expect((await instance.app.polling.pollDue()).failed).toMatchObject([{ kind: "definite" }]);
+    expect((await instance.app.polling.pollDue()).failed).toMatchObject([{ message: expect.stringContaining("the plugin answered invalidly") as unknown }]);
     expect(await shown()).toEqual({ pinned: [], days: {} });
   });
 });
@@ -284,7 +284,7 @@ describe("Tasks extracted from mail", () => {
     // The clock starts on Monday 2026-09-14 at 09:00 in Berlin.
     extractor = new ScriptedExtractor();
     instance = await bootForTest({ extractor, blobStore: new InMemoryBlobStore() });
-    await writeTestPluginPackage(instance.workspacePackages, { sourceTypeId: "mailbox", needsLlm: true });
+    await instance.installPlugin({ sourceTypeId: "mailbox", needsLlm: true });
     await instance.restart();
     await instance.app.sourceTypes.enable("mailbox");
     const added = await instance.app.sources.add({ sourceTypeId: "mailbox", plain: { url: "imap.example.org" }, secrets: {} });

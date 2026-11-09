@@ -1,7 +1,11 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
+import type { Server } from "node:http";
+import type { AddressInfo } from "node:net";
 import { join } from "node:path";
+import { servePlugin } from "@family-agenda/plugin-kit/server";
 import type { TessdataCatalog } from "@family-agenda/adapters";
+import type { SourceTypeId } from "@family-agenda/domain";
 import type {
   BlobStore,
   Extractor,
@@ -16,7 +20,7 @@ import {
 } from "../../src/composition-root";
 import { FakeClock } from "./fake-clock";
 import { acquirePostgres } from "./in-process-postgres";
-import { writeTestPluginPackage, type TestPluginPackage } from "./test-source-plugin";
+import { testSourcePlugin, type TestPluginPackage } from "./test-source-plugin";
 
 export type TestOptions = {
   /** Replaces the envelope-encrypting SecretStore, such as with an `InMemorySecretStore`. */
@@ -35,7 +39,7 @@ export type TestOptions = {
   pluginContainers?: NonNullable<ApplicationConfig["pluginContainers"]>;
   /** Shorter timeouts than the plugin contract's, for a plugin that does not answer. */
   pluginContainerOptions?: NonNullable<ApplicationConfig["pluginContainerOptions"]>;
-  /** Test plugins installed as workspace packages before the first boot. */
+  /** Test plugins served before the first boot, as plugin containers. */
   sourcePlugins?: TestPluginPackage[];
 };
 
@@ -44,17 +48,17 @@ export type TestInstance = {
   clock: FakeClock;
   /** The file the master key is kept in, outside Postgres. */
   masterKeyFile: string;
-  /** Where the SourceRegistry finds workspace packages, which hold no plugins at first. */
-  workspacePackages: string;
-  /** The `plugins/` volume, empty at first. */
-  pluginDirectory: string;
   /** The `tessdata` volume, holding links to the bundled `deu`, `eng` and `osd` models at first. */
   tessdataDirectory: string;
   /** Runs SQL against the Instance's database, to look at what it stores. */
   query(sql: string): Promise<Record<string, unknown>[]>;
+  /** Serves a test plugin, in place of one of the same Source Type, from the next `restart()` on. */
+  installPlugin(plugin: TestPluginPackage): Promise<void>;
+  /** Stops binding a Source Type to its plugin, from the next `restart()` on. */
+  uninstallPlugin(sourceTypeId: string): void;
   /**
    * Stops the application and boots it again on the same database, master key file and plugin
-   * directories, as an update would.
+   * containers, as an update would.
    */
   restart(): Promise<void>;
   close(): Promise<void>;
@@ -67,31 +71,37 @@ export type TestInstance = {
 export async function bootForTest(options: TestOptions = {}): Promise<TestInstance> {
   const postgres = await acquirePostgres();
   const keyDirectory = await mkdtemp(join(tmpdir(), "family-agenda-test-"));
-
-  const workspacePackages = join(keyDirectory, "packages");
-  const pluginDirectory = join(keyDirectory, "plugins");
-  await mkdir(workspacePackages);
-  await mkdir(pluginDirectory);
   // The models the image ships, as stand-ins: the use cases never run Tesseract.
   const bundledTessdataDirectory = join(keyDirectory, "bundled-tessdata");
   await mkdir(bundledTessdataDirectory);
   for (const model of ["deu", "eng", "osd"]) {
     await writeFile(join(bundledTessdataDirectory, `${model}.traineddata`), `bundled ${model} model`);
   }
-  const { sourcePlugins = [], ...applicationOptions } = options;
-  for (const plugin of sourcePlugins) await writeTestPluginPackage(workspacePackages, plugin);
+  const { sourcePlugins = [], pluginContainers = [], ...applicationOptions } = options;
+  const servers: Server[] = [];
+  const bindings = [...pluginContainers];
+  const uninstallPlugin = (sourceTypeId: string): void => {
+    const index = bindings.findIndex((binding) => binding.sourceTypeId === sourceTypeId);
+    if (index >= 0) bindings.splice(index, 1);
+  };
+  const installPlugin = async (plugin: TestPluginPackage): Promise<void> => {
+    const server = await servePlugin(testSourcePlugin(plugin), { host: "127.0.0.1" });
+    servers.push(server);
+    uninstallPlugin(plugin.sourceTypeId);
+    bindings.push({ sourceTypeId: plugin.sourceTypeId as SourceTypeId, url: `http://127.0.0.1:${(server.address() as AddressInfo).port}` });
+  };
+  for (const plugin of sourcePlugins) await installPlugin(plugin);
 
   const clock = new FakeClock(new Date("2026-09-14T07:00:00Z"));
   const config: ApplicationConfig = {
     connectDatabase: () => postgres.connect(),
     masterKeyFile: join(keyDirectory, "master.key"),
     blobDirectory: join(keyDirectory, "blobs"),
-    workspacePackages,
-    pluginDirectory,
     tessdataDirectory: join(keyDirectory, "tessdata"),
     bundledTessdataDirectory,
     timeZone: "Europe/Berlin",
     clock,
+    pluginContainers: bindings,
     ...applicationOptions,
   };
 
@@ -99,10 +109,10 @@ export async function bootForTest(options: TestOptions = {}): Promise<TestInstan
     app: await bootApplication(config),
     clock,
     masterKeyFile: config.masterKeyFile,
-    workspacePackages,
-    pluginDirectory,
     tessdataDirectory: config.tessdataDirectory,
     query: (sql) => postgres.query(sql),
+    installPlugin,
+    uninstallPlugin,
     async restart() {
       const stopped = instance.app;
       await stopped.close();
@@ -113,6 +123,7 @@ export async function bootForTest(options: TestOptions = {}): Promise<TestInstan
     async close() {
       await instance.app.close();
       await postgres.release();
+      await Promise.all(servers.map((server) => new Promise((resolve) => server.close(resolve))));
       await rm(keyDirectory, { recursive: true, force: true });
     },
   };

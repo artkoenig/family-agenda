@@ -4,9 +4,6 @@ import { readConfig } from "@family-agenda/api/config";
 /** How often the worker looks for Sources whose polling interval has passed. */
 const tickMs = 5_000;
 
-/** How often the worker starts and stops the programs of Source Types as Admins enable them. */
-const servicesTickMs = 5_000;
-
 const worker = await bootWorker(readConfig());
 console.log("Family Agenda worker started");
 
@@ -64,33 +61,10 @@ const poll = () => {
 poll();
 const timer = setInterval(poll, tickMs);
 
-let reconciling: Promise<void> | null = null;
-/** Messages of the last failures, so that a failure that stays is logged once. */
-let lastFailures = "";
-const reconcile = () => {
-  reconciling ??= worker.services
-    .reconcile()
-    .then((report) => {
-      const failures = report.failed.map((failure) => `Services of Source Type ${failure.sourceTypeId} failed: ${failure.message}`).join("\n");
-      if (failures !== "" && failures !== lastFailures) console.warn(failures);
-      lastFailures = failures;
-    })
-    .catch((error: unknown) => {
-      console.error("Reconciling the services of Source Types failed:", error);
-    })
-    .finally(() => {
-      reconciling = null;
-    });
-};
-reconcile();
-const servicesTimer = setInterval(reconcile, servicesTickMs);
-
 const shutdown = () => {
   clearInterval(timer);
-  clearInterval(servicesTimer);
   clearInterval(retentionTimer);
-  void Promise.all([polling, reconciling])
-    .then(() => worker.services.stop())
+  void Promise.resolve(polling)
     .then(() => worker.close())
     .then(() => process.exit(0));
 };

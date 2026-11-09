@@ -210,3 +210,13 @@ describe("plugins.schema.json", () => {
     expect(written).toBe(`${JSON.stringify(pluginsFileJsonSchema(), null, 2)}\n`);
   });
 });
+
+describe("the default plugins.yml", () => {
+  it("generates the plugins that come with the app", () => {
+    const yml = readFileSync(new URL("../../../../plugins.yml", import.meta.url), "utf8");
+
+    const { compose } = generated(yml);
+
+    expect(Object.keys(compose.services)).toEqual(expect.arrayContaining(["plugin-ics", "plugin-imap", "plugin-webuntis", "plugin-matrix"]));
+  });
+});

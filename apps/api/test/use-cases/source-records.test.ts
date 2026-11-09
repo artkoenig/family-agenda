@@ -1,11 +1,11 @@
 import { createHash } from "node:crypto";
-import type { Origin } from "@family-agenda/source-sdk";
+import type { Origin } from "../support/test-source-plugin";
 import { openAgendaAccess } from "@family-agenda/application";
 import type { BlobRef } from "@family-agenda/domain";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { bootForTest, type TestInstance } from "../support/boot";
 import { InMemoryBlobStore } from "../support/in-memory-blob-store";
-import { testPluginControls, writeTestPluginPackage } from "../support/test-source-plugin";
+import { testPluginControls } from "../support/test-source-plugin";
 import { openTimeline } from "../support/timeline";
 
 const minutes = 60 * 1000;
@@ -39,8 +39,8 @@ describe("Source Records, as what a Source delivered is stored", () => {
     // The clock starts on Monday 2026-09-14 at 09:00 in Berlin.
     blobs = new InMemoryBlobStore();
     instance = await bootForTest({ blobStore: blobs });
-    await writeTestPluginPackage(instance.workspacePackages, { sourceTypeId: "mailbox", needsLlm: true });
-    await writeTestPluginPackage(instance.workspacePackages, { sourceTypeId: "calendar" });
+    await instance.installPlugin({ sourceTypeId: "mailbox", needsLlm: true });
+    await instance.installPlugin({ sourceTypeId: "calendar" });
     await instance.restart();
     for (const type of ["mailbox", "calendar"]) {
       await instance.app.sourceTypes.enable(type);

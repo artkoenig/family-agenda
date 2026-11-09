@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { SourceId } from "@family-agenda/domain";
 import { bootForTest, type TestInstance } from "../support/boot";
 import { InMemorySecretStore } from "../support/in-memory-secret-store";
-import { testPluginControls, writeTestPluginPackage } from "../support/test-source-plugin";
+import { testPluginControls, type TestConfiguration } from "../support/test-source-plugin";
 
 const whatsapp = {
   id: "whatsapp",
@@ -14,15 +14,15 @@ const whatsapp = {
 const signal = { id: "signal", displayName: "Signal", description: "Reads Signal.", installed: false };
 
 /** A Source Type whose Sources each use one network of its catalogue, with an account the plugin creates. */
-const configuration = `{
+const configuration: TestConfiguration = {
   version: 1,
   fields: [
     { key: "network", label: "Network", secret: false, required: true },
-    { key: "chats", label: "Chats", secret: false, required: false, choices: () => Promise.resolve([]) },
+    { key: "chats", label: "Chats", secret: false, required: false, choices: true },
     { key: "account", label: "Account", secret: false, required: true, setByPlugin: true },
     { key: "token", label: "Token", secret: true, required: true, setByPlugin: true },
   ],
-}`;
+};
 
 describe("a Source Type's catalogue and the Sources that use it", () => {
   let instance: TestInstance;
@@ -31,7 +31,7 @@ describe("a Source Type's catalogue and the Sources that use it", () => {
     testPluginControls.catalogue("bridged", [whatsapp, signal]);
     secrets = new InMemorySecretStore();
     instance = await bootForTest({ secretStore: secrets });
-    await writeTestPluginPackage(instance.workspacePackages, {
+    await instance.installPlugin({
       sourceTypeId: "bridged",
       configuration,
       catalogue: { configKey: "network" },

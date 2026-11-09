@@ -38,7 +38,7 @@ export type PollingDeps = {
   sources: SourceRepository;
   secrets: SecretStore;
   items: ItemRepository;
-  /** Where raw messages and their attachments are kept, outside Postgres (ADR-0006). */
+  /** Where raw messages and their attachments are kept, outside Postgres (ADR-0003). */
   blobs: BlobStore;
   /** Where the run shows as the worker's activity. */
   activity: ActivityLog;

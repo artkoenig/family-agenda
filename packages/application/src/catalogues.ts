@@ -23,7 +23,7 @@ export type CatalogueEntrySummary = CatalogueEntrySpec & {
   pollIntervalSeconds: number | null;
 };
 
-/** The catalogue of an enabled Source Type, such as the Messengers of the Matrix plugin (ADR-0011). */
+/** The catalogue of an enabled Source Type, such as the Messengers of the Matrix plugin (ADR-0002). */
 export type CatalogueSummary = {
   sourceTypeId: SourceTypeId;
   title: MultilingualText;
@@ -53,7 +53,7 @@ export async function usableEntries(
 
 /**
  * What an Admin enables within a Source Type, one entry at a time. Installed is not enabled, as
- * for Source Types (ADR-0010): an entry seen for the first time is recorded disabled, also after an
+ * for Source Types (ADR-0001): an entry seen for the first time is recorded disabled, also after an
  * update, and one that a Source uses cannot be disabled.
  */
 export function createCatalogueAccess(deps: CataloguesDeps) {

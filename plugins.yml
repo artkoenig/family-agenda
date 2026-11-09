@@ -1,0 +1,66 @@
+# The plugin containers of the Instance (ADR-0001), pinned to the images this release was tested
+# with; Renovate raises the tags. Remove the plugins you do not use, add your own, then generate
+# compose.plugins.yaml from it (docs/configuration.md#plugins). plugins.schema.json is its schema.
+plugins:
+  # Calendars by ICS address. The address is a secret field, so its host is not learned from it:
+  # add the host of each calendar here, such as calendar.google.com:443.
+  - id: ics
+    image: ghcr.io/artkoenig/family-agenda-ics:0.1.0@sha256:0ab61e079160b16c7f0f57c16126066b180fff87de57d94cc9ba4a4fb90c929e
+    egress: []
+
+  # Mailboxes over IMAP. The mail server is a host field, which the egress proxy allows by itself.
+  - id: imap
+    image: ghcr.io/artkoenig/family-agenda-imap:0.1.0@sha256:a0f799d4e59d753ad1e08732a7fd5ad80a3546916673889cf8fb31ba5fe3c669
+
+  # Timetables from WebUntis. The server is a host field, which the egress proxy allows by itself.
+  - id: webuntis
+    image: ghcr.io/artkoenig/family-agenda-webuntis:0.1.0@sha256:d8465fb0d0a423c87dbd506ea06db21f1fcf7991ba940573f7b26f717b3a1aa9
+
+  # Messengers through Matrix bridges (ADR-0002), as in plugins.example.yml of the plugin's repository.
+  # The plugin keeps the secrets in its own `matrix-secrets` volume, which no companion mounts, and
+  # writes each companion's configuration into a volume shared with that companion alone, creating
+  # `ready` in it last; the companion waits for it, then starts from it. A companion without `ready`
+  # after five minutes exits and is restarted. (`$$` is a `$` to Docker Compose.)
+  - id: matrix
+    image: ghcr.io/artkoenig/family-agenda-matrix:0.1.0@sha256:190609f27c881c0397ad2f5cffb3b59eb0bb7d21bedbe7100c75c64b0414fa09
+    # No egress: the plugin talks only to its companions.
+    volumes:
+      matrix-secrets: /config
+      synapse-config: /config/synapse
+      whatsapp-config: /config/whatsapp
+    companions:
+      # The homeserver: no federation, no registration; its database is on the Instance's Postgres.
+      - name: synapse
+        image: matrixdotorg/synapse:v1.163.2@sha256:c3c21919a322f74d177a43bce8031adc81ef839ddd117a8dd03cfec350e76e02
+        database: true
+        volumes:
+          synapse-config: /config
+          synapse: /data
+        command:
+          - sh
+          - -c
+          - i=0; until [ -f /config/ready ]; do i=$$((i+1)); if [ "$$i" -gt 300 ]; then echo "No configuration from plugin-matrix after 5 minutes; see its log." >&2; exit 1; fi; sleep 1; done; exec sh /config/start.sh
+        healthcheck:
+          test: ["CMD", "curl", "-fsS", "http://localhost:8008/health"]
+          interval: 15s
+          timeout: 5s
+          retries: 3
+      # The WhatsApp bridge. Its session stays in its own volume; it reaches WhatsApp through its egress proxy.
+      - name: whatsapp
+        image: dock.mau.dev/mautrix/whatsapp:v0.2610.0@sha256:c807054cb015d0f5c90d20d85aac216d062b4a6f4ae834b931fd5e7f03e27391
+        volumes:
+          whatsapp-config: /config
+          whatsapp: /data
+        command:
+          - sh
+          - -c
+          - i=0; until [ -f /config/ready ]; do i=$$((i+1)); if [ "$$i" -gt 300 ]; then echo "No configuration from plugin-matrix after 5 minutes; see its log." >&2; exit 1; fi; sleep 1; done; exec sh /config/start.sh
+        healthcheck:
+          test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:29318/_matrix/mau/live"]
+          interval: 15s
+          timeout: 5s
+          retries: 3
+        egress:
+          - "*.whatsapp.net:443"
+          - "*.whatsapp.com:443"
+          - web.whatsapp.com:443

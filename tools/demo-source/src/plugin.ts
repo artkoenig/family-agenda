@@ -2,8 +2,7 @@ import type { PluginImplementation } from "@family-agenda/plugin-kit";
 import { demoAttributes, demoOrigins } from "./index";
 
 /**
- * The demo Source as a plugin container (ADR-0001): the same Items as the in-process plugin, which
- * a preview still mounts until the core calls plugins over HTTP.
+ * The demo Source as a plugin container (ADR-0001), which only a preview runs.
  */
 export const demoPlugin: PluginImplementation = {
   description: {
@@ -23,8 +22,7 @@ export const demoPlugin: PluginImplementation = {
   },
   poll(context) {
     return {
-      // The demo states every Item; it has no messages.
-      sourceRecords: demoOrigins(new Date(context.now), context.timeZone).flatMap(({ externalId, attributes, content }) => (content.kind === "stated" ? [{ externalId, attributes, content }] : [])),
+      sourceRecords: demoOrigins(new Date(context.now), context.timeZone),
       syncCursor: null,
       attributes: { declared: [...demoAttributes], archived: [] },
     };

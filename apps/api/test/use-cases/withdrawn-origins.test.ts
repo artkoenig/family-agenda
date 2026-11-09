@@ -1,11 +1,11 @@
-import type { Origin } from "@family-agenda/source-sdk";
+import type { Origin } from "../support/test-source-plugin";
 import { openAgendaAccess } from "@family-agenda/application";
 import type { AgendaId } from "@family-agenda/domain";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { bootForTest, type TestInstance } from "../support/boot";
 import { InMemoryBlobStore } from "../support/in-memory-blob-store";
 import { extracted, ScriptedExtractor } from "../support/scripted-extractor";
-import { testPluginControls, writeTestPluginPackage } from "../support/test-source-plugin";
+import { testPluginControls } from "../support/test-source-plugin";
 import { openTimeline } from "../support/timeline";
 
 const minutes = 60 * 1000;
@@ -31,7 +31,7 @@ describe("Origins a Source withdraws, such as deleted chat messages", () => {
     ]);
     blobs = new InMemoryBlobStore();
     instance = await bootForTest({ extractor, blobStore: blobs });
-    await writeTestPluginPackage(instance.workspacePackages, { sourceTypeId: "chat", needsLlm: true });
+    await instance.installPlugin({ sourceTypeId: "chat", needsLlm: true });
     await instance.restart();
     await instance.app.sourceTypes.enable("chat");
     const added = await instance.app.sources.add({ sourceTypeId: "chat", plain: { url: "chat.example.org" }, secrets: {} });

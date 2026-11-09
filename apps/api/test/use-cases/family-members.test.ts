@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { assignSource } from "../support/assign";
 import { photos } from "../support/photos";
 import { bootForTest, type TestInstance } from "../support/boot";
-import { writeTestPluginPackage } from "../support/test-source-plugin";
 
 describe("managing Family Members", () => {
   let instance: TestInstance;
@@ -53,7 +52,7 @@ describe("managing Family Members", () => {
   });
 
   it("refuses to remove a Family Member who alone is assigned to a Source Attribute, and says which", async () => {
-    await writeTestPluginPackage(instance.workspacePackages, { sourceTypeId: "calendar" });
+    await instance.installPlugin({ sourceTypeId: "calendar" });
     await instance.restart();
     await instance.app.sourceTypes.enable("calendar");
     const added = await instance.app.sources.add({ sourceTypeId: "calendar", plain: { url: "https://calendar.example.org" }, secrets: {} });
@@ -77,7 +76,7 @@ describe("managing Family Members", () => {
   });
 
   it("holds the rule in the schema: even a plain DELETE is refused for the only assignee, and deletes their sole Agendas", async () => {
-    await writeTestPluginPackage(instance.workspacePackages, { sourceTypeId: "calendar" });
+    await instance.installPlugin({ sourceTypeId: "calendar" });
     await instance.restart();
     await instance.app.sourceTypes.enable("calendar");
     const added = await instance.app.sources.add({ sourceTypeId: "calendar", plain: { url: "https://calendar.example.org" }, secrets: {} });

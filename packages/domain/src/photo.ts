@@ -1,4 +1,4 @@
-/** Where a file is kept in the BlobStore, outside Postgres (ADR-0006). */
+/** Where a file is kept in the BlobStore, outside Postgres (ADR-0003). */
 export type BlobRef = string & { readonly __brand: "BlobRef" };
 
 /** The image formats a photo may have. */

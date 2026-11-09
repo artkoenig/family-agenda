@@ -1,11 +1,11 @@
-import type { Origin } from "@family-agenda/source-sdk";
+import type { Origin } from "../support/test-source-plugin";
 import { openAgendaAccess } from "@family-agenda/application";
 import type { AgendaId, FamilyMemberId, SourceId } from "@family-agenda/domain";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { assignSource } from "../support/assign";
 import { bootForTest, type TestInstance } from "../support/boot";
 import { extracted, ScriptedExtractor } from "../support/scripted-extractor";
-import { testPluginControls, writeTestPluginPackage } from "../support/test-source-plugin";
+import { testPluginControls } from "../support/test-source-plugin";
 import { openTimeline } from "../support/timeline";
 
 const minutes = 60 * 1000;
@@ -37,7 +37,7 @@ describe("Source Attributes", () => {
       extracted({ title: "Wandertag 5b", date: { day: 18, month: 9, weekday: "friday" }, evidence: "Freitag, 18.09., ist der Wandertag" }),
     ]);
     instance = await bootForTest({ extractor });
-    await writeTestPluginPackage(instance.workspacePackages, { sourceTypeId: "mailbox", needsLlm: true });
+    await instance.installPlugin({ sourceTypeId: "mailbox", needsLlm: true });
     await instance.restart();
     await instance.app.sourceTypes.enable("mailbox");
     await instance.app.llmEndpoint.save({ baseUrl: "http://ollama:11434/v1", model: "qwen3.5:9b", apiKey: "" });

@@ -18,25 +18,18 @@ x-app: &app
     TRUST_PROXY: ${TRUST_PROXY:-false}
     MASTER_KEY_FILE: /var/lib/family-agenda/master-key/master.key
     BLOB_DIRECTORY: /var/lib/family-agenda/blobs
-    PLUGIN_DIRECTORY: /var/lib/family-agenda/plugins
     TESSDATA_DIRECTORY: /var/lib/family-agenda/tessdata
-    # How the Matrix plugin reaches Synapse and the bridges, which the worker runs (ADR-0011).
-    MATRIX_INSTANCE_FILE: /var/lib/family-agenda/matrix/instance.json
     # The Family's time zone, which decides where an Agenda's days start.
     TZ: ${TZ:-Europe/Berlin}
     PLUGIN_URLS: ${PLUGIN_URLS:-}
   volumes:
-    # The master key that Source credentials are encrypted with; never in Postgres (ADR-0006).
+    # The master key that Source credentials are encrypted with; never in Postgres (ADR-0003).
     - master-key:/var/lib/family-agenda/master-key
-    # Files such as Family Member photos, kept outside Postgres (ADR-0006).
+    # Files such as Family Member photos, kept outside Postgres (ADR-0003).
     - blobs:/var/lib/family-agenda/blobs
-    # Source plugins added to the stock image, one package directory each (ADR-0010).
-    - plugins:/var/lib/family-agenda/plugins
     # Tesseract models: the bundled ones linked on start, the ones Admins download, and any put
-    # here by hand as <code>.traineddata for an Instance without internet access (ADR-0012).
+    # here by hand as <code>.traineddata for an Instance without internet access.
     - tessdata:/var/lib/family-agenda/tessdata
-    # Empty until an Admin enables a Messenger; then it holds how to reach Synapse and the bridges.
-    - matrix-instance:/var/lib/family-agenda/matrix:ro
   depends_on:
     postgres:
       condition: service_healthy
@@ -55,19 +48,6 @@ services:
   worker:
     <<: *app
     working_dir: /app/apps/worker
-    # Reaps the processes of Synapse and the bridges, which the worker starts while a Messenger is
-    # enabled (ADR-0011). They are reachable only on the Instance's own network, at `worker`.
-    init: true
-    volumes:
-      - master-key:/var/lib/family-agenda/master-key
-      - blobs:/var/lib/family-agenda/blobs
-      - plugins:/var/lib/family-agenda/plugins
-      - tessdata:/var/lib/family-agenda/tessdata
-      # The worker writes how the api reaches Synapse and the bridges.
-      - matrix-instance:/var/lib/family-agenda/matrix
-      # Synapse's configuration and media and the bridges' Messenger sessions, in SQLite outside
-      # Postgres (ADR-0006). Synapse's own database is on the Postgres server, created by the worker.
-      - matrix-data:/var/lib/family-agenda/matrix-data
 
   # Makes the Instance reachable at http://family-agenda.local:8080 from any device on the home
   # network, like homeassistant.local. It has to share the host's network to answer multicast DNS,
@@ -102,7 +82,4 @@ volumes:
   postgres-data:
   master-key:
   blobs:
-  plugins:
   tessdata:
-  matrix-instance:
-  matrix-data:

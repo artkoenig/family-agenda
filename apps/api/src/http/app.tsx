@@ -81,7 +81,7 @@ export type HttpOptions = {
   trustProxy: boolean;
   /** Scheme and host the Family reaches the Instance at; without it, those of the request. */
   publicUrl?: string;
-  /** Whether an Agenda opens, as decided for the listener this app serves (ADR-0005). */
+  /** Whether an Agenda opens, as decided for the listener this app serves. */
   agendaAccess: AgendaAccessPolicy;
   /** The release the image was built from; shown by the health check and in the Admin area. Defaults to a development build. */
   version?: string;
@@ -509,7 +509,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     c.set("admin", { ...admin, settings: await settings() });
     await next();
   });
-  // Until an Admin confirms saving the Recovery Kit, the Admin area shows only the kit (ADR-0006).
+  // Until an Admin confirms saving the Recovery Kit, the Admin area shows only the kit (ADR-0003).
   const requireSavedRecoveryKit = createMiddleware<Env>(async (c, next) => {
     const exempt = ["/admin/sign-in", "/admin/sign-out"].includes(c.req.path) ||
       c.req.path.startsWith("/admin/recovery-kit");
@@ -1123,7 +1123,7 @@ function shownStatus(status: 200 | 400 | 413 | undefined, problems: (string | un
     return render(c, <MessagePage admin={c.get("admin")} message={message} items={items} timeZone={timeZone} />);
   });
 
-  // An Admin's only correction of an Item is deleting it (ADR-0016); back to the message it came from.
+  // An Admin's only correction of an Item is deleting it (ADR-0005); back to the message it came from.
   app.post("/admin/items/:id/delete", async (c) => {
     await messages.deleteItem(c.req.param("id") as ItemId);
     const message = field(await c.req.parseBody(), "message");

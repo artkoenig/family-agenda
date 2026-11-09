@@ -1,4 +1,4 @@
-import type { Origin, StatedLesson } from "@family-agenda/source-sdk";
+import type { Origin, StatedLesson } from "../support/test-source-plugin";
 import { openAgendaAccess } from "@family-agenda/application";
 import type { FamilyMemberId, SourceId, AgendaId } from "@family-agenda/domain";
 import ICAL from "ical.js";
@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { icsFeed } from "../../src/http/ics-feed";
 import { assignSource } from "../support/assign";
 import { bootForTest, type TestInstance } from "../support/boot";
-import { testPluginControls, writeTestPluginPackage } from "../support/test-source-plugin";
+import { testPluginControls } from "../support/test-source-plugin";
 import { openTimeline } from "../support/timeline";
 
 const minutes = 60 * 1000;
@@ -56,7 +56,7 @@ describe("Timetables on the timeline and in the feed", () => {
   beforeEach(async () => {
     // The clock starts on Monday 2026-09-14 at 09:00 in Berlin.
     instance = await bootForTest();
-    await writeTestPluginPackage(instance.workspacePackages, { sourceTypeId: "timetable" });
+    await instance.installPlugin({ sourceTypeId: "timetable" });
     await instance.restart();
     await instance.app.sourceTypes.enable("timetable");
     const added = await instance.app.sources.add({ sourceTypeId: "timetable", plain: { url: "https://school.example.org" }, secrets: {} });
@@ -177,7 +177,7 @@ describe("Timetables on the timeline and in the feed", () => {
   describe("in the feed", () => {
     let leo: FamilyMemberId;
     beforeEach(async () => {
-      await writeTestPluginPackage(instance.workspacePackages, { sourceTypeId: "timetable-leo" });
+      await instance.installPlugin({ sourceTypeId: "timetable-leo" });
       await instance.restart();
       await instance.app.sourceTypes.enable("timetable-leo");
       const added = await instance.app.sources.add({ sourceTypeId: "timetable-leo", plain: { url: "https://school.example.org" }, secrets: {} });

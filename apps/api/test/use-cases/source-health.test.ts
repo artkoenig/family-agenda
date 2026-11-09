@@ -1,11 +1,9 @@
-import { rm } from "node:fs/promises";
-import { join } from "node:path";
 import { openAgendaAccess } from "@family-agenda/application";
-import type { Origin } from "@family-agenda/source-sdk";
+import type { Origin } from "../support/test-source-plugin";
 import type { SourceId } from "@family-agenda/domain";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { bootForTest, type TestInstance } from "../support/boot";
-import { testPluginControls, writeTestPluginPackage } from "../support/test-source-plugin";
+import { testPluginControls } from "../support/test-source-plugin";
 
 const minutes = 60 * 1000;
 const hours = 60 * minutes;
@@ -139,7 +137,7 @@ describe("Source health", () => {
   });
 
   it("is never Silent when its Source Type does not declare it", async () => {
-    await writeTestPluginPackage(instance.workspacePackages, { sourceTypeId: "calendar", silentApplies: false });
+    await instance.installPlugin({ sourceTypeId: "calendar", silentApplies: false });
     await instance.restart();
     await instance.app.sourceTypes.enable("calendar");
     const added = await instance.app.sources.add({ sourceTypeId: "calendar", plain: { url: "https://cal.example.org" }, secrets: {} });
@@ -156,7 +154,7 @@ describe("Source health", () => {
     await tick();
     expect(testPluginControls.runs("school-portal").at(-1)?.syncCursor).toBeNull();
 
-    await rm(join(instance.workspacePackages, "school-portal"), { recursive: true });
+    instance.uninstallPlugin("school-portal");
     await instance.restart();
     await tick();
 
@@ -170,7 +168,7 @@ describe("Source health", () => {
     const [items] = await instance.query("SELECT count(*)::int AS items FROM item");
     expect(items).toEqual({ items: 1 });
 
-    await writeTestPluginPackage(instance.workspacePackages, { sourceTypeId: "school-portal" });
+    await instance.installPlugin({ sourceTypeId: "school-portal" });
     await instance.restart();
     await tick();
 

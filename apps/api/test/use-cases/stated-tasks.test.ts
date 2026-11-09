@@ -1,9 +1,9 @@
-import type { Origin, StatedTask } from "@family-agenda/source-sdk";
+import type { Origin, StatedTask } from "../support/test-source-plugin";
 import { openAgendaAccess } from "@family-agenda/application";
 import type { AgendaId } from "@family-agenda/domain";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { bootForTest, type TestInstance } from "../support/boot";
-import { testPluginControls, writeTestPluginPackage } from "../support/test-source-plugin";
+import { testPluginControls } from "../support/test-source-plugin";
 import { openTimeline } from "../support/timeline";
 
 const minutes = 60 * 1000;
@@ -21,7 +21,7 @@ describe("Tasks a Source states", () => {
   beforeEach(async () => {
     // The clock starts on Monday 2026-09-14 at 09:00 in Berlin.
     instance = await bootForTest();
-    await writeTestPluginPackage(instance.workspacePackages, { sourceTypeId: "homework" });
+    await instance.installPlugin({ sourceTypeId: "homework" });
     await instance.restart();
     await instance.app.sourceTypes.enable("homework");
     const added = await instance.app.sources.add({ sourceTypeId: "homework", plain: { url: "https://school.example.org" }, secrets: {} });

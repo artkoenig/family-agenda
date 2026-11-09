@@ -1,28 +1,23 @@
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { describeSourcePluginContract, recordingAttributes, undeclaredAttributes } from "@family-agenda/source-sdk/testing";
-import type { IngestContext, IngestResult, Origin, SourcePlugin, StatedItem } from "@family-agenda/source-sdk";
-import { SourceRegistry } from "../../../apps/api/src/source-registry";
-import { createDemoPlugin } from "../src";
+import type { IngestResult, SourceRecord } from "@family-agenda/plugin-contract";
+import { demoPlugin } from "../src/plugin";
 
-const packageJson: unknown = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
+type StatedItem = Extract<SourceRecord["content"], { kind: "stated" }>["stated"];
+
 const config = { plain: {}, secrets: {} };
 // A Monday morning.
 const now = new Date("2026-09-14T07:00:00Z");
 
-const poll = (plugin: SourcePlugin, context: Partial<IngestContext> = {}): Promise<IngestResult> => {
-  if (plugin.ingestion.mode !== "polling") throw new Error("the demo plugin polls");
-  return plugin.ingestion.poll({ config, syncCursor: null, now, timeZone: "Europe/Berlin", attributes: recordingAttributes(), ...context });
+const poll = async (day: Date = now): Promise<IngestResult & { origins: SourceRecord[] }> => {
+  const result = (await demoPlugin.poll?.({ config, syncCursor: null, now: day.toISOString(), timeZone: "Europe/Berlin" })) as IngestResult;
+  return { ...result, origins: result.sourceRecords };
 };
 
-const statedItems = (origins: Origin[]): StatedItem[] => origins.flatMap((origin) => (origin.content.kind === "stated" ? [origin.content.stated] : []));
-
-describeSourcePluginContract(() => createDemoPlugin(), { config, now, languages: ["de"], packageJson });
+const statedItems = (origins: SourceRecord[]): StatedItem[] => origins.flatMap((origin) => (origin.content.kind === "stated" ? [origin.content.stated] : []));
 
 describe("the demo plugin", () => {
   it("states Events, Lessons and Tasks, so every kind of Agenda has something to show", async () => {
-    const { origins } = await poll(createDemoPlugin());
+    const { origins } = await poll();
 
     const kinds = new Set(statedItems(origins).map((item) => item.kind));
     expect([...kinds].sort()).toEqual(["event", "lesson", "task"]);
@@ -30,7 +25,7 @@ describe("the demo plugin", () => {
 
   it("states its Tasks under one id each, with Deadlines ahead of the run, so they never pile up as Overdue", async () => {
     const tasksOn = async (day: Date) =>
-      (await poll(createDemoPlugin(), { now: day })).origins.flatMap((origin) => (origin.content.kind === "stated" && origin.content.stated.kind === "task" ? [{ id: origin.externalId, ...origin.content.stated }] : []));
+      (await poll(day)).origins.flatMap((origin) => (origin.content.kind === "stated" && origin.content.stated.kind === "task" ? [{ id: origin.externalId, ...origin.content.stated }] : []));
 
     const monday = await tasksOn(now);
     const later = await tasksOn(new Date("2026-10-05T07:00:00Z"));
@@ -43,7 +38,7 @@ describe("the demo plugin", () => {
   });
 
   it("starts on the day of the run, in the Family's time zone", async () => {
-    const { origins } = await poll(createDemoPlugin());
+    const { origins } = await poll();
 
     const firstLesson = origins.find((origin) => origin.externalId === "lesson-2026-09-14-1");
     // 08:00 in Berlin, which is two hours ahead of UTC in September.
@@ -51,7 +46,7 @@ describe("the demo plugin", () => {
   });
 
   it("follows the date of the run, so an Agenda is never empty", async () => {
-    const { origins } = await poll(createDemoPlugin(), { now: new Date("2027-01-06T07:00:00Z") });
+    const { origins } = await poll(new Date("2027-01-06T07:00:00Z"));
 
     // Winter time: 08:00 in Berlin is 07:00 UTC. The 6th of January 2027 is a Wednesday, so its first lesson is substituted.
     expect(origins.find((origin) => origin.externalId === "lesson-2027-01-06-1")?.content).toMatchObject({
@@ -61,23 +56,17 @@ describe("the demo plugin", () => {
   });
 
   it("states the same Origins when it runs again, so a re-run changes nothing", async () => {
-    const first = await poll(createDemoPlugin());
-    const second = await poll(createDemoPlugin());
+    const first = await poll();
+    const second = await poll();
 
     expect(second.origins).toEqual(first.origins);
     expect(new Set(first.origins.map((origin) => origin.externalId)).size).toBe(first.origins.length);
   });
 
   it("declares every Source Attribute its Origins name", async () => {
-    expect(await undeclaredAttributes(createDemoPlugin(), config, now)).toEqual([]);
-  });
+    const { origins, attributes } = await poll();
 
-  it("is not among the Source Types an Instance finds on its own, so the image never offers it", async () => {
-    const shipped = fileURLToPath(new URL("../../../packages", import.meta.url));
-
-    const registry = await SourceRegistry.discover([shipped]);
-
-    expect(registry.installed().map((type) => type.id)).toEqual(expect.arrayContaining(["ics"]));
-    expect(registry.installed().map((type) => type.id)).not.toContain("demo");
+    const declared = new Set(attributes?.declared.map((attribute) => attribute.externalId));
+    expect(origins.flatMap((origin) => origin.attributes).filter((id) => !declared.has(id))).toEqual([]);
   });
 });

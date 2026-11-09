@@ -3,7 +3,7 @@ export type SourceTypeId = string & { readonly __brand: "SourceTypeId" };
 
 export type SourceId = string & { readonly __brand: "SourceId" };
 
-/** A subdivision of a Source that its plugin reports, such as a mail folder (ADR-0016). */
+/** A subdivision of a Source that its plugin reports, such as a mail folder (ADR-0005). */
 export type SourceAttributeId = string & { readonly __brand: "SourceAttributeId" };
 
 /**
