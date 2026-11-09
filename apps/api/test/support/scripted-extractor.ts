@@ -5,6 +5,7 @@ import type {
   ExtractionRequest,
   ExtractionResult,
   Extractor,
+  LlmEndpoint,
 } from "@family-agenda/application";
 import type { DateMention } from "@family-agenda/domain";
 
@@ -43,6 +44,8 @@ export class ScriptedExtractor implements Extractor {
   private readonly scripts: { contains: string; result: ExtractionResult; then?: ExtractionResult[] }[] = [];
   private healthResult: EndpointHealth = { ok: true };
   private offeredModels: string[] = [];
+  /** The endpoints asked for their models. */
+  readonly modelRequests: LlmEndpoint[] = [];
 
   /** The Events and Tasks a message containing `contains` yields. */
   script(contains: string, events: ExtractedEvent[], tasks: ExtractedTask[] = []): void {
@@ -92,7 +95,8 @@ export class ScriptedExtractor implements Extractor {
     return Promise.resolve(this.healthResult);
   }
 
-  models(): Promise<string[]> {
+  models(endpoint: LlmEndpoint): Promise<string[]> {
+    this.modelRequests.push(endpoint);
     return Promise.resolve(this.offeredModels);
   }
 }
