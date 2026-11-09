@@ -101,6 +101,16 @@ describe("A Source Type whose plugin runs in a container", () => {
     expect(await listed("club-mail")).toMatchObject({ notLoadable: null, notReachable: null });
   });
 
+  it("stays loadable once the HTTP server has replaced the global Response", async () => {
+    vi.stubGlobal("Response", function ServersResponse() {});
+    try {
+      await poll();
+      expect(await listed("school-portal")).toMatchObject({ notLoadable: null });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("polls its Sources with the whole run context and keeps the sync cursor and the secrets it changed", async () => {
     state.poll = () => Promise.resolve({ sourceRecords: [evening], syncCursor: "cursor-1", attributes: { declared: [{ externalId: "main", name: "Class 3b" }], archived: [] }, secrets: { token: "second" } });
 

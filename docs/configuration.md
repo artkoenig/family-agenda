@@ -35,6 +35,7 @@ plugins:
         image: matrixdotorg/synapse:v1.163.2
         env: { SYNAPSE_SERVER_NAME: family-agenda }
         volumes: { data: /data }               # logical name: path, kept in volume plugin-<id>-<name>, shared by the plugin and its companions
+        entrypoint: [sh, -c, "exec run"]       # optional: replaces the image's entrypoint
         command: [run]                         # optional
         egress: []                             # the companion's own hosts
         database: true                         # optional: its own database on the Instance's Postgres

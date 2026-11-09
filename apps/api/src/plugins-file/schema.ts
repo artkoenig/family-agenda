@@ -33,6 +33,8 @@ const companion = z
     image,
     env: z.record(z.string(), z.string()).default({}),
     volumes,
+    /** Replaces the image's entrypoint, such as for a companion that waits for its configuration first. */
+    entrypoint: z.union([z.string(), z.array(z.string())]).optional(),
     command: z.union([z.string(), z.array(z.string())]).optional(),
     egress,
     database: z.boolean().default(false),
