@@ -1,7 +1,8 @@
 import type { AddressInfo, Server } from "node:net";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createPluginHandler, servePlugin } from "@family-agenda/plugin-kit/server";
-import { contractProblems, describePluginContract, pluginClient } from "@family-agenda/plugin-kit/testing";
+import { contractProblems, pluginClient } from "@family-agenda/plugin-kit/testing";
+import { describePluginContract } from "@family-agenda/plugin-kit/vitest";
 import { demoAttributes } from "../src";
 import { demoPlugin } from "../src/plugin";
 

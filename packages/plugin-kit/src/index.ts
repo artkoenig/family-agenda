@@ -3,7 +3,7 @@
  * (ADR-0001). The kit is optional; the contract is the OpenAPI document of `plugin-contract`.
  */
 import type { z } from "zod";
-import type { Description, endpoints } from "@family-agenda/plugin-contract";
+import type { Description, endpoints, PluginError as ErrorBody } from "@family-agenda/plugin-contract";
 
 export type EndpointName = keyof typeof endpoints;
 
@@ -25,7 +25,7 @@ export type PluginImplementation = {
 /** Thrown by a handler to answer with an error: `definite` needs an Admin, `temporary` is retried. */
 export class PluginError extends Error {
   constructor(
-    readonly kind: "definite" | "temporary",
+    readonly kind: ErrorBody["kind"],
     message: string,
   ) {
     super(message);

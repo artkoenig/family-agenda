@@ -1,8 +1,8 @@
 /**
  * The contract tests every plugin passes, whatever it is written in: they speak HTTP to a plugin
- * URL, or call a handler in-process, and validate every answer against the plugin contract.
+ * URL, or call a handler in-process, and validate every answer against the plugin contract. This
+ * module needs no vitest; `./vitest` turns the tests into a suite.
  */
-import { describe, expect, it } from "vitest";
 import { descriptionSchema, endpoints, errorSchema, loadProblem, type Description, type Endpoint, type IngestResult } from "@family-agenda/plugin-contract";
 import type { EndpointName } from "./index";
 import type { PluginHandler } from "./server";
@@ -33,12 +33,15 @@ export type ContractOptions = {
   now?: Date;
   /** Languages besides English that every text of the plugin is given in, such as `["de"]`. */
   languages?: string[];
+  /** The IANA time zone of the Family the plugin is polled for; by default Europe/Berlin. */
+  timeZone?: string;
 };
 
-/** One contract test: what it checks, and the problems it finds. */
-export type ContractCheck = { name: string; problems: () => Promise<string[]> };
+/** Calls an endpoint of a plugin under test. */
+export type Call = ReturnType<typeof pluginClient>;
 
-type Call = ReturnType<typeof pluginClient>;
+/** One contract test: what it checks, and the problems it finds in a plugin. */
+export type ContractCheck = { name: string; problems: (call: Call) => Promise<string[]> };
 
 /** The problems with an answer to `name`: a wrong status or a body the contract does not allow. */
 export function answerProblems(name: EndpointName, answer: Answer): string[] {
@@ -49,18 +52,28 @@ export function answerProblems(name: EndpointName, answer: Answer): string[] {
   return result.success ? [] : [`${name} answered invalidly: ${result.error.message}`];
 }
 
-async function descriptionOf(call: Call): Promise<Description> {
-  const answer = await call("description");
-  const problems = answerProblems("description", answer);
-  if (problems.length > 0) throw new Error(problems.join("; "));
-  return descriptionSchema.parse(answer.body);
+type Checked<T> = { ok: true; body: T } | { ok: false; problems: string[] };
+
+/** Calls `name` and checks its answer against the contract; `parse` reads the body once it is valid. */
+async function checkedCall<T>(call: Call, name: EndpointName, parse: (body: unknown) => T, body?: unknown): Promise<Checked<T>> {
+  const answer = await call(name, body);
+  const problems = answerProblems(name, answer);
+  return problems.length > 0 ? { ok: false, problems } : { ok: true, body: parse(answer.body) };
 }
 
+/** Like `checkedCall`, for an answer that later checks depend on: a problem fails the check at once. */
+async function validBody<T>(call: Call, name: EndpointName, parse: (body: unknown) => T): Promise<T> {
+  const checked = await checkedCall(call, name, parse);
+  if (!checked.ok) throw new Error(checked.problems.join("; "));
+  return checked.body;
+}
+
+const descriptionOf = (call: Call): Promise<Description> => validBody(call, "description", (body) => descriptionSchema.parse(body));
+
 async function describesItself(call: Call): Promise<string[]> {
-  const answer = await call("description");
-  const problems = answerProblems("description", answer);
-  if (problems.length > 0) return problems;
-  const problem = loadProblem(descriptionSchema.parse(answer.body).contractVersion);
+  const checked = await checkedCall(call, "description", (body) => descriptionSchema.parse(body));
+  if (!checked.ok) return checked.problems;
+  const problem = loadProblem(checked.body.contractVersion);
   return problem === null ? [] : [problem];
 }
 
@@ -75,10 +88,7 @@ function duplicates(ids: string[], what: string): string[] {
 }
 
 async function catalogueEntries(call: Call): Promise<{ id: string; texts: unknown[] }[]> {
-  const answer = await call("catalogueEntries");
-  const problems = answerProblems("catalogueEntries", answer);
-  if (problems.length > 0) throw new Error(problems.join("; "));
-  const { entries } = endpoints.catalogueEntries.response.parse(answer.body);
+  const { entries } = await validBody(call, "catalogueEntries", (body) => endpoints.catalogueEntries.response.parse(body));
   return entries.map((entry) => ({ id: entry.id, texts: [entry.displayName, entry.description, entry.riskNotice] }));
 }
 
@@ -115,7 +125,8 @@ async function textsOf(call: Call): Promise<[string, unknown][]> {
   return texts.filter(([, text]) => text !== undefined);
 }
 
-async function speaks(call: Call, language: string): Promise<string[]> {
+/** Where a text is not given in `language`. */
+async function untranslatedTexts(call: Call, language: string): Promise<string[]> {
   const texts = await textsOf(call);
   const given = (text: unknown) => {
     const translation = typeof text === "object" && text !== null ? (text as Record<string, unknown>)[language] : undefined;
@@ -124,14 +135,18 @@ async function speaks(call: Call, language: string): Promise<string[]> {
   return texts.filter(([, text]) => !given(text)).map(([where]) => `${where} is not given in ${language}`);
 }
 
-type Run = { result: IngestResult; declared: Set<string> };
+type PollRun = { result: IngestResult; declared: Set<string> };
 
-async function pollOnce(call: Call, context: object, syncCursor: string | null, declared: Set<string>): Promise<Run | string[]> {
-  const answer = await call("poll", { ...context, syncCursor });
-  const problems = answerProblems("poll", answer);
-  if (problems.length > 0) return problems;
-  const result = endpoints.poll.response.parse(answer.body);
-  return { result, declared: declaredAfter(declared, result.attributes ?? { declared: [], archived: [] }) };
+function pollOnce(call: Call, context: object, syncCursor: string | null, declared: Set<string>): Promise<Checked<PollRun>> {
+  return checkedCall(
+    call,
+    "poll",
+    (body) => {
+      const result = endpoints.poll.response.parse(body);
+      return { result, declared: declaredAfter(declared, result.attributes ?? { declared: [], archived: [] }) };
+    },
+    { ...context, syncCursor },
+  );
 }
 
 /** The Source Attributes declared and not archived after a run, as the core keeps them. */
@@ -142,7 +157,7 @@ function declaredAfter(before: Set<string>, attributes: NonNullable<IngestResult
   return after;
 }
 
-function undeclared(run: Run): string[] {
+function undeclared(run: PollRun): string[] {
   const named = run.result.sourceRecords.flatMap((record) => record.attributes.filter((id) => !run.declared.has(id)).map((id) => `Source Record ${record.externalId} names undeclared Source Attribute ${id}`));
   return [...new Set(named)];
 }
@@ -151,47 +166,31 @@ function undeclared(run: Run): string[] {
 async function pollsASource(call: Call, options: ContractOptions): Promise<string[]> {
   const description = await descriptionOf(call);
   if (description.ingestion.mode !== "polling" || options.config === undefined) return [];
-  const context = { config: options.config, now: (options.now ?? new Date()).toISOString(), timeZone: "Europe/Berlin" };
+  const context = { config: options.config, now: (options.now ?? new Date()).toISOString(), timeZone: options.timeZone ?? "Europe/Berlin" };
   const first = await pollOnce(call, context, null, new Set());
-  if (Array.isArray(first)) return first;
-  const second = await pollOnce(call, context, first.result.syncCursor, first.declared);
-  if (Array.isArray(second)) return second;
-  const repeated = second.result.sourceRecords.filter((record) => record.content.kind === "raw-message").map((record) => `message ${record.externalId} came again with the sync cursor of the first run`);
-  return [...undeclared(first), ...undeclared(second), ...repeated];
+  if (!first.ok) return first.problems;
+  const second = await pollOnce(call, context, first.body.result.syncCursor, first.body.declared);
+  if (!second.ok) return second.problems;
+  const repeated = second.body.result.sourceRecords.filter((record) => record.content.kind === "raw-message").map((record) => `message ${record.externalId} came again with the sync cursor of the first run`);
+  return [...undeclared(first.body), ...undeclared(second.body), ...repeated];
 }
 
-/** The contract tests for a plugin, each run on its own. */
-export function contractChecks(target: PluginTarget, options: ContractOptions = {}): ContractCheck[] {
-  const call = pluginClient(target);
+/** The contract tests, each run on its own against a plugin's client. */
+export function contractChecks(options: ContractOptions = {}): ContractCheck[] {
   return [
-    { name: "describes itself for this contract version", problems: () => describesItself(call) },
-    { name: "refuses an invalid request with a definite error", problems: () => refusesInvalidRequests(call) },
-    { name: "lists setup steps, configuration fields and catalogue entries once each", problems: () => listsEverythingOnce(call) },
-    { name: "migrates a configuration of every older version", problems: () => migratesEveryVersion(call) },
-    ...(options.languages ?? []).map((language) => ({ name: `gives every text in ${language} too`, problems: () => speaks(call, language) })),
-    { name: "polls a Source validly, declaring Source Attributes before naming them", problems: () => pollsASource(call, options) },
+    { name: "describes itself for this contract version", problems: (call) => describesItself(call) },
+    { name: "refuses an invalid request with a definite error", problems: (call) => refusesInvalidRequests(call) },
+    { name: "lists setup steps, configuration fields and catalogue entries once each", problems: (call) => listsEverythingOnce(call) },
+    { name: "migrates a configuration of every older version", problems: (call) => migratesEveryVersion(call) },
+    ...(options.languages ?? []).map((language) => ({ name: `gives every text in ${language} too`, problems: (call: Call) => untranslatedTexts(call, language) })),
+    { name: "polls a Source validly, declaring Source Attributes before naming them", problems: (call) => pollsASource(call, options) },
   ];
 }
 
-/** Every problem the contract tests find, for a plugin tested without vitest. */
+/** Every problem the contract tests find; needs no vitest. */
 export async function contractProblems(target: PluginTarget, options: ContractOptions = {}): Promise<string[]> {
+  const call = pluginClient(target);
   const problems: string[] = [];
-  for (const check of contractChecks(target, options)) problems.push(...(await check.problems()));
+  for (const check of contractChecks(options)) problems.push(...(await check.problems(call)));
   return problems;
-}
-
-/**
- * The contract tests as a vitest suite, called from the plugin's own test file. `target` is asked
- * for the plugin in each test, so that a server started in `beforeAll` can be tested by its URL.
- */
-export function describePluginContract(target: () => PluginTarget, options: ContractOptions = {}): void {
-  describe("plugin contract", () => {
-    const names = contractChecks("https://unused.invalid", options).map((check) => check.name);
-    names.forEach((name, index) => {
-      it(name, async () => {
-        const check = contractChecks(target(), options)[index];
-        expect(await check?.problems()).toEqual([]);
-      });
-    });
-  });
 }

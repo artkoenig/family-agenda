@@ -1,4 +1,4 @@
-import { createServer, type IncomingMessage, type Server } from "node:http";
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { contractVersion, endpoints, limits, type Description, type Endpoint, type PluginError as ErrorBody } from "@family-agenda/plugin-contract";
 import { PluginError, type EndpointName, type PluginImplementation } from "./index";
 
@@ -24,11 +24,11 @@ function route(method: string, pathname: string): Route | undefined {
   return found && { name: found[0], endpoint: found[1] };
 }
 
-type Run = (request: unknown) => unknown;
+type EndpointFunction = (request: unknown) => unknown;
 
-function implementation(plugin: PluginImplementation, name: EndpointName): Run | undefined {
+function implementation(plugin: PluginImplementation, name: EndpointName): EndpointFunction | undefined {
   if (name === "description") return () => describePlugin(plugin);
-  return plugin[name] as Run | undefined;
+  return plugin[name] as EndpointFunction | undefined;
 }
 
 type Body = { ok: true; value: unknown } | { ok: false; response: Response };
@@ -51,24 +51,24 @@ async function bodyOf(request: Request, endpoint: Endpoint): Promise<Body> {
   return result.success ? { ok: true, value: result.data } : { ok: false, response: error(400, "definite", `invalid request: ${result.error.message}`) };
 }
 
-function answerTo(thrown: unknown): Response {
+function errorAnswerTo(thrown: unknown): Response {
   if (thrown instanceof PluginError) return error(thrown.kind === "definite" ? 422 : 503, thrown.kind, thrown.message);
   return error(500, "temporary", thrown instanceof Error ? thrown.message : String(thrown));
 }
 
-function responseOf(endpoint: Endpoint, value: unknown): Response {
+function checkedResponse(endpoint: Endpoint, value: unknown): Response {
   if (endpoint.response === undefined) return new Response(null, { status: 204 });
   const result = endpoint.response.safeParse(value);
   return result.success ? Response.json(result.data) : error(500, "temporary", `the plugin answered invalidly: ${result.error.message}`);
 }
 
-async function answer(found: Route, run: Run, request: Request): Promise<Response> {
+async function answerEndpoint(found: Route, run: EndpointFunction, request: Request): Promise<Response> {
   const body = await bodyOf(request, found.endpoint);
   if (!body.ok) return body.response;
   try {
-    return responseOf(found.endpoint, await run(body.value));
+    return checkedResponse(found.endpoint, await run(body.value));
   } catch (thrown) {
-    return answerTo(thrown);
+    return errorAnswerTo(thrown);
   }
 }
 
@@ -82,7 +82,7 @@ export function createPluginHandler(plugin: PluginImplementation): PluginHandler
     const found = route(request.method, pathname);
     const run = found && implementation(plugin, found.name);
     if (!found || !run) return error(404, "definite", `no endpoint ${request.method} ${pathname}`);
-    return answer(found, run, request);
+    return answerEndpoint(found, run, request);
   };
 }
 
@@ -95,6 +95,16 @@ async function toRequest(incoming: IncomingMessage): Promise<Request> {
   return new Request(`http://plugin${incoming.url ?? "/"}`, init);
 }
 
+/** Answers a temporary error when reading the request or writing the response failed, or drops a half-sent answer. */
+export function answerUnexpectedFailure(outgoing: ServerResponse, thrown: unknown): void {
+  if (outgoing.headersSent) {
+    outgoing.destroy();
+    return;
+  }
+  outgoing.writeHead(500, { "content-type": "application/json" });
+  outgoing.end(JSON.stringify({ kind: "temporary", message: thrown instanceof Error ? thrown.message : String(thrown) }));
+}
+
 /** Serves a plugin over HTTP on `port` (0, the default, picks a free one); resolves once it listens. */
 export async function servePlugin(plugin: PluginImplementation, options: { port?: number; host?: string } = {}): Promise<Server> {
   const handle = createPluginHandler(plugin);
@@ -104,6 +114,9 @@ export async function servePlugin(plugin: PluginImplementation, options: { port?
       .then(async (response) => {
         outgoing.writeHead(response.status, Object.fromEntries(response.headers));
         outgoing.end(Buffer.from(await response.arrayBuffer()));
+      })
+      .catch((thrown: unknown) => {
+        answerUnexpectedFailure(outgoing, thrown);
       });
   });
   await new Promise<void>((resolve) => server.listen(options.port ?? 0, options.host ?? "0.0.0.0", resolve));

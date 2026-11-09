@@ -4,7 +4,7 @@ A plugin is a container that answers the plugin contract over HTTP (ADR-0001). T
 
 - `@family-agenda/plugin-kit`: the types of a plugin (`PluginImplementation`, one function per endpoint) and `PluginError`, thrown to answer with a `definite` or `temporary` error.
 - `@family-agenda/plugin-kit/server`: `servePlugin(plugin, { port })` serves it over HTTP; `createPluginHandler(plugin)` is the same as a `(Request) => Promise<Response>` function. Both validate every request and response against the contract: an invalid request is refused with a definite error, an invalid response becomes a temporary one. The description's `contractVersion` and `endpoints` are filled in.
-- `@family-agenda/plugin-kit/testing`: the contract tests. `describePluginContract(() => target, options)` adds them to a vitest suite; `contractProblems(target, options)` returns the problems without vitest. A target is a plugin's URL, such as a container started for the test, or a handler, called in-process without Docker.
+- `@family-agenda/plugin-kit/testing`: the contract tests, without vitest. `contractProblems(target, options)` returns the problems found. `@family-agenda/plugin-kit/vitest`: `describePluginContract(() => target, options)` adds them to a vitest suite. A target is a plugin's URL, such as a container started for the test, or a handler, called in-process without Docker.
 
 `tools/demo-source` is a plugin built with it (`src/plugin.ts`, `src/main.ts`, `Dockerfile`, `test/plugin.test.ts`).
 
@@ -25,7 +25,7 @@ Neither the kit nor the contract is published to a registry. Add both as git dep
 }
 ```
 
-Use the same tag for both: the kit is built against the contract of its release. The packages ship TypeScript sources, so run the plugin with `node --import tsx` (as the demo Source's image does) or bundle it. vitest is only needed for `describePluginContract`.
+Use the same tag for both: the kit is built against the contract of its release. The packages ship TypeScript sources, so run the plugin with `node --import tsx` (as the demo Source's image does) or bundle it. vitest is only needed for `@family-agenda/plugin-kit/vitest`.
 
 ```ts
 // src/main.ts
@@ -34,7 +34,7 @@ await servePlugin(myPlugin, { port: Number(process.env.PORT ?? 8080) });
 
 // test/contract.test.ts
 import { createPluginHandler } from "@family-agenda/plugin-kit/server";
-import { describePluginContract } from "@family-agenda/plugin-kit/testing";
+import { describePluginContract } from "@family-agenda/plugin-kit/vitest";
 describePluginContract(() => createPluginHandler(myPlugin), { config: { plain: {}, secrets: {} }, languages: ["de"] });
 ```
 

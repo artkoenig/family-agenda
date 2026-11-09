@@ -8,7 +8,8 @@ RUN npm install --global corepack@0.36.0 && corepack enable
 WORKDIR /app
 
 COPY . .
-RUN pnpm install --frozen-lockfile --prod --filter "@family-agenda/demo-source..."
+# Not --prod: the kit takes the plugin contract as a peer, which only its dev dependency installs here.
+RUN pnpm install --frozen-lockfile --filter "@family-agenda/demo-source..."
 
 USER node
 WORKDIR /app/tools/demo-source

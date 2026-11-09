@@ -2,7 +2,8 @@ import type { AddressInfo } from "node:net";
 import { describe, expect, it } from "vitest";
 import { contractVersion, limits } from "@family-agenda/plugin-contract";
 import { PluginError, type PluginImplementation } from "../src";
-import { createPluginHandler, describePlugin, servePlugin } from "../src/server";
+import type { ServerResponse } from "node:http";
+import { answerUnexpectedFailure, createPluginHandler, describePlugin, servePlugin } from "../src/server";
 import { answerProblems, contractProblems, pluginClient } from "../src/testing";
 
 const context = { config: { plain: {}, secrets: {} }, syncCursor: null, now: "2026-11-09T10:00:00.000Z", timeZone: "Europe/Berlin" };
@@ -85,6 +86,23 @@ describe("the server helper", () => {
     expect(answer).toMatchObject({ status: 500, body: { kind: "temporary" } });
   });
 
+  it("answers a failure outside the handler with a temporary error, or drops a half-sent answer", () => {
+    const sent: unknown[] = [];
+    const outgoing = (headersSent: boolean) =>
+      ({
+        headersSent,
+        writeHead: (status: number) => sent.push(status),
+        end: (body: string) => sent.push(JSON.parse(body)),
+        destroy: () => sent.push("destroyed"),
+      }) as unknown as ServerResponse;
+
+    answerUnexpectedFailure(outgoing(false), new Error("aborted"));
+    answerUnexpectedFailure(outgoing(false), "odd");
+    answerUnexpectedFailure(outgoing(true), new Error("late"));
+
+    expect(sent).toEqual([500, { kind: "temporary", message: "aborted" }, 500, { kind: "temporary", message: "odd" }, "destroyed"]);
+  });
+
   it("serves a plugin over HTTP", async () => {
     const server = await servePlugin(plugin(), { host: "127.0.0.1" });
     try {
@@ -155,6 +173,18 @@ describe("the contract harness", () => {
       "Source Record a names undeclared Source Attribute x",
       "message m came again with the sync cursor of the first run",
     ]);
+  });
+
+  it("polls in the time zone it is given", async () => {
+    const zones: string[] = [];
+    const recording = plugin({
+      poll: (request) => {
+        zones.push(request.timeZone);
+        return { sourceRecords: [], syncCursor: null };
+      },
+    });
+    await contractProblems(createPluginHandler(recording), { config, timeZone: "America/New_York" });
+    expect(zones).toEqual(["America/New_York", "America/New_York"]);
   });
 
   it("finds a poll that fails, and does not poll a push plugin or one without a configuration", async () => {
