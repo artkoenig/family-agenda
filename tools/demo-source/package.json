@@ -22,7 +22,13 @@
       }
     }
   },
+  "scripts": {
+    "start": "node --import tsx src/main.ts"
+  },
   "dependencies": {
-    "@family-agenda/source-sdk": "workspace:*"
+    "@family-agenda/plugin-contract": "workspace:*",
+    "@family-agenda/plugin-kit": "workspace:*",
+    "@family-agenda/source-sdk": "workspace:*",
+    "tsx": "^4.23.15"
   }
 }

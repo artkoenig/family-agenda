@@ -31,7 +31,7 @@ export function createDemoPlugin(): SourcePlugin {
       suggestedIntervalSeconds: 3600,
       async poll(context: IngestContext): Promise<IngestResult> {
         await context.attributes.declare([...demoAttributes]);
-        return { origins: originsFor(daysFrom(context.now, context.timeZone)), syncCursor: null };
+        return { origins: demoOrigins(context.now, context.timeZone), syncCursor: null };
       },
     },
     health: { silentApplies: false },
@@ -39,6 +39,11 @@ export function createDemoPlugin(): SourcePlugin {
 }
 
 export default createDemoPlugin();
+
+/** What the demo states for a run at `now` in the Family's time zone, in-process or over HTTP. */
+export function demoOrigins(now: Date, timeZone: string): Origin[] {
+  return originsFor(daysFrom(now, timeZone));
+}
 
 function originsFor(days: Day[]): Origin[] {
   return [...days.flatMap((day, index) => [...lessonsOn(day), ...clubOn(day), ...familyOn(day, index)]), ...tasksAhead(days)];
