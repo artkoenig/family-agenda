@@ -1,25 +1,19 @@
+import { fileURLToPath } from "node:url";
 import { z } from "zod";
+
+/** Where the JSON schema of `plugins.yml` is kept (`pnpm plugins-schema`). */
+export const pluginsSchemaFile = fileURLToPath(new URL("../../../../plugins.schema.json", import.meta.url));
 
 const name = z.string().regex(/^[a-z][a-z0-9-]*$/, "takes lowercase letters, digits and dashes, starting with a letter");
 
-/** The tag of an image reference such as `ghcr.io:5000/org/image:1.2.3`; null for none. */
-function tagOf(image: string): string | null {
-  const lastPart = image.slice(image.lastIndexOf("/") + 1);
-  const colon = lastPart.indexOf(":");
-  return colon === -1 ? null : lastPart.slice(colon + 1);
-}
+/** Pinned: a sha256 digest, or a tag other than `latest`. */
+const pinnedImage = /^(\S+@sha256:[a-f0-9]{64}|[^\s@]*[^\s@/:]:(?!latest$)\w[\w.-]{0,127})$/;
 
-/** Pinned: a digest, or a tag other than `latest`. */
 export function isPinned(image: string): boolean {
-  if (image.includes("@sha256:")) return true;
-  const tag = tagOf(image);
-  return tag !== null && tag !== "" && tag !== "latest";
+  return pinnedImage.test(image);
 }
 
-const image = z
-  .string()
-  .regex(/^\S+$/, "is an image reference without spaces")
-  .refine(isPinned, "must be pinned to a tag other than latest or to a digest, such as ghcr.io/org/plugin:1.2.0");
+const image = z.string().regex(pinnedImage, "must be pinned to a tag other than latest or to a sha256 digest, such as ghcr.io/org/plugin:1.2.0");
 
 const egressHost = z
   .string()
@@ -36,7 +30,7 @@ const companion = z
     image,
     env: z.record(z.string(), z.string()).default({}),
     /** Logical volume name → path in the container. */
-    volumes: z.record(name, z.string().startsWith("/", "is an absolute path")).default({}),
+    volumes: z.record(name, z.string().regex(/^\//, "is an absolute path")).default({}),
     command: z.union([z.string(), z.array(z.string())]).optional(),
     egress,
     database: z.boolean().default(false),
@@ -60,22 +54,14 @@ const plugin = z
       .default({ memory: "512m", cpus: 1 }),
     companions: z.array(companion).default([]),
   })
-  .strict()
-  .refine((value) => unique(value.companions.map((each) => each.name)), { message: "names a companion twice", path: ["companions"] });
+  .strict();
 
 /** `plugins.yml`: the plugin containers the operator runs (ADR-0001). Not versioned. */
-export const pluginsFileSchema = z
-  .object({ plugins: z.array(plugin).default([]) })
-  .strict()
-  .refine((value) => unique(value.plugins.map((each) => each.id)), { message: "lists a plugin id twice", path: ["plugins"] });
+export const pluginsFileSchema = z.object({ plugins: z.array(plugin).default([]) }).strict();
 
 export type PluginsFile = z.output<typeof pluginsFileSchema>;
 export type Plugin = PluginsFile["plugins"][number];
 export type Companion = Plugin["companions"][number];
-
-function unique(values: string[]): boolean {
-  return new Set(values).size === values.length;
-}
 
 /** The JSON schema of `plugins.yml`, for editors and readers. */
 export function pluginsFileJsonSchema(): unknown {

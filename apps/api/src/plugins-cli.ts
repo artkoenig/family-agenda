@@ -13,7 +13,7 @@ if (process.argv[2] !== "generate") {
 const read = (file: string) => (existsSync(join(directory, file)) ? readFileSync(join(directory, file), "utf8") : null);
 const pluginsYml = read("plugins.yml");
 if (pluginsYml === null) {
-  console.error(`No plugins.yml in ${directory}, where compose.yaml mounts its own directory.`);
+  console.error(`No plugins.yml in ${directory}, where to mount the directory of compose.yaml: docker compose run --rm -v "$PWD:/deployment" api plugins generate`);
   process.exit(1);
 }
 const generated = generatePluginsCompose(pluginsYml, read(".env"), () => randomBytes(24).toString("base64url"));

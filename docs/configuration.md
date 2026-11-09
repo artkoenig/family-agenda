@@ -43,18 +43,18 @@ plugins:
 Then generate `compose.plugins.yaml` and activate it:
 
 ```sh
-docker compose run --rm api plugins generate
+docker compose run --rm --no-deps --user "$(id -u):$(id -g)" -v "$PWD:/deployment" api plugins generate
 echo "COMPOSE_FILE=compose.yaml:compose.plugins.yaml" >> .env
 docker compose up -d
 ```
 
-The generator validates `plugins.yml` and names every mistake. `compose.yaml` mounts this directory into `api` at `/deployment`, and the generator writes there as the image's user (uid 1000); if that user cannot write here, add `--user` with your own uid. Run it again after every change to `plugins.yml`. The first time, `COMPOSE_FILE` must not yet name the missing `compose.plugins.yaml`. The core never reads `plugins.yml`, only what the generated file sets.
+The generator validates `plugins.yml` and names every mistake, including two declarations that would make the same service, network, volume or database name. Only this one-shot run mounts the directory, at `/deployment`; `--user` lets it write there as you rather than as the image's user (uid 1000). Run it again after every change to `plugins.yml`. The first time, `COMPOSE_FILE` must not yet name the missing `compose.plugins.yaml`. The core never reads `plugins.yml`, only what the generated file sets.
 
 What the generated file does:
 
 - Runs plugin `<id>` as service `plugin-<id>` and each companion as `plugin-<id>-<name>`, on an internal network `plugin-<id>` without published ports, with `restart: unless-stopped`. Plugins get the limits above; there are no health checks for plugins.
-- Gives `api` and `worker` that network, `PLUGIN_URLS` (`<id>=http://plugin-<id>:8080`) and `PLUGIN_EGRESS`, the declared egress hosts per container.
-- For a companion with `database: true`: a role and database `plugin_<id>_<name>` on the Instance's Postgres, created or updated by a one-shot `plugin-<id>-<name>-database` service before the companion starts; a random password added to `.env` as `PLUGIN_<ID>_<NAME>_DATABASE_PASSWORD`; and `DATABASE_URL` in the companion's environment. Postgres joins a separate internal network `plugin-<id>-database` with that companion only.
+- Gives `api` and `worker` that network, `PLUGIN_URLS` (`<id>=http://plugin-<id>:8080`) and `PLUGIN_EGRESS`, the declared egress hosts per container. Until the egress proxies arrive, plugin networks have no internet access.
+- For a companion with `database: true`: a role and database `plugin_<id>_<name>` on the Instance's Postgres, created or updated by a one-shot `plugin-<id>-<name>-database` service before the companion starts, which also revokes access to it and to the core's database from every other role; a random password added to `.env` as `PLUGIN_<ID>_<NAME>_DATABASE_PASSWORD`; and `DATABASE_URL` in the companion's environment. Postgres joins a separate internal network `plugin-<id>-database` with that companion only.
 
 ## Address of the Instance
 

@@ -14,7 +14,7 @@
           },
           "image": {
             "type": "string",
-            "pattern": "^\\S+$"
+            "pattern": "^(\\S+@sha256:[a-f0-9]{64}|[^\\s@]*[^\\s@/:]:(?!latest$)\\w[\\w.-]{0,127})$"
           },
           "egress": {
             "default": [],
@@ -56,7 +56,7 @@
                 },
                 "image": {
                   "type": "string",
-                  "pattern": "^\\S+$"
+                  "pattern": "^(\\S+@sha256:[a-f0-9]{64}|[^\\s@]*[^\\s@/:]:(?!latest$)\\w[\\w.-]{0,127})$"
                 },
                 "env": {
                   "default": {},
@@ -77,8 +77,7 @@
                   },
                   "additionalProperties": {
                     "type": "string",
-                    "format": "starts_with",
-                    "pattern": "^\\/.*"
+                    "pattern": "^\\/"
                   }
                 },
                 "command": {

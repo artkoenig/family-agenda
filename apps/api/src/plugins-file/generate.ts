@@ -1,10 +1,10 @@
 import { parse, stringify } from "yaml";
-import { composeOf, passwordVariablesOf } from "./compose";
+import { composeOf, nameCollisionsOf, passwordVariablesOf } from "./compose";
 import { pluginsFileSchema } from "./schema";
 
 export type Generated = { ok: true; compose: string; dotEnv: string | null } | { ok: false; errors: string[] };
 
-const header = "# Generated from plugins.yml by `docker compose run --rm api plugins generate`. Do not edit.\n";
+const header = "# Generated from plugins.yml by `plugins generate` (docs/configuration.md). Do not edit.\n";
 
 /**
  * Validates `plugins.yml` and turns it into `compose.plugins.yaml`. `dotEnv` is the current `.env`,
@@ -15,12 +15,14 @@ export function generatePluginsCompose(pluginsYml: string, dotEnv: string | null
   try {
     raw = parse(pluginsYml) ?? {};
   } catch (error) {
-    return { ok: false, errors: [`plugins.yml is not YAML: ${(error as Error).message}`] };
+    return { ok: false, errors: [`plugins.yml is not YAML: ${error instanceof Error ? error.message : String(error)}`] };
   }
   const result = pluginsFileSchema.safeParse(raw);
   if (!result.success) {
     return { ok: false, errors: result.error.issues.map((issue) => `${["plugins.yml", ...issue.path].join(".")}: ${issue.message}`) };
   }
+  const collisions = nameCollisionsOf(result.data);
+  if (collisions.length > 0) return { ok: false, errors: collisions };
   return {
     ok: true,
     compose: header + stringify(composeOf(result.data)),

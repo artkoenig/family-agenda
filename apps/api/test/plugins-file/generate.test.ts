@@ -1,9 +1,8 @@
 import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
 import { generatePluginsCompose } from "../../src/plugins-file/generate";
-import { isPinned, pluginsFileJsonSchema } from "../../src/plugins-file/schema";
+import { isPinned, pluginsFileJsonSchema, pluginsSchemaFile } from "../../src/plugins-file/schema";
 
 const password = () => "secret";
 
@@ -92,6 +91,8 @@ describe("generatePluginsCompose", () => {
     const init = compose.services["plugin-matrix-synapse-database"];
     expect(init?.environment).toMatchObject({ DATABASE_NAME: "plugin_matrix_synapse", DATABASE_PASSWORD: "${PLUGIN_MATRIX_SYNAPSE_DATABASE_PASSWORD}" });
     expect(init?.environment?.INIT_SQL).toContain("CREATE DATABASE");
+    expect(init?.networks).toEqual(["plugin-matrix-database"]);
+    expect(init?.environment?.INIT_SQL).toContain("REVOKE ALL ON DATABASE %I FROM PUBLIC', current_database()");
     expect(init?.depends_on).toEqual({ postgres: { condition: "service_healthy" } });
   });
 
@@ -118,13 +119,21 @@ describe("generatePluginsCompose", () => {
   it("rejects invalid files with the path of each mistake", () => {
     expect(errorsOf("plugins: [")[0]).toMatch(/^plugins.yml is not YAML/);
     expect(errorsOf("plugins:\n  - id: demo\n    image: demo:latest\n")).toEqual([
-      "plugins.yml.plugins.0.image: must be pinned to a tag other than latest or to a digest, such as ghcr.io/org/plugin:1.2.0",
+      "plugins.yml.plugins.0.image: must be pinned to a tag other than latest or to a sha256 digest, such as ghcr.io/org/plugin:1.2.0",
     ]);
     expect(errorsOf("plugins:\n  - id: Demo\n    image: demo:1\n    egress: [example.com]\n    extra: 1\n")).toHaveLength(3);
-    expect(errorsOf("plugins:\n  - { id: a, image: a:1 }\n  - { id: a, image: a:1 }\n")).toEqual(["plugins.yml.plugins: lists a plugin id twice"]);
-    expect(errorsOf("plugins:\n  - id: a\n    image: a:1\n    companions: [{ name: b, image: b:1 }, { name: b, image: b:1 }]\n")).toEqual([
-      "plugins.yml.plugins.0.companions: names a companion twice",
-    ]);
+  });
+});
+
+describe("name collisions", () => {
+  it.each([
+    ["the same plugin twice", "plugins:\n  - { id: a, image: a:1 }\n  - { id: a, image: a:1 }\n", "plugin a and plugin a both make the service plugin-a"],
+    ["a companion twice", "plugins:\n  - id: a\n    image: a:1\n    companions: [{ name: b, image: b:1 }, { name: b, image: b:1 }]\n", "companion b of plugin a and companion b of plugin a both make the service plugin-a-b"],
+    ["a companion and a plugin", "plugins:\n  - id: a\n    image: a:1\n    companions: [{ name: b, image: b:1 }]\n  - { id: a-b, image: a:1 }\n", "plugin a-b and companion b of plugin a both make the service plugin-a-b"],
+    ["a database init and a companion", "plugins:\n  - id: a\n    image: a:1\n    companions: [{ name: b, image: b:1, database: true }, { name: b-database, image: b:1 }]\n", "companion b-database of plugin a and companion b of plugin a both make the service plugin-a-b-database"],
+    ["volumes of two plugins", "plugins:\n  - id: a\n    image: a:1\n    companions: [{ name: c, image: c:1, volumes: { b-data: /d } }]\n  - id: a-b\n    image: a:1\n    companions: [{ name: c, image: c:1, volumes: { data: /d } }]\n", "plugin a-b and plugin a both make the volume plugin-a-b-data"],
+  ])("rejects %s", (_, yml, message) => {
+    expect(errorsOf(yml)).toContain(`plugins.yml: ${message}; rename one`);
   });
 });
 
@@ -132,7 +141,8 @@ describe("isPinned", () => {
   it.each([
     ["ghcr.io/org/plugin:1.2.0", true],
     ["registry:5000/plugin:1", true],
-    ["plugin@sha256:abc", true],
+    ["plugin@sha256:abc", false],
+    [`plugin@sha256:${"0".repeat(64)}`, true],
     ["plugin", false],
     ["registry:5000/plugin", false],
     ["plugin:latest", false],
@@ -144,7 +154,7 @@ describe("isPinned", () => {
 
 describe("plugins.schema.json", () => {
   it("is what the repository root holds; after a change, run `pnpm plugins-schema`", () => {
-    const written = readFileSync(fileURLToPath(new URL("../../../../plugins.schema.json", import.meta.url)), "utf8");
+    const written = readFileSync(pluginsSchemaFile, "utf8");
 
     expect(written).toBe(`${JSON.stringify(pluginsFileJsonSchema(), null, 2)}\n`);
   });

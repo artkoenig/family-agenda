@@ -124,6 +124,10 @@ _Avoid_: Late, expired, missed
 One installation of Family Agenda with its own database, serving exactly one Family.
 _Avoid_: Server, deployment, tenant
 
+**Companion**:
+A container a plugin needs beside its own, such as Synapse for the Matrix plugin, declared with the plugin in `plugins.yml`; reachable only on that plugin's network.
+_Avoid_: Sidecar, plugin service
+
 **Recovery Kit**:
 What an Admin prints or saves at first start to recover the Instance; without it, a backup cannot restore Source credentials.
 _Avoid_: Recovery key, master key (for the document), backup code
