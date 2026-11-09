@@ -24,13 +24,15 @@ const egressHost = z
 
 const egress = z.array(egressHost).default([]);
 
+/** Logical volume name → path in the container; a name is one volume, shared by the plugin and its companions. */
+const volumes = z.record(name, z.string().regex(/^\//, "is an absolute path")).default({});
+
 const companion = z
   .object({
     name,
     image,
     env: z.record(z.string(), z.string()).default({}),
-    /** Logical volume name → path in the container. */
-    volumes: z.record(name, z.string().regex(/^\//, "is an absolute path")).default({}),
+    volumes,
     command: z.union([z.string(), z.array(z.string())]).optional(),
     egress,
     database: z.boolean().default(false),
@@ -45,6 +47,8 @@ const plugin = z
     id: name,
     image,
     egress,
+    /** Such as configuration the plugin writes for its companions. */
+    volumes,
     limits: z
       .object({
         memory: z.string().regex(/^\d+[bkmg]$/, "takes a size such as 512m or 1g").default("512m"),

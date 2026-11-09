@@ -69,7 +69,7 @@ function takePlugin(plugin: Plugin, take: (kind: Kind, name: string, by: string)
     take("network", proxyOf(service), by);
   }
   if (databaseCompanionsOf(plugin).length > 0) take("network", databaseNetworkOf(plugin), by);
-  const volumes = new Set(plugin.companions.flatMap((companion) => Object.keys(companion.volumes)));
+  const volumes = new Set([plugin, ...plugin.companions].flatMap((container) => Object.keys(container.volumes)));
   for (const volume of volumes) take("volume", volumeOf(plugin, volume), by);
   for (const companion of plugin.companions) {
     const names = namesOf(plugin, companion);
@@ -94,19 +94,28 @@ export function composeOf(file: PluginsFile, proxyImage: string): Compose {
   return compose;
 }
 
+/** A container's logical volumes as `volume:path` mounts; declares the volumes in `compose`. */
+function mountsOf(compose: Compose, plugin: Plugin, volumes: Record<string, string>): string[] {
+  return Object.entries(volumes).map(([volume, path]) => {
+    compose.volumes[volumeOf(plugin, volume)] = {};
+    return `${volumeOf(plugin, volume)}:${path}`;
+  });
+}
+
 function addPlugin(compose: Compose, plugin: Plugin): void {
   compose.networks[serviceOf(plugin)] = { internal: true };
+  const mounts = mountsOf(compose, plugin, plugin.volumes);
   compose.services[serviceOf(plugin)] = {
     image: plugin.image,
     restart: "unless-stopped",
     networks: [serviceOf(plugin)],
     mem_limit: plugin.limits.memory,
     cpus: plugin.limits.cpus,
+    ...(mounts.length > 0 ? { volumes: mounts } : {}),
   };
   for (const companion of plugin.companions) {
-    for (const volume of Object.keys(companion.volumes)) compose.volumes[volumeOf(plugin, volume)] = {};
     const names = namesOf(plugin, companion);
-    compose.services[names.service] = companionServiceOf(plugin, companion, names);
+    compose.services[names.service] = companionServiceOf(plugin, companion, names, mountsOf(compose, plugin, companion.volumes));
     if (!companion.database) continue;
     compose.networks[databaseNetworkOf(plugin)] = { internal: true };
     compose.services[names.databaseService] = databaseInitOf(plugin, names);
@@ -125,9 +134,8 @@ function addProxy(compose: Compose, { name, proxy, container }: ReturnType<typeo
   };
 }
 
-function companionServiceOf(plugin: Plugin, companion: Companion, names: CompanionNames): Service {
+function companionServiceOf(plugin: Plugin, companion: Companion, names: CompanionNames, volumes: string[]): Service {
   const service: Service = { image: companion.image, restart: "unless-stopped", networks: [serviceOf(plugin)] };
-  const volumes = Object.entries(companion.volumes).map(([volume, path]) => `${volumeOf(plugin, volume)}:${path}`);
   if (volumes.length > 0) service.volumes = volumes;
   if (companion.command !== undefined) service.command = companion.command;
   if (companion.healthcheck !== undefined) service.healthcheck = companion.healthcheck;
@@ -149,14 +157,14 @@ function databaseOf(plugin: Plugin, names: CompanionNames): { service: Service; 
 }
 
 /**
- * Creates the role and database, or sets the role's password again, and keeps every other role out
+ * Creates the role and database (UTF8 with C collation, which Synapse requires), or sets the role's password again, and keeps every other role out
  * of it and of the core's database. It runs before the companion on every start, so a plugin added
  * later gets its database too.
  */
 const databaseInitSql = [
   String.raw`SELECT format('CREATE ROLE %I LOGIN', :'name') WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = :'name')\gexec`,
   String.raw`SELECT format('ALTER ROLE %I PASSWORD %L', :'name', :'password')\gexec`,
-  String.raw`SELECT format('CREATE DATABASE %I OWNER %I', :'name', :'name') WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = :'name')\gexec`,
+  String.raw`SELECT format('CREATE DATABASE %I OWNER %I ENCODING %L LC_COLLATE %L LC_CTYPE %L TEMPLATE template0', :'name', :'name', 'UTF8', 'C', 'C') WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = :'name')\gexec`,
   String.raw`SELECT format('REVOKE ALL ON DATABASE %I FROM PUBLIC', :'name')\gexec`,
   String.raw`SELECT format('REVOKE ALL ON DATABASE %I FROM PUBLIC', current_database())\gexec`,
 ].join("\n");

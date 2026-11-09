@@ -13,7 +13,7 @@ function generated(yml: string, dotEnv: string | null = null) {
   return { compose: parse(result.compose) as ParsedCompose, text: result.compose, dotEnv: result.dotEnv };
 }
 
-type ParsedService = { image?: string; command?: string[]; mem_limit?: string; environment?: Record<string, string>; networks?: string[]; depends_on?: unknown; ports?: unknown; healthcheck?: unknown };
+type ParsedService = { image?: string; command?: string[]; mem_limit?: string; environment?: Record<string, string>; networks?: string[]; depends_on?: unknown; ports?: unknown; healthcheck?: unknown; volumes?: string[] };
 type ParsedCompose = { services: Record<string, ParsedService>; networks: Record<string, unknown>; volumes: Record<string, unknown> };
 
 function errorsOf(yml: string): string[] {
@@ -30,11 +30,12 @@ plugins:
   - id: matrix
     image: ghcr.io/org/matrix@sha256:${"a".repeat(64)}
     limits: { memory: 1g, cpus: 2 }
+    volumes: { config: /config }
     companions:
       - name: synapse
         image: matrixdotorg/synapse:v1.163.2
         env: { SYNAPSE_REPORT_STATS: "no" }
-        volumes: { data: /data }
+        volumes: { data: /data, config: /config }
         command: [run]
         egress: ["*.whatsapp.net:443"]
         database: true
@@ -59,7 +60,8 @@ describe("generatePluginsCompose", () => {
       mem_limit: "512m",
       cpus: 1,
     });
-    expect(compose.services["plugin-matrix"]).toMatchObject({ mem_limit: "1g", cpus: 2 });
+    expect(compose.services["plugin-matrix"]).toMatchObject({ mem_limit: "1g", cpus: 2, volumes: ["plugin-matrix-config:/config"] });
+    expect(compose.services["plugin-demo"]?.volumes).toBeUndefined();
     expect(compose.networks["plugin-demo"]).toEqual({ internal: true });
     expect(Object.values(compose.services).filter((service) => service.ports !== undefined)).toEqual([]);
     expect(compose.services["plugin-matrix"]?.healthcheck).toBeUndefined();
@@ -86,7 +88,7 @@ describe("generatePluginsCompose", () => {
       image: "matrixdotorg/synapse:v1.163.2",
       restart: "unless-stopped",
       networks: ["plugin-matrix", "plugin-matrix-database", "plugin-matrix-synapse-egress"],
-      volumes: ["plugin-matrix-data:/data"],
+      volumes: ["plugin-matrix-data:/data", "plugin-matrix-config:/config"],
       command: ["run"],
       healthcheck: { test: ["CMD", "curl", "-f", "http://localhost:8008/health"] },
       depends_on: { "plugin-matrix-synapse-database": { condition: "service_completed_successfully" } },
@@ -96,11 +98,11 @@ describe("generatePluginsCompose", () => {
         DATABASE_URL: "postgres://plugin_matrix_synapse:${PLUGIN_MATRIX_SYNAPSE_DATABASE_PASSWORD}@postgres:5432/plugin_matrix_synapse",
       },
     });
-    expect(compose.volumes).toEqual({ "plugin-matrix-data": {} });
+    expect(compose.volumes).toEqual({ "plugin-matrix-config": {}, "plugin-matrix-data": {} });
     expect(compose.services.postgres).toEqual({ networks: ["default", "plugin-matrix-database"] });
     const init = compose.services["plugin-matrix-synapse-database"];
     expect(init?.environment).toMatchObject({ DATABASE_NAME: "plugin_matrix_synapse", DATABASE_PASSWORD: "${PLUGIN_MATRIX_SYNAPSE_DATABASE_PASSWORD}" });
-    expect(init?.environment?.INIT_SQL).toContain("CREATE DATABASE");
+    expect(init?.environment?.INIT_SQL).toContain("CREATE DATABASE %I OWNER %I ENCODING %L LC_COLLATE %L LC_CTYPE %L TEMPLATE template0', :'name', :'name', 'UTF8', 'C', 'C'");
     expect(init?.networks).toEqual(["plugin-matrix-database"]);
     expect(init?.environment?.INIT_SQL).toContain("REVOKE ALL ON DATABASE %I FROM PUBLIC', current_database()");
     expect(init?.depends_on).toEqual({ postgres: { condition: "service_healthy" } });
@@ -180,6 +182,7 @@ describe("name collisions", () => {
     ["a database init and a companion", "plugins:\n  - id: a\n    image: a:1\n    companions: [{ name: b, image: b:1, database: true }, { name: b-database, image: b:1 }]\n", "companion b-database of plugin a and companion b of plugin a both make the service plugin-a-b-database"],
     ["an egress proxy and a companion", "plugins:\n  - id: a\n    image: a:1\n    companions: [{ name: egress, image: b:1 }]\n", "companion egress of plugin a and plugin a both make the service plugin-a-egress"],
     ["volumes of two plugins", "plugins:\n  - id: a\n    image: a:1\n    companions: [{ name: c, image: c:1, volumes: { b-data: /d } }]\n  - id: a-b\n    image: a:1\n    companions: [{ name: c, image: c:1, volumes: { data: /d } }]\n", "plugin a-b and plugin a both make the volume plugin-a-b-data"],
+    ["a plugin volume and a companion volume of another plugin", "plugins:\n  - id: a\n    image: a:1\n    volumes: { b-data: /d }\n  - id: a-b\n    image: a:1\n    companions: [{ name: c, image: c:1, volumes: { data: /d } }]\n", "plugin a-b and plugin a both make the volume plugin-a-b-data"],
   ])("rejects %s", (_, yml, message) => {
     expect(errorsOf(yml)).toContain(`plugins.yml: ${message}; rename one`);
   });
