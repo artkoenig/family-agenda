@@ -65,10 +65,15 @@ export async function allowlistOf(service: string, { declared, bindings, hostsOf
 
 /**
  * What an Admin's host field value allows: one host, with its port or on any port, written in
- * lowercase; nothing for anything else, such as `*`, a wildcard, a URL, a path or a port out of range.
+ * lowercase. Like plugins, it drops an `http(s)://` or `webcal://` scheme and everything from the
+ * first `/`, `?` or `#`, so a pasted URL allows its host. Nothing for anything else, such as `*`, a
+ * wildcard, another scheme or a port out of range.
  */
 function hostFieldEntry(value: string): string[] {
-  const entry = parseEntry(value);
+  const unschemed = value.trim().replace(/^(?:https?|webcal):\/\//i, "");
+  const end = unschemed.search(/[/?#]/);
+  const bare = end === -1 ? unschemed : unschemed.slice(0, end);
+  const entry = parseEntry(bare);
   if (entry === null || entry.wildcard) return [];
   return [entry.port === null ? entry.name : `${entry.name}:${entry.port}`];
 }
