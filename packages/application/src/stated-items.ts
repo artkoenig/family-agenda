@@ -2,7 +2,7 @@ import { eventOf, lessonOf, problemsWithEventFields, problemsWithLessonFields, p
 import type { ReadStated, StatedJson } from "./ports";
 
 /**
- * The Item a calendar, timetable or list of Tasks entry states (ADR-0016), checked as its kind
+ * The Item a calendar, timetable or list of Tasks entry states (ADR-0005), checked as its kind
  * requires: an Event with `cancelled` as its Source says, a Lesson with its Timetable Change, or a
  * Task, which is never stated cancelled or done. One that is invalid is no Item, and says why.
  */

@@ -40,11 +40,14 @@ function dataLines(before: Snapshot["migrations"], after: Snapshot["migrations"]
     ];
   }
   if (added.length === 0) return ["**Data is kept.**"];
-  const removing = added.filter((name) => removesData.test(withoutComments(after[name] ?? "")));
-  return [
-    "**Data is kept.** The database is migrated when the Instance starts.",
-    ...removing.map((name) => `This migration removes data: \`${name}\`. Make a backup first, see [Back up](${docs}#back-up).`),
-  ];
+  return ["**Data is kept.** The database is migrated when the Instance starts.", ...removingLines(added, after, docs)];
+}
+
+/** A warning to back up first for each of the `added` migrations that takes data away. */
+function removingLines(added: string[], after: Snapshot["migrations"], docs: string): string[] {
+  return added
+    .filter((name) => removesData.test(withoutComments(after[name] ?? "")))
+    .map((name) => `This migration removes data: \`${name}\`. Make a backup first, see [Back up](${docs}#back-up).`);
 }
 
 /** The major version of the Postgres image in `compose.yaml`, such as 17 for `postgres:17`. */
@@ -61,10 +64,16 @@ function postgresLines(before: string, after: string, docs: string): string[] {
   ];
 }
 
-/** The release that moves Source plugins from in-process into containers keeps no data. */
-function switchOverLines(docs: string): string[] {
+/**
+ * The release that moves Source plugins from in-process into containers keeps no data. The
+ * warnings of new migrations that take data away still apply, to the backup made before it.
+ */
+function switchOverLines(before: Snapshot["migrations"], after: Snapshot["migrations"], docs: string): string[] {
+  const { rewritten, added } = changedMigrations(before, after);
   return [
     `**Start over required.** Source Types now run as plugin containers, listed in \`plugins.yml\` (ADR-0001); the Sources of the in-process plugins do not carry over. See [Start over](${docs}#start-over).`,
+    "**Custom plugins must become images.** The `plugins` volume is gone: a plugin of your own now runs as a container image listed in `plugins.yml`.",
+    ...(rewritten.length > 0 ? [] : removingLines(added, after, docs)),
   ];
 }
 
@@ -78,7 +87,7 @@ export function deriveUpgrading(previous: Snapshot | null, current: Snapshot, do
     previous === null
       ? ["This is the first release: there is nothing to upgrade from."]
       : [
-          ...(previous.inProcessPlugins && !current.inProcessPlugins ? switchOverLines(docs) : dataLines(previous.migrations, current.migrations, docs)),
+          ...(previous.inProcessPlugins && !current.inProcessPlugins ? switchOverLines(previous.migrations, current.migrations, docs) : dataLines(previous.migrations, current.migrations, docs)),
           ...postgresLines(previous.compose, current.compose, docs),
         ];
   return ["## Upgrading", "", ...lines.map((line) => `- ${line}`), ""].join("\n");

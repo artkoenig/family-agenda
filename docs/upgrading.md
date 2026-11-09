@@ -47,7 +47,7 @@ Do this before every upgrade, and before switching between `main` and a release.
    docker compose start api worker mdns
    ```
 
-Keep your **Recovery Kit**. Without it the Source credentials in a restored backup cannot be read (ADR-0006). The `master-key` volume is not part of the commands above on purpose. If you copy it as well, store that copy apart from the other backup files, because together they open every stored credential.
+Keep your **Recovery Kit**. Without it the Source credentials in a restored backup cannot be read (ADR-0003). The `master-key` volume is not part of the commands above on purpose. If you copy it as well, store that copy apart from the other backup files, because together they open every stored credential.
 
 Keep the backup files somewhere other than the host that runs the Instance.
 
@@ -75,7 +75,7 @@ Check the running version in the Admin area, below the settings list, or at `/ap
 
 ## Start over
 
-When a release says **Start over required**, or an Instance refuses to start because its database comes from before the data model was rebuilt (ADR-0016), the data cannot be carried over. Make a backup first if you want to keep a copy. Then stop the Instance, remove the volumes that hold data of the old model, and start it again.
+When a release says **Start over required**, or an Instance refuses to start because its database comes from before the data model was rebuilt (ADR-0005), the data cannot be carried over. Make a backup first if you want to keep a copy. Then stop the Instance, remove the volumes that hold data of the old model, and start it again.
 
 ```bash
 docker compose down
@@ -83,7 +83,7 @@ docker volume rm family-agenda_postgres-data family-agenda_blobs
 docker compose up -d
 ```
 
-Remove the volumes of plugins you start over with too (`docker volume ls`, those named `family-agenda_plugin-*`); coming from in-process plugins, also remove the old `plugins`, `matrix-data` and `matrix-instance` volumes, and set up `plugins.yml` (see [Plugins](configuration.md#plugins)). The `master-key` and `tessdata` volumes can stay. Keep the `master-key` volume if you want the Recovery Kit you saved to stay valid for the credentials you enter again. If you remove it, the first start creates a new master key and a new Recovery Kit, and the old kit opens nothing.
+Remove the volumes of plugins you start over with too (`docker volume ls`, those named `family-agenda_plugin-*`); coming from in-process plugins, also remove the old `plugins`, `matrix-data` and `matrix-instance` volumes, and set up `plugins.yml` (see [Plugins](configuration.md#plugins)). A custom plugin you kept in the `plugins` volume no longer loads: build it as a container image that answers the plugin contract ([plugin-kit.md](plugin-kit.md)) and list it in `plugins.yml`. The `master-key` and `tessdata` volumes can stay. Keep the `master-key` volume if you want the Recovery Kit you saved to stay valid for the credentials you enter again. If you remove it, the first start creates a new master key and a new Recovery Kit, and the old kit opens nothing.
 
 Then open the Instance, create the first Admin, keep the Recovery Kit it shows, and add Family Members, Agendas and Sources again.
 

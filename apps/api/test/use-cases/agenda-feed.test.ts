@@ -166,6 +166,17 @@ describe("the ICS feed of an Agenda", () => {
     expect((await feed())?.map((event) => event.summary)).toEqual(["Piano lesson"]);
   });
 
+  it("keeps its Events when a plugin states an entry without a time, which the plugin contract refuses", async () => {
+    // A stated Event needs its span by the contract; the run fails as a whole, unlike an entry that only the domain refuses.
+    await arrive(piano);
+    testPluginControls.emit("calendar", [piano, entry("broken", { title: "No time" })]);
+    instance.clock.advance(15 * minutes);
+    const report = await instance.app.polling.pollDue();
+
+    expect(report.failed).toHaveLength(1);
+    expect((await feed())?.map((event) => event.summary)).toEqual(["Piano lesson"]);
+  });
+
   it("has no feed for an unknown Agenda or one the access policy refuses", async () => {
     expect(await instance.app.agendas.feed("00000000-0000-4000-8000-000000000000" as AgendaId, { access: openAgendaAccess })).toBeNull();
     const refused = { mayOpen: () => Promise.resolve(false) };

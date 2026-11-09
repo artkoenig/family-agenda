@@ -145,6 +145,26 @@ describe("the switch-over to plugin containers in the Upgrading section", () => 
     expect(text).not.toContain("Data is kept");
   });
 
+  it("says that custom plugins must become images in plugins.yml", () => {
+    const previous = snapshot(released.migrations, "postgres:17", true);
+
+    expect(section(previous, released)).toContain("- **Custom plugins must become images.** The `plugins` volume is gone");
+  });
+
+  it("keeps the warnings of added migrations that remove data", () => {
+    const previous = snapshot(released.migrations, "postgres:17", true);
+    const current = snapshot({ ...released.migrations, "0002_cleanup.sql": "DROP TABLE task;" });
+
+    expect(section(previous, current)).toContain(`- This migration removes data: \`0002_cleanup.sql\`. Make a backup first, see [Back up](${docs}#back-up).`);
+  });
+
+  it("warns of no single migration when the migrations were rewritten", () => {
+    const previous = snapshot(released.migrations, "postgres:17", true);
+    const current = snapshot({ "0000_initial.sql": "DROP TABLE x;" });
+
+    expect(section(previous, current)).not.toContain("removes data");
+  });
+
   it("says nothing of it once both releases run plugin containers, or both in-process", () => {
     expect(section(released, released)).toBe("## Upgrading\n\n- **Data is kept.**\n");
     const inProcess = snapshot(released.migrations, "postgres:17", true);
@@ -157,7 +177,7 @@ describe("the switch-over to plugin containers in the Upgrading section", () => 
 
     const lines = section(previous, current).split("\n").filter((line) => line.startsWith("- "));
 
-    expect(lines.map((line) => /\*\*([^*]+)\*\*/.exec(line)?.[1])).toEqual(["Start over required.", "Postgres major upgrade: dump and restore required."]);
+    expect(lines.map((line) => /\*\*([^*]+)\*\*/.exec(line)?.[1])).toEqual(["Start over required.", "Custom plugins must become images.", "Postgres major upgrade: dump and restore required."]);
   });
 });
 

@@ -12,7 +12,7 @@ export type Config = {
   pluginEgress: Map<string, string[]>;
   /** The token per egress proxy's container, from `PLUGIN_EGRESS_TOKENS`, with which it fetches its allowlist. */
   egressTokens: Map<string, string>;
-  /** The `tessdata` volume of Tesseract models (ADR-0012). */
+  /** The `tessdata` volume of Tesseract models. */
   tessdataDirectory: string;
   /** Where the image keeps the Tesseract models it ships; empty for none. */
   bundledTessdataDirectory: string | null;

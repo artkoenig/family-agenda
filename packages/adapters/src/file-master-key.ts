@@ -6,7 +6,7 @@ export const masterKeyLength = 32;
 
 /**
  * The master key from its file, or null if there is no file yet.
- * The key lives only in this file, never in Postgres (ADR-0006).
+ * The key lives only in this file, never in Postgres (ADR-0003).
  */
 export async function readMasterKey(path: string): Promise<Buffer | null> {
   let key: Buffer;

@@ -72,7 +72,7 @@ import {
 /** Arbitrary key that serialises creating the first Admin. */
 const setupLockKey = 7_342_002;
 
-/** Reads and writes the one row of `family`, which the schema creates (ADR-0013). */
+/** Reads and writes the one row of `family`, which the schema creates (ADR-0003). */
 export class PostgresFamilyRepository implements FamilyRepository {
   constructor(private readonly db: Database) {}
 

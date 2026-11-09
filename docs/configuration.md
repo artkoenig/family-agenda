@@ -1,6 +1,6 @@
 # Configuration
 
-How to configure the containers, the address the Family opens, and single sign-on (SSO) for Admins. Background: ADR-0003, ADR-0005, ADR-0017.
+How to configure the containers, the address the Family opens, and single sign-on (SSO) for Admins. Background: ADR-0001, ADR-0003, ADR-0004.
 
 ## Containers
 
@@ -17,7 +17,7 @@ How to configure the containers, the address the Family opens, and single sign-o
 | `TZ` | `Europe/Berlin` | Decides where an Agenda's days start |
 | `PLUGIN_URLS` | empty | Plugin containers (ADR-0001): `id=url` pairs separated by commas, such as `school-portal=http://school-portal:8080`. The core polls each over REST; one that does not answer shows as "Not reachable" in the Admin area. Set by `compose.plugins.yaml` (see [Plugins](#plugins)); by hand only without one |
 
-Data lives in named volumes (`postgres-data`, `master-key`, `blobs`, ...). How to back them up, restore and upgrade is in [upgrading.md](upgrading.md). Keep the Recovery Kit, without it Source credentials cannot be restored (ADR-0006).
+Data lives in named volumes (`postgres-data`, `master-key`, `blobs`, ...). How to back them up, restore and upgrade is in [upgrading.md](upgrading.md). Keep the Recovery Kit, without it Source credentials cannot be restored (ADR-0003).
 
 ## Plugins
 
@@ -112,7 +112,7 @@ Sessions are cookies bound to **one host**. The SSO button and the SSO session e
 
 ### Locked out
 
-- Password sign-in still works. Forgotten: another Admin or the CLI can set a new one (ADR-0017).
+- Password sign-in still works. Forgotten: another Admin or the CLI can set a new one (ADR-0004).
 - Identity Provider down: use the password.
 - Wrong settings blocking you: sign in with the password, switch SSO off in Settings.
 

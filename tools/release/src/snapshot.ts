@@ -12,8 +12,11 @@ function git(repo: string, ...args: string[]): string {
   return execFileSync("git", ["-C", repo, ...args], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024, stdio: ["ignore", "pipe", "pipe"] });
 }
 
-/** Where releases with Source plugins in-process kept their SDK (ADR-0010, superseded by ADR-0001). */
-const sdkManifest = "packages/source-sdk/package.json";
+/**
+ * A file only releases with Source plugins in-process had: their SDK. It is gone from this tree,
+ * but stays here to recognise those releases at the historical ref an upgrade starts from.
+ */
+const inProcessPluginsMarker = "packages/source-sdk/package.json";
 
 /** A file as it is at a ref, or null where there is none. */
 function readOptional(repo: string, ref: string, file: string): string | null {
@@ -22,7 +25,7 @@ function readOptional(repo: string, ref: string, file: string): string | null {
 
 /** Whether the release at a ref ran Source plugins in-process, with the SDK. */
 function hasInProcessPlugins(repo: string, ref: string): boolean {
-  return readOptional(repo, ref, sdkManifest) !== null;
+  return readOptional(repo, ref, inProcessPluginsMarker) !== null;
 }
 
 /** The plugin contract's `openapi.json` at a ref; null where the ref has none yet. */

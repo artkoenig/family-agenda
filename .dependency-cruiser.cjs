@@ -1,5 +1,5 @@
 /**
- * Package boundaries of the Clean Architecture (ADR-0002, ADR-0010).
+ * Package boundaries of the Clean Architecture (ADR-0001).
  * Workspace packages resolve to their real paths, so rules match on `packages/<name>/`; an
  * import of a package that is not declared as a dependency stays a bare `@family-agenda/<name>`.
  * @type {import('dependency-cruiser').IConfiguration}

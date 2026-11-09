@@ -24,7 +24,7 @@ const bytea = customType<{ data: Buffer }>({ dataType: () => "bytea" });
 
 /**
  * The key of a table that holds at most one row, as an Instance serves exactly one Family
- * (ADR-0013); together with `singleRow`, it can only be `true`.
+ * (ADR-0003); together with `singleRow`, it can only be `true`.
  */
 const singleRowId = () => boolean("id").primaryKey().default(true);
 
@@ -44,7 +44,7 @@ const allOrNone = (...columns: AnyPgColumn[]): SQL =>
 const timestamptz = (name: string) => timestamp(name, { withTimezone: true });
 
 /**
- * What belongs to the Instance's one Family itself, as there is no Family id (ADR-0013); its one
+ * What belongs to the Instance's one Family itself, as there is no Family id (ADR-0003); its one
  * row is created with the schema.
  */
 export const family = pgTable(
@@ -99,7 +99,7 @@ export const signInFailures = pgTable(
 );
 
 /**
- * Envelope-encrypted secrets (ADR-0006); the master key that unwraps them is not in Postgres.
+ * Envelope-encrypted secrets (ADR-0003); the master key that unwraps them is not in Postgres.
  * Sources and the LLM endpoint refer to them by id without a foreign key, as the SecretStore is a
  * port of its own; secrets no one refers to are swept.
  */
@@ -169,7 +169,7 @@ export const agendaMembers = pgTable(
 );
 
 /**
- * Per discovered Source Type id, whether an Admin enabled it (ADR-0010); a newly discovered one is
+ * Per discovered Source Type id, whether an Admin enabled it (ADR-0001); a newly discovered one is
  * disabled. A row is never removed, so that a Source keeps its Source Type while the plugin is not
  * installed.
  */
@@ -180,7 +180,7 @@ export const sourceTypes = pgTable("source_type", {
 
 /**
  * Per discovered entry of a Source Type's catalogue, such as a Messenger of the Matrix plugin,
- * whether an Admin enabled it (ADR-0011); a newly discovered one is disabled.
+ * whether an Admin enabled it (ADR-0002); a newly discovered one is disabled.
  */
 export const catalogueEntries = pgTable(
   "catalogue_entry",
@@ -201,7 +201,7 @@ export const catalogueEntries = pgTable(
 
 /**
  * Sources of every Source Type, so that a new one needs no migration; only what an Admin
- * configures, as how their runs went is in `source_run` (ADR-0014). A Source keeps its Source
+ * configures, as how their runs went is in `source_run` (ADR-0005). A Source keeps its Source
  * Type id even when the plugin is removed, and resumes once it is installed again. Removing a
  * Source removes everything it brought in, down to the Items, by cascade.
  */
@@ -232,7 +232,7 @@ export const sources = pgTable(
 );
 
 /**
- * How a Source's runs went, one row per Source, apart from what an Admin configures (ADR-0014);
+ * How a Source's runs went, one row per Source, apart from what an Admin configures (ADR-0005);
  * written by every run.
  */
 export const sourceRuns = pgTable(
@@ -291,7 +291,7 @@ export const sourceRuns = pgTable(
 );
 
 /**
- * A subdivision of a Source that its plugin reports (ADR-0016), such as a mail folder, a chat or a
+ * A subdivision of a Source that its plugin reports (ADR-0005), such as a mail folder, a chat or a
  * child of a school account. Written only through the plugin's port, never by the core on its own:
  * `declare` inserts one, or renames a known one and revives it, keeping its assignment, and
  * `archive` sets `archived_at`. Rows are archived, never deleted, except with their Source.
@@ -332,8 +332,8 @@ export const sourceAttributeMembers = pgTable(
 );
 
 /**
- * What a Source delivered under one external id (ADR-0016): a message, with its text here and its
- * attachments behind the BlobStore (ADR-0006), or a calendar or timetable entry, without text. A message has a body, empty if it is only attachments, until it is withdrawn.
+ * What a Source delivered under one external id (ADR-0005): a message, with its text here and its
+ * attachments behind the BlobStore (ADR-0003), or a calendar or timetable entry, without text. A message has a body, empty if it is only attachments, until it is withdrawn.
  */
 export const sourceRecords = pgTable(
   "source_record",
@@ -396,7 +396,7 @@ export const sourceRecords = pgTable(
   ],
 );
 
-/** The attachments of a message; their bytes are files behind the BlobStore (ADR-0006). */
+/** The attachments of a message; their bytes are files behind the BlobStore (ADR-0003). */
 export const sourceRecordAttachments = pgTable(
   "source_record_attachment",
   {
@@ -440,7 +440,7 @@ export const sourceRecordAttributes = pgTable(
 );
 
 /**
- * An Item, written from its one Source Record (ADR-0016): a message's Items are written once, a
+ * An Item, written from its one Source Record (ADR-0005): a message's Items are written once, a
  * calendar or timetable entry's one Item is found again through its Source Record. Its fields are
  * in the detail table of its kind; an Admin can only delete it.
  */

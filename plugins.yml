@@ -5,18 +5,18 @@ plugins:
   # Calendars by ICS address. The address is a secret field, so its host is not learned from it:
   # add the host of each calendar here, such as calendar.google.com:443.
   - id: ics
-    image: ghcr.io/artkoenig/family-agenda-ics:0.1.0
+    image: ghcr.io/artkoenig/family-agenda-ics:0.1.0@sha256:0ab61e079160b16c7f0f57c16126066b180fff87de57d94cc9ba4a4fb90c929e
     egress: []
 
   # Mailboxes over IMAP. The mail server is a host field, which the egress proxy allows by itself.
   - id: imap
-    image: ghcr.io/artkoenig/family-agenda-imap:0.1.0
+    image: ghcr.io/artkoenig/family-agenda-imap:0.1.0@sha256:a0f799d4e59d753ad1e08732a7fd5ad80a3546916673889cf8fb31ba5fe3c669
 
   # Timetables from WebUntis. The server is a host field, which the egress proxy allows by itself.
   - id: webuntis
-    image: ghcr.io/artkoenig/family-agenda-webuntis:0.1.0
+    image: ghcr.io/artkoenig/family-agenda-webuntis:0.1.0@sha256:d8465fb0d0a423c87dbd506ea06db21f1fcf7991ba940573f7b26f717b3a1aa9
 
-  # Messengers through Matrix bridges (ADR-0011), as in plugins.example.yml of the plugin's repository.
+  # Messengers through Matrix bridges (ADR-0002), as in plugins.example.yml of the plugin's repository.
   # The plugin keeps the secrets in its own `matrix-secrets` volume, which no companion mounts, and
   # writes each companion's configuration into a volume shared with that companion alone, creating
   # `ready` in it last; the companion waits for it, then starts from it. A companion without `ready`

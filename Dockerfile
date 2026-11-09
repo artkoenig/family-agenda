@@ -2,7 +2,7 @@ FROM node:26-bookworm-slim
 
 ENV NODE_ENV=production
 # poppler and Tesseract turn PDF attachments into text. The image ships the German and English
-# models and osd; start-up links them into the tessdata volume, where Admins add others (ADR-0012).
+# models and osd; start-up links them into the tessdata volume, where Admins add others.
 RUN apt-get update \
   && apt-get install -y --no-install-recommends poppler-utils tesseract-ocr tesseract-ocr-deu tesseract-ocr-eng tesseract-ocr-osd \
   && rm -rf /var/lib/apt/lists/*

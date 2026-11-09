@@ -9,7 +9,7 @@ const dayMs = 24 * 60 * 60 * 1000;
 export const retainedSince = (now: Date): Date => new Date(now.getTime() - messageRetentionDays * dayMs);
 
 /**
- * Deletes the text and attachments of messages after their retention (ADR-0016): once no Item
+ * Deletes the text and attachments of messages after their retention (ADR-0005): once no Item
  * needs them, or when they are older than the retention period, whichever comes first. The
  * Source Record stays as a tombstone, and its row goes once no Item points to it and it is that old.
  */
