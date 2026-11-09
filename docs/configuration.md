@@ -15,9 +15,46 @@ How to configure the containers, the address the Family opens, and single sign-o
 | `MDNS_NAME` | `family-agenda.local` | Name the `mdns` service announces (Linux host only) |
 | `POSTGRES_PASSWORD` | `family_agenda` | Change it if the port of Postgres is ever exposed |
 | `TZ` | `Europe/Berlin` | Decides where an Agenda's days start |
-| `PLUGIN_URLS` | empty | Plugin containers (ADR-0001): `id=url` pairs separated by commas, such as `school-portal=http://school-portal:8080`. The core polls each over REST; one that does not answer shows as "Not reachable" in the Admin area |
+| `PLUGIN_URLS` | empty | Plugin containers (ADR-0001): `id=url` pairs separated by commas, such as `school-portal=http://school-portal:8080`. The core polls each over REST; one that does not answer shows as "Not reachable" in the Admin area. Set by `compose.plugins.yaml` (see [Plugins](#plugins)); by hand only without one |
 
 Data lives in named volumes (`postgres-data`, `master-key`, `blobs`, ...). How to back them up, restore and upgrade is in [upgrading.md](upgrading.md). Keep the Recovery Kit, without it Source credentials cannot be restored (ADR-0006).
+
+## Plugins
+
+Each Source Type runs as a plugin container (ADR-0001). List them in `plugins.yml` next to `compose.yaml`; [`plugins.schema.json`](../plugins.schema.json) is its JSON schema. It is not versioned.
+
+```yaml
+plugins:
+  - id: school-portal                          # the Source Type id the plugin reports
+    image: ghcr.io/example/school-portal:1.2.0 # pinned: a tag other than latest, or a digest
+    egress: [portal.example.com:443, "*.example.org:443"]
+    limits: { memory: 512m, cpus: 1 }          # optional; these are the defaults
+    companions:                                # optional containers the plugin needs
+      - name: synapse
+        image: matrixdotorg/synapse:v1.163.2
+        env: { SYNAPSE_SERVER_NAME: family-agenda }
+        volumes: { data: /data }               # logical name: path, kept in volume plugin-<id>-<name>
+        command: [run]                         # optional
+        egress: []                             # the companion's own hosts
+        database: true                         # optional: its own database on the Instance's Postgres
+        healthcheck: { test: [CMD, curl, -f, "http://localhost:8008/health"] } # optional, passed through
+```
+
+Then generate `compose.plugins.yaml` and activate it:
+
+```sh
+docker compose run --rm api plugins generate
+echo "COMPOSE_FILE=compose.yaml:compose.plugins.yaml" >> .env
+docker compose up -d
+```
+
+The generator validates `plugins.yml` and names every mistake. `compose.yaml` mounts this directory into `api` at `/deployment`, and the generator writes there as the image's user (uid 1000); if that user cannot write here, add `--user` with your own uid. Run it again after every change to `plugins.yml`. The first time, `COMPOSE_FILE` must not yet name the missing `compose.plugins.yaml`. The core never reads `plugins.yml`, only what the generated file sets.
+
+What the generated file does:
+
+- Runs plugin `<id>` as service `plugin-<id>` and each companion as `plugin-<id>-<name>`, on an internal network `plugin-<id>` without published ports, with `restart: unless-stopped`. Plugins get the limits above; there are no health checks for plugins.
+- Gives `api` and `worker` that network, `PLUGIN_URLS` (`<id>=http://plugin-<id>:8080`) and `PLUGIN_EGRESS`, the declared egress hosts per container.
+- For a companion with `database: true`: a role and database `plugin_<id>_<name>` on the Instance's Postgres, created or updated by a one-shot `plugin-<id>-<name>-database` service before the companion starts; a random password added to `.env` as `PLUGIN_<ID>_<NAME>_DATABASE_PASSWORD`; and `DATABASE_URL` in the companion's environment. Postgres joins a separate internal network `plugin-<id>-database` with that companion only.
 
 ## Address of the Instance
 
