@@ -182,6 +182,25 @@ describe("a Source Type's catalogue and the Sources that use it", () => {
     expect(testPluginControls.choicesAsked("bridged")).toBeGreaterThan(asked);
   });
 
+  it("asks a Source's plugin for choice values again only once they are old or its configuration changed", async () => {
+    const { id } = await addWhatsApp();
+    testPluginControls.knowValues("bridged", [{ value: "!class:local", label: "Klasse 5b" }]);
+    await instance.app.sources.find(id);
+    const asked = testPluginControls.choicesAsked("bridged");
+
+    await instance.app.sources.find(id);
+    await instance.app.sources.listOfType("bridged");
+    expect(testPluginControls.choicesAsked("bridged")).toBe(asked);
+
+    instance.clock.advance(5 * 60_000);
+    await instance.app.sources.find(id);
+    expect(testPluginControls.choicesAsked("bridged")).toBe(asked + 1);
+
+    expect(await instance.app.sources.edit(id, { plain: { chats: ["!class:local"] }, secrets: {} })).toEqual({ ok: true });
+    await instance.app.sources.find(id);
+    expect(testPluginControls.choicesAsked("bridged")).toBe(asked + 2);
+  });
+
   it("lists the Sources of a Source Type with the values their choice fields offer, for the labels on the Source Type's page", async () => {
     await addWhatsApp();
     testPluginControls.knowValues("bridged", [{ value: "!class:local", label: "Klasse 5b" }]);

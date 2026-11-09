@@ -65,6 +65,9 @@ export type SourceSummary = {
   choices?: Record<string, PluginAnswer<KnownValue[]>>;
 };
 
+/** How long the values a plugin offers for a Source's choice fields are shown before it is asked again. */
+const choicesMaxAgeMs = 5 * 60_000;
+
 /** What the Admin area renders a Source's form from, for an enabled Source Type. */
 export type SourceForm = {
   sourceTypeId: SourceTypeId;
@@ -94,6 +97,37 @@ export type SourceProblem =
   | { ok: false; problem: "invalid-interval" }
   /** `fields` are the keys that are missing, unknown, or given as plain instead of secret. */
   | { ok: false; problem: "invalid-config"; fields: string[] };
+
+/** Identifies a Source being added in the background. */
+export type AddingId = string & { readonly __brand: "AddingId" };
+
+/** Added already, as `add` answers, or still being prepared in the background. */
+export type StartAddingResult = AddSourceResult | { ok: true; adding: AddingId };
+
+/** How a Source added in the background is coming along. */
+export type AddingProgress =
+  | { status: "running"; sourceTypeId: string; plain: PlainConfig }
+  | { status: "added"; sourceTypeId: string; id: SourceId; setUp: boolean }
+  /** Its plugin could not prepare it; what was entered, without secrets, for the form to show again. */
+  | { status: "failed"; sourceTypeId: string; message: string; plain: PlainConfig; pollIntervalSeconds: number | null };
+
+/** How long adding a Source waits for its plugin before leaving it to the background. */
+const addingWaitMs = 1000;
+
+/** Resolves to undefined after `ms`, for a race against a slower answer. */
+const delay = (ms: number) => new Promise<undefined>((resolve) => setTimeout(() => { resolve(undefined); }, ms).unref());
+
+/** How long an adding that ended is remembered. */
+const addingsKeptMs = 10 * 60_000;
+
+function failedAdding(input: SourceInput & { sourceTypeId: string }, message: string): AddingProgress {
+  return { status: "failed", sourceTypeId: input.sourceTypeId, message, plain: input.plain, pollIntervalSeconds: input.pollIntervalSeconds ?? null };
+}
+
+function addingProgressOf(input: SourceInput & { sourceTypeId: string }, result: AddSourceResult): AddingProgress {
+  if (result.ok) return { status: "added", sourceTypeId: input.sourceTypeId, id: result.id, setUp: result.setUp };
+  return failedAdding(input, "message" in result ? result.message : result.problem);
+}
 
 export type AddSourceResult =
   /** `setUp` when it has live setup steps an Admin goes through next, such as a QR code login. */
@@ -242,8 +276,26 @@ export function createSourceAccess(deps: SourcesDeps) {
     };
   }
 
-  /** The values each choice field of a Source offers; none while its Source Type is not enabled. */
+  /**
+   * The choices plugins offered lately, by Source and configuration, so that a page showing a Source
+   * does not ask its plugin again each time, such as an IMAP plugin logging in to list folders.
+   */
+  const offered = new Map<SourceId, { key: string; at: number; choices: Record<string, PluginAnswer<KnownValue[]>> }>();
+
+  /** The values each choice field of a Source offers, as its plugin offered them lately. */
   async function choicesOf(source: Source): Promise<Record<string, PluginAnswer<KnownValue[]>>> {
+    const key = JSON.stringify([source.sourceTypeId, source.configVersion, source.plain, source.secrets]);
+    const now = clock.now().getTime();
+    const last = offered.get(source.id);
+    if (last && last.key === key && now - last.at < choicesMaxAgeMs) return last.choices;
+    const choices = await askChoicesOf(source);
+    if (Object.values(choices).every((answer) => answer.ok)) offered.set(source.id, { key, at: now, choices });
+    else offered.delete(source.id);
+    return choices;
+  }
+
+  /** The values each choice field of a Source offers; none while its Source Type is not enabled. */
+  async function askChoicesOf(source: Source): Promise<Record<string, PluginAnswer<KnownValue[]>>> {
     const sourceType = await enabled(source.sourceTypeId);
     const fields = sourceType?.configuration.fields.filter((field) => field.choice) ?? [];
     if (!sourceType || fields.length === 0) return {};
@@ -274,6 +326,65 @@ export function createSourceAccess(deps: SourcesDeps) {
     return { ok: true };
   }
 
+
+  /** The enabled Source Type of a Source to add, or why its form cannot be saved. */
+  async function checkedAdding(
+    input: SourceInput & { sourceTypeId: string },
+  ): Promise<{ sourceType: LoadedSourceType } | Exclude<AddSourceResult, { ok: true }>> {
+    const sourceTypeId = input.sourceTypeId as SourceTypeId;
+    const sourceType = await enabled(sourceTypeId);
+    if (!sourceType) return { ok: false, problem: "source-type-not-enabled" };
+    const usable = sourceType.catalogue ? (await usableEntries(sourceTypeId, sourceType, catalogues)).map((entry) => entry.id) : null;
+    return check(sourceType, input, [], usable) ?? { sourceType };
+  }
+
+  /** Has the plugin prepare a checked Source, then stores it. */
+  async function completeAdding(input: SourceInput & { sourceTypeId: string }, sourceType: LoadedSourceType): Promise<AddSourceResult> {
+    const sourceTypeId = input.sourceTypeId as SourceTypeId;
+    const given = { plain: plainOf(input), secrets: Object.fromEntries(Object.entries(input.secrets).filter(([, value]) => value !== "")) };
+    const prepared = await sourceType.sourceAdded({ ...given, now: clock.now(), timeZone });
+    if (!prepared.ok) return { ok: false, problem: "setup-failed", message: prepared.message };
+    const setByPlugin = new Set(sourceType.configuration.fields.filter((field) => field.setByPlugin).map((field) => field.key));
+    const ofPlugin = (values: Record<string, unknown>) => Object.entries(values).filter(([key]) => setByPlugin.has(key));
+
+    const refs: Record<string, SecretRef> = {};
+    for (const [key, value] of [...Object.entries(given.secrets), ...ofPlugin(prepared.secrets)]) {
+      refs[key] = await secrets.put(String(value));
+    }
+    const id = randomUUID() as SourceId;
+    await sources.add({
+      id,
+      sourceTypeId,
+      plain: { ...given.plain, ...Object.fromEntries(ofPlugin(prepared.plain)) },
+      configVersion: sourceType.configuration.version,
+      secrets: refs,
+      secretHosts: secretHostsOf(sourceType.configuration.fields, given.secrets, {}),
+      syncCursor: null,
+      pollIntervalSeconds: input.pollIntervalSeconds ?? null,
+      shown: true,
+      name: null,
+      attributes: [],
+      lastRunAt: null,
+      lastSuccessAt: null,
+      failure: null,
+      lastNewRecordAt: null,
+      invalidRecords: [],
+      unknownAttributes: [],
+      createdAt: clock.now(),
+    });
+    return { ok: true, id, setUp: sourceType.setupSteps.some((step) => step.live) };
+  }
+
+  /** The Sources added in the background, by the id their adding was started with. */
+  const addings = new Map<AddingId, { startedAt: number; progress: AddingProgress }>();
+
+  /** Forgets addings that ended long ago, so that the map does not grow. */
+  function pruneAddings() {
+    const now = clock.now().getTime();
+    for (const [id, { startedAt, progress }] of addings) {
+      if (progress.status !== "running" && now - startedAt > addingsKeptMs) addings.delete(id);
+    }
+  }
 
   return {
     async list(): Promise<SourceSummary[]> {
@@ -338,45 +449,49 @@ export function createSourceAccess(deps: SourcesDeps) {
 
     /** Adds a Source of an enabled Source Type, configured by the fields its plugin declares. */
     async add(input: SourceInput & { sourceTypeId: string }): Promise<AddSourceResult> {
-      const sourceTypeId = input.sourceTypeId as SourceTypeId;
-      const sourceType = await enabled(sourceTypeId);
-      if (!sourceType) return { ok: false, problem: "source-type-not-enabled" };
-      const usable = sourceType.catalogue ? (await usableEntries(sourceTypeId, sourceType, catalogues)).map((entry) => entry.id) : null;
-      const problem = check(sourceType, input, [], usable);
-      if (problem) return problem;
+      const checked = await checkedAdding(input);
+      return "problem" in checked ? checked : completeAdding(input, checked.sourceType);
+    },
 
-      const given = { plain: plainOf(input), secrets: Object.fromEntries(Object.entries(input.secrets).filter(([, value]) => value !== "")) };
-      const prepared = await sourceType.sourceAdded({ ...given, now: clock.now(), timeZone });
-      if (!prepared.ok) return { ok: false, problem: "setup-failed", message: prepared.message };
-      const setByPlugin = new Set(sourceType.configuration.fields.filter((field) => field.setByPlugin).map((field) => field.key));
-      const ofPlugin = (values: Record<string, unknown>) => Object.entries(values).filter(([key]) => setByPlugin.has(key));
+    /**
+     * Adds a Source like `add`, but answers once its form is checked: its plugin prepares it in
+     * the background, such as an IMAP plugin logging in, which `adding` tells about meanwhile.
+     */
+    async startAdding(input: SourceInput & { sourceTypeId: string }, waitMs = addingWaitMs): Promise<StartAddingResult> {
+      const checked = await checkedAdding(input);
+      if ("problem" in checked) return checked;
+      const completing = completeAdding(input, checked.sourceType);
+      // Most plugins prepare a Source at once; only one that takes longer is left to the background.
+      const quick = await Promise.race([completing, delay(waitMs)]);
+      if (quick) return quick;
+      pruneAddings();
+      const id = randomUUID() as AddingId;
+      const startedAt = clock.now().getTime();
+      addings.set(id, { startedAt, progress: { status: "running", sourceTypeId: input.sourceTypeId, plain: input.plain } });
+      completing.then(
+        (result) => addings.set(id, { startedAt, progress: addingProgressOf(input, result) }),
+        (error: unknown) => addings.set(id, { startedAt, progress: failedAdding(input, error instanceof Error ? error.message : String(error)) }),
+      );
+      return { ok: true, adding: id };
+    },
 
-      const refs: Record<string, SecretRef> = {};
-      for (const [key, value] of [...Object.entries(given.secrets), ...ofPlugin(prepared.secrets)]) {
-        refs[key] = await secrets.put(String(value));
+    /** How a Source added in the background is coming along; null for one not known (any more). */
+    adding(id: AddingId): AddingProgress | null {
+      return addings.get(id)?.progress ?? null;
+    },
+
+    /** The Sources of a Source Type still being prepared in the background, or whose preparing failed, oldest first. */
+    addingsOf(sourceTypeId: string): { id: AddingId; progress: Exclude<AddingProgress, { status: "added" }> }[] {
+      const listed: { id: AddingId; progress: Exclude<AddingProgress, { status: "added" }> }[] = [];
+      for (const [id, { progress }] of addings) {
+        if (progress.sourceTypeId === sourceTypeId && progress.status !== "added") listed.push({ id, progress });
       }
-      const id = randomUUID() as SourceId;
-      await sources.add({
-        id,
-        sourceTypeId,
-        plain: { ...given.plain, ...Object.fromEntries(ofPlugin(prepared.plain)) },
-        configVersion: sourceType.configuration.version,
-        secrets: refs,
-        secretHosts: secretHostsOf(sourceType.configuration.fields, given.secrets, {}),
-        syncCursor: null,
-        pollIntervalSeconds: input.pollIntervalSeconds ?? null,
-        shown: true,
-        name: null,
-        attributes: [],
-        lastRunAt: null,
-        lastSuccessAt: null,
-        failure: null,
-        lastNewRecordAt: null,
-        invalidRecords: [],
-        unknownAttributes: [],
-        createdAt: clock.now(),
-      });
-      return { ok: true, id, setUp: sourceType.setupSteps.some((step) => step.live) };
+      return listed;
+    },
+
+    /** Forgets a Source added in the background, such as one whose failure an Admin saw. */
+    forgetAdding(id: AddingId): void {
+      addings.delete(id);
     },
 
     /**

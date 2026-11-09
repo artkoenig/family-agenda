@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { bootHttpForTest, sessionCookieOf, type HttpTestInstance } from "../support/http";
 import { testPluginControls, type TestConfiguration } from "../support/test-source-plugin";
 
@@ -161,6 +161,70 @@ describe("Sources of a Source Type with a catalogue and a live setup step", () =
 
     expect(refused.status).toBe(400);
     expect(await refused.text()).toContain("The Source could not be set up: the homeserver is unreachable");
+  });
+
+  /** Adds a Source whose plugin is held, and the address of its row on the Source Type's page. */
+  const addHeld = async () => {
+    const started = await instance.post("/admin/sources", { sourceTypeId: "bridged", "plain.messenger": "whatsapp" }, { cookie });
+    expect(started.status).toBe(303);
+    const page = await (await instance.get(started.headers.get("location")!, { cookie })).text();
+    const row = /hx-get="(\/admin\/sources\/adding\/[^"]+)\/row"/.exec(page)?.[1];
+    if (!row) throw new Error("no row of a Source being added");
+    return { page, adding: row };
+  };
+
+  it("prepares a Source whose plugin takes long in the background, with a spinner on its row meanwhile", async () => {
+    await instance.app.catalogues.enable("bridged", "whatsapp", { riskAcknowledged: true });
+    const release = testPluginControls.holdAdding("bridged");
+
+    const { page, adding } = await addHeld();
+    expect(page).toContain("Setting up …");
+    expect(page).toContain("fam-spinner");
+    expect(await (await instance.get(`${adding}/row`, { cookie })).text()).toContain("fam-spinner");
+    expect((await instance.get(adding, { cookie })).headers.get("location")).toBe("/admin/source-types/bridged");
+
+    release();
+    await vi.waitFor(async () => {
+      const row = await instance.get(`${adding}/row`, { cookie });
+      expect(row.headers.get("HX-Redirect")).toBe(adding);
+    });
+    const [source] = await instance.app.sources.list();
+    const done = await instance.get(adding, { cookie });
+    expect(done.headers.get("location")).toBe(`/admin/sources/${source!.id}/setup`);
+  });
+
+  it("shows why a Source prepared in the background could not be set up, with what was entered", async () => {
+    await instance.app.catalogues.enable("bridged", "whatsapp", { riskAcknowledged: true });
+    const release = testPluginControls.holdAdding("bridged");
+    testPluginControls.failAdding("bridged");
+
+    const { adding } = await addHeld();
+    release();
+    await vi.waitFor(async () => {
+      expect(await (await instance.get(`${adding}/row`, { cookie })).text()).toContain("the homeserver is unreachable");
+    });
+    expect(await (await instance.get("/admin/source-types/bridged", { cookie })).text()).toContain(`href="${adding}"`);
+
+    const refused = await instance.get(adding, { cookie });
+    expect(refused.status).toBe(400);
+    expect(await refused.text()).toContain("The Source could not be set up: the homeserver is unreachable");
+    expect(await instance.app.sources.list()).toEqual([]);
+    expect((await instance.get(adding, { cookie })).headers.get("location")).toBe("/admin/sources");
+    expect((await instance.get(`${adding}/row`, { cookie })).headers.get("HX-Redirect")).toBe("/admin/sources");
+  });
+
+  it("forgets a Source added in the background once that is long over", async () => {
+    await instance.app.catalogues.enable("bridged", "whatsapp", { riskAcknowledged: true });
+    const release = testPluginControls.holdAdding("bridged");
+    const { adding } = await addHeld();
+    release();
+    await vi.waitFor(async () => { expect((await instance.get(`${adding}/row`, { cookie })).status).toBe(204); });
+
+    instance.clock.advance(11 * 60_000);
+    const releaseNext = testPluginControls.holdAdding("bridged");
+    await addHeld();
+    releaseNext();
+    expect((await instance.get(adding, { cookie })).headers.get("location")).toBe("/admin/sources");
   });
 
   it("allow-lists chats with one checkbox each, and clears them all", async () => {

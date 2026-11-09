@@ -729,3 +729,26 @@ html[data-theme-mode="dark"] .fam-theme__icon--dark { display: block; }
   .fam-page .fam-sheet { border: 0; box-shadow: none; padding: 0; }
   .fam-settings__header, .fam-settings__nav, .fam-banner, .fam-group__actions, .fam-sheet__form, .fam-button { display: none; }
 }
+
+/* A spinner, standing in for a status while something runs in the background. */
+.fam-spinner {
+  display: inline-block;
+  flex: none;
+  width: 14px;
+  height: 14px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  opacity: 0.6;
+  animation: fam-spin 0.8s linear infinite;
+}
+@keyframes fam-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fam-spinner {
+    animation-duration: 3s;
+  }
+}
