@@ -73,7 +73,7 @@ describe("A Source Type whose plugin runs in a container", () => {
     instance = await bootForTest({
       sourcePlugins: [{ sourceTypeId: "club-mail" }],
       pluginContainers: [{ sourceTypeId: "school-portal" as SourceTypeId, url: urlOf(server) }],
-      pluginContainerOptions: { timeoutsMs: { poll: 200 } },
+      pluginContainerOptions: { timeoutsMs: { poll: 200 }, descriptionMaxAgeMs: 0 },
     });
     expect(await instance.app.sourceTypes.enable("school-portal")).toEqual({ ok: true });
     const added = await instance.app.sources.add({ sourceTypeId: "school-portal", plain: { url: "https://portal.example.org" }, secrets: { token: "first" } });
@@ -209,7 +209,7 @@ describe("A Source Type whose plugin receives pushed payloads", () => {
     );
     instance = await bootForTest({
       pluginContainers: [{ sourceTypeId: "chat-relay" as SourceTypeId, url: urlOf(server) }],
-      pluginContainerOptions: { timeoutsMs: { receive: 200 } },
+      pluginContainerOptions: { timeoutsMs: { receive: 200 }, descriptionMaxAgeMs: 0 },
     });
     expect(await instance.app.sourceTypes.enable("chat-relay")).toEqual({ ok: true });
     const added = await instance.app.sources.add({ sourceTypeId: "chat-relay", plain: { url: "https://chat.example.org" }, secrets: { token: "first" } });
@@ -403,6 +403,23 @@ describe("The other functions of a plugin container", () => {
     if (!loaded.ok) throw new Error("not loaded");
     return { containers, sourceType: loaded.sourceType };
   };
+
+  it("asks its plugin for its description again only once the last one is a few seconds old", async () => {
+    const server = await servePlugin(plugin, { host: "127.0.0.1" });
+    const fetching = vi.spyOn(globalThis, "fetch");
+    try {
+      const { containers } = await loadedFrom(server);
+      await containers.load("school-portal" as SourceTypeId);
+      expect(fetching).toHaveBeenCalledTimes(1);
+
+      const fresh = await PluginContainers.connect([{ sourceTypeId: "school-portal" as SourceTypeId, url: urlOf(server) }], { descriptionMaxAgeMs: 0 });
+      await fresh.load("school-portal" as SourceTypeId);
+      expect(fetching).toHaveBeenCalledTimes(3);
+    } finally {
+      fetching.mockRestore();
+      await closed(server);
+    }
+  });
 
   it("calls its plugin for each of them", async () => {
     const server = await servePlugin(plugin, { host: "127.0.0.1" });

@@ -341,6 +341,7 @@ export const de: Catalogue = {
     choicesFailed: "Das Plugin konnte nichts zur Auswahl anbieten.",
     setupEyebrow: "Eine Quelle einrichten",
     setupWaiting: "Warte …",
+    settingUp: "Wird eingerichtet …",
     setupDone: "Fertig.",
     qrCode: "QR-Code zum Scannen",
     finish: "Fertig",

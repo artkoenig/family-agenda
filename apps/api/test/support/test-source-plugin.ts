@@ -77,6 +77,7 @@ const choicesAsked = new Map<string, number>();
 const catalogueEntries = new Map<string, CatalogueEntry[]>();
 const setupProgress = new Map<string, SetupProgress>();
 const addingFails = new Set<string>();
+const addingHeld = new Map<string, Promise<void>>();
 const askingFails = new Map<string, string>();
 const removed = new Map<string, RunContext[]>();
 let accounts = 0;
@@ -119,6 +120,15 @@ export const testPluginControls = {
   /** Makes preparing the next Source being added fail. */
   failAdding(sourceTypeId: string): void {
     addingFails.add(sourceTypeId);
+  },
+  /** Makes preparing the Sources being added wait until the returned function is called. */
+  holdAdding(sourceTypeId: string): () => void {
+    let release = () => {};
+    addingHeld.set(sourceTypeId, new Promise((resolve) => (release = resolve)));
+    return () => {
+      addingHeld.delete(sourceTypeId);
+      release();
+    };
   },
   /** What the plugin was told of removed Sources, oldest first. */
   removed(sourceTypeId: string): RunContext[] {
@@ -208,7 +218,8 @@ export function testSourcePlugin(plugin: TestPluginPackage): PluginImplementatio
         attributes: attributesOf(sourceTypeId, next.origins),
       };
     },
-    sourceAdded: () => {
+    sourceAdded: async () => {
+      await addingHeld.get(sourceTypeId);
       if (addingFails.delete(sourceTypeId)) throw new PluginError("temporary", "the homeserver is unreachable");
       accounts += 1;
       const plain: Record<string, string> = {};

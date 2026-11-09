@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import {
   type SourceInput,
+  type AddingId,
   type SourceSummary,
   type SourceTypeSummary,
   type Showing,
@@ -45,6 +46,7 @@ import {
   FamilyMembersPage,
   FirstAdminPage,
   DisplayPage,
+  AddingRow,
   LiveStepProgress,
   LlmEndpointPage,
   ModelField,
@@ -473,10 +475,28 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     return c.redirect("/admin", 303);
   });
 
+  /**
+   * Whether the LLM endpoint answers, as asked lately: every Admin page shows it, so a page uses the
+   * last answer and asks again in the background once it is a minute old, instead of waiting for it.
+   */
+  let llmHealthAsked: { at: number; health: Promise<"ok" | "failing"> } | null = null;
+  const askLlmHealth = () => {
+    const health = llmEndpoint.health().then((answer) => (answer?.ok ? "ok" as const : "failing" as const), () => "failing" as const);
+    const asked = { at: Date.now(), health };
+    llmHealthAsked = asked;
+    return asked;
+  };
+  const llmHealthNow = async (): Promise<"ok" | "failing"> => {
+    const last = llmHealthAsked;
+    if (!last) return askLlmHealth().health;
+    if (Date.now() - last.at >= 60_000) askLlmHealth();
+    return last.health;
+  };
+
   /** What the settings list says about each section. */
   const settings = async (): Promise<SettingsSummary> => {
     const endpoint = await llmEndpoint.current();
-    const llmHealth = endpoint ? (await llmEndpoint.health())?.ok ? "ok" as const : "failing" as const : null;
+    const llmHealth = endpoint ? await llmHealthNow() : null;
     const language = await languages.current();
     const allSources = await sources.list();
     return {
@@ -783,6 +803,7 @@ function shownStatus(status: 200 | 400 | 413 | undefined, problems: (string | un
         timeZone={timeZone}
         {...(shown.problem ? { problem: shown.problem } : {})}
         {...(shown.adding ? { adding: shown.adding } : {})}
+        addings={sources.addingsOf(id)}
         {...(shown.settingUp ? { settingUp: shown.settingUp, liveSteps: await liveStepsOf(shown.settingUp) } : {})}
       />
     );
@@ -857,6 +878,9 @@ function shownStatus(status: 200 | 400 | 413 | undefined, problems: (string | un
     return t.problemsWith.invalidConfig(list(result.fields.map((key) => labels.get(key) ?? key)));
   };
 
+  /** The page of a Source being added in the background. */
+  const addingHref = (id: AddingId) => `/admin/sources/adding/${encodeURIComponent(id)}`;
+
   /** A Source by its id, for the page of its Source Type. */
   const sourceOf = async (id: string) => (await sources.list()).find((source) => source.id === id);
 
@@ -878,7 +902,7 @@ function shownStatus(status: 200 | 400 | 413 | undefined, problems: (string | un
     const form = await c.req.parseBody({ all: true });
     const sourceTypeId = field(form, "sourceTypeId");
     const input = sourceInputOf(form);
-    const result = await sources.add({ sourceTypeId, ...input });
+    const result = await sources.startAdding({ sourceTypeId, ...input });
     if (!result.ok) {
       const problem = await sourceProblem(c, result);
       const sourceForm = (await sources.forms()).find((candidate) => candidate.sourceTypeId === sourceTypeId);
@@ -887,7 +911,36 @@ function shownStatus(status: 200 | 400 | 413 | undefined, problems: (string | un
       const entered = { plain, interval: field(form, "pollIntervalMinutes").trim() };
       return sourceTypePage(c, sourceTypeId, { adding: { form: sourceForm, entered, problem } });
     }
+    if ("adding" in result) return c.redirect(sourceTypeHref(sourceTypeId), 303);
     return c.redirect(result.setUp ? `/admin/sources/${result.id}/setup` : sourceTypeHref(sourceTypeId), 303);
+  });
+
+  // A Source added in the background: once its plugin prepared it, where it goes on; once it failed, its form again.
+  app.get("/admin/sources/adding/:adding", async (c) => {
+    const id = c.req.param("adding") as AddingId;
+    const progress = sources.adding(id);
+    if (!progress) return c.redirect("/admin/sources");
+    if (progress.status === "added") return c.redirect(progress.setUp ? `/admin/sources/${progress.id}/setup` : sourceTypeHref(progress.sourceTypeId));
+    if (progress.status === "running") return c.redirect(sourceTypeHref(progress.sourceTypeId));
+    sources.forgetAdding(id);
+    const sourceForm = (await sources.forms()).find((candidate) => candidate.sourceTypeId === progress.sourceTypeId);
+    const problem = c.get("translation").t.problemsWith.setupFailed(progress.message);
+    if (!sourceForm) return sourceTypePage(c, progress.sourceTypeId, { problem });
+    const plain = Object.fromEntries(Object.entries(progress.plain).map(([key, value]) => [key, String(value)]));
+    const interval = progress.pollIntervalSeconds === null ? "" : String(progress.pollIntervalSeconds / 60);
+    return sourceTypePage(c, progress.sourceTypeId, { adding: { form: sourceForm, entered: { plain, interval }, problem } });
+  });
+
+  // A row of a Source being added, asked for every few seconds; once it is no longer, the page goes on.
+  app.get("/admin/sources/adding/:adding/row", async (c) => {
+    const id = c.req.param("adding") as AddingId;
+    const progress = sources.adding(id);
+    if (progress?.status === "running" || progress?.status === "failed") {
+      const form = (await sources.forms()).find((candidate) => candidate.sourceTypeId === progress.sourceTypeId);
+      return render(c, <AddingRow adding={{ id, progress }} form={form} />);
+    }
+    c.header("HX-Redirect", progress ? addingHref(id) : "/admin/sources");
+    return c.body(null, 204);
   });
 
   // A Source with live setup steps, such as a QR code login, goes through them once added.
@@ -1104,6 +1157,7 @@ function shownStatus(status: 200 | 400 | 413 | undefined, problems: (string | un
       removeApiKey: field(form, "removeApiKey") === "yes",
       thirdPartiesAcknowledged: field(form, "thirdPartiesAcknowledged") === "yes",
     });
+    llmHealthAsked = null;
     if (!result.ok) {
       const page = (
         <LlmEndpointPage
