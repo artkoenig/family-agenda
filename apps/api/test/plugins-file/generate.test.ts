@@ -112,7 +112,7 @@ describe("generatePluginsCompose", () => {
     for (const container of ["plugin-demo", "plugin-matrix", "plugin-matrix-synapse"]) {
       expect(compose.networks[`${container}-egress`]).toEqual({ internal: true });
       expect(compose.services[`${container}-egress`]).toEqual({
-        image: "family-agenda:local",
+        image: "${EGRESS_PROXY_IMAGE:-family-agenda:local}",
         restart: "unless-stopped",
         command: ["node", "--import", "tsx", "src/egress-proxy-main.ts"],
         environment: {
@@ -132,7 +132,8 @@ describe("generatePluginsCompose", () => {
   });
 
   it("runs the proxies from the core image of the generating release", () => {
-    expect(proxyImageOf("dev")).toBe("family-agenda:local");
+    // A preview names its own build of the core in EGRESS_PROXY_IMAGE.
+    expect(proxyImageOf("dev")).toBe("${EGRESS_PROXY_IMAGE:-family-agenda:local}");
     expect(proxyImageOf("0.3.1")).toBe("ghcr.io/artkoenig/family-agenda:${FAMILY_AGENDA_VERSION:-0.3.1}");
     expect(proxyImageOf("main-1a2b3c4")).toBe("ghcr.io/artkoenig/family-agenda:${FAMILY_AGENDA_VERSION:-main}");
     const result = generatePluginsCompose("plugins:\n  - id: a\n    image: a:1\n", null, password, "0.3.1");

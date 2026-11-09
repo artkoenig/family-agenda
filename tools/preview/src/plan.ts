@@ -10,6 +10,8 @@ export type PreviewPlan = {
   worktree: string;
   /** The image the preview's code is built into; not `family-agenda:local`, which is the real Instance's. */
   image: string;
+  /** The image the demo Source's plugin container is built into, from the clone `pnpm preview` runs in. */
+  demoImage: string;
   up: Command[];
   down: Command[];
 };
@@ -23,9 +25,11 @@ const previewPrefix = "fa-pr-";
  * What it takes to run a pull request's code as an Instance of its own, and to remove it again:
  * its own Compose project, port, worktree and image, so that previews of several pull requests
  * run side by side and beside the real Instance. `repoRoot` is the clone `pnpm preview` runs in,
- * where the demo Source and the Compose override live: a pull request may predate them.
+ * where the demo Source, its plugins.yml and the Compose override live: a pull request may predate them.
+ * The plugin containers come from the pull request's own generator (`plugins generate`), run in
+ * its image as `user` (uid:gid), so that it writes into the worktree as the developer.
  */
-export function planPreview(pullRequest: number, repoRoot: string): PreviewPlan {
+export function planPreview(pullRequest: number, repoRoot: string, user = "1000:1000"): PreviewPlan {
   if (!Number.isInteger(pullRequest) || pullRequest < 1 || pullRequest > largestPullRequest) {
     throw new Error(`"${pullRequest}" is no pull request number`);
   }
@@ -34,12 +38,35 @@ export function planPreview(pullRequest: number, repoRoot: string): PreviewPlan 
   const url = `http://localhost:${port}`;
   const worktree = join(repoRoot, ".previews", `pr-${pullRequest}`);
   const image = `family-agenda-preview:pr-${pullRequest}`;
+  const demoImage = `family-agenda-demo-source-preview:pr-${pullRequest}`;
   const ref = `refs/previews/pr-${pullRequest}`;
 
-  const env = { PORT: String(port), PUBLIC_URL: url, PREVIEW_TOOLS: join(repoRoot, "tools"), PREVIEW_IMAGE: image };
-  const compose = (...args: string[]): Command => ({
+  const env = {
+    PORT: String(port),
+    PUBLIC_URL: url,
+    PREVIEW_ROOT: repoRoot,
+    PREVIEW_TOOLS: join(repoRoot, "tools"),
+    PREVIEW_IMAGE: image,
+    PREVIEW_DEMO_IMAGE: demoImage,
+    EGRESS_PROXY_IMAGE: image,
+  };
+  const overlay = join(repoRoot, "tools", "preview", "compose.preview.yaml");
+  /** Compose over the pull request's compose.yaml, then the generated plugins file if `withPlugins`, and the overlay last. */
+  const compose = (withPlugins: boolean, ...args: string[]): Command => ({
     file: "docker",
-    args: ["compose", "-p", project, "--project-directory", worktree, "-f", join(worktree, "compose.yaml"), "-f", join(repoRoot, "tools", "preview", "compose.preview.yaml"), ...args],
+    args: [
+      "compose",
+      "-p",
+      project,
+      "--project-directory",
+      worktree,
+      "-f",
+      join(worktree, "compose.yaml"),
+      ...(withPlugins ? ["-f", join(worktree, "compose.plugins.yaml")] : []),
+      "-f",
+      overlay,
+      ...args,
+    ],
     env,
   });
 
@@ -49,15 +76,19 @@ export function planPreview(pullRequest: number, repoRoot: string): PreviewPlan 
     url,
     worktree,
     image,
+    demoImage,
     up: [
       { file: "git", args: ["fetch", "origin", `+pull/${pullRequest}/head:${ref}`] },
       { file: "git", args: ["worktree", "add", "--force", "--detach", worktree, ref] },
-      compose("up", "--detach", "--build", "--wait"),
-      compose("exec", "-T", "api", "node", "--import", "tsx", "/preview-tools/preview/src/seed-main.ts"),
+      { file: "cp", args: [join(repoRoot, "tools", "preview", "plugins.yml"), join(worktree, "plugins.yml")] },
+      compose(false, "build", "api", "plugin-demo"),
+      compose(false, "run", "--rm", "--no-deps", "--user", user, "-v", `${worktree}:/deployment`, "api", "plugins", "generate"),
+      compose(true, "up", "--detach", "--wait"),
+      compose(true, "exec", "-T", "api", "node", "--import", "tsx", "/preview-tools/preview/src/seed-main.ts"),
     ],
     down: [
       { file: "docker", args: ["compose", "-p", project, "down", "--volumes", "--remove-orphans"] },
-      { file: "docker", args: ["rmi", "--force", image] },
+      { file: "docker", args: ["rmi", "--force", image, demoImage] },
       { file: "git", args: ["worktree", "remove", "--force", worktree] },
       { file: "git", args: ["update-ref", "-d", ref] },
     ],

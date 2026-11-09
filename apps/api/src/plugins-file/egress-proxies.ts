@@ -29,10 +29,11 @@ export const egressTokensOf = (file: PluginsFile) =>
 
 /**
  * The image the egress proxies run: the core image of the release that generates the file, as
- * compose.yaml names it, so `FAMILY_AGENDA_VERSION` moves them along; the local build for `dev`.
+ * compose.yaml names it, so `FAMILY_AGENDA_VERSION` moves them along. For `dev`, the local build
+ * of compose.dev.yaml, or the one `EGRESS_PROXY_IMAGE` names, such as a preview's.
  */
 export function proxyImageOf(version: string): string {
-  if (version === "dev") return "family-agenda:local";
+  if (version === "dev") return "${EGRESS_PROXY_IMAGE:-family-agenda:local}";
   const release = /^\d+\.\d+\.\d+$/.test(version) ? version : "main";
   return `ghcr.io/artkoenig/family-agenda:\${FAMILY_AGENDA_VERSION:-${release}}`;
 }
