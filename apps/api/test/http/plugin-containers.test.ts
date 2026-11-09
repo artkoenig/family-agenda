@@ -1,3 +1,4 @@
+import type { SourceTypeId } from "@family-agenda/domain";
 import { describe, expect, it } from "vitest";
 import { bootHttpForTest, sessionCookieOf } from "../support/http";
 
@@ -5,7 +6,7 @@ const password = "correct horse battery";
 
 describe("A Source Type whose plugin container is gone, in the Admin area", () => {
   it("shows as not reachable, with the cause", async () => {
-    const instance = await bootHttpForTest({}, { pluginContainers: [{ sourceTypeId: "school-portal", url: "http://127.0.0.1:1" }] });
+    const instance = await bootHttpForTest({}, { pluginContainers: [{ sourceTypeId: "school-portal" as SourceTypeId, url: "http://127.0.0.1:1" }] });
     try {
       await instance.post("/setup", { email: "anna@example.org", password });
       await instance.app.recoveryKit.confirm();

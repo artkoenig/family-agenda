@@ -15,6 +15,7 @@ How to configure the containers, the address the Family opens, and single sign-o
 | `MDNS_NAME` | `family-agenda.local` | Name the `mdns` service announces (Linux host only) |
 | `POSTGRES_PASSWORD` | `family_agenda` | Change it if the port of Postgres is ever exposed |
 | `TZ` | `Europe/Berlin` | Decides where an Agenda's days start |
+| `PLUGIN_URLS` | empty | Plugin containers (ADR-0001): `id=url` pairs separated by commas, such as `school-portal=http://school-portal:8080`. The core polls each over REST; one that does not answer shows as "Not reachable" in the Admin area |
 
 Data lives in named volumes (`postgres-data`, `master-key`, `blobs`, ...). How to back them up, restore and upgrade is in [upgrading.md](upgrading.md). Keep the Recovery Kit, without it Source credentials cannot be restored (ADR-0006).
 

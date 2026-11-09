@@ -24,6 +24,7 @@ x-app: &app
     MATRIX_INSTANCE_FILE: /var/lib/family-agenda/matrix/instance.json
     # The Family's time zone, which decides where an Agenda's days start.
     TZ: ${TZ:-Europe/Berlin}
+    PLUGIN_URLS: ${PLUGIN_URLS:-}
   volumes:
     # The master key that Source credentials are encrypted with; never in Postgres (ADR-0006).
     - master-key:/var/lib/family-agenda/master-key

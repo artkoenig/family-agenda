@@ -978,10 +978,8 @@ export function SourcesPage(props: { admin: SignedInAdmin; sourceTypes: SourceTy
             <a class={type.enabled ? "fam-type-card" : "fam-type-card fam-type-card--off"} href={sourceTypeHref(type.id)}>
               <span class="fam-type-card__name">{text(type.displayName)}</span>
               <span class="fam-type-card__description">{text(type.description)}</span>
-              {type.notReachable !== null ? (
-                <span class="fam-status fam-status--problem">{s.notReachable}</span>
-              ) : type.notLoadable !== null ? (
-                <span class="fam-status fam-status--problem">{s.cannotLoad}</span>
+              {loadabilityProblem(type, s) !== null ? (
+                <span class="fam-status fam-status--problem">{loadabilityProblem(type, s)}</span>
               ) : type.enabled ? (
                 <SourcesSummary sources={sourcesOf(type.id)} />
               ) : (

@@ -5,7 +5,8 @@ import { PluginError, type PluginImplementation } from "@family-agenda/plugin-ki
 import { servePlugin } from "@family-agenda/plugin-kit/server";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { SourceTypeId } from "@family-agenda/domain";
-import { descriptionProblem, parsePluginUrls, PluginContainers } from "../../src/plugin-containers";
+import { parsePluginUrls } from "../../src/plugin-containers/bindings";
+import { descriptionProblem, PluginContainers } from "../../src/plugin-containers/registry";
 import { bootForTest, type TestInstance } from "../support/boot";
 
 const minutes = 60 * 1000;
@@ -71,7 +72,7 @@ describe("A Source Type whose plugin runs in a container", () => {
     server = await servePlugin(fakePlugin(state), { host: "127.0.0.1" });
     instance = await bootForTest({
       sourcePlugins: [{ sourceTypeId: "club-mail" }],
-      pluginContainers: [{ sourceTypeId: "school-portal", url: urlOf(server) }],
+      pluginContainers: [{ sourceTypeId: "school-portal" as SourceTypeId, url: urlOf(server) }],
       pluginContainerOptions: { timeoutsMs: { poll: 200 } },
     });
     expect(await instance.app.sourceTypes.enable("school-portal")).toEqual({ ok: true });
@@ -134,6 +135,7 @@ describe("A Source Type whose plugin runs in a container", () => {
     expect((await poll()).failed).toMatchObject([{ kind: "temporary", message: "The portal is down." }]);
     const source = (await instance.app.sources.list())[0];
     expect(source?.health.status).not.toBe("failing");
+    expect((await listed("school-portal"))?.notReachable, "a plugin that answers is reachable").toBeNull();
   });
 
   it("fails a run temporarily when its plugin does not answer in time", async () => {
@@ -168,7 +170,7 @@ describe("A Source Type whose plugin runs in a container", () => {
 describe("A plugin container bound to another Source Type", () => {
   it("is not loadable", async () => {
     const server = await servePlugin(fakePlugin({ runs: [], poll: () => Promise.resolve({}) }), { host: "127.0.0.1" });
-    const instance = await bootForTest({ pluginContainers: [{ sourceTypeId: "club-portal", url: urlOf(server) }] });
+    const instance = await bootForTest({ pluginContainers: [{ sourceTypeId: "club-portal" as SourceTypeId, url: urlOf(server) }] });
     try {
       expect((await instance.app.sourceTypes.list())[0]?.notLoadable).toContain('is for Source Type "school-portal", but it is bound to "club-portal"');
       expect((await instance.app.sourceTypes.enable("club-portal")).ok).toBe(false);
@@ -179,7 +181,7 @@ describe("A plugin container bound to another Source Type", () => {
   });
 
   it("is not loadable when it never answered", async () => {
-    const instance = await bootForTest({ pluginContainers: [{ sourceTypeId: "club-portal", url: "http://127.0.0.1:1" }] });
+    const instance = await bootForTest({ pluginContainers: [{ sourceTypeId: "club-portal" as SourceTypeId, url: "http://127.0.0.1:1" }] });
     try {
       expect((await instance.app.sourceTypes.list())[0]).toMatchObject({
         displayName: "club-portal",
@@ -193,7 +195,7 @@ describe("A plugin container bound to another Source Type", () => {
 });
 
 describe("The description of a plugin container", () => {
-  const binding = { sourceTypeId: "school-portal", url: "http://plugin" };
+  const binding = { sourceTypeId: "school-portal" as SourceTypeId, url: "http://plugin" };
   const description = { ...fakePlugin({ runs: [], poll: () => Promise.resolve({}) }).description, contractVersion: "1.0", endpoints: { sourceAdded: false, sourceRemoved: false } };
 
   it("is loadable for the bound Source Type and the core's contract", () => {
@@ -208,8 +210,8 @@ describe("The description of a plugin container", () => {
 describe("PLUGIN_URLS", () => {
   it("binds Source Type ids to URLs", () => {
     expect(parsePluginUrls(" demo=http://demo:8080/ , ics=https://ics.example.org")).toEqual([
-      { sourceTypeId: "demo", url: "http://demo:8080" },
-      { sourceTypeId: "ics", url: "https://ics.example.org" },
+      { sourceTypeId: "demo" as SourceTypeId, url: "http://demo:8080" },
+      { sourceTypeId: "ics" as SourceTypeId, url: "https://ics.example.org" },
     ]);
     expect(parsePluginUrls(undefined)).toEqual([]);
   });
@@ -247,7 +249,7 @@ describe("The other functions of a plugin container", () => {
   };
 
   const loadedFrom = async (server: Server) => {
-    const containers = await PluginContainers.connect([{ sourceTypeId: "school-portal", url: urlOf(server) }]);
+    const containers = await PluginContainers.connect([{ sourceTypeId: "school-portal" as SourceTypeId, url: urlOf(server) }]);
     const loaded = await containers.load("school-portal" as SourceTypeId);
     if (!loaded.ok) throw new Error("not loaded");
     return { containers, sourceType: loaded.sourceType };
@@ -279,6 +281,19 @@ describe("The other functions of a plugin container", () => {
       expect(await sourceType.setupProgress("pair", context)).toMatchObject({ status: "failed" });
     } finally {
       if (server.listening) await closed(server);
+    }
+  });
+
+  it("does not send its plugin an invalid request", async () => {
+    const server = await servePlugin(plugin, { host: "127.0.0.1" });
+    try {
+      const { sourceType } = await loadedFrom(server);
+
+      const progress = await sourceType.setupProgress("", context);
+      expect(progress.status).toBe("failed");
+      expect(progress.message).toContain("asked the plugin");
+    } finally {
+      await closed(server);
     }
   });
 

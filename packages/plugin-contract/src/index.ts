@@ -326,3 +326,7 @@ export type Description = z.infer<typeof descriptionSchema>;
 export type IngestResult = z.infer<typeof ingestResultSchema>;
 export type SourceRecord = z.infer<typeof sourceRecordSchema>;
 export type PluginError = z.infer<typeof errorSchema>;
+
+export type EndpointName = keyof typeof endpoints;
+/** What an endpoint answers once validated; undefined for one that answers 204. */
+export type EndpointResponse<N extends EndpointName> = (typeof endpoints)[N] extends { response: infer S extends z.ZodType } ? z.infer<S> : undefined;

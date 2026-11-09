@@ -78,7 +78,10 @@ import {
   type TaskAccess,
   type AgendaAccess,
 } from "@family-agenda/application";
-import { CombinedRegistry, PluginContainers, type PluginBinding, type PluginContainerOptions } from "./plugin-containers";
+import type { PluginBinding } from "./plugin-containers/bindings";
+import { CombinedRegistry } from "./plugin-containers/combined-registry";
+import { PluginContainers } from "./plugin-containers/registry";
+import type { PluginContainerOptions } from "./plugin-containers/transport";
 import { SourceRegistry } from "./source-registry";
 
 const defaultWorkspacePackages = fileURLToPath(new URL("../../../packages", import.meta.url));

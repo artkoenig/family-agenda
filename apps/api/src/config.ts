@@ -1,4 +1,4 @@
-import { parsePluginUrls, type PluginBinding } from "./plugin-containers";
+import { parsePluginUrls, type PluginBinding } from "./plugin-containers/bindings";
 import { versionOf } from "./version";
 
 export type Config = {
