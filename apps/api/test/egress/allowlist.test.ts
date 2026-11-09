@@ -38,14 +38,23 @@ const sources: AllowlistSources = {
   hostsOf: (id) =>
     Promise.resolve(
       id === "imap"
-        ? ["IMAP.gmx.net", "login.example.com:443", "*", "*.example.org", "https://evil.example/", "a.example/path", "b.example:0", "c.example:70000", "mail.example:993"]
+        ? ["IMAP.gmx.net", "login.example.com:443", "*", "*.example.org", "https://evil.example/", "a.example/path", "b.example:0", "c.example:70000", "mail.example:993", " HTTPS://Park.WebUntis.com/WebUntis/?school=x", "webcal://cal.example:8443/feed.ics", "d.example?x#y", "https://*.example.net/", "ftp://e.example"]
         : ["unexpected"],
     ),
 };
 
 describe("allowlistOf", () => {
-  it("adds the valid hosts of a plugin's Sources to its own container's declared ones", async () => {
-    expect(await allowlistOf("plugin-imap", sources)).toEqual(["login.example.com:443", "imap.gmx.net", "mail.example:993"]);
+  it("adds the valid hosts of a plugin's Sources, stripped of scheme and path, to its own container's declared ones", async () => {
+    expect(await allowlistOf("plugin-imap", sources)).toEqual([
+      "login.example.com:443",
+      "imap.gmx.net",
+      "evil.example",
+      "a.example",
+      "mail.example:993",
+      "park.webuntis.com",
+      "cal.example:8443",
+      "d.example",
+    ]);
   });
 
   it("gives a companion only its declared hosts", async () => {
@@ -65,7 +74,7 @@ describe("the allowlist server", () => {
   it("serves a proxy its own container's allowlist", async () => {
     const response = await get("plugin-imap", "token-imap");
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ hosts: ["login.example.com:443", "imap.gmx.net", "mail.example:993"] });
+    expect(await response.json()).toEqual({ hosts: ["login.example.com:443", "imap.gmx.net", "evil.example", "a.example", "mail.example:993", "park.webuntis.com", "cal.example:8443", "d.example"] });
   });
 
   it.each([
