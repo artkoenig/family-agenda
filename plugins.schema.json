@@ -24,6 +24,18 @@
               "pattern": "^(\\*\\.)?[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*:\\d{1,5}$"
             }
           },
+          "volumes": {
+            "default": {},
+            "type": "object",
+            "propertyNames": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9-]*$"
+            },
+            "additionalProperties": {
+              "type": "string",
+              "pattern": "^\\/"
+            }
+          },
           "limits": {
             "default": {
               "memory": "512m",
