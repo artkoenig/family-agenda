@@ -6,7 +6,7 @@ plugins:
   # host the egress proxy allows by itself; for an older plugin, add the host of each calendar
   # here, such as calendar.google.com:443.
   - id: ics
-    image: ghcr.io/artkoenig/family-agenda-ics:0.1.0@sha256:0ab61e079160b16c7f0f57c16126066b180fff87de57d94cc9ba4a4fb90c929e
+    image: ghcr.io/artkoenig/family-agenda-ics:0.2.0@sha256:5e826c237b641ca40f47e4cacda90705c75838da5971f3f2489daf5814a0f753
     egress: []
 
   # Mailboxes over IMAP. The mail server is a host field, which the egress proxy allows by itself.
