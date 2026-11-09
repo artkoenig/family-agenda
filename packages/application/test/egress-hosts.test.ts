@@ -19,8 +19,11 @@ function registryWith(loadable: boolean): SourceTypeRegistry {
   };
 }
 
-function sourcesWith(plains: Record<string, unknown>[]): SourceRepository {
-  return { listOfType: (id: SourceTypeId) => Promise.resolve(id === imap ? plains.map((plain) => ({ plain }) as Source) : []) } as unknown as SourceRepository;
+function sourcesWith(plains: Record<string, unknown>[], secretHosts: Record<string, string>[] = []): SourceRepository {
+  return {
+    listOfType: (id: SourceTypeId) =>
+      Promise.resolve(id === imap ? plains.map((plain, index) => ({ plain, secretHosts: secretHosts[index] ?? {} }) as Source) : []),
+  } as unknown as SourceRepository;
 }
 
 describe("the egress hosts of a Source Type", () => {
@@ -35,6 +38,15 @@ describe("the egress hosts of a Source Type", () => {
     });
 
     expect(await egressHosts.ofSourceType(imap)).toEqual(["imap.gmx.net", "relay.example:25"]);
+  });
+
+  it("lists the hosts kept in the clear of its Sources' secret host fields, not the plain values under their keys", async () => {
+    const egressHosts = createEgressHosts({
+      registry: registryWith(true),
+      sources: sourcesWith([{ token: "plain.example" }, {}], [{ token: "calendar.google.com" }, { username: "user.example" }]),
+    });
+
+    expect(await egressHosts.ofSourceType(imap)).toEqual(["calendar.google.com"]);
   });
 
   it("lists none for a Source Type that cannot be loaded", async () => {

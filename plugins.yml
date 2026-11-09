@@ -2,8 +2,9 @@
 # with; Renovate raises the tags. Remove the plugins you do not use, add your own, then generate
 # compose.plugins.yaml from it (docs/configuration.md#plugins). plugins.schema.json is its schema.
 plugins:
-  # Calendars by ICS address. The address is a secret field, so its host is not learned from it:
-  # add the host of each calendar here, such as calendar.google.com:443.
+  # Calendars by ICS address. The address is a secret host field from plugin contract 1.2 on, whose
+  # host the egress proxy allows by itself; for an older plugin, add the host of each calendar
+  # here, such as calendar.google.com:443.
   - id: ics
     image: ghcr.io/artkoenig/family-agenda-ics:0.1.0@sha256:0ab61e079160b16c7f0f57c16126066b180fff87de57d94cc9ba4a4fb90c929e
     egress: []
