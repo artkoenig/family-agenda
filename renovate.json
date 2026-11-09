@@ -7,6 +7,13 @@
   "internalChecksFilter": "strict",
   "minimumReleaseAgeBehaviour": "timestamp-optional",
   "separateMajorMinor": false,
+  "logLevelRemap": [
+    {
+      "description": "Expected with timestamp-optional (pinDigest updates have no release timestamp); do not show it as a repository problem",
+      "matchMessage": "/Some .+ did not have a releaseTimestamp, but as we're running with minimumReleaseAgeBehaviour=timestamp-optional, proceeding/",
+      "newLogLevel": "info"
+    }
+  ],
   "customManagers": [
     {
       "description": "The images the default plugins.yml pins: a tag, and a digest where there is one",
@@ -17,6 +24,11 @@
     }
   ],
   "packageRules": [
+    {
+      "description": "A workspace package (packages/plugin-contract), not published to npm: nothing to look up",
+      "matchPackageNames": ["@family-agenda/plugin-contract"],
+      "enabled": false
+    },
     {
       "description": "typescript-eslint and dependency-cruiser do not support TypeScript 7 yet",
       "matchPackageNames": ["typescript"],
