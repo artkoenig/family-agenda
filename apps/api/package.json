@@ -16,6 +16,7 @@
     "@family-agenda/application": "workspace:*",
     "@family-agenda/contracts": "workspace:*",
     "@family-agenda/domain": "workspace:*",
+    "@family-agenda/plugin-contract": "workspace:*",
     "@family-agenda/source-sdk": "workspace:*",
     "@fontsource-variable/atkinson-hyperlegible-mono": "^5.3.0",
     "@fontsource-variable/atkinson-hyperlegible-next": "^5.2.6",
@@ -27,6 +28,7 @@
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.14",
+    "@family-agenda/plugin-kit": "workspace:*",
     "@family-agenda/source-matrix": "workspace:*",
     "@types/qrcode": "^1.5.6",
     "drizzle-orm": "^0.45.4",

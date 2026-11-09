@@ -14,6 +14,8 @@ import type {
   SecretStore,
   Source,
   SourceRepository,
+  SecretRef,
+  SourceRunResult,
   SourceTypeRegistry,
   SourceTypeRepository,
   StoredFile,
@@ -94,25 +96,44 @@ export function createSourcePolling(deps: PollingDeps) {
       report.failed.push({ sourceId: source.id, kind: result.kind, message: result.message });
       return;
     }
+    // Changed secrets are stored before the cursor advances: a refreshed token must not be lost.
+    const replacedSecrets = await storeChangedSecrets(source, result.secrets ?? {});
     const origins = await buildOrigins(result.origins);
-    let known: string[];
-    let withdrawnFiles;
-    let invalid;
-    let refused;
+    const { knownMessages: known, withdrawnFiles, invalid, refused } = await recordRun(source, now, result, origins);
+    await removeLeftovers(origins.flatMap((origin) => (origin.message && known.includes(origin.externalId) ? [origin.message] : [])), withdrawnFiles, replacedSecrets);
+    report.invalid.push(...invalid.map((record) => ({ sourceId: source.id, ...record })));
+    report.refused.push(...refusalsOf(source.id, refused));
+    report.polled.push(source.id);
+  }
+
+  /** Removes what a recorded run left over: files of messages already known, withdrawn files and replaced secrets. */
+  async function removeLeftovers(knownMessages: Parameters<typeof removeBlobsOf>[0][], withdrawnFiles: Parameters<typeof blobs.remove>[0][], replacedSecrets: SecretRef[]) {
+    for (const message of knownMessages) await removeBlobsOf(message);
+    for (const file of withdrawnFiles) await blobs.remove(file);
+    for (const ref of replacedSecrets) await secrets.remove(ref);
+  }
+
+  /** Records a successful run with its Origins; their files go again if that fails. */
+  async function recordRun(source: Source, now: Date, result: Extract<SourceRunResult, { ok: true }>, origins: Awaited<ReturnType<typeof buildOrigins>>) {
     try {
-      ({ knownMessages: known, withdrawnFiles, invalid, refused } = await items.recordRun(
+      return await items.recordRun(
         { sourceId: source.id, at: now, retainedSince: retainedSince(now), syncCursor: result.syncCursor, withdrawn: result.withdrawn, origins },
         readStated,
-      ));
+      );
     } catch (error) {
       await removeOriginBlobs(origins);
       throw error;
     }
-    for (const origin of origins) if (origin.message && known.includes(origin.externalId)) await removeBlobsOf(origin.message);
-    for (const file of withdrawnFiles) await blobs.remove(file);
-    report.invalid.push(...invalid.map((record) => ({ sourceId: source.id, ...record })));
-    report.refused.push(...refusalsOf(source.id, refused));
-    report.polled.push(source.id);
+  }
+
+  /** Stores the secrets a plugin changed, such as a refreshed token; returns the ones they replace, to remove once the run is recorded. */
+  async function storeChangedSecrets(source: Source, changed: Record<string, string>): Promise<SecretRef[]> {
+    const entries = Object.entries(changed);
+    if (entries.length === 0) return [];
+    const refs = { ...source.secrets };
+    for (const [key, value] of entries) refs[key] = await secrets.put(value);
+    await sources.replaceSecrets(source.id, refs);
+    return entries.flatMap(([key]) => source.secrets[key] ?? []);
   }
 
   async function buildOrigins(rawOrigins: IngestedOrigin[]) {

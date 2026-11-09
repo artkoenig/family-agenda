@@ -524,6 +524,10 @@ export class PostgresSourceRepository implements SourceRepository {
     });
   }
 
+  async replaceSecrets(id: SourceId, secrets: Record<string, SecretRef>): Promise<void> {
+    await this.db.update(sources).set({ secretRefs: secrets }).where(eq(sources.id, id));
+  }
+
   async recordFailedRun(id: SourceId, at: Date, error: RunError): Promise<void> {
     await this.db
       .update(sourceRuns)

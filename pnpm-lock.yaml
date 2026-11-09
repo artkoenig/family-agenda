@@ -220,6 +220,9 @@ importers:
       '@family-agenda/domain':
         specifier: workspace:*
         version: link:../../packages/domain
+      '@family-agenda/plugin-contract':
+        specifier: workspace:*
+        version: link:../../packages/plugin-contract
       '@family-agenda/source-sdk':
         specifier: workspace:*
         version: link:../../packages/source-sdk
@@ -248,6 +251,9 @@ importers:
       '@electric-sql/pglite':
         specifier: ^0.5.14
         version: 0.5.14
+      '@family-agenda/plugin-kit':
+        specifier: workspace:*
+        version: link:../../packages/plugin-kit
       '@family-agenda/source-matrix':
         specifier: workspace:*
         version: link:../../packages/source-matrix

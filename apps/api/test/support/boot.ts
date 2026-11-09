@@ -31,6 +31,10 @@ export type TestOptions = {
   tessdataCatalog?: TessdataCatalog;
   /** Replaces the OIDC client, such as with a `ScriptedIdentityProviderClient`. */
   identityProviderClient?: IdentityProviderClient;
+  /** Source Types whose plugins run as servers, such as fakes built with plugin-kit. */
+  pluginContainers?: NonNullable<ApplicationConfig["pluginContainers"]>;
+  /** Shorter timeouts than the plugin contract's, for a plugin that does not answer. */
+  pluginContainerOptions?: NonNullable<ApplicationConfig["pluginContainerOptions"]>;
   /** Test plugins installed as workspace packages before the first boot. */
   sourcePlugins?: TestPluginPackage[];
 };

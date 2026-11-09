@@ -160,6 +160,8 @@ export type InstalledSourceType = {
   riskNotice: MultilingualText | null;
   /** Why the plugin cannot be loaded, such as an incompatible SDK version; null if it can. */
   notLoadable: string | null;
+  /** Why the core cannot reach the plugin's container now, such as a refused connection; null if it can, or for a plugin in-process. */
+  notReachable: string | null;
 };
 
 /** A plain configuration, as JSON. */
@@ -256,7 +258,8 @@ export type IngestedOrigin = {
 
 export type SourceRunResult =
   /** `withdrawn` are the external ids of Origins the Source deleted since, such as redacted messages. */
-  | { ok: true; origins: IngestedOrigin[]; syncCursor: string | null; withdrawn: string[] }
+  /** `secrets` are the secret fields the plugin changed, such as a refreshed token, if any. */
+  | { ok: true; origins: IngestedOrigin[]; syncCursor: string | null; withdrawn: string[]; secrets?: Record<string, string> }
   /** A definite error needs an Admin; a temporary one is retried. */
   | { ok: false; kind: "definite" | "temporary"; message: string };
 
@@ -421,6 +424,8 @@ export interface SourceRepository {
    * first failed run after its last successful one, and definitely once any of them did.
    */
   recordFailedRun(id: SourceId, at: Date, error: RunError): Promise<void>;
+  /** Points the Source's secret fields at these references, such as after its plugin refreshed a token. */
+  replaceSecrets(id: SourceId, secrets: Record<string, SecretRef>): Promise<void>;
   /** Shows or hides the Source's Items on the timeline and in the feeds. */
   setShown(id: SourceId, shown: boolean): Promise<void>;
   /** Names the Source as an Admin calls it; null for the name derived from its settings. */

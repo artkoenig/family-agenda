@@ -344,6 +344,7 @@ function manifestProblem(packageDirectory: string, result: Extract<ManifestResul
       needsLlm: false,
       riskNotice: null,
       notLoadable: `the manifest is invalid: ${result.details.join("; ")}`,
+      notReachable: null,
     },
   };
 }
@@ -358,5 +359,6 @@ function installedOf(manifest: SourcePluginManifest): InstalledSourceType {
     needsLlm: manifest.needsLlm,
     riskNotice: manifest.riskNotice ?? null,
     notLoadable: problems.length > 0 ? problems.join("; ") : null,
+    notReachable: null,
   };
 }
