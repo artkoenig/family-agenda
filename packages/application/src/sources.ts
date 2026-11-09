@@ -61,6 +61,8 @@ export type SourceSummary = {
    * the list of all Sources should not.
    */
   choices?: Record<string, KnownValue[]>;
+  /** Why asking the plugin for a choice field's values failed, by field key; only beside `choices`. */
+  choiceProblems?: Record<string, string>;
 };
 
 /** What the Admin area renders a Source's form from, for an enabled Source Type. */
@@ -241,14 +243,23 @@ export function createSourceAccess(deps: SourcesDeps) {
   }
 
   /** The values each choice field of a Source offers; none while its Source Type is not enabled. */
-  async function choicesOf(source: Source): Promise<Record<string, KnownValue[]>> {
+  async function choicesOf(source: Source): Promise<Pick<SourceSummary, "choices" | "choiceProblems">> {
     const sourceType = await enabled(source.sourceTypeId);
     const fields = sourceType?.configuration.fields.filter((field) => field.choice) ?? [];
-    if (!sourceType || fields.length === 0) return {};
-    const context = await contextOf(source);
     const choices: Record<string, KnownValue[]> = {};
-    for (const field of fields) choices[field.key] = await sourceType.choices(field.key, context);
-    return choices;
+    const choiceProblems: Record<string, string> = {};
+    if (!sourceType || fields.length === 0) return { choices, choiceProblems };
+    const context = await contextOf(source);
+    for (const field of fields) {
+      const answer = await sourceType.choices(field.key, context);
+      if (answer.ok) choices[field.key] = answer.value;
+      else {
+        // Without them, the field offers what was chosen before.
+        choices[field.key] = [];
+        choiceProblems[field.key] = answer.message;
+      }
+    }
+    return { choices, choiceProblems };
   }
 
   async function applyEdit(source: Source, sourceType: LoadedSourceType, input: SourceInput): Promise<EditSourceResult> {
@@ -287,14 +298,14 @@ export function createSourceAccess(deps: SourcesDeps) {
     async listOfType(sourceTypeId: string): Promise<SourceSummary[]> {
       const ofType = (await sources.list()).filter((source) => source.sourceTypeId === sourceTypeId);
       const summaries: SourceSummary[] = [];
-      for (const source of ofType) summaries.push({ ...(await summaryOf(source)), choices: await choicesOf(source) });
+      for (const source of ofType) summaries.push({ ...(await summaryOf(source)), ...(await choicesOf(source)) });
       return summaries;
     },
 
     /** A Source with the values its choice fields offer, as its own page shows them; null if there is none. */
     async find(id: SourceId): Promise<SourceSummary | null> {
       const source = await sources.findById(id);
-      return source && { ...(await summaryOf(source)), choices: await choicesOf(source) };
+      return source && { ...(await summaryOf(source)), ...(await choicesOf(source)) };
     },
 
     /**

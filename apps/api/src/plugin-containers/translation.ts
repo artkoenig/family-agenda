@@ -27,9 +27,15 @@ export function loadedSourceType(description: Description, call: PluginCall): Lo
       })),
     },
     setupSteps: description.setupSteps.map(({ id, title, description: about, live }) => ({ id, title, description: about, live })),
-    migrateConfig(plain, fromVersion) {
-      if (fromVersion >= configuration.version) return plain;
-      throw new Error("migrating the configuration of a plugin container is not supported yet");
+    async migrateConfig(plain, fromVersion) {
+      let migrated = plain;
+      // One version up per call, as the contract has it.
+      for (let version = fromVersion; version < configuration.version; version++) {
+        const answer = await call("configMigration", { fromVersion: version, plain: migrated });
+        if (!answer.ok) throw new Error(`Migrating the configuration from version ${version} failed: ${answer.message}`);
+        migrated = answer.body.plain;
+      }
+      return migrated;
     },
     ingestion:
       ingestion.mode === "polling"
@@ -56,15 +62,15 @@ export function loadedSourceType(description: Description, call: PluginCall): Lo
           configKey: catalogue.configKey,
           async entries() {
             const answer = await call("catalogueEntries");
-            if (!answer.ok) return [];
-            return answer.body.entries.map((entry) => ({ ...entry, riskNotice: entry.riskNotice ?? null }));
+            if (!answer.ok) return { ok: false, message: answer.message };
+            return { ok: true, value: answer.body.entries.map((entry) => ({ ...entry, riskNotice: entry.riskNotice ?? null })) };
           },
         }
       : null,
     services: null,
     async choices(field, context) {
       const answer = await call("fieldChoices", { field, context: runContextOf(context) });
-      return answer.ok ? answer.body.choices : [];
+      return answer.ok ? { ok: true, value: answer.body.choices } : { ok: false, message: answer.message };
     },
     async setupProgress(stepId, context) {
       const answer = await call("setupProgress", { stepId, context: runContextOf(context) });

@@ -30,7 +30,7 @@ export function createSourceTypeAccess(deps: SourceTypesDeps) {
       if (source.configVersion >= configuration.version) continue;
       let plain;
       try {
-        plain = migrateConfig(source.plain, source.configVersion);
+        plain = await migrateConfig(source.plain, source.configVersion);
       } catch {
         // The Source keeps its configuration; it fails when it runs, where its status shows it.
         continue;

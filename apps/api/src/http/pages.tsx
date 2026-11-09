@@ -1117,7 +1117,7 @@ function configKeyOf(sourceType: SourceTypeSummary | null, form: SourceForm | un
 }
 
 function catalogueOf(configKey: string | undefined, catalogue: CatalogueSummary | undefined) {
-  return configKey !== undefined && catalogue && catalogue.entries.length > 0 ? catalogue : undefined;
+  return configKey !== undefined && catalogue && (catalogue.entries.length > 0 || catalogue.problem !== null) ? catalogue : undefined;
 }
 
 function sourceTypeModel(props: {
@@ -1788,6 +1788,7 @@ function CatalogueEntries(props: {
         {text(catalogue.title)}
       </h2>
       <p class="fam-group__intro">{s.catalogueIntro}</p>
+      <PluginProblem title={s.catalogueFailed} message={catalogue.problem} />
       <ul class="fam-sheets">
         {catalogue.entries.map((entry) => (
           <CatalogueEntrySheet
@@ -2233,6 +2234,10 @@ function optionsOf(source: SourceSummary, key: string, chosen: string[]): { valu
   ];
 }
 
+function choiceProblemOf(source: SourceSummary, key: string): string | null {
+  return source.choiceProblems?.[key] ?? null;
+}
+
 /**
  * A choice among what the plugin offers for an existing Source, such as the chats to read: one
  * checkbox each, the chosen ones ticked, also those it no longer offers. A Source being added has
@@ -2252,12 +2257,14 @@ function ChoiceField(props: { field: SourceForm["fields"][number]; id: string; s
   }
   const chosen = chosenOf(source, field.key);
   const options = optionsOf(source, field.key, chosen);
+  const problem = choiceProblemOf(source, field.key);
   return (
     <fieldset class="fam-field" id={props.id}>
       <legend>{label}</legend>
       {/* Sent with nothing ticked too, so that unticking every box clears the choice. */}
       <input type="hidden" name={`choice.${field.key}`} value="" />
-      {options.length === 0 ? <small>{t.sources.noChoices}</small> : null}
+      <PluginProblem title={t.sources.choicesFailed} message={problem} />
+      {options.length === 0 && problem === null ? <small>{t.sources.noChoices}</small> : null}
       {options.map((option) => (
         <label>
           <input type="checkbox" name={`choice.${field.key}`} value={option.value} checked={chosen.includes(option.value)} /> {option.label}
@@ -2317,6 +2324,20 @@ function LlmHealthStatus(props: { health: LlmEndpointHealth | null }) {
     <span class={ok ? "fam-chip fam-chip--ok" : "fam-chip fam-chip--problem"}>
       {ok ? l.statusOk : l.statusFailing}
     </span>
+  );
+}
+
+/** Why asking a Source Type's plugin failed, where what it would have answered is shown. */
+function PluginProblem(props: { title: string; message: string | null }) {
+  if (props.message === null) return null;
+  return (
+    <div class="fam-banner fam-banner--problem" role="status">
+      <span class="fam-banner__glyph" aria-hidden="true">
+        !
+      </span>
+      <span class="fam-banner__title">{props.title}</span>
+      <div class="fam-banner__body">{props.message}</div>
+    </div>
   );
 }
 

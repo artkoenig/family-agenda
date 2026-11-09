@@ -29,6 +29,7 @@ const choicesAsked = new Map<string, number>();
 const catalogueEntries = new Map<string, CatalogueEntry[]>();
 const setupProgress = new Map<string, SetupProgress>();
 const addingFails = new Set<string>();
+const askingFails = new Map<string, string>();
 const removed = new Map<string, RunContext[]>();
 const reconciled = new Map<string, { enabled: boolean; entries: string[] }[]>();
 const stopped = new Map<string, number>();
@@ -64,6 +65,11 @@ export const testPluginControls = {
   /** What the plugin's live setup steps show from now on. */
   setupShows(sourceTypeId: string, progress: SetupProgress): void {
     setupProgress.set(sourceTypeId, progress);
+  },
+  /** Makes asking the plugin for choices and catalogue entries fail with this message from now on; null makes it answer again. */
+  failAsking(sourceTypeId: string, message: string | null): void {
+    if (message === null) askingFails.delete(sourceTypeId);
+    else askingFails.set(sourceTypeId, message);
   },
   /** Makes preparing the next Source being added fail. */
   failAdding(sourceTypeId: string): void {
@@ -136,7 +142,7 @@ export function testSourcePlugin(options: TestPluginOptions): SourcePlugin {
           ...field,
           choices: () => {
             choicesAsked.set(sourceTypeId, (choicesAsked.get(sourceTypeId) ?? 0) + 1);
-            return Promise.resolve(knownValueList(sourceTypeId));
+            return askedOf(sourceTypeId, knownValueList(sourceTypeId));
           },
         }
       : field,
@@ -150,7 +156,7 @@ export function testSourcePlugin(options: TestPluginOptions): SourcePlugin {
           catalogue: {
             title: "Networks",
             configKey: options.catalogue.configKey,
-            entries: () => Promise.resolve(catalogueEntries.get(sourceTypeId) ?? []),
+            entries: () => askedOf(sourceTypeId, catalogueEntries.get(sourceTypeId) ?? []),
           },
         }
       : {}),
@@ -291,4 +297,10 @@ export async function writeTestPluginPackage(directory: string, plugin: TestPlug
     `import { testSourcePlugin } from ${JSON.stringify(pluginModule)};\n` +
       `export default testSourcePlugin({ sourceTypeId: ${JSON.stringify(plugin.sourceTypeId)}${configuration}${silentApplies}${setupSteps}${catalogue}${liveSteps}${services} });\n`,
   );
+}
+
+/** What the plugin answers when asked, or the failure set with `failAsking`. */
+function askedOf<T>(sourceTypeId: string, answer: T): Promise<T> {
+  const failure = askingFails.get(sourceTypeId);
+  return failure === undefined ? Promise.resolve(answer) : Promise.reject(new Error(failure));
 }

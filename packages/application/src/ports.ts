@@ -209,8 +209,8 @@ export type CatalogueSpec = {
   title: MultilingualText;
   /** The plain field naming the entry a Source uses. */
   configKey: string;
-  /** Every entry; none if asking the plugin failed. */
-  entries(): Promise<CatalogueEntrySpec[]>;
+  /** Every entry, or why asking the plugin for them failed. */
+  entries(): Promise<PluginAnswer<CatalogueEntrySpec[]>>;
 };
 
 /** Programs a Source Type runs on the Instance, which the worker reconciles with what is enabled. */
@@ -302,8 +302,8 @@ export type LoadedSourceType = {
   };
   /** Interactive steps the form shows, such as pairing an account by QR code. */
   setupSteps: SetupStepSpec[];
-  /** The plain configuration of `fromVersion` migrated to the current version. */
-  migrateConfig: (plain: PlainConfig, fromVersion: number) => PlainConfig;
+  /** The plain configuration of `fromVersion` migrated to the current version; rejects if the plugin cannot. */
+  migrateConfig: (plain: PlainConfig, fromVersion: number) => Promise<PlainConfig>;
   ingestion: PollingIngestion | PushIngestion;
   /** Whether its Sources count as Silent when no new Origin comes for a while. */
   silentApplies: boolean;
@@ -311,8 +311,8 @@ export type LoadedSourceType = {
   catalogue: CatalogueSpec | null;
   /** Programs it runs on the Instance while enabled, such as a homeserver; null if it has none. */
   services: ServicesSpec | null;
-  /** The values a choice field offers for an existing Source; none if asking the plugin failed. */
-  choices(key: string, context: SourceRunContext): Promise<KnownValue[]>;
+  /** The values a choice field offers for an existing Source, or why asking the plugin failed. */
+  choices(key: string, context: SourceRunContext): Promise<PluginAnswer<KnownValue[]>>;
   /** What a live setup step of an existing Source shows now. */
   setupProgress(stepId: string, context: SourceRunContext): Promise<SetupProgress>;
   /**
@@ -325,6 +325,9 @@ export type LoadedSourceType = {
   /** Cleans up after a removed Source; failures are ignored. */
   sourceRemoved(context: SourceRunContext): Promise<void>;
 };
+
+/** What a plugin answered, or why asking it failed, in words an Admin can act on. */
+export type PluginAnswer<T> = { ok: true; value: T } | { ok: false; message: string };
 
 /** A value a plugin offers, such as a chat for a choice field, with how the plugin names it. */
 export type KnownValue = { value: string; label: string };

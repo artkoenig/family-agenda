@@ -3,7 +3,7 @@ import type { Server } from "node:http";
 import { limits, type RunContext } from "@family-agenda/plugin-contract";
 import { PluginError, type PluginImplementation } from "@family-agenda/plugin-kit";
 import { servePlugin } from "@family-agenda/plugin-kit/server";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SourceId, SourceTypeId } from "@family-agenda/domain";
 import { parsePluginUrls } from "../../src/plugin-containers/bindings";
 import { descriptionProblem, PluginContainers } from "../../src/plugin-containers/registry";
@@ -274,7 +274,12 @@ describe("A Source Type whose plugin receives pushed payloads", () => {
       return { sourceRecords: [], syncCursor: sent };
     };
 
-    await Promise.all([instance.app.polling.receive(sourceId, new TextEncoder().encode("first")), instance.app.polling.receive(sourceId, payload)]);
+    const first = instance.app.polling.receive(sourceId, new TextEncoder().encode("first"));
+    // The second is pushed while the plugin is still receiving the first.
+    await vi.waitFor(() => {
+      expect(cursors).toHaveLength(1);
+    });
+    await Promise.all([first, instance.app.polling.receive(sourceId, payload)]);
 
     expect(cursors).toEqual([null, "Zmlyc3Q="]);
   });
@@ -395,13 +400,12 @@ describe("The other functions of a plugin container", () => {
       const { sourceType } = await loadedFrom(server);
 
       expect(sourceType.setupSteps).toEqual([{ id: "pair", title: "Pair", description: "Scan the code.", live: true }]);
-      expect(sourceType.migrateConfig({ a: 1 }, 1)).toEqual({ a: 1 });
-      expect(() => sourceType.migrateConfig({}, 0)).toThrow("not supported");
+      expect(await sourceType.migrateConfig({ a: 1 }, 1)).toEqual({ a: 1 });
       expect(await sourceType.sourceAdded(context)).toEqual({ ok: true, plain: { account: "for https://portal.example.org" }, secrets: { token: "issued" } });
       await sourceType.sourceRemoved(context);
       expect(removed).toEqual([{ url: "https://portal.example.org" }]);
-      expect(await sourceType.choices("chats", context)).toEqual([{ value: "chats", label: "Class 3b" }]);
-      expect(await sourceType.catalogue?.entries()).toEqual([{ id: "north", displayName: "North", description: "The north school", installed: true, riskNotice: null }]);
+      expect(await sourceType.choices("chats", context)).toEqual({ ok: true, value: [{ value: "chats", label: "Class 3b" }] });
+      expect(await sourceType.catalogue?.entries()).toEqual({ ok: true, value: [{ id: "north", displayName: "North", description: "The north school", installed: true, riskNotice: null }] });
       expect(await sourceType.setupProgress("pair", context)).toEqual({ status: "waiting", qrCode: "QR", message: null });
       expect(await sourceType.setupProgress("done", context)).toEqual({ status: "done", message: null });
       expect(await sourceType.setupProgress("other", context)).toEqual({ status: "failed", message: "Pairing failed." });
@@ -410,11 +414,53 @@ describe("The other functions of a plugin container", () => {
 
       expect(await sourceType.sourceAdded(context)).toMatchObject({ ok: false });
       await sourceType.sourceRemoved(context);
-      expect(await sourceType.choices("chats", context)).toEqual([]);
-      expect(await sourceType.catalogue?.entries()).toEqual([]);
+      expect(await sourceType.choices("chats", context)).toMatchObject({ ok: false, message: expect.stringContaining("not reachable") as unknown });
+      expect(await sourceType.catalogue?.entries()).toMatchObject({ ok: false, message: expect.stringContaining("not reachable") as unknown });
       expect(await sourceType.setupProgress("pair", context)).toMatchObject({ status: "failed" });
     } finally {
       if (server.listening) await closed(server);
+    }
+  });
+
+  it("migrates a configuration one version at a time, failing where its plugin fails", async () => {
+    const migrating: PluginImplementation = {
+      ...base,
+      description: { ...base.description, configuration: { ...base.description.configuration, version: 3 } },
+      configMigration: ({ fromVersion, plain }) => {
+        if (plain.broken === true) throw new PluginError("definite", "Cannot read the old address.");
+        return { plain: { ...plain, [`v${fromVersion + 1}`]: true } };
+      },
+    };
+    const server = await servePlugin(migrating, { host: "127.0.0.1" });
+    try {
+      const { sourceType } = await loadedFrom(server);
+
+      expect(await sourceType.migrateConfig({ url: "x" }, 1)).toEqual({ url: "x", v2: true, v3: true });
+      expect(await sourceType.migrateConfig({ url: "x" }, 3)).toEqual({ url: "x" });
+      await expect(sourceType.migrateConfig({ broken: true }, 2)).rejects.toThrow("from version 2 failed: Cannot read the old address.");
+    } finally {
+      await closed(server);
+    }
+  });
+
+  it("reports why its plugin could not offer choices or catalogue entries", async () => {
+    const failing: PluginImplementation = {
+      ...plugin,
+      fieldChoices: () => {
+        throw new PluginError("definite", "The account is signed out.");
+      },
+      catalogueEntries: () => {
+        throw new PluginError("temporary", "The bridge is restarting.");
+      },
+    };
+    const server = await servePlugin(failing, { host: "127.0.0.1" });
+    try {
+      const { sourceType } = await loadedFrom(server);
+
+      expect(await sourceType.choices("chats", context)).toEqual({ ok: false, message: "The account is signed out." });
+      expect(await sourceType.catalogue?.entries()).toEqual({ ok: false, message: "The bridge is restarting." });
+    } finally {
+      await closed(server);
     }
   });
 
@@ -442,5 +488,81 @@ describe("The other functions of a plugin container", () => {
     } finally {
       await closed(server);
     }
+  });
+});
+
+describe("The Source wizard of a Source Type whose plugin runs in a container", () => {
+  let instance: TestInstance;
+  let server: Server;
+  let failing: boolean;
+
+  beforeEach(async () => {
+    failing = false;
+    const base = fakePlugin({ runs: [], poll: () => Promise.resolve({ sourceRecords: [], syncCursor: null }) });
+    const plugin: PluginImplementation = {
+      ...base,
+      description: {
+        ...base.description,
+        configuration: {
+          version: 2,
+          fields: [
+            { key: "school", label: "School", secret: false, required: true, hasChoices: false },
+            { key: "classes", label: "Classes", secret: false, required: false, hasChoices: true },
+          ],
+        },
+        catalogue: { title: "Schools", configKey: "school" },
+      },
+      fieldChoices: () => {
+        if (failing) throw new PluginError("definite", "The account is signed out.");
+        return { choices: [{ value: "3b", label: "Class 3b" }] };
+      },
+      catalogueEntries: () => {
+        if (failing) throw new PluginError("temporary", "The portal is down.");
+        return { entries: [{ id: "north", displayName: "North", description: "The north school", installed: true }] };
+      },
+      configMigration: ({ plain }) => ({ plain: { ...plain, school: plain.campus, campus: null } }),
+    };
+    server = await servePlugin(plugin, { host: "127.0.0.1" });
+    instance = await bootForTest({ pluginContainers: [{ sourceTypeId: "school-portal" as SourceTypeId, url: urlOf(server) }] });
+    expect(await instance.app.sourceTypes.enable("school-portal")).toEqual({ ok: true });
+    expect((await instance.app.catalogues.list())[0]).toMatchObject({ problem: null, entries: [{ id: "north" }] });
+    expect(await instance.app.catalogues.enable("school-portal", "north")).toEqual({ ok: true });
+  });
+  afterEach(async () => {
+    await instance.close();
+    await closed(server);
+  });
+
+  const added = async () => {
+    const result = await instance.app.sources.add({ sourceTypeId: "school-portal", plain: { school: "north" }, secrets: {} });
+    if (!result.ok) throw new Error(`adding failed: ${result.problem}`);
+    return result.id;
+  };
+
+  it("creates and edits a Source with the choices its plugin offers", async () => {
+    const id = await added();
+
+    expect(await instance.app.sources.find(id)).toMatchObject({ choices: { classes: [{ value: "3b", label: "Class 3b" }] }, choiceProblems: {} });
+    expect(await instance.app.sources.edit(id, { plain: { school: "north", classes: ["3b"] }, secrets: {} })).toMatchObject({ ok: true });
+    expect((await instance.app.sources.find(id))?.plain).toMatchObject({ classes: ["3b"] });
+  });
+
+  it("tells why its plugin could not offer choices or Catalogue entries", async () => {
+    const id = await added();
+    failing = true;
+
+    expect(await instance.app.sources.find(id)).toMatchObject({ choices: { classes: [] }, choiceProblems: { classes: "The account is signed out." } });
+    expect((await instance.app.catalogues.list())[0]).toMatchObject({ problem: "The portal is down.", entries: [] });
+  });
+
+  it("migrates the configuration of its Sources over REST when it is enabled", async () => {
+    const id = await added();
+    await instance.query(`update source set config = '{"campus":"north"}', config_version = 1 where id = '${id}'`);
+    await instance.query(`update source_type set enabled = false where id = 'school-portal'`);
+
+    expect(await instance.app.sourceTypes.enable("school-portal")).toEqual({ ok: true });
+
+    expect((await instance.app.sources.find(id))?.plain).toMatchObject({ school: "north", campus: null });
+    expect(await instance.query(`select config_version from source where id = '${id}'`)).toEqual([{ config_version: 2 }]);
   });
 });
