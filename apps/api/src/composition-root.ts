@@ -267,6 +267,7 @@ export async function bootApplication(config: ApplicationConfig): Promise<Applic
     registry,
     sourceTypes: sourceTypeRepository,
     sources: sourceRepository,
+    clock,
   });
   const catalogueRepository = new PostgresCatalogueRepository(postgres.db);
   const catalogues = createCatalogueAccess({

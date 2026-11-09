@@ -172,16 +172,17 @@ function loadedSourceType(plugin: SourcePlugin): LoadedSourceType {
           configKey: catalogue.configKey,
           async entries() {
             try {
-              return (await catalogue.entries()).map(({ id, displayName, description, installed, riskNotice }) => ({
+              const value = (await catalogue.entries()).map(({ id, displayName, description, installed, riskNotice }) => ({
                 id,
                 displayName,
                 description,
                 installed,
                 riskNotice: riskNotice ?? null,
               }));
+              return { ok: true, value };
             } catch (error) {
               console.warn(`Listing the catalogue of Source Type "${plugin.identity.sourceTypeId}" failed:`, error);
-              return [];
+              return { ok: false, message: messageOf(error) };
             }
           },
         }
@@ -191,10 +192,10 @@ function loadedSourceType(plugin: SourcePlugin): LoadedSourceType {
       const field = configuration.fields.find((candidate) => candidate.key === key);
       try {
         const values = (await field?.choices?.(runContextOf(context))) ?? [];
-        return values.filter((choice) => typeof choice.value === "string" && typeof choice.label === "string");
-      } catch {
-        // Without them, the field offers what was chosen before.
-        return [];
+        return { ok: true, value: values.filter((choice) => typeof choice.value === "string" && typeof choice.label === "string") };
+      } catch (error) {
+        console.warn(`Listing the choices of Source Type "${plugin.identity.sourceTypeId}" failed:`, error);
+        return { ok: false, message: messageOf(error) };
       }
     },
     async setupProgress(stepId, context) {
@@ -235,12 +236,13 @@ function loadedSourceType(plugin: SourcePlugin): LoadedSourceType {
             receive: (context, payload, attributes) => run(() => ingestion.receive({ ...runContextOf(context), attributes: checkedAttributes(attributes) }, payload)),
           },
     silentApplies: health.silentApplies,
-    migrateConfig(plain: PlainConfig, fromVersion: number): PlainConfig {
+    async migrateConfig(plain: PlainConfig, fromVersion: number): Promise<PlainConfig> {
       let migrated = plain as JsonObject;
       for (let version = fromVersion; version < configuration.version; version++) {
         const migrate = configuration.migrations?.[version];
-        if (!migrate) throw new Error(`no configuration migration from version ${version}`);
-        migrated = migrate(migrated);
+        if (!migrate) throw new Error(`Migrating the configuration from version ${version} failed: the plugin has no migration for it`);
+        // An in-process migration may be synchronous; awaiting keeps both kinds working.
+        migrated = await Promise.resolve(migrate(migrated));
       }
       return migrated;
     },

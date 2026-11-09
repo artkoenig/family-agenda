@@ -1,4 +1,5 @@
 import { textIn, type MultilingualText, type SourceTypeId } from "@family-agenda/domain";
+import { valueOr } from "./ports";
 import type {
   CatalogueEntrySpec,
   CatalogueRepository,
@@ -27,6 +28,8 @@ export type CatalogueSummary = {
   sourceTypeId: SourceTypeId;
   title: MultilingualText;
   entries: CatalogueEntrySummary[];
+  /** Why asking the plugin for the entries failed; null if it answered. */
+  problem: string | null;
 };
 
 /** How enabling and disabling an entry is refused. */
@@ -44,7 +47,8 @@ export async function usableEntries(
 ): Promise<CatalogueEntrySpec[]> {
   if (!sourceType.catalogue) return [];
   const enabled = new Set((await catalogues.list(sourceTypeId)).filter((record) => record.enabled).map((record) => record.entryId));
-  return (await sourceType.catalogue.entries()).filter((entry) => entry.installed && enabled.has(entry.id));
+  // The Source form offers no entries then; the Source Type page shows why (`CatalogueSummary.problem`).
+  return valueOr(await sourceType.catalogue.entries(), []).filter((entry) => entry.installed && enabled.has(entry.id));
 }
 
 /**
@@ -69,12 +73,15 @@ export function createCatalogueAccess(deps: CataloguesDeps) {
   async function summaryOf(id: SourceTypeId, sourceType: LoadedSourceType): Promise<CatalogueSummary | null> {
     const { catalogue } = sourceType;
     if (!catalogue) return null;
-    const entries = await catalogue.entries();
-    await catalogues.recordDiscovered(id, entries.map((entry) => entry.id));
+    const answer = await catalogue.entries();
+    const entries = valueOr(answer, []);
+    // A plugin that failed to answer discovered nothing.
+    if (answer.ok) await catalogues.recordDiscovered(id, entries.map((entry) => entry.id));
     const records = new Map((await catalogues.list(id)).map((record) => [record.entryId, record]));
     return {
       sourceTypeId: id,
       title: catalogue.title,
+      problem: answer.ok ? null : answer.message,
       entries: entries
         .flatMap((entry) => {
           const record = records.get(entry.id);

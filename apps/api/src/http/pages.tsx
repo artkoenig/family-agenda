@@ -1117,7 +1117,7 @@ function configKeyOf(sourceType: SourceTypeSummary | null, form: SourceForm | un
 }
 
 function catalogueOf(configKey: string | undefined, catalogue: CatalogueSummary | undefined) {
-  return configKey !== undefined && catalogue && catalogue.entries.length > 0 ? catalogue : undefined;
+  return configKey !== undefined && catalogue && (catalogue.entries.length > 0 || catalogue.problem !== null) ? catalogue : undefined;
 }
 
 function sourceTypeModel(props: {
@@ -1788,6 +1788,7 @@ function CatalogueEntries(props: {
         {text(catalogue.title)}
       </h2>
       <p class="fam-group__intro">{s.catalogueIntro}</p>
+      <ProblemBanner title={s.catalogueFailed} message={catalogue.problem} />
       <ul class="fam-sheets">
         {catalogue.entries.map((entry) => (
           <CatalogueEntrySheet
@@ -2079,7 +2080,7 @@ function chosenLabels(source: SourceSummary, fields: SourceForm["fields"] | unde
     .map((field) => {
       const stored = source.plain[field.key];
       const values = Array.isArray(stored) ? stored.filter((value) => typeof value === "string") : [];
-      const labels = values.map((value) => source.choices?.[field.key]?.find((choice) => choice.value === value)?.label ?? value);
+      const labels = values.map((value) => offeredOf(source, field.key).find((choice) => choice.value === value)?.label ?? value);
       return `${text(field.label)}: ${labels.length > 0 ? labels.join(", ") : t.sources.noneChosen}`;
     });
 }
@@ -2225,8 +2226,20 @@ function chosenOf(source: SourceSummary, key: string): string[] {
   return Array.isArray(stored) ? stored.filter((value): value is string => typeof value === "string") : [];
 }
 
+/** What the plugin offers for a choice field; none where asking it failed. */
+function offeredOf(source: SourceSummary, key: string): { value: string; label: string }[] {
+  const answer = source.choices?.[key];
+  return answer?.ok ? answer.value : [];
+}
+
+/** Why the plugin offers nothing for a choice field; null if it answered. Kept apart from ChoiceField for its CRAP score. */
+function choiceProblemOf(source: SourceSummary, key: string): string | null {
+  const answer = source.choices?.[key];
+  return answer?.ok === false ? answer.message : null;
+}
+
 function optionsOf(source: SourceSummary, key: string, chosen: string[]): { value: string; label: string }[] {
-  const offered = source.choices?.[key] ?? [];
+  const offered = offeredOf(source, key);
   return [
     ...offered,
     ...chosen.filter((value) => !offered.some((choice) => choice.value === value)).map((value) => ({ value, label: value })),
@@ -2252,12 +2265,14 @@ function ChoiceField(props: { field: SourceForm["fields"][number]; id: string; s
   }
   const chosen = chosenOf(source, field.key);
   const options = optionsOf(source, field.key, chosen);
+  const problem = choiceProblemOf(source, field.key);
   return (
     <fieldset class="fam-field" id={props.id}>
       <legend>{label}</legend>
       {/* Sent with nothing ticked too, so that unticking every box clears the choice. */}
       <input type="hidden" name={`choice.${field.key}`} value="" />
-      {options.length === 0 ? <small>{t.sources.noChoices}</small> : null}
+      <ProblemBanner title={t.sources.choicesFailed} message={problem} />
+      {options.length === 0 && problem === null ? <small>{t.sources.noChoices}</small> : null}
       {options.map((option) => (
         <label>
           <input type="checkbox" name={`choice.${field.key}`} value={option.value} checked={chosen.includes(option.value)} /> {option.label}
@@ -2320,19 +2335,25 @@ function LlmHealthStatus(props: { health: LlmEndpointHealth | null }) {
   );
 }
 
-function ConnectionBanner(props: { health: LlmEndpointHealth | null }) {
-  const { t } = useTranslation();
-  const l = t.llm;
-  if (!props.health || props.health.ok) return null;
+/** A problem, such as why asking a Source Type's plugin failed, where what it would have answered is shown. */
+function ProblemBanner(props: { title: string; message: string | null }) {
+  if (props.message === null) return null;
   return (
     <div class="fam-banner fam-banner--problem" role="status">
       <span class="fam-banner__glyph" aria-hidden="true">
         !
       </span>
-      <span class="fam-banner__title">{l.connectionError}</span>
-      <div class="fam-banner__body">{props.health.message}</div>
+      <span class="fam-banner__title">{props.title}</span>
+      <div class="fam-banner__body">{props.message}</div>
     </div>
   );
+}
+
+function ConnectionBanner(props: { health: LlmEndpointHealth | null }) {
+  const { t } = useTranslation();
+  const l = t.llm;
+  if (!props.health || props.health.ok) return null;
+  return <ProblemBanner title={l.connectionError} message={props.health.message} />;
 }
 
 function ConnectionFields(props: {

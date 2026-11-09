@@ -7,6 +7,7 @@ import type {
   ConfigFieldSpec,
   FamilyMemberRepository,
   KnownValue,
+  PluginAnswer,
   LoadedSourceType,
   PlainConfig,
   SecretRef,
@@ -60,7 +61,7 @@ export type SourceSummary = {
    * `find` and `listOfType` have them: asking a plugin may reach a mailbox or a homeserver, which
    * the list of all Sources should not.
    */
-  choices?: Record<string, KnownValue[]>;
+  choices?: Record<string, PluginAnswer<KnownValue[]>>;
 };
 
 /** What the Admin area renders a Source's form from, for an enabled Source Type. */
@@ -241,12 +242,12 @@ export function createSourceAccess(deps: SourcesDeps) {
   }
 
   /** The values each choice field of a Source offers; none while its Source Type is not enabled. */
-  async function choicesOf(source: Source): Promise<Record<string, KnownValue[]>> {
+  async function choicesOf(source: Source): Promise<Record<string, PluginAnswer<KnownValue[]>>> {
     const sourceType = await enabled(source.sourceTypeId);
     const fields = sourceType?.configuration.fields.filter((field) => field.choice) ?? [];
     if (!sourceType || fields.length === 0) return {};
     const context = await contextOf(source);
-    const choices: Record<string, KnownValue[]> = {};
+    const choices: Record<string, PluginAnswer<KnownValue[]>> = {};
     for (const field of fields) choices[field.key] = await sourceType.choices(field.key, context);
     return choices;
   }
