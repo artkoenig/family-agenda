@@ -10,6 +10,7 @@ import type {
   BlobStore,
   Extractor,
   IdentityProviderClient,
+  IdentityProviderSettings,
   SecretStore,
   TextExtractor,
 } from "@family-agenda/application";
@@ -33,6 +34,8 @@ export type TestOptions = {
   textExtractor?: TextExtractor;
   /** Replaces downloading Tesseract models, such as with a `FakeTessdataCatalog`. */
   tessdataCatalog?: TessdataCatalog;
+  /** The Identity Provider the environment would configure; none by default. */
+  identityProvider?: IdentityProviderSettings;
   /** Replaces the OIDC client, such as with a `ScriptedIdentityProviderClient`. */
   identityProviderClient?: IdentityProviderClient;
   /** Source Types whose plugins run as servers, such as fakes built with plugin-kit. */

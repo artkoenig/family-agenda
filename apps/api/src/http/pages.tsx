@@ -4,9 +4,6 @@ import {
   type CatalogueSummary,
   type FamilyMemberSummary,
   type LanguageSettings,
-  defaultRequiredGroup,
-  singleSignOnCallbackPath,
-  type SingleSignOnSummary,
   type EndpointCheck,
   type LlmEndpointSummary,
   type MessageDetails,
@@ -91,6 +88,8 @@ export function FirstAdminPage(props: {
   language: FamilyLanguage;
   email?: string;
   problem?: string;
+  /** Whether the first Admin may come from the Identity Provider instead. */
+  singleSignOn?: boolean;
 }) {
   const { t } = useTranslation();
   return (
@@ -136,6 +135,11 @@ export function FirstAdminPage(props: {
           <button type="submit" class="fam-button fam-button--primary">
             {t.setup.submit}
           </button>
+          {props.singleSignOn ? (
+            <a href="/sso/start" class="fam-button">
+              {t.signIn.singleSignOn}
+            </a>
+          ) : null}
         </div>
       </form>
     </EntrancePage>
@@ -199,8 +203,6 @@ export type SettingsSummary = {
   failingSources: number;
   llm: { model: string; local: boolean } | null;
   admins: number;
-  /** Whether Admins can sign in through an Identity Provider. */
-  singleSignOn: boolean;
   kitSaved: boolean;
   /** The release this Instance runs, such as `0.3.1`, `main-1a2b3c4` or `dev`. */
   version: string;
@@ -220,7 +222,6 @@ type SectionId =
   | "sources"
   | "llm"
   | "admins"
-  | "sso"
   | "recovery-kit";
 
 /** `fragment` loads a fresher summary right after the page, which does not wait for it. */
@@ -307,14 +308,6 @@ function settingsGroups(translation: Translation): SettingsGroup[] {
           href: "/admin/admins",
           label: t.admins.title,
           summary: ({ settings }) => ({ text: s.admins(settings.admins) }),
-        },
-        {
-          id: "sso",
-          href: "/admin/sso",
-          label: t.sso.title,
-          summary: ({ settings }) => ({
-            text: settings.singleSignOn ? s.on : t.sso.off,
-          }),
         },
         {
           id: "recovery-kit",
@@ -444,12 +437,6 @@ function SectionIcon(props: { id: SectionId }) {
       <>
         <path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z"></path>
         <path d="M9 12l2 2 4-4"></path>
-      </>
-    ),
-    sso: (
-      <>
-        <circle cx="8" cy="12" r="3.5"></circle>
-        <path d="M11.5 12H21M18 12v3M15 12v2"></path>
       </>
     ),
     "recovery-kit": (
@@ -4370,147 +4357,6 @@ function OcrLanguageList(props: { languages: LanguageSettings }) {
 
 /** How the pages look in a browser, which each browser keeps for itself. */
 const themes = ["system", "light", "dark"] as const;
-
-type SingleSignOnShown = {
-  enabled: boolean;
-  issuerUrl: string;
-  clientId: string;
-  requiredGroup: string;
-  publicBaseUrl: string;
-};
-
-/** What is saved, or the starting point where nothing is. */
-function savedSingleSignOn(
-  current: SingleSignOnSummary | null,
-  suggestedBaseUrl: string,
-): SingleSignOnSummary {
-  return (
-    current ?? {
-      enabled: false,
-      issuerUrl: "",
-      clientId: "",
-      hasClientSecret: false,
-      requiredGroup: defaultRequiredGroup,
-      publicBaseUrl: suggestedBaseUrl,
-      redirectUri: suggestedBaseUrl + singleSignOnCallbackPath,
-    }
-  );
-}
-
-/** The single sign-on section: the Identity Provider Admins may sign in through. */
-export function SingleSignOnPage(props: {
-  admin: SignedInAdmin;
-  current: SingleSignOnSummary | null;
-  /** What the Admin entered, shown again with a problem. */
-  entered?: SingleSignOnShown;
-  problem?: string;
-  /** The origin of this request, suggested as the public base URL where none is saved. */
-  suggestedBaseUrl: string;
-}) {
-  const { t } = useTranslation();
-  const o = t.sso;
-  const saved = savedSingleSignOn(props.current, props.suggestedBaseUrl);
-  const shown = props.entered ?? saved;
-  return (
-    <AdminLayout title={o.title} admin={props.admin} current="sso">
-      <SectionHeader title={o.title} description={o.description} />
-      <Problem message={props.problem} />
-      <form method="post" action="/admin/sso" class="fam-sheet fam-sheet__form">
-        <Group title={o.title} level={2}>
-          <div class="fam-group__fields">
-            <label>
-              <input
-                type="checkbox"
-                name="enabled"
-                value="yes"
-                checked={shown.enabled}
-              />{" "}
-              {o.enabled}
-            </label>
-            <div class="fam-field">
-              <label for="issuerUrl">{o.issuerUrl}</label>
-              <input
-                id="issuerUrl"
-                name="issuerUrl"
-                type="url"
-                required
-                value={shown.issuerUrl}
-              />
-              <small>{o.issuerUrlHint}</small>
-            </div>
-            <div class="fam-field">
-              <label for="clientId">{o.clientId}</label>
-              <input
-                id="clientId"
-                name="clientId"
-                required
-                autocomplete="off"
-                value={shown.clientId}
-              />
-            </div>
-            <div class="fam-field">
-              <label for="clientSecret">{o.clientSecret}</label>
-              <input
-                id="clientSecret"
-                name="clientSecret"
-                type="password"
-                autocomplete="off"
-                placeholder={
-                  saved.hasClientSecret ? t.common.storedSecret : undefined
-                }
-              />
-            </div>
-            <div class="fam-field">
-              <label for="requiredGroup">{o.requiredGroup}</label>
-              <input
-                id="requiredGroup"
-                name="requiredGroup"
-                required
-                value={shown.requiredGroup}
-              />
-              <small>{o.requiredGroupHint}</small>
-            </div>
-            <div class="fam-field">
-              <label for="publicBaseUrl">{o.publicBaseUrl}</label>
-              <input
-                id="publicBaseUrl"
-                name="publicBaseUrl"
-                type="url"
-                required
-                value={shown.publicBaseUrl}
-              />
-              <small>{o.publicBaseUrlHint}</small>
-            </div>
-            <div class="fam-field">
-              <label for="redirectUri">{o.redirectUri}</label>
-              <input
-                id="redirectUri"
-                type="text"
-                readonly
-                value={shown.publicBaseUrl + singleSignOnCallbackPath}
-              />
-              <small>{o.redirectUriHint}</small>
-            </div>
-            <div class="fam-field">
-              <label for="scopes">{o.scopes}</label>
-              <input
-                id="scopes"
-                type="text"
-                readonly
-                value="openid email profile groups"
-              />
-            </div>
-          </div>
-          <div class="fam-group__actions">
-            <button type="submit" class="fam-button fam-button--primary">
-              {t.common.save}
-            </button>
-          </div>
-        </Group>
-      </form>
-    </AdminLayout>
-  );
-}
 
 /** The Display section: the Family Language, and the Theme of this browser. */
 export function DisplayPage(props: {

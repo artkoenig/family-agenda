@@ -683,23 +683,6 @@ export interface LlmEndpointRepository {
   remove(): Promise<void>;
 }
 
-/** The Identity Provider as stored, its client secret in the SecretStore. */
-export type StoredIdentityProvider = {
-  enabled: boolean;
-  issuerUrl: string;
-  clientId: string;
-  clientSecret: SecretRef | null;
-  requiredGroup: string;
-  /** The origin Admins reach the Instance at for single sign-on, such as `https://agenda.example.ts.net`. */
-  publicBaseUrl: string;
-  savedAt: Date;
-};
-
-export interface IdentityProviderRepository {
-  find(): Promise<StoredIdentityProvider | null>;
-  save(provider: StoredIdentityProvider): Promise<void>;
-}
-
 /** What it takes to talk to an OIDC Identity Provider as the Instance's client. */
 export type IdentityProviderConnection = {
   issuerUrl: string;

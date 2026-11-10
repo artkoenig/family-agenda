@@ -1,12 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { bootForTest, type TestInstance } from "../support/boot";
-import { InMemorySecretStore } from "../support/in-memory-secret-store";
+import { parseIdentityProviderSettings } from "@family-agenda/application";
 import { ScriptedIdentityProviderClient } from "../support/scripted-identity-provider";
 
 const password = "correct horse battery";
 const origin = "https://agenda.example.ts.net";
 const settings = {
-  enabled: true,
   issuerUrl: "https://id.example.ts.net",
   clientId: "family-agenda",
   clientSecret: "s3cret",
@@ -23,13 +22,11 @@ const anna = {
 describe("Admins signing in through an Identity Provider", () => {
   let instance: TestInstance;
   let provider: ScriptedIdentityProviderClient;
-  let secrets: InMemorySecretStore;
   beforeEach(async () => {
     provider = new ScriptedIdentityProviderClient();
-    secrets = new InMemorySecretStore();
     instance = await bootForTest({
       identityProviderClient: provider,
-      secretStore: secrets,
+      identityProvider: settings,
     });
     await instance.app.admins.createFirstAdmin({
       email: "anna@example.org",
@@ -51,93 +48,10 @@ describe("Admins signing in through an Identity Provider", () => {
     });
   };
 
-  describe("settings", () => {
-    it("are not there at first, and offer nothing", async () => {
-      expect(await sso().current()).toBeNull();
-      expect(await sso().isOfferedAt(origin)).toBe(false);
-    });
-
-    it("are saved after a discovery fetch, with the redirect URI to register and the secret kept away", async () => {
-      expect(await sso().save(settings)).toEqual({ ok: true });
-
-      expect(await sso().current()).toEqual({
-        enabled: true,
-        issuerUrl: "https://id.example.ts.net",
-        clientId: "family-agenda",
-        hasClientSecret: true,
-        requiredGroup: "homelab-admin",
-        publicBaseUrl: origin,
-        redirectUri: `${origin}/sso/callback`,
-      });
-      expect(
-        await instance.query("SELECT client_secret_ref FROM identity_provider"),
-      ).not.toContainEqual({
-        client_secret_ref: "s3cret",
-      });
-      expect(secrets.size).toBe(1);
-    });
-
-    it("are not saved while the discovery fetch fails", async () => {
-      provider.discoveryFailure = "connect ECONNREFUSED";
-
-      expect(await sso().save(settings)).toEqual({
-        ok: false,
-        problem: "discovery-failed",
-        message: "connect ECONNREFUSED",
-      });
-      expect(await sso().current()).toBeNull();
-      expect(secrets.size).toBe(0);
-    });
-
-    it.each([
-      ["invalid-issuer-url", { issuerUrl: "id.example" }],
-      ["invalid-issuer-url", { issuerUrl: "https://id.example?x=1" }],
-      ["invalid-client-id", { clientId: " " }],
-      ["invalid-required-group", { requiredGroup: "" }],
-      ["invalid-public-url", { publicBaseUrl: "agenda" }],
-      ["invalid-public-url", { publicBaseUrl: `${origin}/agenda` }],
-      ["client-secret-missing", { clientSecret: "" }],
-    ])("refuse %s", async (problem, change) => {
-      expect(await sso().save({ ...settings, ...change })).toEqual({
-        ok: false,
-        problem,
-      });
-    });
-
-    it("keep the stored secret when none is entered, and replace it when one is", async () => {
-      await sso().save(settings);
-      await sso().save({
-        ...settings,
-        clientSecret: "",
-        requiredGroup: "parents",
-      });
-      expect(secrets.size).toBe(1);
-      expect((await sso().current())?.requiredGroup).toBe("parents");
-
-      await sso().save({ ...settings, clientSecret: "new secret" });
-      expect(secrets.size).toBe(1);
-    });
-
-    it("can be turned off without reaching the provider", async () => {
-      await sso().save(settings);
-      provider.discoveryFailure = "down";
-
-      expect(
-        await sso().save({ ...settings, enabled: false, clientSecret: "" }),
-      ).toEqual({ ok: true });
-      expect(await sso().isOfferedAt(origin)).toBe(false);
-      expect(await sso().begin(origin)).toBeNull();
-    });
-  });
-
   describe("sign-in", () => {
-    beforeEach(async () => {
-      await sso().save(settings);
-    });
-
     it("is offered only at the public base URL", async () => {
-      expect(await sso().isOfferedAt(origin)).toBe(true);
-      expect(await sso().isOfferedAt("http://family-agenda.local")).toBe(false);
+      expect(sso().isOfferedAt(origin)).toBe(true);
+      expect(sso().isOfferedAt("http://family-agenda.local")).toBe(false);
       expect(await sso().begin("http://family-agenda.local")).toBeNull();
     });
 
@@ -313,5 +227,64 @@ describe("Admins signing in through an Identity Provider", () => {
 
       expect(result).toEqual({ ok: false, problem: "sso-failed" });
     });
+  });
+
+  it("is offered nowhere without an Identity Provider", async () => {
+    await instance.close();
+    instance = await bootForTest({ identityProviderClient: provider });
+
+    expect(sso().isOfferedAt(origin)).toBe(false);
+    expect(await sso().begin(origin)).toBeNull();
+  });
+
+  it("makes the first Admin on an Instance without one", async () => {
+    await instance.close();
+    instance = await bootForTest({ identityProviderClient: provider, identityProvider: settings });
+
+    expect((await signInAs(anna)).ok).toBe(true);
+    expect(await instance.app.admins.needsFirstAdmin()).toBe(false);
+  });
+});
+
+describe("the Identity Provider from the environment", () => {
+  const variables = {
+    issuerUrl: " https://id.example.ts.net/realms/home/ ",
+    clientId: " family-agenda ",
+    clientSecret: "s3cret",
+    publicBaseUrl: origin,
+  };
+
+  it("is none without an issuer", () => {
+    expect(parseIdentityProviderSettings({})).toEqual({ ok: true, settings: null });
+    expect(parseIdentityProviderSettings({ ...variables, issuerUrl: " " })).toEqual({ ok: true, settings: null });
+  });
+
+  it("keeps the issuer's path and takes the default group", () => {
+    expect(parseIdentityProviderSettings(variables)).toEqual({
+      ok: true,
+      settings: {
+        issuerUrl: "https://id.example.ts.net/realms/home",
+        clientId: "family-agenda",
+        clientSecret: "s3cret",
+        requiredGroup: "homelab-admin",
+        publicBaseUrl: origin,
+      },
+    });
+  });
+
+  it.each([
+    ["invalid-issuer-url", { issuerUrl: "id.example" }],
+    ["invalid-issuer-url", { issuerUrl: "https://id.example?x=1" }],
+    ["invalid-issuer-url", { issuerUrl: "ftp://id.example" }],
+    ["invalid-issuer-url", { issuerUrl: "https://user:pw@id.example" }],
+    ["invalid-client-id", { clientId: undefined }],
+    ["invalid-client-id", { clientId: "x".repeat(201) }],
+    ["client-secret-missing", { clientSecret: " " }],
+    ["client-secret-missing", { clientSecret: undefined }],
+    ["invalid-required-group", { requiredGroup: " " }],
+    ["invalid-public-url", { publicBaseUrl: null }],
+    ["invalid-public-url", { publicBaseUrl: `${origin}/agenda` }],
+  ])("refuses %s", (problem, change) => {
+    expect(parseIdentityProviderSettings({ ...variables, ...change })).toEqual({ ok: false, problem });
   });
 });

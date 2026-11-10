@@ -65,13 +65,6 @@ export const de: Catalogue = {
       "Das ist auf der Instanz nicht installiert. Es braucht ein Image von Family Agenda, das es enthält.",
     "entry-in-use":
       "Entferne die Quellen, die es nutzen, bevor du es deaktivierst.",
-    "invalid-issuer-url":
-      "Gib die Issuer-URL als http- oder https-Adresse an, etwa https://id.example.ts.net.",
-    "invalid-client-id": "Gib die Client-ID an.",
-    "invalid-required-group": "Gib den Namen der erforderlichen Gruppe an.",
-    "invalid-public-url":
-      "Gib die öffentliche Basis-URL als http- oder https-Adresse ohne Pfad an, etwa https://agenda.example.ts.net.",
-    "client-secret-missing": "Gib das Client-Secret an.",
     "sso-failed":
       "Die Anmeldung über den Identity Provider hat nicht geklappt. Versuche es noch einmal.",
     "sso-not-in-group":
@@ -88,8 +81,6 @@ export const de: Catalogue = {
       `Die Quelle konnte nicht eingerichtet werden: ${message}`,
     downloadFailed: (message) =>
       `Das Modell konnte nicht heruntergeladen werden. ${message}`,
-    discoveryFailed: (message) =>
-      `Der Identity Provider war nicht erreichbar, daher wurde nichts gespeichert. ${message}`,
   },
 
   loading: {
@@ -130,28 +121,6 @@ export const de: Catalogue = {
     singleSignOn: "Mit Passkey anmelden",
   },
 
-  sso: {
-    title: "Single Sign-on",
-    description:
-      "Admins können sich über einen OIDC-Identity-Provider anmelden, etwa Pocket ID mit Passkeys, zusätzlich zum Passwort. Beim Speichern wird geprüft, ob der Provider erreichbar ist.",
-    enabled: "Admins dürfen sich über den Identity Provider anmelden",
-    issuerUrl: "Issuer-URL",
-    issuerUrlHint:
-      "Die Adresse des Identity Providers; den Rest findet Family Agenda per Discovery.",
-    clientId: "Client-ID",
-    clientSecret: "Client-Secret",
-    requiredGroup: "Erforderliche Gruppe",
-    requiredGroupHint:
-      "Nur Mitglieder dieser Gruppe dürfen sich anmelden. Das wird bei jeder Anmeldung geprüft.",
-    publicBaseUrl: "Öffentliche Basis-URL",
-    publicBaseUrlHint:
-      "Die Adresse, unter der Admins Family Agenda für die Anmeldung über den Identity Provider erreichen. Die Schaltfläche erscheint nur dort.",
-    redirectUri: "Redirect-URI",
-    redirectUriHint:
-      "Trage diese Adresse beim Identity Provider als Redirect-URI des Clients ein.",
-    scopes: "Scopes",
-    off: "Aus",
-  },
 
   settings: {
     title: "Einstellungen",
