@@ -21,6 +21,7 @@ import {
   familyLanguages,
   horizonDaysRange,
   maximumNameLength,
+  memberColours,
   minimumPasswordLength,
   photoTypes,
   silentAfterMs,
@@ -1007,6 +1008,22 @@ function MemberDialog(props: {
             />
             <small>{m.nameHint}</small>
           </div>
+          <fieldset>
+            <legend>{m.colour}</legend>
+            <div class="fam-swatches">
+              {memberColours.map((colour) => (
+                <label class={`fam-swatch fam-avatar--m${colour}`} title={m.colourNumber(colour)}>
+                  <input
+                    type="radio"
+                    name="colour"
+                    value={String(colour)}
+                    checked={edited.colour === colour}
+                    aria-label={m.colourNumber(colour)}
+                  />
+                </label>
+              ))}
+            </div>
+          </fieldset>
           <div class="fam-field">
             <label for="photo">
               {edited.hasPhoto ? m.replacePhoto : m.photo}

@@ -2,10 +2,13 @@ import { randomUUID } from "node:crypto";
 import {
   initialOf,
   maximumPhotoBytes,
+  nextColour,
+  parseColour,
   parseName,
   photoTypeOf,
   type FamilyMember,
   type FamilyMemberId,
+  type MemberColour,
   type Photo,
   type PhotoType,
 } from "@family-agenda/domain";
@@ -22,10 +25,12 @@ export type FamilyMemberSummary = {
   name: string;
   /** What the avatar shows without a photo. */
   initial: string;
+  /** The colour behind the initial. */
+  colour: MemberColour;
   hasPhoto: boolean;
 };
 
-export type FamilyMemberProblem = "invalid-name" | "invalid-photo" | "photo-too-large";
+export type FamilyMemberProblem = "invalid-name" | "invalid-colour" | "invalid-photo" | "photo-too-large";
 
 /** Removing is refused while a Source Attribute is assigned to the Family Member alone; `blocking` names them. */
 export type RemoveResult = { ok: true } | { ok: false; problem: "sole-assignee"; blocking: SoleAssignment[] };
@@ -79,23 +84,26 @@ export function createFamilyMemberAccess(deps: FamilyMembersDeps) {
         photo = stored.photo;
       }
       const id = randomUUID() as FamilyMemberId;
-      await members.add({ id, name, photo, createdAt: clock.now() });
+      const colour = nextColour((await members.list()).map((other) => other.colour));
+      await members.add({ id, name, photo, colour, createdAt: clock.now() });
       return { ok: true, id };
     },
 
-    /** `photo` replaces the photo, null removes it, and leaving it out keeps it. */
+    /** `photo` replaces the photo, null removes it, and leaving it out keeps it; so does leaving out `colour`. */
     async edit(
       id: FamilyMemberId,
-      input: { name: string; photo?: Uint8Array | null },
+      input: { name: string; colour?: string; photo?: Uint8Array | null },
     ): Promise<EditResult> {
       const member = await members.findById(id);
       if (!member) return { ok: false, problem: "unknown-member" };
       const name = parseName(input.name);
       if (!name) return { ok: false, problem: "invalid-name" };
+      const colour = resolveColour(member.colour, input.colour);
+      if (!colour) return { ok: false, problem: "invalid-colour" };
       const resolved = await resolvePhoto(member.photo, input.photo);
       if (!resolved.ok) return resolved;
       const photo = resolved.photo;
-      await members.update({ ...member, name, photo });
+      await members.update({ ...member, name, colour, photo });
       if (member.photo && member.photo.blob !== photo?.blob) await blobs.remove(member.photo.blob);
       return { ok: true };
     },
@@ -128,11 +136,17 @@ export function createFamilyMemberAccess(deps: FamilyMembersDeps) {
 
 export type FamilyMemberAccess = ReturnType<typeof createFamilyMemberAccess>;
 
+/** Leaving the colour out keeps it; null if it is none of the colours. */
+function resolveColour(current: MemberColour, input: string | undefined): MemberColour | null {
+  return input === undefined ? current : parseColour(input);
+}
+
 export function summariseFamilyMember(member: FamilyMember): FamilyMemberSummary {
   return {
     id: member.id,
     name: member.name,
     initial: initialOf(member.name),
+    colour: member.colour,
     hasPhoto: member.photo !== null,
   };
 }

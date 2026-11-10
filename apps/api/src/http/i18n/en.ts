@@ -55,6 +55,7 @@ export const en = {
     "invalid-language": "Choose English or German as the Family Language.",
     "kit-not-saved": "Confirm that you have saved the Recovery Kit.",
     "invalid-name": `Enter a name of at most ${maximumNameLength} characters.`,
+    "invalid-colour": "Choose one of the colours.",
     "invalid-photo": `The photo must be one of ${photoFormats}.`,
     "photo-too-large": `The photo must be at most ${maximumPhotoBytes / 1024 / 1024} MB.`,
     "unknown-member": "This Family Member does not exist.",
@@ -213,6 +214,9 @@ export const en = {
     none: "No Family Members yet.",
     withPhoto: "With a photo",
     withInitial: "Shows the initial",
+    colour: "Colour",
+    /** The name of a colour choice for screen readers. */
+    colourNumber: (n: number) => `Colour ${n}`,
     replacePhoto: "Replace photo",
     removePhoto: "Remove photo",
     remove: (name: string) => `Remove ${name}`,

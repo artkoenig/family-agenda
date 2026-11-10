@@ -226,6 +226,31 @@ describe("Agendas over HTTP", () => {
     expect(farAheadPage).toContain("between 1 and 31 days");
   });
 
+  it("gives each new Family Member a colour no one has yet, which the Admin can change", async () => {
+    const cookie = await signIn();
+    const vera = await addMember("Vera");
+    const avatarOf = async (id: FamilyMemberId) => {
+      const page = await (await instance.get(`/admin/family-members/${id}`, { cookie })).text();
+      return /class="fam-swatch fam-avatar--m(\d)"[^>]*><input[^>]*checked/.exec(page)?.[1];
+    };
+    // Mia and Leo were added first.
+    expect(await avatarOf(vera)).toBe("3");
+
+    const changed = await instance.post(`/admin/family-members/${vera}`, { name: "Vera", colour: "6" }, { cookie });
+    expect(changed.status).toBe(303);
+    expect(await avatarOf(vera)).toBe("6");
+    const list = await (await instance.get("/admin/family-members", { cookie })).text();
+    expect(list).toContain('fam-avatar--m6" aria-hidden="true">V<');
+
+    const renamed = await instance.post(`/admin/family-members/${vera}`, { name: "Vroni" }, { cookie });
+    expect(renamed.status).toBe(303);
+    expect(await avatarOf(vera)).toBe("6");
+
+    const refused = await instance.post(`/admin/family-members/${vera}`, { name: "Vera", colour: "9" }, { cookie });
+    expect(refused.status).toBe(400);
+    expect(await refused.text()).toContain("Choose one of the colours.");
+  });
+
   it("tells an Admin which Source Attributes keep a Family Member from being removed", async () => {
     const cookie = await signIn();
     await instance.installPlugin({ sourceTypeId: "calendar" });

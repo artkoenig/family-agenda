@@ -909,6 +909,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
       c.req.param("id") as FamilyMemberId,
       {
         name: field(form, "name"),
+        ...(typeof form["colour"] === "string" ? { colour: form["colour"] } : {}),
         ...(photo !== undefined ? { photo } : {}),
       },
     );

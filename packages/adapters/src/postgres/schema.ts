@@ -120,9 +120,12 @@ export const familyMembers = pgTable(
     /** The photo in the BlobStore, if any, and its image format. */
     photoBlob: text("photo_blob"),
     photoContentType: text("photo_content_type"),
+    /** The avatar colour, 1 to 8 (`memberColours`). */
+    colour: integer("colour").notNull(),
     createdAt: timestamptz("created_at").notNull().defaultNow(),
   },
   (table) => [
+    check("family_member_colour_known", sql`${table.colour} BETWEEN 1 AND 8`),
     check("family_member_photo_complete", allOrNone(table.photoBlob, table.photoContentType)),
     oneOf("family_member_photo_content_type_known", table.photoContentType, photoTypes),
   ],

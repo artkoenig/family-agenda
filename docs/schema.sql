@@ -112,7 +112,10 @@ CREATE TABLE family_member (
   name                TEXT NOT NULL,
   photo_blob          TEXT,                  -- BlobStore reference
   photo_content_type  TEXT,
+  colour              INTEGER NOT NULL,      -- the avatar colour, 1 to 8 (--member-1 to --member-8)
   created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT family_member_colour_known
+    CHECK (colour BETWEEN 1 AND 8),
   CONSTRAINT family_member_photo_complete
     CHECK ((photo_blob IS NULL) = (photo_content_type IS NULL)),
   CONSTRAINT family_member_photo_content_type_known

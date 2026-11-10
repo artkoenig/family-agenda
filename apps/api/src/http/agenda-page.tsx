@@ -831,7 +831,7 @@ export function Avatar(props: { member: FamilyMemberSummary; size?: "sm" }) {
       <img src={`/family-members/${member.id}/photo`} alt="" />
     </span>
   ) : (
-    <span class={`fam-avatar${size} fam-avatar--m${memberColourOf(member.id)}`} aria-hidden="true">
+    <span class={`fam-avatar${size} fam-avatar--m${member.colour}`} aria-hidden="true">
       {member.initial}
     </span>
   );
@@ -887,12 +887,6 @@ export function dateLabel(date: LocalDate, locale: string): string {
 }
 
 /** Which of the eight member colours a Family Member has, stable by id, so that their avatar keeps it. */
-function memberColourOf(id: string): number {
-  let hash = 0;
-  for (const char of id) hash = (hash * 31 + char.charCodeAt(0)) % 8;
-  return hash + 1;
-}
-
 /** The tick of a Task on the message page: shown as in an Agenda, but only the Agenda changes it. */
 function StaticTick(props: { row: TimelineTask }) {
   return (

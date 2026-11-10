@@ -36,6 +36,13 @@
       "when": 1794343924767,
       "tag": "0004_identity_provider_from_environment",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1794347726049,
+      "tag": "0005_member_colour",
+      "breakpoints": true
     }
   ]
 }
