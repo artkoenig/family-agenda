@@ -58,6 +58,8 @@ import {
   SignInPage,
   SourcesPage,
   SourcePage,
+  AddSourceDialog,
+  FixDialog,
   SourceAttributesSection,
   SourceTypeCatalogue,
   SourceTypePage,
@@ -912,6 +914,26 @@ function shownStatus(status: 200 | 400 | 413 | undefined, problems: (string | un
     return t.problemsWith.invalidConfig(list(result.fields.map((key) => labels.get(key) ?? key)));
   };
 
+  /**
+   * Whether a dialog is asked for alone, to load into the open page: by htmx, unless it restores
+   * history it has not cached, which needs the whole page.
+   */
+  const dialogAlone = (c: Context<Env>) => {
+    c.header("vary", "HX-Request");
+    return c.req.header("hx-request") === "true" && !c.req.header("hx-history-restore-request");
+  };
+
+  /** Where a dialog's submit goes on: htmx is told to load that page, a plain form is redirected. */
+  const goOn = (c: Context<Env>, location: string) => {
+    if (c.req.header("hx-request") !== "true") return c.redirect(location, 303);
+    c.header("HX-Redirect", location);
+    return c.body(null, 204);
+  };
+
+  /** The Add dialog, alone for htmx, over its Source Type's page otherwise. */
+  const addingShown = (c: Context<Env>, adding: SourceAdding) =>
+    dialogAlone(c) ? render(c, <AddSourceDialog adding={adding} />) : sourceTypePage(c, adding.form.sourceTypeId, { adding });
+
   /** The page of a Source being added in the background. */
   const addingHref = (id: AddingId) => `/admin/sources/adding/${encodeURIComponent(id)}`;
 
@@ -927,9 +949,9 @@ function shownStatus(status: 200 | 400 | 413 | undefined, problems: (string | un
     // Added at a catalogue entry, such as a Messenger, the Source uses that entry.
     const entry = c.req.query("entry");
     if (form.catalogue && entry !== undefined) {
-      return sourceTypePage(c, type, { adding: { form, entered: { plain: { [form.catalogue.configKey]: entry }, interval: "" } } });
+      return addingShown(c, { form, entered: { plain: { [form.catalogue.configKey]: entry }, interval: "" } });
     }
-    return sourceTypePage(c, type, { adding: { form } });
+    return addingShown(c, { form });
   });
 
   app.post("/admin/sources", async (c) => {
@@ -943,10 +965,10 @@ function shownStatus(status: 200 | 400 | 413 | undefined, problems: (string | un
       if (!sourceForm) return sourceTypePage(c, sourceTypeId, { problem });
       const plain = Object.fromEntries(Object.entries(input.plain).map(([key, value]) => [key, String(value)]));
       const entered = { plain, interval: field(form, "pollIntervalMinutes").trim() };
-      return sourceTypePage(c, sourceTypeId, { adding: { form: sourceForm, entered, problem } });
+      return addingShown(c, { form: sourceForm, entered, problem });
     }
-    if ("adding" in result) return c.redirect(sourceTypeHref(sourceTypeId), 303);
-    return c.redirect(result.setUp ? `/admin/sources/${result.id}/setup` : sourceTypeHref(sourceTypeId), 303);
+    if ("adding" in result) return goOn(c, sourceTypeHref(sourceTypeId));
+    return goOn(c, result.setUp ? `/admin/sources/${result.id}/setup` : sourceTypeHref(sourceTypeId));
   });
 
   // A Source added in the background: once its plugin prepared it, where it goes on; once it failed, its form again.
@@ -1013,6 +1035,22 @@ function shownStatus(status: 200 | 400 | 413 | undefined, problems: (string | un
     return render(c, page, shown.problem ? 400 : 200);
   };
 
+  /**
+   * The Fix dialog of a Source alone, with what was entered and why it was refused, if it was;
+   * null for one whose plugin cannot be loaded, which has no form.
+   */
+  const fixDialog = async (c: Context<Env>, listed: SourceSummary, refused?: { problem: string; input: SourceInput }) => {
+    const found = (await sources.find(listed.id)) ?? listed;
+    const [forms, members, liveSteps] = await Promise.all([sources.forms(), familyMembers.list(), liveStepsOf(found)]);
+    const form = forms.find((candidate) => candidate.sourceTypeId === found.sourceTypeId);
+    if (!form) return null;
+    const source = refused ? { ...found, plain: { ...found.plain, ...refused.input.plain }, pollIntervalSeconds: refused.input.pollIntervalSeconds ?? null } : found;
+    return render(
+      c,
+      <FixDialog source={source} problem={refused?.problem} form={form} closeHref={sourceHref(source.id)} timeZone={timeZone} liveSteps={liveSteps} members={members} />,
+    );
+  };
+
   app.get("/admin/sources/:id", async (c) => {
     const source = await sourceOf(c.req.param("id"));
     if (!source) return c.redirect("/admin/sources");
@@ -1023,6 +1061,10 @@ function shownStatus(status: 200 | 400 | 413 | undefined, problems: (string | un
   app.get("/admin/sources/:id/fix", async (c) => {
     const fixing = await sourceOf(c.req.param("id"));
     if (!fixing) return c.redirect("/admin/sources");
+    if (dialogAlone(c)) {
+      const shown = await fixDialog(c, fixing);
+      if (shown) return shown;
+    }
     return sourcePage(c, fixing, { fixing: true });
   });
 
@@ -1035,9 +1077,15 @@ function shownStatus(status: 200 | 400 | 413 | undefined, problems: (string | un
       const renamed = await sources.rename(source.id, form.name);
       if (!renamed.ok) return sourcePage(c, source, { problem: problemIn(c, renamed.problem) });
     }
-    const result = await sources.edit(source.id, sourceInputOf(form));
-    if (!result.ok) return sourcePage(c, (await sourceOf(source.id)) ?? source, { problem: await sourceProblem(c, result) });
-    return c.redirect(sourceHref(source.id), 303);
+    const input = sourceInputOf(form);
+    const result = await sources.edit(source.id, input);
+    if (!result.ok) {
+      const problem = await sourceProblem(c, result);
+      // The Fix dialog, loaded on its own, is answered alone.
+      const alone = dialogAlone(c) ? await fixDialog(c, source, { problem, input }) : null;
+      return alone ?? sourcePage(c, (await sourceOf(source.id)) ?? source, { problem });
+    }
+    return goOn(c, sourceHref(source.id));
   });
 
   app.post("/admin/sources/:id/name", async (c) => {

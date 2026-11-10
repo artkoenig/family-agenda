@@ -399,7 +399,8 @@ function AdminLayout(props: {
           {props.children}
         </main>
       </div>
-      {props.dialog}
+      {/* Where a dialog opens, also one loaded on its own into the open page (`DialogLink`). */}
+      <div id="fam-dialog-slot">{props.dialog}</div>
     </Layout>
   );
 }
@@ -449,6 +450,33 @@ function Dialog(props: { id: string; eyebrow?: string; title: string; closeHref:
       {props.children}
     </dialog>
   );
+}
+
+/**
+ * A link opening a dialog, such as Add or Fix. With htmx, it loads the dialog alone into the open
+ * page, which shows a loading dialog at once meanwhile (`modalDialogs`); its address is the page
+ * with the dialog open, for a direct link and without JavaScript.
+ */
+function DialogLink(props: { href: string; class: string; "aria-label"?: string; children: Child }) {
+  const { t } = useTranslation();
+  return (
+    <a
+      class={props.class}
+      href={props.href}
+      aria-label={props["aria-label"]}
+      hx-get={props.href}
+      hx-target="#fam-dialog-slot"
+      hx-push-url="true"
+      data-opens-dialog={t.loading.default}
+    >
+      {props.children}
+    </a>
+  );
+}
+
+/** What a form in a dialog loaded on its own needs, so that a refused submit answers the dialog alone. */
+function dialogForm(action: string) {
+  return { method: "post" as const, action, "hx-post": action, "hx-target": "#fam-dialog-slot" };
 }
 
 /**
@@ -1048,14 +1076,19 @@ function sourceTypeDialog(
   href: string,
 ) {
   const { adding, settingUp, form } = props;
-  if (adding) return addingDialog(adding, props, s, text, href);
+  if (adding) return addingDialog(adding, s, text, href);
   if (settingUp && form) return settingUpDialog(settingUp, form, props.liveSteps, s, text, href);
   return undefined;
 }
 
+/** The dialog adding a Source, as it loads on its own into its Source Type's page. */
+export function AddSourceDialog(props: { adding: SourceAdding }) {
+  const { t, text } = useTranslation();
+  return addingDialog(props.adding, t.sources, text, sourceTypeHref(props.adding.form.sourceTypeId));
+}
+
 function addingDialog(
   adding: SourceAdding,
-  props: { form: SourceForm | undefined; members: FamilyMemberSummary[] },
   s: Translation["t"]["sources"],
   text: Translation["text"],
   href: string,
@@ -1063,7 +1096,7 @@ function addingDialog(
   const added = addedEntry(adding);
   return (
     <Dialog id="add-source" eyebrow={s.addEyebrow} title={text(added?.displayName ?? adding.form.displayName)} closeHref={href}>
-      <form method="post" action="/admin/sources" class="fam-dialog__form">
+      <form {...dialogForm("/admin/sources")} class="fam-dialog__form">
         <Problem message={adding.problem} />
         <input type="hidden" name="sourceTypeId" value={adding.form.sourceTypeId} />
         <SetupSteps form={adding.form} />
@@ -1193,9 +1226,9 @@ function AddSourceButton(props: {
   if (!(sourceType?.enabled && form && !form.catalogue)) return null;
   return (
     <div class="fam-group__actions">
-      <a class="fam-button fam-button--quiet fam-button--add" href={`/admin/sources/new?type=${encodeURIComponent(sourceTypeId)}`}>
+      <DialogLink class="fam-button fam-button--quiet fam-button--add" href={`/admin/sources/new?type=${encodeURIComponent(sourceTypeId)}`}>
         {s.addType(name)}
-      </a>
+      </DialogLink>
     </div>
   );
 }
@@ -1543,9 +1576,9 @@ function SourcePageHeader(props: { name: string; health: SourceHealth; entry: { 
       }
       action={
         health.status === "failing" && form ? (
-          <a class="fam-button fam-button--secondary" href={`${href}/fix`}>
+          <DialogLink class="fam-button fam-button--secondary" href={`${href}/fix`}>
             {s.fix}
-          </a>
+          </DialogLink>
         ) : undefined
       }
     />
@@ -1722,9 +1755,9 @@ function SourceRow(props: { source: SourceSummary; form: SourceForm | undefined;
         <Chevron />
       </a>
       {source.health.status === "failing" && form ? (
-        <a class="fam-button fam-button--secondary" href={`${sourceHref(source.id)}/fix`}>
+        <DialogLink class="fam-button fam-button--secondary" href={`${sourceHref(source.id)}/fix`}>
           {s.fix}
-        </a>
+        </DialogLink>
       ) : null}
     </li>
   );
@@ -1859,13 +1892,13 @@ function AddAtEntry(props: { form: SourceForm; entryId: string; name: string }) 
   const nothingToFill = form.fields.every((field) => field.key === configKey || field.choice);
   if (!nothingToFill) {
     return (
-      <a
+      <DialogLink
         class="fam-button fam-button--quiet fam-button--add"
         href={`/admin/sources/new?type=${encodeURIComponent(form.sourceTypeId)}&entry=${encodeURIComponent(entryId)}`}
         aria-label={s.addAccountOf(props.name)}
       >
         {s.addAccount}
-      </a>
+      </DialogLink>
     );
   }
   return (
@@ -1887,8 +1920,10 @@ function addedEntry(adding: SourceAdding) {
 }
 
 /** The dialog a Fix button opens: the form adding a Source uses, filled in with the Source's settings. */
-function FixDialog(props: {
+export function FixDialog(props: {
   source: SourceSummary;
+  /** Why what was entered was refused, shown in the dialog loaded on its own. */
+  problem?: string | undefined;
   form: SourceForm;
   closeHref: string;
   timeZone: string;
@@ -1900,7 +1935,8 @@ function FixDialog(props: {
   const s = t.sources;
   return (
     <Dialog id="fix-source" eyebrow={s.fixEyebrow} title={text(source.displayName)} closeHref={props.closeHref}>
-      <form method="post" action={`/admin/sources/${source.id}`} class="fam-dialog__form">
+      <form {...dialogForm(`/admin/sources/${source.id}`)} class="fam-dialog__form">
+        <Problem message={props.problem} />
         <HealthLine health={source.health} timeZone={props.timeZone} />
         <SetupSteps form={form} liveSteps={props.liveSteps} />
         <SourceFields form={form} prefix={`fix-${source.id}`} source={source} autofocus />
