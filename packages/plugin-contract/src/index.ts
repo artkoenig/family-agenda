@@ -9,7 +9,7 @@ import { z } from "zod";
  * `major.minor`. A minor change is additive only, such as an optional field or an optional new
  * endpoint; anything else is a new major. CI compares `openapi.json` with the last release.
  */
-export const contractVersion = "1.2";
+export const contractVersion = "1.3";
 
 export type ContractVersion = { major: number; minor: number };
 
@@ -137,7 +137,12 @@ export const descriptionSchema = z
     /** What an Admin enables one by one, such as Messengers; its entries come from `catalogueEntries`. */
     catalogue: z.object({ title: pluginTextSchema, configKey: z.string().min(1) }).optional(),
     /** Which optional endpoints the plugin implements. */
-    endpoints: z.object({ sourceAdded: z.boolean(), sourceRemoved: z.boolean() }),
+    endpoints: z.object({
+      sourceAdded: z.boolean(),
+      sourceRemoved: z.boolean(),
+      /** Whether `sourceAttributes` names a Source's Source Attributes apart from a run (since 1.3). */
+      sourceAttributes: z.boolean().optional(),
+    }),
   })
   .meta({ id: "Description" });
 
@@ -191,6 +196,14 @@ export const sourceRecordSchema = z
   })
   .meta({ id: "SourceRecord" });
 
+/** Source Attributes to declare (idempotent) and archive. */
+export const attributesSchema = z
+  .object({
+    declared: z.array(z.object({ externalId: z.string().min(1), name: z.string() })),
+    archived: z.array(z.string()),
+  })
+  .meta({ id: "SourceAttributes" });
+
 export const ingestResultSchema = z
   .object({
     sourceRecords: z.array(sourceRecordSchema),
@@ -199,12 +212,7 @@ export const ingestResultSchema = z
     /** External ids of Source Records deleted in the Source since. */
     withdrawn: z.array(z.string()).optional(),
     /** Source Attributes to declare (idempotent) and archive, applied before the Source Records. */
-    attributes: z
-      .object({
-        declared: z.array(z.object({ externalId: z.string().min(1), name: z.string() })),
-        archived: z.array(z.string()),
-      })
-      .optional(),
+    attributes: attributesSchema.optional(),
     /** Secrets the plugin changed, such as a refreshed token; the core stores them encrypted. */
     secrets: secretsSchema.optional(),
   })
@@ -215,6 +223,8 @@ export const pollResponseSchema = ingestResultSchema;
 export const receiveRequestSchema = z.object({ context: runContextSchema, payload: base64 }).meta({ id: "ReceiveRequest" });
 export const sourceAddedRequestSchema = runContextSchema.omit({ syncCursor: true }).meta({ id: "SourceAddedRequest" });
 export const sourceAddedResponseSchema = configSchema.meta({ id: "SourceAddedResponse", description: "Values of the fields set by the plugin." });
+export const sourceAttributesRequestSchema = runContextSchema;
+export const sourceAttributesResponseSchema = attributesSchema;
 export const fieldChoicesRequestSchema = z.object({ field: z.string().min(1), context: runContextSchema }).meta({ id: "FieldChoicesRequest" });
 export const fieldChoicesResponseSchema = z
   .object({ choices: z.array(z.object({ value: z.string(), label: z.string() })) })
@@ -294,6 +304,14 @@ export const endpoints = {
     summary: "Cleans up after a Source was removed; a failure is ignored.",
     timeoutMs: limits.callTimeoutMs,
     request: runContextSchema,
+  },
+  sourceAttributes: {
+    method: "post",
+    path: "/sources/attributes",
+    summary: "Names a Source's Source Attributes now, without a run, as its page in the Admin area asks (since 1.3).",
+    timeoutMs: limits.callTimeoutMs,
+    request: sourceAttributesRequestSchema,
+    response: sourceAttributesResponseSchema,
   },
   fieldChoices: {
     method: "post",

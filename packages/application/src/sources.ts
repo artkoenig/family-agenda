@@ -305,6 +305,17 @@ export function createSourceAccess(deps: SourcesDeps) {
     return choices;
   }
 
+  /** Declares and archives the Source Attributes the plugin of a Source names now; why asking it failed, or null. */
+  async function askAttributesOf(source: Source): Promise<string | null> {
+    const ask = (await enabled(source.sourceTypeId))?.attributes;
+    if (!ask) return null;
+    const answer = await ask(await contextOf(source));
+    if (!answer.ok) return answer.message;
+    await sources.declareAttributes(source.id, answer.value.declared);
+    for (const externalId of answer.value.archived) await sources.archiveAttribute(source.id, externalId);
+    return null;
+  }
+
   async function applyEdit(source: Source, sourceType: LoadedSourceType, input: SourceInput): Promise<EditSourceResult> {
     const keptPlain = keptPlainOf(source, sourceType);
     const entryKey = sourceType.catalogue?.configKey;
@@ -549,6 +560,28 @@ export function createSourceAccess(deps: SourcesDeps) {
         family.filter((member) => concerns.includes(member.id)).map((member) => member.id),
       );
       return found ? { ok: true } : { ok: false, problem: "unknown-attribute" };
+    },
+
+    /**
+     * Whether the plugin of a Source names its Source Attributes apart from a run, so that its page
+     * asks for them each time it is shown, rather than waiting for a run to report them.
+     */
+    async namesAttributesOnDemand(id: SourceId): Promise<boolean> {
+      const source = await sources.findById(id);
+      const sourceType = source ? await enabled(source.sourceTypeId) : null;
+      return sourceType?.attributes != null;
+    },
+
+    /**
+     * Asks the plugin of a Source which Source Attributes it has now, declaring and archiving them
+     * as a run does, and returns the Source with them; null if the Source is unknown. Where asking
+     * fails, the Source keeps those it had, with the reason.
+     */
+    async refreshAttributes(id: SourceId): Promise<{ source: SourceSummary; problem: string | null } | null> {
+      const source = await sources.findById(id);
+      if (!source) return null;
+      const problem = await askAttributesOf(source);
+      return { source: await summaryOf((await sources.findById(id)) ?? source), problem };
     },
 
     /** Removes the Source with its secrets, its Source Attributes and everything it brought in: its Source Records and their Items. */

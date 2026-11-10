@@ -752,3 +752,10 @@ html[data-theme-mode="dark"] .fam-theme__icon--dark { display: block; }
     animation-duration: 3s;
   }
 }
+
+/* The spinner in place of a Source's Source Attributes while its plugin is asked for them. */
+.fam-attributes__loading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}

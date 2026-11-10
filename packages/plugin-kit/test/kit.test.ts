@@ -42,7 +42,7 @@ const call = (implementation: PluginImplementation) => pluginClient(createPlugin
 
 describe("the server helper", () => {
   it("describes the plugin with the contract version and the optional endpoints it implements", () => {
-    expect(describePlugin(plugin({ sourceRemoved: () => undefined }))).toMatchObject({ contractVersion, endpoints: { sourceAdded: false, sourceRemoved: true } });
+    expect(describePlugin(plugin({ sourceRemoved: () => undefined }))).toMatchObject({ contractVersion, endpoints: { sourceAdded: false, sourceRemoved: true, sourceAttributes: false } });
   });
 
   it("passes a validated request to the endpoint and answers with its response", async () => {

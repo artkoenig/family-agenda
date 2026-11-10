@@ -1281,13 +1281,33 @@ export function SourceTypePage(props: {
  * A Source's page: its name, settings and polling interval, whether it shows on the timeline, and
  * removing it. Fixing it opens in a dialog over it.
  */
-function SourceAttributesForm(props: { source: SourceSummary; members: FamilyMemberSummary[]; href: string; t: Translation["t"]; s: Translation["t"]["sources"] }) {
-  const { source, members, href, t, s } = props;
+function SourceAttributesForm(props: {
+  source: SourceSummary;
+  members: FamilyMemberSummary[];
+  href: string;
+  t: Translation["t"];
+  s: Translation["t"]["sources"];
+  /** Whether its plugin was just asked for them, rather than a run reporting them; with why that failed. */
+  asked?: { problem: string | null };
+}) {
+  const { source, members, href, t, s, asked } = props;
   if (members.length === 0) return null;
-  if (source.attributes.length === 0) return <AttributesPending source={source} href={href} s={s} />;
+  if (source.attributes.length === 0 && !asked) return <AttributesPending source={source} href={href} s={s} />;
+  const problem = asked?.problem ? <p class="fam-problem">{s.attributesFailed(asked.problem)}</p> : null;
+  if (source.attributes.length === 0) {
+    return (
+      <div class="fam-sheet__form" id="source-attributes">
+        <Group title={s.attributes} level={2}>
+          {problem}
+          <p class="fam-group__empty">{s.attributesNone}</p>
+        </Group>
+      </div>
+    );
+  }
   return (
     <form method="post" action={`${href}/attributes`} class="fam-sheet__form" id="source-attributes">
       <Group title={s.attributes} level={2} intro={s.attributesHint}>
+        {problem}
         <div class="fam-attributes">
           {source.attributes.map((attribute) => (
             <div class="fam-attribute">
@@ -1316,6 +1336,29 @@ function SourceAttributesForm(props: { source: SourceSummary; members: FamilyMem
       </Group>
     </form>
   );
+}
+
+/**
+ * The Source Attributes of a Source whose plugin is asked for them as its page opens: the page
+ * shows a spinner in their place and fetches them right after, so that the rest of it does not wait.
+ */
+function AttributesLoading(props: { href: string; s: Translation["t"]["sources"] }) {
+  const { href, s } = props;
+  return (
+    <div id="source-attributes" class="fam-sheet__form" hx-get={`${href}/attributes`} hx-trigger="load" hx-target="this" hx-swap="outerHTML" aria-busy="true">
+      <Group title={s.attributes} level={2}>
+        <p class="fam-group__empty fam-attributes__loading">
+          <span class="fam-spinner" role="status" aria-label={s.attributesLoading}></span> {s.attributesLoading}
+        </p>
+      </Group>
+    </div>
+  );
+}
+
+/** The Source Attributes its plugin has just named, replacing the spinner on its page. */
+export function SourceAttributesSection(props: { source: SourceSummary; members: FamilyMemberSummary[]; problem: string | null }) {
+  const { t } = useTranslation();
+  return <SourceAttributesForm source={props.source} members={props.members} href={sourceHref(props.source.id)} t={t} s={t.sources} asked={{ problem: props.problem }} />;
 }
 
 /** How often a Source waiting for its first read asks again whether its Source Attributes are there. */
@@ -1481,6 +1524,8 @@ export function SourcePage(props: {
   liveSteps?: LiveStep[];
   /** For a Source whose messages the LLM endpoint reads: how many wait to be read. */
   waiting?: number;
+  /** Whether its plugin is asked for its Source Attributes once the page is shown, with a spinner meanwhile. */
+  attributesOnDemand?: boolean;
 }) {
   const { source, form } = props;
   const translation = useTranslation();
@@ -1505,7 +1550,11 @@ export function SourcePage(props: {
       <section class="fam-sheet">
         {!form ? <p class="fam-problem">{s.notRead}</p> : null}
         <SourcePageForm source={source} form={form} members={props.members} editable={editable} href={href} derived={derived} t={t} s={s} />
-        <SourceAttributesForm source={source} members={props.members} href={href} t={t} s={s} />
+        {props.attributesOnDemand && props.members.length > 0 ? (
+          <AttributesLoading href={href} s={s} />
+        ) : (
+          <SourceAttributesForm source={source} members={props.members} href={href} t={t} s={s} />
+        )}
         <SourceTimelineSection source={source} href={href} s={s} waiting={props.waiting} />
         <SourceManagementSection href={href} s={s} />
       </section>
