@@ -5,7 +5,7 @@ import {
 } from "@family-agenda/domain";
 import type {
   EndpointFailure,
-  EndpointHealth,
+  EndpointCheck,
   ExtractedEvent,
   ExtractedTask,
   ExtractionRequest,
@@ -136,18 +136,8 @@ export class OpenAiCompatibleExtractor implements Extractor {
     return { ok: true, events, tasks };
   }
 
-  async health(endpoint: LlmEndpoint): Promise<EndpointHealth> {
-    const listed = await this.listModels(endpoint);
-    return listed.ok ? { ok: true } : listed;
-  }
-
-  async models(endpoint: LlmEndpoint): Promise<string[]> {
-    const listed = await this.listModels(endpoint);
-    return listed.ok ? listed.models : [];
-  }
-
   /** What `GET /models` answers: the ids of the models, or why it could not be asked. */
-  private async listModels(endpoint: LlmEndpoint): Promise<{ ok: true; models: string[] } | { ok: false; message: string }> {
+  async check(endpoint: LlmEndpoint): Promise<EndpointCheck> {
     try {
       const response = await fetch(`${endpoint.baseUrl}/models`, {
         headers: endpoint.apiKey ? { authorization: `Bearer ${endpoint.apiKey}` } : {},

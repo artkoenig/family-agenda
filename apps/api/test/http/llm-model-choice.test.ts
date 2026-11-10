@@ -20,53 +20,162 @@ describe("choosing the model on the AI page", () => {
   });
 
   const page = async () => (await instance.get("/admin/llm", { cookie })).text();
+  const status = async () => (await instance.get("/admin/llm/status", { cookie })).text();
+  const test = async (form: Record<string, string>) => (await instance.post("/admin/llm/test", form, { cookie })).text();
+  const save = () => instance.app.llmEndpoint.save({ baseUrl: "http://ollama:11434/v1", model: "qwen3.5:9b", apiKey: "" });
 
-  it("asks for the model as text until the endpoint is saved", async () => {
+  it("asks for the model as text until the endpoint is saved or tested, saying so", async () => {
     extractor.offerModels("gemma3");
+    const html = await page();
 
-    expect(await page()).toContain('<input id="model"');
+    expect(html).toContain('<input id="model"');
+    expect(html).toContain("Test the connection to choose from the models of the endpoint.");
+    expect(html).not.toContain('hx-get="/admin/llm/status"');
   });
 
-  it("offers the models of the endpoint, the saved one selected", async () => {
+  it("renders at once, loading the status and models of the saved endpoint as a fragment", async () => {
     extractor.offerModels("gemma3", "qwen3.5:9b");
-    await instance.app.llmEndpoint.save({ baseUrl: "http://ollama:11434/v1", model: "qwen3.5:9b", apiKey: "" });
+    await save();
 
     const html = await page();
+
+    expect(extractor.modelRequests, "the page does not wait on the endpoint").toEqual([]);
+    expect(html).toContain('hx-get="/admin/llm/status?model=qwen3.5%3A9b"');
+    expect(html).toContain('id="llm-status"');
+  });
+
+  it("shows the saved model in a field of its own meanwhile, which the late status only updates unless edited", async () => {
+    await save();
+
+    const html = await page();
+    const loader = /<div id="llm-status-loader"[^>]*><\/div>/.exec(html)?.[0];
+
+    expect(html).toContain('<div class="fam-field" id="model-field">');
+    expect(html).toContain('<input id="model" name="model" required="" value="qwen3.5:9b"');
+    expect(loader, "an empty loader, so that a failing one takes nothing with it").toBeDefined();
+    expect(loader).toContain('hx-swap="none"');
+    expect(loader).toContain('data-unless-edited="#llm-connection"');
+    expect(html).toContain('id="llm-connection" data-edit-guard=""');
+  });
+
+  it("does not load the saved endpoint's status for other entered values, which are not tested yet", async () => {
+    await save();
+
+    const refused = await instance.post("/admin/llm", { baseUrl: "https://other.example/v1", model: "x", apiKey: "" }, { cookie });
+    const html = await refused.text();
+
+    expect(refused.status).toBe(400);
+    expect(html).not.toContain('hx-get="/admin/llm/status');
+    expect(html).toContain("Test the connection to choose from the models of the endpoint.");
+  });
+
+  it("asks the endpoint anew for the AI page once the answer is old, rather than showing the old one", async () => {
+    await save();
+    extractor.failHealth("down");
+    expect(await status()).toContain("fam-chip--problem");
+
+    instance.clock.advance(60_000);
+    extractor.recoverHealth();
+
+    expect(await status()).toContain("fam-chip--ok");
+  });
+
+  it("offers the models of the saved endpoint in the fragment, the saved one selected, with its status", async () => {
+    extractor.offerModels("gemma3", "qwen3.5:9b");
+    await save();
+
+    const html = await status();
 
     expect(html).toContain('<select id="model"');
     expect(html).toContain('<option value="gemma3">');
     expect(html).toContain('<option value="qwen3.5:9b" selected="">');
+    expect(html).toContain('<div class="fam-field" id="model-field" hx-swap-oob="true">');
+    expect(html).toContain('id="llm-status" hx-swap-oob="true"');
+    expect(html).toContain("fam-chip--ok");
+  });
+
+  it("asks the endpoint once for status and models, and keeps the answer a while", async () => {
+    extractor.offerModels("gemma3");
+    await save();
+
+    await status();
+    await instance.get("/admin/llm/nav-status", { cookie });
+    await status();
+
+    expect(extractor.modelRequests).toHaveLength(1);
   });
 
   it("keeps a saved model the endpoint no longer lists", async () => {
     extractor.offerModels("gemma3");
     await instance.app.llmEndpoint.save({ baseUrl: "http://ollama:11434/v1", model: "retired", apiKey: "" });
 
-    expect(await page()).toContain('<option value="retired" selected="">');
+    expect(await status()).toContain('<option value="retired" selected="">');
   });
 
-  it("asks for the model as text when the endpoint lists none", async () => {
-    await instance.app.llmEndpoint.save({ baseUrl: "http://ollama:11434/v1", model: "qwen3.5:9b", apiKey: "" });
+  it("says why it asks for the model as text when the endpoint lists none", async () => {
+    await save();
 
-    expect(await page()).toContain('<input id="model"');
+    const html = await status();
+
+    expect(html).toContain('<input id="model"');
+    expect(html).toContain("The endpoint lists no models; enter the name of one.");
   });
 
-  it("loads the models of a URL as it is entered, keeping what was typed as model", async () => {
+  it("explains a failing endpoint, and why it lists no models", async () => {
+    extractor.failHealth("The LLM endpoint refused the API key (HTTP 401).");
+    await save();
+
+    const html = await status();
+
+    expect(html).toContain("fam-banner--problem");
+    expect(html).toContain("The LLM endpoint refused the API key (HTTP 401).");
+    expect(html).toContain("fam-chip--problem");
+    expect(html).toContain("The models could not be loaded");
+  });
+
+  it("answers no status fragment without a saved endpoint", async () => {
+    expect((await instance.get("/admin/llm/status", { cookie })).status).toBe(404);
+  });
+
+  it("does not ask the endpoint while the URL is typed, but offers to test the connection", async () => {
+    const html = await page();
+
+    expect(html).not.toContain("hx-trigger=\"input");
+    expect(html).toContain('hx-post="/admin/llm/test"');
+    expect(html).toContain("Test connection");
+    expect(html).toContain('hx-include="#baseUrl, #apiKey, #model"');
+  });
+
+  it("tests the entered URL and key, filling the models and keeping what was typed as model", async () => {
     extractor.offerModels("gemma3");
 
-    const response = await instance.post("/admin/llm/models", { baseUrl: "http://ollama:11434/v1", apiKey: "", model: "mine" }, { cookie });
-    const html = await response.text();
+    const html = await test({ baseUrl: "http://ollama:11434/v1", apiKey: "sk-typed", model: "mine" });
 
+    expect(extractor.modelRequests[0]).toMatchObject({ baseUrl: "http://ollama:11434/v1", apiKey: "sk-typed" });
     expect(html).toContain('id="model-field"');
     expect(html).toContain('<option value="mine" selected="">');
     expect(html).toContain('<option value="gemma3">');
+    expect(html).toContain("Connected: the endpoint lists 1 model.");
+    expect(html, "the header agrees, as a test result").toContain('id="llm-status" hx-swap-oob="true"');
+    expect(html).toContain("Test: connected");
   });
 
-  it("asks the page to load models while the URL is typed, the model field disabled meanwhile", async () => {
-    const html = await page();
+  it("explains why a test failed", async () => {
+    extractor.failHealth("The LLM endpoint could not be reached: ECONNREFUSED");
 
-    expect(html).toContain('hx-post="/admin/llm/models"');
-    expect(html).toContain('hx-disabled-elt="#model"');
+    const html = await test({ baseUrl: "http://ollama:11434/v1", apiKey: "", model: "mine" });
+
+    expect(html).toContain("fam-banner--problem");
+    expect(html).toContain("The LLM endpoint could not be reached: ECONNREFUSED");
+    expect(html).toContain("Test: failing");
+    expect(html).toContain('<input id="model" name="model" required="" value="mine"');
+  });
+
+  it("explains a URL that is none", async () => {
+    const html = await test({ baseUrl: "not a url", apiKey: "", model: "" });
+
+    expect(html).toContain("fam-banner--problem");
+    expect(extractor.modelRequests).toEqual([]);
   });
 
   it("switches the AI off, forgetting the endpoint and its API key", async () => {

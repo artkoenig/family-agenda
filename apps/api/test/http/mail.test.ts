@@ -38,7 +38,7 @@ describe("the LLM endpoint and mail over HTTP", () => {
     expect(saved.status).toBe(303);
     const page = await settings();
     expect(page).toContain('value="http://ollama:11434/v1"');
-    expect(page).toContain("fam-chip--ok");
+    expect(await (await instance.get("/admin/llm/status", { cookie })).text()).toContain("fam-chip--ok");
     expect(page).not.toContain('name="vision"');
   });
 
@@ -51,7 +51,7 @@ describe("the LLM endpoint and mail over HTTP", () => {
 
     extractor.failHealth("connection refused");
 
-    const page = await settings();
+    const page = await (await instance.get("/admin/llm/status", { cookie })).text();
     expect(page).toContain("fam-banner--problem");
     expect(page).toContain("Connection error");
     expect(page).toContain("connection refused");

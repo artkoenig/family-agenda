@@ -380,6 +380,17 @@ export const de: Catalogue = {
     statusFailing: "Gestört",
     connectionError: "Verbindungsfehler",
     remove: "KI abschalten",
+    testOk: "Test: verbunden",
+    testFailing: "Test: gestört",
+    testConnection: "Verbindung testen",
+    testing: "Die Verbindung wird getestet…",
+    loadingModels: "Die Modelle des Endpunkts werden geladen…",
+    connected: (count) =>
+      plural(count, { one: `Verbunden: Der Endpunkt bietet ${count} Modell an.`, other: `Verbunden: Der Endpunkt bietet ${count} Modelle an.` }),
+    modelsAfterTest: "Teste die Verbindung, um aus den Modellen des Endpunkts zu wählen.",
+    noModels: "Der Endpunkt nennt keine Modelle; gib den Namen eines ein.",
+    modelsFailed: "Die Modelle ließen sich nicht laden, wie der Verbindungsfehler sagt; gib den Namen eines ein.",
+    noAnswer: "Der LLM-Endpunkt hat nicht rechtzeitig geantwortet.",
   },
 
   display: {

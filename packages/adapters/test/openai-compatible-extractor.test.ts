@@ -140,7 +140,7 @@ describe("the OpenAI-compatible Extractor", () => {
   });
 });
 
-describe("the OpenAI-compatible Extractor's health check", () => {
+describe("the OpenAI-compatible Extractor's connection check", () => {
   let server: Server;
   let baseUrl: string;
   let received: { path: string; headers: IncomingMessage["headers"] }[];
@@ -183,72 +183,50 @@ describe("the OpenAI-compatible Extractor's health check", () => {
     apiKey,
   });
 
-  it("reports healthy when the endpoint answers 200", async () => {
-    expect(await new OpenAiCompatibleExtractor().health(endpoint())).toEqual({ ok: true });
+  const check = (key: string | null = "sk-test") => new OpenAiCompatibleExtractor().check(endpoint(key));
+
+  it("lists the sorted, distinct ids of the models the endpoint offers", async () => {
+    nextBody = { data: [{ id: "qwen3.5:9b" }, { id: "gemma3" }, { id: "qwen3.5:9b" }, { id: "" }, { name: "no id" }] };
+
+    expect(await check()).toEqual({ ok: true, models: ["gemma3", "qwen3.5:9b"] });
     expect(received[0]?.path).toBe("/v1/models");
+  });
+
+  it("lists no models when the answer does not look like a model list", async () => {
+    nextBody = { models: ["gemma3"] };
+    expect(await check()).toEqual({ ok: true, models: [] });
   });
 
   it("reports a refused key when the endpoint answers 401", async () => {
     nextStatus = 401;
-    expect(await new OpenAiCompatibleExtractor().health(endpoint())).toEqual({
-      ok: false,
-      message: "The LLM endpoint refused the API key (HTTP 401).",
-    });
+    expect(await check()).toEqual({ ok: false, message: "The LLM endpoint refused the API key (HTTP 401)." });
   });
 
   it("reports a refused key when the endpoint answers 403", async () => {
     nextStatus = 403;
-    expect(await new OpenAiCompatibleExtractor().health(endpoint())).toEqual({
-      ok: false,
-      message: "The LLM endpoint refused the API key (HTTP 403).",
-    });
+    expect(await check()).toEqual({ ok: false, message: "The LLM endpoint refused the API key (HTTP 403)." });
   });
 
   it("reports an error status for other non-ok answers", async () => {
     nextStatus = 500;
-    expect(await new OpenAiCompatibleExtractor().health(endpoint())).toEqual({
-      ok: false,
-      message: "The LLM endpoint answered with HTTP 500.",
-    });
+    expect(await check()).toEqual({ ok: false, message: "The LLM endpoint answered with HTTP 500." });
   });
 
   it("reports unreachable when the endpoint cannot be reached", async () => {
     await stop();
     baseUrl = "http://127.0.0.1:1/v1";
-    const health = await new OpenAiCompatibleExtractor().health(endpoint(null));
-    expect(health).toMatchObject({ ok: false });
-    expect(JSON.stringify(health)).toContain("could not be reached");
+    const answer = await check(null);
+    expect(answer).toMatchObject({ ok: false });
+    expect(JSON.stringify(answer)).toContain("could not be reached");
   });
 
   it("sends the API key in the Authorization header", async () => {
-    await new OpenAiCompatibleExtractor().health(endpoint("sk-secret"));
+    await check("sk-secret");
     expect(received[0]?.headers.authorization).toBe("Bearer sk-secret");
   });
 
   it("sends no Authorization header when there is no API key", async () => {
-    await new OpenAiCompatibleExtractor().health(endpoint(null));
+    await check(null);
     expect(received[0]?.headers.authorization).toBeUndefined();
-  });
-
-  it("lists the sorted, distinct ids of the models the endpoint offers", async () => {
-    nextBody = { data: [{ id: "qwen3.5:9b" }, { id: "gemma3" }, { id: "qwen3.5:9b" }, { id: "" }, { name: "no id" }] };
-
-    expect(await new OpenAiCompatibleExtractor().models(endpoint())).toEqual(["gemma3", "qwen3.5:9b"]);
-    expect(received[0]?.path).toBe("/v1/models");
-    expect(received[0]?.headers.authorization).toBe("Bearer sk-test");
-  });
-
-  it("lists no models when the answer does not look like a model list", async () => {
-    nextBody = { models: ["gemma3"] };
-    expect(await new OpenAiCompatibleExtractor().models(endpoint())).toEqual([]);
-  });
-
-  it("lists no models when the endpoint refuses or cannot be reached", async () => {
-    nextStatus = 401;
-    expect(await new OpenAiCompatibleExtractor().models(endpoint())).toEqual([]);
-
-    await stop();
-    baseUrl = "http://127.0.0.1:1/v1";
-    expect(await new OpenAiCompatibleExtractor().models(endpoint())).toEqual([]);
   });
 });

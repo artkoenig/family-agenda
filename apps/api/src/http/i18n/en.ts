@@ -394,6 +394,17 @@ export const en = {
     statusFailing: "Failing",
     connectionError: "Connection error",
     remove: "Switch AI off",
+    testOk: "Test: connected",
+    testFailing: "Test: failing",
+    testConnection: "Test connection",
+    testing: "Testing the connection…",
+    loadingModels: "Loading the models of the endpoint…",
+    connected: (count: number) =>
+      plural(count, { one: `Connected: the endpoint lists ${count} model.`, other: `Connected: the endpoint lists ${count} models.` }),
+    modelsAfterTest: "Test the connection to choose from the models of the endpoint.",
+    noModels: "The endpoint lists no models; enter the name of one.",
+    modelsFailed: "The models could not be loaded, as the connection error says; enter the name of one.",
+    noAnswer: "The LLM endpoint did not answer in time.",
   },
 
   display: {
