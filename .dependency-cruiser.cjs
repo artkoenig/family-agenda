@@ -58,10 +58,17 @@ module.exports = {
       comment: "Browser UI tests run against a fake Application, without a database (ADR-0007); the composition root is theirs for its types only.",
       severity: "error",
       from: { path: "^apps/api/test/ui/" },
-      to: { path: ["^apps/api/test/support/(boot|http|in-process-postgres|postgres-snapshot)\\.ts$", "/node_modules/@electric-sql/pglite/"] },
+      to: {
+        path: [
+          "^apps/api/test/support/(boot|http|in-process-postgres|postgres-snapshot)\\.ts$",
+          "^packages/adapters/src/postgres",
+          "/node_modules/(@electric-sql/pglite|pg|postgres|drizzle-orm)/",
+        ],
+      },
     },
     {
       name: "ui-tests-import-the-composition-root-for-its-types",
+      comment: "Importing its values would wire the real stores; the fake Application takes only its type.",
       severity: "error",
       from: { path: "^apps/api/test/ui/" },
       to: { path: "^apps/api/src/composition-root\\.ts$", dependencyTypesNot: ["type-only"] },

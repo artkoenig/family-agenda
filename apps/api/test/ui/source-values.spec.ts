@@ -5,7 +5,7 @@ const chats = aChoiceField("chats", "Chats");
 const form = aSourceForm("bridged", [chats]);
 const listed = aSource("bridged", { plain: { chats: ["!class:local"] } });
 // Only `find` asks the plugin which values its choice fields offer.
-const found = { ...listed, choices: { chats: { ok: true as const, value: [{ value: "!class:local", label: "Klasse 5b" }] } } };
+const found = { ...listed, choices: { chats: { ok: true as const, value: [{ value: "!class:local", label: "Class 5b" }] } } };
 
 test("a Source's row says its values are loading, then shows the values its plugin offers", async ({ app, page }) => {
   const { url } = await app(
@@ -27,6 +27,6 @@ test("a Source's row says its values are loading, then shows the values its plug
   const pending = page.locator(".fam-lazy[aria-busy=true]");
   await expect(pending).toContainText("Chats");
   release();
-  await expect(page.getByText("Chats: Klasse 5b")).toBeVisible();
+  await expect(page.getByText("Chats: Class 5b")).toBeVisible();
   await expect(pending).toHaveCount(0);
 });

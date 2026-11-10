@@ -23,7 +23,8 @@ export const test = base.extend<Fixtures>({
       return started;
     });
     for (const one of served) await one.close();
-    for (const one of served) expect(one.unfaked, "calls the test did not fake").toEqual([]);
+    const unfaked = served.flatMap((one) => one.unfaked.map((call) => `not faked: ${call}`));
+    expect(unfaked, "calls the pages made that the test did not fake").toEqual([]);
   },
 });
 

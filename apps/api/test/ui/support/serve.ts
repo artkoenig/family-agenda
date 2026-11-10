@@ -1,10 +1,11 @@
 import { serve as serveNode } from "@hono/node-server";
 import type { AddressInfo } from "node:net";
 import { tsImport } from "tsx/esm/api";
-import { fakeApplication, type Fakes, type Unfaked } from "./fake-application";
+import { fakeApplication, type Fakes } from "./fake-application";
 import type { httpAppFor as HttpAppFor } from "./http-app";
 
-export type Served = { url: string; unfaked: Unfaked[]; close(): Promise<void> };
+export type Served = { url: string; /** The calls its pages made that the fakes did not give, such as `sources.edit`. */
+  unfaked: string[]; close(): Promise<void> };
 
 /**
  * The app is loaded through tsx, as it runs in production: Playwright's own transform compiles
