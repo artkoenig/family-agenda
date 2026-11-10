@@ -12,9 +12,11 @@ import { useTranslation } from "./i18n/translation";
  * cannot be loaded, the link is followed as a plain one, opening the page with the dialog.
  */
 const modalDialogs = `
+// Known in memory only, so that a dialog restored from htmx's history is opened again.
+const modals = new WeakSet();
 const openModal = (dialog) => {
-  if (dialog.dataset.modal !== undefined) return;
-  dialog.dataset.modal = "";
+  if (modals.has(dialog)) return;
+  modals.add(dialog);
   dialog.close();
   dialog.showModal();
   dialog.addEventListener("cancel", (event) => {
@@ -40,6 +42,10 @@ document.body.addEventListener("htmx:beforeRequest", (event) => {
   document.getElementById("fam-dialog-slot").replaceChildren(loading);
   loading.setAttribute("open", "");
   openModal(loading);
+});
+// A dialog, loading or loaded on its own, stays out of the page htmx keeps for going Back.
+document.body.addEventListener("htmx:beforeHistorySave", () => {
+  document.getElementById("fam-dialog-slot")?.replaceChildren();
 });
 for (const name of ["htmx:responseError", "htmx:sendError"]) {
   document.body.addEventListener(name, (event) => {

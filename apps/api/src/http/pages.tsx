@@ -1924,6 +1924,8 @@ export function FixDialog(props: {
   source: SourceSummary;
   /** Why what was entered was refused, shown in the dialog loaded on its own. */
   problem?: string | undefined;
+  /** What was entered then, shown again as it was entered. */
+  entered?: { plain: Record<string, string>; interval: string } | undefined;
   form: SourceForm;
   closeHref: string;
   timeZone: string;
@@ -1939,7 +1941,7 @@ export function FixDialog(props: {
         <Problem message={props.problem} />
         <HealthLine health={source.health} timeZone={props.timeZone} />
         <SetupSteps form={form} liveSteps={props.liveSteps} />
-        <SourceFields form={form} prefix={`fix-${source.id}`} source={source} autofocus />
+        <SourceFields form={form} prefix={`fix-${source.id}`} source={source} {...(props.entered ? { entered: props.entered } : {})} autofocus />
         <DialogFooter closeHref={props.closeHref} submit={s.saveAndRead} />
       </form>
     </Dialog>

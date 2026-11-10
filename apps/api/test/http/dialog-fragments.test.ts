@@ -4,7 +4,7 @@ import { bootHttpForTest, sessionCookieOf, type HttpTestInstance } from "../supp
 import { testPluginControls } from "../support/test-source-plugin";
 
 const password = "correct horse battery";
-const htmx = { "hx-request": "true" };
+const htmx = { "hx-request": "true", "hx-target": "fam-dialog-slot" };
 
 describe("The Add and Fix dialogs, loaded on their own into the open page", () => {
   let instance: HttpTestInstance;
@@ -71,5 +71,38 @@ describe("The Add and Fix dialogs, loaded on their own into the open page", () =
     expect(text).toContain('value="-5"');
     const saved = await instance.post(`/admin/sources/${source}`, { "plain.url": "https://calendar.example.org/fixed", "secret.password": "", pollIntervalMinutes: "" }, { cookie, headers: htmx });
     expect(saved.headers.get("hx-redirect")).toBe(`/admin/sources/${source}`);
+  });
+
+  it("keeps its loading dialog out of htmx's history, and knows its open dialogs without marking them", async () => {
+    const page = await (await instance.get("/admin/source-types/calendar", { cookie })).text();
+    expect(page).toContain("htmx:beforeHistorySave");
+    expect(page).toContain("new WeakSet()");
+    expect(page).not.toContain("dataset.modal");
+  });
+
+  it("is not cached by the browser, as one address answers the dialog alone or the whole page", async () => {
+    for (const path of ["/admin/sources/new?type=calendar", `/admin/sources/${source}/fix`]) {
+      expect((await instance.get(path, { cookie, headers: htmx })).headers.get("cache-control")).toBe("no-store");
+      expect((await instance.get(path, { cookie })).headers.get("cache-control")).toBe("no-store");
+    }
+  });
+
+  it("tells htmx to go where a dialog's address redirects, never swapping a page into the dialog", async () => {
+    const signedOut = await instance.get(`/admin/sources/${source}/fix`, { headers: htmx });
+    expect(signedOut.status).toBe(204);
+    expect(signedOut.headers.get("hx-redirect")).toBe("/admin/sign-in");
+    const gone = await instance.get("/admin/sources/unknown/fix", { cookie, headers: htmx });
+    expect(gone.headers.get("hx-redirect")).toBe("/admin/sources");
+    const unknownType = await instance.get("/admin/sources/new?type=unknown", { cookie, headers: htmx });
+    expect(unknownType.headers.get("hx-redirect")).toBe("/admin/source-types/unknown");
+    const disabled = await instance.post("/admin/sources", { sourceTypeId: "unknown", pollIntervalMinutes: "" }, { cookie, headers: htmx });
+    expect(disabled.status).toBe(204);
+    expect(disabled.headers.get("hx-redirect")).toBe("/admin/source-types/unknown");
+  });
+
+  it("shows the interval entered in a refused Fix as it was entered", async () => {
+    const refused = await (await instance.post(`/admin/sources/${source}`, { "plain.url": "https://calendar.example.org", "secret.password": "", pollIntervalMinutes: "soon" }, { cookie, headers: htmx })).text();
+    expect(refused).toContain('value="soon"');
+    expect(refused).not.toContain("NaN");
   });
 });
