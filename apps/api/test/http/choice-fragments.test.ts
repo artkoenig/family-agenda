@@ -43,7 +43,9 @@ describe("A Source's page, whose choice fields load as fragments", () => {
       expect(page).toContain(`<div class="fam-lazy" hx-get="/admin/sources/${id}/choices/${key}?id=${id}-${key}"`);
     }
     expect(page).toMatch(/<fieldset class="fam-field" disabled="" aria-busy="true"><legend>Folders/);
-    expect(page, "saved meanwhile, the stored selection stays").toContain('<input type="hidden" name="choice.folders" value="Work"/>');
+    // Beside the fragment, so that a fragment failing to load cannot drop them.
+    const kept = new RegExp(`<div id="${id}-folders-kept" hidden=""><input type="hidden" name="choice.folders" value=""/><input type="hidden" name="choice.folders" value="Work"/></div><div class="fam-lazy"`);
+    expect(page, "saved meanwhile, or once the field failed to load, the stored selection stays").toMatch(kept);
   });
 
   it("answers one field with its values, the stored ones ticked, asking the plugin for that field only", async () => {
@@ -51,6 +53,7 @@ describe("A Source's page, whose choice fields load as fragments", () => {
     const field = await (await instance.get(`/admin/sources/${id}/choices/folders?id=${id}-folders`, { cookie })).text();
     expect(testPluginControls.choicesAsked("mail")).toBe(asked + 1);
     expect(field).toMatch(/^<fieldset class="fam-field" id=".*-folders">/);
+    expect(field, "its checkboxes take over from the kept selection").toContain(`<div id="${id}-folders-kept" hx-swap-oob="delete"></div>`);
     expect(field).toMatch(/value="Work" checked=""\/> Work/);
     expect(field).toContain('value="INBOX"/> Inbox');
   });

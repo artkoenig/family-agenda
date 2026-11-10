@@ -2493,24 +2493,24 @@ function fieldLabel(field: SourceForm["fields"][number], t: Translation["t"], te
   return field.required ? text(field.label) : t.common.optional(text(field.label));
 }
 
-function chosenOf(source: SourceSummary, key: string): string[] {
+function chosenOf(source: ChoiceSource, key: string): string[] {
   const stored = source.plain[key];
   return Array.isArray(stored) ? stored.filter((value): value is string => typeof value === "string") : [];
 }
 
 /** What the plugin offers for a choice field; none where asking it failed. */
-function offeredOf(source: SourceSummary, key: string): { value: string; label: string }[] {
+function offeredOf(source: ChoiceSource, key: string): { value: string; label: string }[] {
   const answer = source.choices?.[key];
   return answer?.ok ? answer.value : [];
 }
 
 /** Why the plugin offers nothing for a choice field; null if it answered. Kept apart from ChoiceField for its CRAP score. */
-function choiceProblemOf(source: SourceSummary, key: string): string | null {
+function choiceProblemOf(source: ChoiceSource, key: string): string | null {
   const answer = source.choices?.[key];
   return answer?.ok === false ? answer.message : null;
 }
 
-function optionsOf(source: SourceSummary, key: string, chosen: string[]): { value: string; label: string }[] {
+function optionsOf(source: ChoiceSource, key: string, chosen: string[]): { value: string; label: string }[] {
   const offered = offeredOf(source, key);
   return [
     ...offered,
@@ -2518,40 +2518,61 @@ function optionsOf(source: SourceSummary, key: string, chosen: string[]): { valu
   ];
 }
 
+type ChoiceFieldSpec = SourceForm["fields"][number];
+
+/** What a choice field shows of a Source: the values chosen, and those its plugin offered, if asked. */
+type ChoiceSource = Pick<SourceSummary, "id" | "plain" | "choices">;
+
+/** Where a choice field that loads on its own keeps its stored selection meanwhile. */
+const keptId = (id: string) => `${id}-kept`;
+
+/**
+ * A choice field while its plugin is asked for its values: disabled, with a spinner. Its stored
+ * selection is sent as it is if the form is saved meanwhile, from hidden inputs beside the fragment,
+ * so that they stay if it fails to load; the loaded field removes them (`LoadedChoiceField`).
+ */
+function ChoiceLoading(props: { field: ChoiceFieldSpec; id: string; source: ChoiceSource; chosen: string[]; label: string }) {
+  const { field, chosen } = props;
+  const { t, text } = useTranslation();
+  return (
+    <>
+      <div id={keptId(props.id)} hidden>
+        <input type="hidden" name={`choice.${field.key}`} value="" />
+        {chosen.map((value) => (
+          <input type="hidden" name={`choice.${field.key}`} value={value} />
+        ))}
+      </div>
+      <LazyFragment href={`${sourceHref(props.source.id)}/choices/${encodeURIComponent(field.key)}?id=${encodeURIComponent(props.id)}`} block>
+        <fieldset class="fam-field" disabled aria-busy="true">
+          <legend>{props.label}</legend>
+          <small>
+            <span class="fam-spinner" aria-hidden="true"></span> {t.loading.choices(text(field.label))}
+          </small>
+        </fieldset>
+      </LazyFragment>
+    </>
+  );
+}
+
+/**
+ * One choice field of a Source with the values its plugin offered, as the fragment its form loads:
+ * its checkboxes take over from the hidden inputs that kept its selection, which it removes.
+ */
+export function LoadedChoiceField(props: { field: ChoiceFieldSpec; id: string; source: ChoiceSource }) {
+  return (
+    <>
+      <ChoiceField {...props} />
+      <div id={keptId(props.id)} hx-swap-oob="delete"></div>
+    </>
+  );
+}
+
 /**
  * A choice among what the plugin offers for an existing Source, such as the chats to read: one
  * checkbox each, the chosen ones ticked, also those it no longer offers. A Source being added has
  * none to offer yet.
  */
-/**
- * A choice field while its plugin is asked for its values: disabled, with a spinner, and its stored
- * selection sent as it is if the form is saved meanwhile.
- */
-function ChoiceLoading(props: { field: SourceForm["fields"][number]; id: string; source: SourceSummary; chosen: string[]; label: string }) {
-  const { field, chosen } = props;
-  const { t, text } = useTranslation();
-  return (
-    <LazyFragment href={`${sourceHref(props.source.id)}/choices/${encodeURIComponent(field.key)}?id=${encodeURIComponent(props.id)}`} block>
-      <input type="hidden" name={`choice.${field.key}`} value="" />
-      {chosen.map((value) => (
-        <input type="hidden" name={`choice.${field.key}`} value={value} />
-      ))}
-      <fieldset class="fam-field" disabled aria-busy="true">
-        <legend>{props.label}</legend>
-        <small>
-          <span class="fam-spinner" aria-hidden="true"></span> {t.loading.choices(text(field.label))}
-        </small>
-      </fieldset>
-    </LazyFragment>
-  );
-}
-
-/** One choice field of a Source with the values its plugin offered, as the fragment its form loads. */
-export function ChoiceFieldFragment(props: { field: SourceForm["fields"][number]; id: string; source: SourceSummary }) {
-  return <ChoiceField {...props} />;
-}
-
-function ChoiceField(props: { field: SourceForm["fields"][number]; id: string; source: SourceSummary | undefined }) {
+function ChoiceField(props: { field: ChoiceFieldSpec; id: string; source: ChoiceSource | undefined }) {
   const { field, source } = props;
   const { t, text } = useTranslation();
   const label = fieldLabel(field, t, text);

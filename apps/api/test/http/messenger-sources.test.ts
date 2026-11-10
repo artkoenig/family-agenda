@@ -269,7 +269,7 @@ describe("Sources of a Source Type with a catalogue and a live setup step", () =
     instance.clock.advance(10_000);
     try {
       // Its choice field loads after its page.
-    const own = await (await instance.get(`/admin/sources/${added.id}/choices/chats`, { cookie })).text();
+      const own = await (await instance.get(`/admin/sources/${added.id}/choices/chats`, { cookie })).text();
       expect(own).toContain("The plugin could not offer anything to choose from.");
       expect(own).toContain("The bridge is restarting.");
       expect(own).not.toContain("Nothing to choose from yet.");

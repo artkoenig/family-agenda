@@ -454,15 +454,19 @@ export function createSourceAccess(deps: SourcesDeps) {
      * The values one choice field of a Source offers, as the fragment of its page asks for them; null
      * if there is no such Source, or the field is no choice field of its enabled Source Type.
      */
-    async choiceOf(id: SourceId, key: string): Promise<{ source: SourceSummary; answer: PluginAnswer<KnownValue[]> } | null> {
+    async choiceOf(
+      id: SourceId,
+      key: string,
+    ): Promise<{ field: ConfigFieldSpec; source: { id: SourceId; plain: PlainConfig; choices: Record<string, PluginAnswer<KnownValue[]>> } } | null> {
       const source = await sources.findById(id);
       const sourceType = source && (await enabled(source.sourceTypeId));
-      if (!source || !sourceType?.configuration.fields.some((field) => field.choice && field.key === key)) return null;
+      const field = sourceType?.configuration.fields.find((candidate) => candidate.choice && !candidate.setByPlugin && candidate.key === key);
+      if (!source || !sourceType || !field) return null;
       const answer = await cached(choiceKey(source, key), choicesMaxAgeMs, failedChoicesMaxAgeMs, async () => sourceType.choices(key, await contextOf(source)));
-      return { source: await summaryOf(source), answer };
+      return { field, source: { id: source.id, plain: source.plain, choices: { [key]: answer } } };
     },
 
-    /** A Source with the values its choice fields offer, as its own page shows them; null if there is none. */
+    /** A Source with the values all its choice fields offer, as its row's values fragment tells them; null if there is none. */
     async find(id: SourceId): Promise<SourceSummary | null> {
       const source = await sources.findById(id);
       return source && { ...(await summaryOf(source)), choices: await choicesOf(source) };
