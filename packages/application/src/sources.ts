@@ -84,7 +84,12 @@ export type SourceForm = {
    * The field naming the catalogue entry a Source uses, such as its Messenger, with the entries
    * that are enabled and installed; null if the Source Type has no catalogue.
    */
-  catalogue: { configKey: string; title: MultilingualText; entries: { id: string; displayName: MultilingualText }[] } | null;
+  catalogue: {
+    configKey: string;
+    title: MultilingualText;
+    /** Null where they were not asked for, for a page that loads them afterwards. */
+    entries: { id: string; displayName: MultilingualText }[] | null;
+  } | null;
   /** Interactive steps shown with the fields, when adding a Source and when fixing one. */
   setupSteps: SetupStepSpec[];
   /** Null if its Sources are not polled. */
@@ -349,7 +354,7 @@ export function createSourceAccess(deps: SourcesDeps) {
     const sourceTypeId = input.sourceTypeId as SourceTypeId;
     const sourceType = await enabled(sourceTypeId);
     if (!sourceType) return { ok: false, problem: "source-type-not-enabled" };
-    const usable = sourceType.catalogue ? (await usableEntries(sourceTypeId, sourceType, catalogues, cached)).map((entry) => entry.id) : null;
+    const usable = sourceType.catalogue ? (await usableEntries(sourceTypeId, sourceType, catalogues, cached, "fresh")).map((entry) => entry.id) : null;
     return check(sourceType, input, [], usable) ?? { sourceType };
   }
 
@@ -415,7 +420,7 @@ export function createSourceAccess(deps: SourcesDeps) {
         ? {
             configKey: catalogue.configKey,
             title: catalogue.title,
-            entries: (withEntries ? await usableEntries(type.id, sourceType, catalogues, cached) : []).map(({ id: entry, displayName }) => ({ id: entry, displayName })),
+            entries: withEntries ? (await usableEntries(type.id, sourceType, catalogues, cached, "cached")).map(({ id: entry, displayName }) => ({ id: entry, displayName })) : null,
           }
         : null,
       setupSteps: sourceType.setupSteps,

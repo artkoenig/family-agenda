@@ -31,8 +31,8 @@ describe("The catalogue of a Source Type, loaded as a fragment of its page", () 
     const asked = testPluginControls.catalogueAsked("bridged");
     const page = await (await instance.get("/admin/source-types/bridged", { cookie })).text();
     expect(testPluginControls.catalogueAsked("bridged")).toBe(asked);
-    expect(page).toContain('hx-get="/admin/source-types/bridged/catalogue" hx-trigger="load" hx-swap="outerHTML" aria-busy="true"');
-    expect(page).toContain("Loading Networks…");
+    expect(page, "a block, as it holds a paragraph").toContain('<div class="fam-lazy" hx-get="/admin/source-types/bridged/catalogue" hx-trigger="load" hx-swap="outerHTML" aria-busy="true"');
+    expect(page).toMatch(/<p class="fam-group__empty"><span class="fam-spinner" aria-hidden="true"><\/span> Loading Networks…<\/p>/);
     expect(page).not.toContain("Reads WhatsApp groups.");
   });
 
@@ -55,6 +55,19 @@ describe("The catalogue of a Source Type, loaded as a fragment of its page", () 
     const fragment = await (await instance.get("/admin/source-types/bridged/catalogue", { cookie })).text();
     expect(fragment).toContain("The plugin could not list them.");
     expect(fragment).toContain("The bridge is restarting.");
+  });
+
+  it("shows its Sources being added at once, while only the entries wait for the plugin", async () => {
+    testPluginControls.catalogue("bridged", [{ id: "whatsapp", displayName: "WhatsApp", description: "Reads WhatsApp groups.", installed: true }]);
+    await instance.app.catalogues.enable("bridged", "whatsapp", { riskAcknowledged: true });
+    const release = testPluginControls.holdAdding("bridged");
+    await instance.post("/admin/sources", { sourceTypeId: "bridged", "plain.messenger": "whatsapp" }, { cookie });
+    const page = await (await instance.get("/admin/source-types/bridged", { cookie })).text();
+    expect(page).toContain("Setting up …");
+    expect(page).toContain("Loading Networks…");
+    const fragment = await (await instance.get("/admin/source-types/bridged/catalogue", { cookie })).text();
+    expect(fragment, "not twice").not.toContain("Setting up …");
+    release();
   });
 
   it("answers no catalogue for a Source Type without one", async () => {

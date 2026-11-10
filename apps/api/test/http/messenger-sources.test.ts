@@ -175,7 +175,7 @@ describe("Sources of a Source Type with a catalogue and a live setup step", () =
     const started = await instance.post("/admin/sources", { sourceTypeId: "bridged", "plain.messenger": "whatsapp" }, { cookie });
     expect(started.status).toBe(303);
     expect(started.headers.get("location")).toBe("/admin/source-types/bridged");
-    const page = await sourceTypePage();
+    const page = await (await instance.get("/admin/source-types/bridged", { cookie })).text();
     const row = /hx-get="(\/admin\/sources\/adding\/[^"]+)\/row"/.exec(page)?.[1];
     if (!row) throw new Error("no row of a Source being added");
     return { page, adding: row };

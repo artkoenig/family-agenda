@@ -773,8 +773,8 @@ function shownStatus(status: 200 | 400 | 413 | undefined, problems: (string | un
     id: string,
     shown: { problem?: string; adding?: SourceAdding; settingUp?: SourceSummary } = {},
   ) => {
-    const sourceType = (await sourceTypes.list()).find((type) => type.id === id) ?? null;
-    const ofType = await sources.listOfType(id);
+    const [types, ofType] = await Promise.all([sourceTypes.list(), sources.listOfType(id)]);
+    const sourceType = types.find((type) => type.id === id) ?? null;
     const displayName = sourceType?.displayName ?? ofType[0]?.displayName;
     if (!displayName) return c.redirect("/admin/sources");
     const page = await sourceTypePageElement(c, id, sourceType, displayName, ofType, shown);
@@ -789,6 +789,12 @@ function shownStatus(status: 200 | 400 | 413 | undefined, problems: (string | un
     ofType: SourceSummary[],
     shown: { problem?: string; adding?: SourceAdding; settingUp?: SourceSummary },
   ) {
+    const [form, members, recordedEntryIds] = await Promise.all([
+      // Without the catalogue's entries, which load after the page.
+      sources.formOf(id, false),
+      familyMembers.list(),
+      catalogues.recordedEntryIds(id),
+    ]);
     return (
       <SourceTypePage
         admin={c.get("admin")}
@@ -796,10 +802,9 @@ function shownStatus(status: 200 | 400 | 413 | undefined, problems: (string | un
         sourceType={sourceType}
         displayName={displayName}
         sources={ofType}
-        // Without the catalogue's entries, which load after the page.
-        form={await sources.formOf(id, false)}
-        catalogue={undefined}
-        members={await familyMembers.list()}
+        form={form}
+        recordedEntryIds={recordedEntryIds}
+        members={members}
         timeZone={timeZone}
         {...(shown.problem ? { problem: shown.problem } : {})}
         {...(shown.adding ? { adding: shown.adding } : {})}
@@ -817,21 +822,28 @@ function shownStatus(status: 200 | 400 | 413 | undefined, problems: (string | un
   // A Source Type's catalogue with the Sources at its entries, loaded after its page.
   app.get("/admin/source-types/:id/catalogue", async (c) => {
     const id = c.req.param("id");
-    const catalogue = await catalogues.of(id);
+    const [catalogue, types, ofType, form, members, recordedEntryIds] = await Promise.all([
+      catalogues.of(id),
+      sourceTypes.list(),
+      sources.listOfType(id),
+      sources.formOf(id),
+      familyMembers.list(),
+      catalogues.recordedEntryIds(id),
+    ]);
     if (!catalogue) return c.body(null, 404);
-    const sourceType = (await sourceTypes.list()).find((type) => type.id === id) ?? null;
+    const sourceType = types.find((type) => type.id === id) ?? null;
     return render(
       c,
       <SourceTypeCatalogue
         sourceTypeId={id}
         sourceType={sourceType}
         displayName={sourceType?.displayName ?? catalogue.title}
-        sources={await sources.listOfType(id)}
-        form={await sources.formOf(id)}
+        sources={ofType}
+        recordedEntryIds={recordedEntryIds}
+        form={form}
         catalogue={catalogue}
-        members={await familyMembers.list()}
+        members={members}
         timeZone={timeZone}
-        addings={sources.addingsOf(id)}
       />,
     );
   });
