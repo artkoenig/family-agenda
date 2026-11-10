@@ -11,6 +11,7 @@
     "typecheck": "tsc --noEmit",
     "depcruise": "depcruise packages apps",
     "test": "vitest run",
+    "ui": "playwright test -c apps/api/playwright.config.ts",
     "check": "pnpm lint && pnpm typecheck && pnpm depcruise && pnpm crap && pnpm mutation",
     "mutation": "stryker run",
     "crap": "vitest run --coverage --coverage.provider=v8 --coverage.reporter=json && crap-typescript --exclude .stryker-tmp/** --format text --threshold 8",
@@ -21,6 +22,7 @@
   "devDependencies": {
     "@barney-media/crap-typescript": "2.0.0",
     "@eslint/js": "^10.0.1",
+    "@playwright/test": "1.63.0",
     "@stryker-mutator/core": "10.1.1",
     "@stryker-mutator/vitest-runner": "10.1.1",
     "@types/node": "^26.0.0",

@@ -5,7 +5,7 @@ on:
     branches: [main]
   pull_request:
 
-# The static, crap and mutation jobs together are `pnpm check`; all jobs run in parallel.
+# The static, crap and mutation jobs together are `pnpm check`; `ui` is `pnpm ui`. All jobs run in parallel.
 jobs:
   static:
     # Lint, typecheck, dependency rules, and the plugin contract's version against its OpenAPI
@@ -79,6 +79,35 @@ jobs:
       - name: Logs
         if: failure()
         run: docker compose logs
+
+  ui:
+    # Browser UI tests against a fake Application, without a database (ADR-0007).
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup
+      - name: The Playwright version, which names its browser cache
+        id: playwright
+        run: echo "version=$(pnpm exec playwright --version | cut -d' ' -f2)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        id: browsers
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ steps.playwright.outputs.version }}
+      - name: Install Chromium
+        if: steps.browsers.outputs.cache-hit != 'true'
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Install Chromium's system libraries
+        if: steps.browsers.outputs.cache-hit == 'true'
+        run: pnpm exec playwright install-deps chromium
+      - run: pnpm ui
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: playwright-report
+          path: apps/api/playwright-report/
+          retention-days: 7
 
   mutation:
     # Mutation testing of `domain`.

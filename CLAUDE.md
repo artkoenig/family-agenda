@@ -7,6 +7,7 @@ All text in this repo (code, comments, docs, issues, commit messages) is written
 pnpm workspace, Node >=22.12. Run from repo root.
 
 - `pnpm check` — the one command CI runs: lint + typecheck + depcruise + `crap` (all tests with coverage, CRAP ≤ 8) + `mutation` (Stryker on `packages/domain`). Run before finishing
+- `pnpm ui` — browser UI tests (Playwright, `apps/api/test/ui/*.spec.ts`) against a fake Application, without a database (ADR-0007); a CI job of its own, not part of `pnpm check`
 - `pnpm preview up|down <pr>` / `list` — runs a PR as a throwaway Instance with demo data, to try it by hand. See `docs/preview.md`
 - `pnpm openapi` — regenerates `packages/plugin-contract/openapi.json` after a change to the plugin contract's schemas; raise `contractVersion` too (breaking: major, additive: minor), which CI checks against the last release
 - `pnpm plugins-schema` — regenerates `plugins.schema.json` after a change to the `plugins.yml` schema in `apps/api/src/plugins-file/schema.ts`

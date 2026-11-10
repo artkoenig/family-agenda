@@ -54,6 +54,19 @@ module.exports = {
       to: { path: "^apps/" },
     },
     {
+      name: "ui-tests-use-no-database",
+      comment: "Browser UI tests run against a fake Application, without a database (ADR-0007); the composition root is theirs for its types only.",
+      severity: "error",
+      from: { path: "^apps/api/test/ui/" },
+      to: { path: ["^apps/api/test/support/(boot|http|in-process-postgres|postgres-snapshot)\\.ts$", "/node_modules/@electric-sql/pglite/"] },
+    },
+    {
+      name: "ui-tests-import-the-composition-root-for-its-types",
+      severity: "error",
+      from: { path: "^apps/api/test/ui/" },
+      to: { path: "^apps/api/src/composition-root\\.ts$", dependencyTypesNot: ["type-only"] },
+    },
+    {
       name: "no-circular",
       severity: "error",
       from: {},

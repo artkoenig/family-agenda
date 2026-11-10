@@ -6,3 +6,5 @@ reports
 coverage/
 .previews/
 compose.plugins.yaml
+apps/api/test-results/
+apps/api/playwright-report/
