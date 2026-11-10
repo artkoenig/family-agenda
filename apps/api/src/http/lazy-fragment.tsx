@@ -10,12 +10,15 @@ export type FragmentPoll = { every: number; backoff: number; maxSeconds: number 
  * `children` stand in meanwhile; without them a spinner with a default text. A failed request
  * becomes an error too (`lazyFragmentErrors`), so that loading never stops silently. `delaySeconds`
  * is how long it waits before asking, as `notReadyYet` sets it. `block` makes it a `div`, for one
- * standing in for a section, whose placeholder may hold block content.
+ * standing in for a section, whose placeholder may hold block content. `silent` makes it an
+ * invisible one, such as a poll for what the page already says it waits for: no placeholder, not
+ * announced as busy, and left alone when its request fails.
  */
-export function LazyFragment(props: { href: string; children?: Child; delaySeconds?: number; block?: boolean }) {
+export function LazyFragment(props: { href: string; children?: Child; delaySeconds?: number; block?: boolean; silent?: boolean }) {
   const { t } = useTranslation();
   const trigger = props.delaySeconds ? `load delay:${props.delaySeconds}s` : "load";
   const Tag = props.block ? "div" : "span";
+  if (props.silent) return <Tag class="fam-lazy fam-lazy--silent" hx-get={props.href} hx-trigger={trigger} hx-swap="outerHTML"></Tag>;
   return (
     <Tag
       class="fam-lazy"
@@ -52,14 +55,14 @@ export function FragmentError(props: { title: string; message: string | null }) 
  * same fragment asking again a little later, each wait `backoff` times the last, until `maxSeconds`
  * have passed and a hint says so.
  */
-export function notReadyYet(props: { href: string; poll: FragmentPoll; waitedSeconds: number; children?: Child }) {
+export function notReadyYet(props: { href: string; poll: FragmentPoll; waitedSeconds: number; children?: Child; silent?: boolean }) {
   const { href, poll, waitedSeconds } = props;
-  if (waitedSeconds >= poll.maxSeconds) return <SlowFragment />;
+  if (waitedSeconds >= poll.maxSeconds) return props.silent ? <QuietlySlow /> : <SlowFragment />;
   // The waits so far add up to `waitedSeconds`; the next is `backoff` times the last.
   const delaySeconds = Math.round((poll.every + waitedSeconds * (poll.backoff - 1)) * 10) / 10;
   const next = `${href}${href.includes("?") ? "&" : "?"}waited=${waitedSeconds + delaySeconds}`;
   return (
-    <LazyFragment href={next} delaySeconds={delaySeconds}>
+    <LazyFragment href={next} delaySeconds={delaySeconds} silent={props.silent === true}>
       {props.children}
     </LazyFragment>
   );
@@ -68,6 +71,12 @@ export function notReadyYet(props: { href: string; poll: FragmentPoll; waitedSec
 function SlowFragment() {
   const { t } = useTranslation();
   return <FragmentError title={t.loading.slow} message={null} />;
+}
+
+/** That a silent poll gave up: a hint, not an alert, as what it waited for may simply come later. */
+function QuietlySlow() {
+  const { t } = useTranslation();
+  return <small class="fam-lazy fam-lazy--slow">{t.loading.slow}</small>;
 }
 
 /**
@@ -96,8 +105,9 @@ for (const name of ["htmx:responseError", "htmx:sendError"]) {
 
 /**
  * Marks a `[data-edit-guard]` once a field in it is edited or a request is sent from it, such as a
- * test of what was entered; a loader with `data-unless-edited` naming that guard then drops its late
- * answer, so that it never overwrites what the Admin typed or tested.
+ * test of what was entered or the Source Attributes asked for on demand; a loader with
+ * `data-unless-edited` naming that guard then drops its late answer, and an out-of-band part aimed
+ * at the guard itself is left out, so that neither overwrites what the Admin typed or was answered.
  */
 export const editGuards = `
 const markEdited = (event) => {
@@ -106,6 +116,11 @@ const markEdited = (event) => {
 };
 document.body.addEventListener("input", markEdited);
 document.body.addEventListener("htmx:beforeRequest", markEdited);
+// An out-of-band part of an answer leaves an edited guard as it is, while the rest is swapped.
+document.body.addEventListener("htmx:oobBeforeSwap", (event) => {
+  const target = event.detail.target;
+  if (target instanceof HTMLElement && target.matches("[data-edit-guard]") && target.dataset.edited) event.detail.shouldSwap = false;
+});
 document.body.addEventListener("htmx:beforeSwap", (event) => {
   const selector = event.detail.elt instanceof HTMLElement ? event.detail.elt.dataset.unlessEdited : undefined;
   if (selector && document.querySelector(selector)?.dataset.edited) event.detail.shouldSwap = false;

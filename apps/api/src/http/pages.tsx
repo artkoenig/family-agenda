@@ -1409,7 +1409,7 @@ function SourceAttributesForm(props: {
 }) {
   const { source, members, href, t, s, asked } = props;
   if (members.length === 0) return null;
-  if (source.attributes.length === 0 && !asked) return <AttributesPending source={source} href={href} s={s} />;
+  if (source.attributes.length === 0 && !asked) return <AttributesPending source={source} s={s} />;
   const problem = asked?.problem ? <p class="fam-problem">{s.attributesFailed(asked.problem)}</p> : null;
   if (source.attributes.length === 0) {
     return (
@@ -1480,10 +1480,11 @@ export function SourceAttributesSection(props: { source: SourceSummary; members:
 
 /**
  * Whether a Source's Source Attributes will come with its next read, as its parts were chosen, such
- * as its folders or groups. One with nothing chosen, or failing, declares none and does not wait.
+ * as its folders or groups, and none are known yet. One with nothing chosen declares none, and once
+ * read it has declared what it will.
  */
 function attributesPendingOf(source: SourceSummary): boolean {
-  if (source.attributes.length > 0 || source.health.status === "failing") return false;
+  if (!source.health.awaitingRead || source.attributes.length > 0) return false;
   return Object.values(source.plain).some((value) => Array.isArray(value) && value.length > 0);
 }
 
@@ -1491,7 +1492,7 @@ function attributesPendingOf(source: SourceSummary): boolean {
  * Where the Source Attributes will be once the Source has been read after its parts were chosen:
  * `SourceReadPoller` brings them in as soon as they are declared, so that the Admin can assign them.
  */
-function AttributesPending(props: { source: SourceSummary; href: string; s: Translation["t"]["sources"] }) {
+function AttributesPending(props: { source: SourceSummary; s: Translation["t"]["sources"] }) {
   const { source, s } = props;
   if (!attributesPendingOf(source)) return null;
   return (
@@ -1506,11 +1507,6 @@ function AttributesPending(props: { source: SourceSummary; href: string; s: Tran
 /** How a Source's page asks for its health line while it waits for a read: soon, then less often, for a few minutes. */
 const sourceReadPoll: FragmentPoll = { every: 2, backoff: 1.5, maxSeconds: 300 };
 
-/** Whether a Source's page keeps asking for its health line: until the Source is read, or failing. */
-function awaitsRead(source: SourceSummary): boolean {
-  return source.health.status !== "failing" && (source.health.awaitingRead || attributesPendingOf(source));
-}
-
 /**
  * Asks for a Source's health line again after a while, with backoff and a cap, while it awaits a
  * read; invisible, as the line itself says it was not read yet. `attributes=pending` asks for the
@@ -1518,10 +1514,11 @@ function awaitsRead(source: SourceSummary): boolean {
  */
 function SourceReadPoller(props: { source: SourceSummary; waitedSeconds: number; attributesPending?: boolean }) {
   const { source } = props;
-  if (!awaitsRead(source)) return null;
+  // Also while a failure is stored: after a Fix, the next read tells whether it worked.
+  if (!source.health.awaitingRead) return null;
   const pending = props.attributesPending ?? attributesPendingOf(source);
   const href = `${sourceHref(source.id)}/health${pending ? "?attributes=pending" : ""}`;
-  return notReadyYet({ href, poll: sourceReadPoll, waitedSeconds: props.waitedSeconds, children: <></> });
+  return notReadyYet({ href, poll: sourceReadPoll, waitedSeconds: props.waitedSeconds, silent: true });
 }
 
 /**
@@ -1546,7 +1543,7 @@ export function SourceHealthFragment(props: {
       <div id="source-health" hx-swap-oob="true">
         <SourcePageHeader name={name} health={source.health} entry={entryOf(form, source)} form={form} href={href} timeZone={props.timeZone} s={t.sources} text={text} />
       </div>
-      {props.attributesPending ? (
+      {props.attributesPending && !attributesPendingOf(source) ? (
         <div id="source-attributes-slot" hx-swap-oob="true">
           <SourceAttributesForm source={source} members={props.members} href={href} t={t} s={t.sources} />
         </div>
@@ -1728,7 +1725,7 @@ export function SourcePage(props: {
       <section class="fam-sheet">
         {!form ? <p class="fam-problem">{s.notRead}</p> : null}
         <SourcePageForm source={source} form={form} members={props.members} editable={editable} href={href} derived={derived} t={t} s={s} />
-        <div id="source-attributes-slot">
+        <div id="source-attributes-slot" data-edit-guard="">
           {props.attributesOnDemand && props.members.length > 0 ? (
             <AttributesLoading href={href} s={s} />
           ) : (

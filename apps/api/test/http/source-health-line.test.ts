@@ -69,11 +69,30 @@ describe("a Source's health line, kept up to date without reloading", () => {
     expect(poller(html)).toBeNull();
   });
 
-  it("stops after a cap, saying that it takes longer", async () => {
+  it("stops after a cap, saying quietly that it takes longer", async () => {
     const html = await health(600);
 
     expect(poller(html)).toBeNull();
     expect(html).toContain("This is taking longer than usual.");
+    expect(html).not.toContain('role="alert"');
+  });
+
+  it("polls silently, without announcing itself as busy", async () => {
+    const tag = /<span[^>]*hx-get="\/admin\/sources\/[^"]+\/health[^>]*>/.exec(await page())?.[0];
+
+    expect(tag).toBeDefined();
+    expect(tag).not.toContain("aria-busy");
+    expect(tag).not.toContain("aria-live");
+  });
+
+  it("polls after a Fix of a failing Source, until the next read tells", async () => {
+    testPluginControls.failNext("school-mail", "definite");
+    await instance.app.polling.pollDue();
+    expect(poller(await page())).toBeNull();
+
+    expect(await instance.app.sources.edit(sourceId as never, { plain: { url: "imap2.example.org" }, secrets: {} })).toEqual({ ok: true });
+
+    expect(poller(await page())).not.toBeNull();
   });
 
   it("answers nothing for a Source that is gone", async () => {
@@ -111,7 +130,8 @@ describe("a Source's pending Source Attributes, brought in with its health line"
   it("asks for them with the health line, and swaps them in once the read declared them", async () => {
     const page = await (await instance.get(`/admin/sources/${sourceId}`, { cookie })).text();
     expect(page).toContain(`hx-get="/admin/sources/${sourceId}/health?attributes=pending&amp;waited=2"`);
-    expect(page).toContain('id="source-attributes-slot"');
+    expect(page, "edits and an on-demand answer guard it").toContain('id="source-attributes-slot" data-edit-guard=""');
+    expect(await (await instance.get(`/admin/sources/${sourceId}/health?attributes=pending&waited=2`, { cookie })).text(), "still pending: nothing to swap").not.toContain("source-attributes-slot");
 
     testPluginControls.declare("mail", [{ externalId: "work", name: "Work" }]);
     testPluginControls.emit("mail", []);
@@ -121,6 +141,13 @@ describe("a Source's pending Source Attributes, brought in with its health line"
     expect(html).toContain('id="source-attributes-slot" hx-swap-oob="true"');
     expect(html).toContain('type="checkbox" name="member.');
     expect(html, "read and declared: no more polling").not.toContain("/health?");
+  });
+
+  it("stops once a read declared none", async () => {
+    testPluginControls.emit("mail", []);
+    await instance.app.polling.pollDue();
+
+    expect(await (await instance.get(`/admin/sources/${sourceId}/health?attributes=pending&waited=2`, { cookie })).text()).not.toContain("/health?");
   });
 
   it("leaves Source Attributes out of a health line that did not wait for them", async () => {

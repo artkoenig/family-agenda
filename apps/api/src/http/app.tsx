@@ -1124,12 +1124,12 @@ function shownStatus(status: 200 | 400 | 413 | undefined, problems: (string | un
     return c.redirect(sourceHref(source.id), 303);
   });
 
-  // Its Source Attributes as its plugin names them now, fetched by its page once shown.
   // A Source's health line, asked for again with backoff while it awaits a read, so that its page need not reload.
   app.get("/admin/sources/:id/health", async (c) => {
-    const source = await sourceOf(c.req.param("id"));
+    const source = await sources.summary(c.req.param("id") as SourceId);
     if (!source) return c.body(null, 404);
-    const [form, members] = await Promise.all([sources.formOf(source.sourceTypeId), familyMembers.list()]);
+    const attributesPending = c.req.query("attributes") === "pending";
+    const [form, members] = await Promise.all([sources.formOf(source.sourceTypeId, false), attributesPending ? familyMembers.list() : []]);
     const waited = Number(c.req.query("waited"));
     return render(
       c,
@@ -1139,11 +1139,12 @@ function shownStatus(status: 200 | 400 | 413 | undefined, problems: (string | un
         members={members}
         timeZone={timeZone}
         waitedSeconds={Number.isFinite(waited) && waited > 0 ? waited : 0}
-        attributesPending={c.req.query("attributes") === "pending"}
+        attributesPending={attributesPending}
       />,
     );
   });
 
+  // Its Source Attributes as its plugin names them now, fetched by its page once shown.
   app.get("/admin/sources/:id/attributes", async (c) => {
     const refreshed = await sources.refreshAttributes(c.req.param("id") as SourceId);
     if (!refreshed) return c.body(null, 404);
