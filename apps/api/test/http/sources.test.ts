@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { bootHttpForTest, sessionCookieOf, type HttpTestInstance } from "../support/http";
 
 const password = "correct horse battery";
@@ -68,6 +68,10 @@ describe("Sources in the Admin area", () => {
 
     expect(added.status).toBe(303);
     expect(added.headers.get("location")).toBe("/admin/source-types/calendar");
+    // Its plugin prepares it in the background, at once here.
+    await vi.waitFor(async () => {
+      expect(await instance.app.sources.list()).toHaveLength(1);
+    });
     const [source] = await instance.app.sources.list();
     expect(source).toMatchObject({ plain: { url: "https://calendar.example.org" }, storedSecrets: ["password"], pollIntervalSeconds: null });
     // Its row is named after its first setting and leads to its own page, where it is edited.

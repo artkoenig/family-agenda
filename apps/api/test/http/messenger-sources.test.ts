@@ -75,9 +75,9 @@ describe("Sources of a Source Type with a catalogue and a live setup step", () =
     expect(page).toContain('aria-label="Add a WhatsApp account">Add account</button>');
     expect(page).not.toContain('value="signal"');
 
-    const added = await instance.post("/admin/sources", { sourceTypeId: "bridged", "plain.messenger": "whatsapp" }, { cookie });
-    const [source] = await instance.app.sources.list();
-    expect(added.headers.get("location")).toBe(`/admin/sources/${source!.id}/setup`);
+    const { adding } = await addHeld();
+    const source = await addedOf(adding);
+    expect((await instance.get(adding, { cookie })).headers.get("location")).toBe(`/admin/sources/${source!.id}/setup`);
   });
 
   it("lists a Messenger's accounts in its sheet, and switches it off only once it has none", async () => {
@@ -144,10 +144,9 @@ describe("Sources of a Source Type with a catalogue and a live setup step", () =
     expect(form).not.toContain("plain.account");
     expect(form).toContain("Offered once the Source is set up.");
 
-    const added = await instance.post("/admin/sources", { sourceTypeId: "bridged", "plain.messenger": "whatsapp" }, { cookie });
-    expect(added.status).toBe(303);
-    const [source] = await instance.app.sources.list();
-    expect(added.headers.get("location")).toBe(`/admin/sources/${source!.id}/setup`);
+    const { adding } = await addHeld();
+    const source = await addedOf(adding);
+    expect((await instance.get(adding, { cookie })).headers.get("location")).toBe(`/admin/sources/${source!.id}/setup`);
 
     const setup = await (await instance.get(`/admin/sources/${source!.id}/setup`, { cookie })).text();
     // The dialog does not wait for the step: it loads at once, as its own fragment.
@@ -190,19 +189,32 @@ describe("Sources of a Source Type with a catalogue and a live setup step", () =
     await instance.app.catalogues.enable("bridged", "whatsapp", { riskAcknowledged: true });
     testPluginControls.failAdding("bridged");
 
-    const refused = await instance.post("/admin/sources", { sourceTypeId: "bridged", "plain.messenger": "whatsapp" }, { cookie });
+    const { adding } = await addHeld();
+    await vi.waitFor(async () => {
+      expect(await (await instance.get(`${adding}/row`, { cookie })).text()).toContain("the homeserver is unreachable");
+    });
+    const refused = await instance.get(adding, { cookie });
 
     expect(refused.status).toBe(400);
     expect(await refused.text()).toContain("The Source could not be set up: the homeserver is unreachable");
   });
 
-  /** Adds a Source whose plugin is held, and the address of its row on the Source Type's page. */
+  /** The Source added in the background at `adding`, once its plugin prepared it. */
+  const addedOf = async (adding: string) => {
+    await vi.waitFor(async () => {
+      expect((await instance.get(`${adding}/row`, { cookie })).headers.get("HX-Redirect")).toBe(adding);
+    });
+    const [source] = await instance.app.sources.list();
+    return source;
+  };
+
+  /** Adds a Source in the background, and the address of its row on the Source Type's page. */
   const addHeld = async () => {
     const started = await instance.post("/admin/sources", { sourceTypeId: "bridged", "plain.messenger": "whatsapp" }, { cookie });
     expect(started.status).toBe(303);
     expect(started.headers.get("location")).toBe("/admin/source-types/bridged");
     const page = await (await instance.get("/admin/source-types/bridged", { cookie })).text();
-    const row = /hx-get="(\/admin\/sources\/adding\/[^"]+)\/row"/.exec(page)?.[1];
+    const row = /"(\/admin\/sources\/adding\/[0-9a-f-]+)(?:\/row)?"/.exec(page)?.[1];
     if (!row) throw new Error("no row of a Source being added");
     return { page, adding: row };
   };

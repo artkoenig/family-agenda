@@ -1,10 +1,10 @@
 import type { AddressInfo, Server } from "node:net";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { createPluginHandler, servePlugin } from "@family-agenda/plugin-kit/server";
 import { contractProblems, pluginClient } from "@family-agenda/plugin-kit/testing";
 import { describePluginContract } from "@family-agenda/plugin-kit/vitest";
 import { demoAttributes } from "../src";
-import { demoPlugin } from "../src/plugin";
+import { demoPlugin, withDelay } from "../src/plugin";
 
 const config = { plain: {}, secrets: {} };
 const now = new Date("2026-09-14T07:00:00Z");
@@ -32,5 +32,51 @@ describe("the demo Source over HTTP", () => {
     expect(answer.status).toBe(200);
     expect(answer.body).toMatchObject({ attributes: { declared: [...demoAttributes] }, syncCursor: null });
     expect((answer.body as { sourceRecords: unknown[] }).sourceRecords.length).toBeGreaterThan(0);
+  });
+});
+
+describe("the demo Source with a delay", () => {
+  it("answers poll only after the delay, with the same answer", async () => {
+    vi.useFakeTimers();
+    try {
+      const request = { config, syncCursor: null, now: now.toISOString(), timeZone: "Europe/Berlin" };
+      let settled = false;
+      const answer = Promise.resolve(withDelay(demoPlugin, 2000).poll?.(request)).then((value) => {
+        settled = true;
+        return value;
+      });
+      await vi.advanceTimersByTimeAsync(1999);
+      expect(settled).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(await answer).toEqual(await demoPlugin.poll?.(request));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps the description as it is", () => {
+    expect(withDelay(demoPlugin, 2000).description).toBe(demoPlugin.description);
+  });
+});
+
+describe("the demo Source's endpoints that load after a page", () => {
+  const context = { config, syncCursor: null, now: now.toISOString(), timeZone: "Europe/Berlin" };
+
+  it("adds a Source without setting any field itself", async () => {
+    expect(await demoPlugin.sourceAdded?.({ config, now: context.now, timeZone: context.timeZone })).toEqual({ plain: {}, secrets: {} });
+  });
+
+  it("names its Source Attributes without a run", async () => {
+    expect(await demoPlugin.sourceAttributes?.(context)).toEqual({ declared: [...demoAttributes], archived: [] });
+  });
+
+  it("offers made-up calendars for its choice field", async () => {
+    expect(await demoPlugin.fieldChoices?.({ field: "calendars", context })).toEqual({
+      choices: [
+        { value: "family", label: "Family" },
+        { value: "school", label: "School" },
+        { value: "sports club", label: "Sports club" },
+      ],
+    });
   });
 });

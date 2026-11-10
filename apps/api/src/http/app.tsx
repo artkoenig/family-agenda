@@ -1312,13 +1312,8 @@ export function createHttpApp(application: Application, options: HttpOptions) {
         problem,
       });
     }
-    if ("adding" in result) return goOn(c, sourceTypeHref(sourceTypeId));
-    return goOn(
-      c,
-      result.setUp
-        ? `/admin/sources/${result.id}/setup`
-        : sourceTypeHref(sourceTypeId),
-    );
+    // Its plugin prepares it in the background; its row on the Source Type's page goes on from there.
+    return goOn(c, sourceTypeHref(sourceTypeId));
   });
 
   // A Source added in the background: once its plugin prepared it, where it goes on; once it failed, its form again.
@@ -1326,12 +1321,14 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     const id = c.req.param("adding") as AddingId;
     const progress = sources.adding(id);
     if (!progress) return c.redirect("/admin/sources");
-    if (progress.status === "added")
+    if (progress.status === "added") {
+      sources.forgetAdding(id);
       return c.redirect(
         progress.setUp
           ? `/admin/sources/${progress.id}/setup`
           : sourceTypeHref(progress.sourceTypeId),
       );
+    }
     if (progress.status === "running")
       return c.redirect(sourceTypeHref(progress.sourceTypeId));
     sources.forgetAdding(id);
