@@ -93,3 +93,21 @@ for (const name of ["htmx:responseError", "htmx:sendError"]) {
   });
 }
 `;
+
+/**
+ * Marks a `[data-edit-guard]` once a field in it is edited or a request is sent from it, such as a
+ * test of what was entered; a loader with `data-unless-edited` naming that guard then drops its late
+ * answer, so that it never overwrites what the Admin typed or tested.
+ */
+export const editGuards = `
+const markEdited = (event) => {
+  const guard = event.target instanceof Element ? event.target.closest("[data-edit-guard]") : null;
+  if (guard) guard.dataset.edited = "yes";
+};
+document.body.addEventListener("input", markEdited);
+document.body.addEventListener("htmx:beforeRequest", markEdited);
+document.body.addEventListener("htmx:beforeSwap", (event) => {
+  const selector = event.detail.elt instanceof HTMLElement ? event.detail.elt.dataset.unlessEdited : undefined;
+  if (selector && document.querySelector(selector)?.dataset.edited) event.detail.shouldSwap = false;
+});
+`;

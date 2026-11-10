@@ -44,6 +44,42 @@ describe("choosing the model on the AI page", () => {
     expect(html).toContain('id="llm-status"');
   });
 
+  it("shows the saved model in a field of its own meanwhile, which the late status only updates unless edited", async () => {
+    await save();
+
+    const html = await page();
+    const loader = /<div id="llm-status-loader"[^>]*><\/div>/.exec(html)?.[0];
+
+    expect(html).toContain('<div class="fam-field" id="model-field">');
+    expect(html).toContain('<input id="model" name="model" required="" value="qwen3.5:9b"');
+    expect(loader, "an empty loader, so that a failing one takes nothing with it").toBeDefined();
+    expect(loader).toContain('hx-swap="none"');
+    expect(loader).toContain('data-unless-edited="#llm-connection"');
+    expect(html).toContain('id="llm-connection" data-edit-guard=""');
+  });
+
+  it("does not load the saved endpoint's status for other entered values, which are not tested yet", async () => {
+    await save();
+
+    const refused = await instance.post("/admin/llm", { baseUrl: "https://other.example/v1", model: "x", apiKey: "" }, { cookie });
+    const html = await refused.text();
+
+    expect(refused.status).toBe(400);
+    expect(html).not.toContain('hx-get="/admin/llm/status');
+    expect(html).toContain("Test the connection to choose from the models of the endpoint.");
+  });
+
+  it("asks the endpoint anew for the AI page once the answer is old, rather than showing the old one", async () => {
+    await save();
+    extractor.failHealth("down");
+    expect(await status()).toContain("fam-chip--problem");
+
+    instance.clock.advance(60_000);
+    extractor.recoverHealth();
+
+    expect(await status()).toContain("fam-chip--ok");
+  });
+
   it("offers the models of the saved endpoint in the fragment, the saved one selected, with its status", async () => {
     extractor.offerModels("gemma3", "qwen3.5:9b");
     await save();
@@ -53,6 +89,7 @@ describe("choosing the model on the AI page", () => {
     expect(html).toContain('<select id="model"');
     expect(html).toContain('<option value="gemma3">');
     expect(html).toContain('<option value="qwen3.5:9b" selected="">');
+    expect(html).toContain('<div class="fam-field" id="model-field" hx-swap-oob="true">');
     expect(html).toContain('id="llm-status" hx-swap-oob="true"');
     expect(html).toContain("fam-chip--ok");
   });
@@ -119,6 +156,8 @@ describe("choosing the model on the AI page", () => {
     expect(html).toContain('<option value="mine" selected="">');
     expect(html).toContain('<option value="gemma3">');
     expect(html).toContain("Connected: the endpoint lists 1 model.");
+    expect(html, "the header agrees, as a test result").toContain('id="llm-status" hx-swap-oob="true"');
+    expect(html).toContain("Test: connected");
   });
 
   it("explains why a test failed", async () => {
@@ -128,6 +167,7 @@ describe("choosing the model on the AI page", () => {
 
     expect(html).toContain("fam-banner--problem");
     expect(html).toContain("The LLM endpoint could not be reached: ECONNREFUSED");
+    expect(html).toContain("Test: failing");
     expect(html).toContain('<input id="model" name="model" required="" value="mine"');
   });
 

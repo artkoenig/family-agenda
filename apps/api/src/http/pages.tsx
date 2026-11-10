@@ -2675,18 +2675,31 @@ export function LlmEndpointPage(props: {
 export function LlmStatusFragment(props: { shown: { model: string }; check: EndpointCheck }) {
   return (
     <>
-      <ModelField shown={props.shown} check={props.check} />
-      <span id="llm-status" hx-swap-oob="true">
-        <LlmHealthStatus ok={props.check.ok} />
-      </span>
+      <ModelField shown={props.shown} check={props.check} oob />
+      <LlmHealthStatus ok={props.check.ok} tested={false} />
     </>
   );
 }
 
-function LlmHealthStatus(props: { ok: boolean }) {
-  const { t } = useTranslation();
-  const l = t.llm;
-  return <span class={props.ok ? "fam-chip fam-chip--ok" : "fam-chip fam-chip--problem"}>{props.ok ? l.statusOk : l.statusFailing}</span>;
+/** What testing the entered endpoint answers: the model field, and the header chip saying it is a test's result. */
+export function LlmTestFragment(props: { shown: { model: string }; check: EndpointCheck }) {
+  return (
+    <>
+      <ModelField shown={props.shown} check={props.check} tested />
+      <LlmHealthStatus ok={props.check.ok} tested />
+    </>
+  );
+}
+
+/** The header chip, swapped in out of band. */
+function LlmHealthStatus(props: { ok: boolean; tested: boolean }) {
+  const l = useTranslation().t.llm;
+  const text = props.tested ? (props.ok ? l.testOk : l.testFailing) : props.ok ? l.statusOk : l.statusFailing;
+  return (
+    <span id="llm-status" hx-swap-oob="true">
+      <span class={props.ok ? "fam-chip fam-chip--ok" : "fam-chip fam-chip--problem"}>{text}</span>
+    </span>
+  );
 }
 
 /** A problem, such as why asking a Source Type's plugin failed, where what it would have answered is shown. */
@@ -2708,26 +2721,34 @@ function ConnectionFields(props: { shown: { baseUrl: string; model: string } | n
   const l = t.llm;
   const { shown, endpoint } = props;
   const model = { model: shown?.model ?? "" };
-  // The saved endpoint's models load after the page; the saved model stays meanwhile.
-  const modelField = endpoint ? (
-    <LazyFragment href={shown?.model ? `/admin/llm/status?model=${encodeURIComponent(shown.model)}` : "/admin/llm/status"} block>
-      <ModelField shown={model} check="loading" />
-    </LazyFragment>
-  ) : (
-    <ModelField shown={model} check={null} />
-  );
+  // Only the saved endpoint's status is known; other entered values are not tested yet.
+  const saved = endpoint !== null && (shown === null || shown.baseUrl === endpoint.baseUrl);
   return (
-    <div class="fam-group__fields">
-      <div class="fam-field">
-        <label for="baseUrl">{l.baseUrl}</label>
-        <input id="baseUrl" name="baseUrl" type="url" required value={shown?.baseUrl} />
-        <small>{l.baseUrlHint}</small>
+    <>
+      {/* Edited fields mark the guard, so that the late status does not overwrite them. */}
+      <div class="fam-group__fields" id="llm-connection" data-edit-guard="">
+        <div class="fam-field">
+          <label for="baseUrl">{l.baseUrl}</label>
+          <input id="baseUrl" name="baseUrl" type="url" required value={shown?.baseUrl} />
+          <small>{l.baseUrlHint}</small>
+        </div>
+        <ModelField shown={model} check={saved ? "loading" : null} />
+        <ApiKeyFields endpoint={endpoint} />
+        <TestConnectionButton />
       </div>
-      {modelField}
-      <ApiKeyFields endpoint={endpoint} />
-      <TestConnectionButton />
-    </div>
+      {saved ? <StatusLoader model={model.model} /> : null}
+    </>
   );
+}
+
+/**
+ * Loads the saved endpoint's status after the page, which swaps in the model field and the header
+ * chip out of band; dropped once a field was edited or a test ran (`editGuards`). Empty, so that
+ * a failing request leaves the fields as they are.
+ */
+function StatusLoader(props: { model: string }) {
+  const href = props.model ? `/admin/llm/status?model=${encodeURIComponent(props.model)}` : "/admin/llm/status";
+  return <div id="llm-status-loader" hx-get={href} hx-trigger="load" hx-swap="none" data-unless-edited="#llm-connection"></div>;
 }
 
 /** Asks the entered URL with the entered API key, swapping in the model field with what it answered. */
@@ -2762,14 +2783,16 @@ type ModelCheck = EndpointCheck | "loading" | null;
  * the endpoint is not tested yet (null), is being asked, lists none, or failed. `tested` says that
  * the Admin asked, so that it says it connected.
  */
-export function ModelField(props: { shown: { model: string }; check: ModelCheck; tested?: boolean }) {
+export function ModelField(props: { shown: { model: string }; check: ModelCheck; tested?: boolean; oob?: boolean }) {
   const { t } = useTranslation();
   const { shown, check } = props;
-  const models = check !== null && check !== "loading" && check.ok ? check.models : [];
+  const answer = typeof check === "object" ? check : null;
+  const models = answer?.ok ? answer.models : [];
+  const problem = answer && !answer.ok ? answer.message : null;
   return (
-    <div class="fam-field" id="model-field">
+    <div class="fam-field" id="model-field" hx-swap-oob={props.oob ? "true" : undefined}>
       <label for="model">{t.llm.model}</label>
-      {check !== null && check !== "loading" && !check.ok ? <ProblemBanner title={t.llm.connectionError} message={check.message} /> : null}
+      <ProblemBanner title={t.llm.connectionError} message={problem} />
       {models.length > 0 ? (
         <select id="model" name="model" required>
           {/* A model the endpoint no longer lists stays selectable, so saving does not change it. */}

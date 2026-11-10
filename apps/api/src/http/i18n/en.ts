@@ -394,6 +394,8 @@ export const en = {
     statusFailing: "Failing",
     connectionError: "Connection error",
     remove: "Switch AI off",
+    testOk: "Test: connected",
+    testFailing: "Test: failing",
     testConnection: "Test connection",
     testing: "Testing the connection…",
     loadingModels: "Loading the models of the endpoint…",

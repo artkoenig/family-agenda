@@ -380,6 +380,8 @@ export const de: Catalogue = {
     statusFailing: "Gestört",
     connectionError: "Verbindungsfehler",
     remove: "KI abschalten",
+    testOk: "Test: verbunden",
+    testFailing: "Test: gestört",
     testConnection: "Verbindung testen",
     testing: "Die Verbindung wird getestet…",
     loadingModels: "Die Modelle des Endpunkts werden geladen…",
