@@ -77,13 +77,6 @@ export const en = {
     "unknown-entry": "This entry is not in the catalogue.",
     "not-installed": "This is not installed on the Instance. It needs an image of Family Agenda that includes it.",
     "entry-in-use": "Remove the Sources that use it before disabling it.",
-    "invalid-issuer-url":
-      "Enter the issuer URL as an http or https address, such as https://id.example.ts.net.",
-    "invalid-client-id": "Enter the client ID.",
-    "invalid-required-group": "Enter the name of the required group.",
-    "invalid-public-url":
-      "Enter the public base URL as an http or https address without a path, such as https://agenda.example.ts.net.",
-    "client-secret-missing": "Enter the client secret.",
     "sso-failed":
       "Signing in through the Identity Provider did not work. Try again.",
     "sso-not-in-group":
@@ -103,8 +96,6 @@ export const en = {
       `The Source could not be set up: ${message}`,
     downloadFailed: (message: string) =>
       `The model could not be downloaded. ${message}`,
-    discoveryFailed: (message: string) =>
-      `The Identity Provider could not be reached, so nothing was saved. ${message}`,
   },
 
   loading: {
@@ -145,28 +136,6 @@ export const en = {
     singleSignOn: "Sign in with passkey",
   },
 
-  sso: {
-    title: "Single sign-on",
-    description:
-      "Admins can sign in through an OIDC Identity Provider, such as Pocket ID with passkeys, as well as with their password. Saving checks that the provider can be reached.",
-    enabled: "Let Admins sign in through the Identity Provider",
-    issuerUrl: "Issuer URL",
-    issuerUrlHint:
-      "The address of the Identity Provider; Family Agenda finds the rest by discovery.",
-    clientId: "Client ID",
-    clientSecret: "Client secret",
-    requiredGroup: "Required group",
-    requiredGroupHint:
-      "Only members of this group may sign in. It is checked at every sign-in.",
-    publicBaseUrl: "Public base URL",
-    publicBaseUrlHint:
-      "The address Admins reach Family Agenda at to sign in through the Identity Provider. The button appears only there.",
-    redirectUri: "Redirect URI",
-    redirectUriHint:
-      "Register this address as the redirect URI of the client at the Identity Provider.",
-    scopes: "Scopes",
-    off: "Off",
-  },
 
   settings: {
     title: "Settings",

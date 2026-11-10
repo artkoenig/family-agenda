@@ -145,11 +145,11 @@ What an Admin prints or saves at first start to recover the Instance; without it
 _Avoid_: Recovery key, master key (for the document), backup code
 
 **Single sign-on**:
-Signing in as an Admin through the Identity Provider instead of the password. Offered only at the public base URL; the Family Agenda session that follows is its own.
+Signing in as an Admin through the Identity Provider instead of the password. Offered only at `PUBLIC_URL`, also on the setup page of an Instance without Admins; the Family Agenda session that follows is its own.
 _Avoid_: SSO login, passkey login
 
 **Identity Provider**:
-The OIDC server, such as Pocket ID, that an Admin may sign in through instead of a password. Only members of its required group may.
+The OIDC server, such as Pocket ID, that an Admin may sign in through instead of a password, configured in the environment. Only members of its required group may.
 _Avoid_: SSO server, login provider
 
 **Agenda Link**:

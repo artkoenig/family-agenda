@@ -16,6 +16,12 @@ x-app: &app
     PUBLIC_URL: ${PUBLIC_URL:-http://${MDNS_NAME:-family-agenda.local}:${PORT:-8080}}
     # Set to true behind your own HTTPS reverse proxy, so session cookies become Secure.
     TRUST_PROXY: ${TRUST_PROXY:-false}
+    # The OIDC Identity Provider Admins may sign in through, also as the first Admin; none while
+    # OIDC_ISSUER_URL is empty. The redirect URI is <PUBLIC_URL>/sso/callback.
+    OIDC_ISSUER_URL: ${OIDC_ISSUER_URL:-}
+    OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
+    OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
+    OIDC_REQUIRED_GROUP: ${OIDC_REQUIRED_GROUP:-homelab-admin}
     MASTER_KEY_FILE: /var/lib/family-agenda/master-key/master.key
     BLOB_DIRECTORY: /var/lib/family-agenda/blobs
     TESSDATA_DIRECTORY: /var/lib/family-agenda/tessdata

@@ -16,7 +16,6 @@ import {
   PostgresFamilyMemberRepository,
   PostgresFamilyRepository,
   PostgresItemRepository,
-  PostgresIdentityProviderRepository,
   PostgresLlmEndpointRepository,
   OidcIdentityProviderClient,
   PostgresSignInFailureLog,
@@ -65,6 +64,7 @@ import {
   type LanguageAccess,
   type JobQueue,
   type IdentityProviderClient,
+  type IdentityProviderSettings,
   type LlmEndpointAccess,
   type SingleSignOn,
   type MessageAccess,
@@ -116,6 +116,8 @@ export type ApplicationConfig = DatabaseConfig & {
   extractor?: Extractor;
   /** Replaces the poppler and Tesseract command-line tools, such as with a fake. */
   textExtractor?: TextExtractor;
+  /** The one Identity Provider Admins may sign in through, from the environment (ADR-0007); none if left out. */
+  identityProvider?: IdentityProviderSettings | null;
   /** Replaces the OIDC client that talks to the Identity Provider, such as with a scripted one. */
   identityProviderClient?: IdentityProviderClient;
 };
@@ -299,11 +301,8 @@ export async function bootApplication(config: ApplicationConfig): Promise<Applic
     secrets,
     extractor,
   });
-  const identityProvider = new PostgresIdentityProviderRepository(postgres.db);
   const singleSignOn = createSingleSignOn({
-    clock,
-    provider: identityProvider,
-    secrets,
+    settings: config.identityProvider ?? null,
     client: config.identityProviderClient ?? new OidcIdentityProviderClient(),
     admins,
   });
@@ -313,7 +312,6 @@ export async function bootApplication(config: ApplicationConfig): Promise<Applic
     secrets,
     sources: sourceRepository,
     endpoints,
-    identityProvider,
   });
   const extraction = createExtraction({
     clock,

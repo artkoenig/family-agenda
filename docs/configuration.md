@@ -82,16 +82,26 @@ Admins can sign in through an OIDC Identity Provider (Pocket ID, Authentik, Auth
 ### At the Identity Provider
 
 1. Create a client for Family Agenda. Authorization code flow with PKCE.
-2. Redirect URI: `<public base URL>/sso/callback`. The settings page shows the exact value.
+2. Redirect URI: `<PUBLIC_URL>/sso/callback`.
 3. Scopes: `openid email profile groups`. The `groups` claim must be present.
 4. Create a group for Admins (default name `homelab-admin`) and add the Admins. Everybody in that group can become an Admin on first sign-in, so keep it small.
 5. Every user needs a **verified email**. Pocket ID v2: set "email verified" on each existing user, the global toggle only affects new users. Otherwise Family Agenda refuses the sign-in.
 
 ### In Family Agenda
 
-1. Run behind HTTPS with `TRUST_PROXY=true` (see above).
-2. Admin area, Settings, Identity Provider: enter issuer URL, client ID, client secret, required group and **public base URL** (origin only, no path), then switch it on. It saves as enabled only if the issuer's discovery document can be fetched.
-3. Check that the redirect URI shown matches the client at the Identity Provider.
+Set these variables (ADR-0007) and restart. Wrong or missing ones stop the Instance at start, naming the variable.
+
+| Variable | |
+|---|---|
+| `OIDC_ISSUER_URL` | Issuer URL; discovery finds the rest. Unset: no SSO |
+| `OIDC_CLIENT_ID` | Client ID |
+| `OIDC_CLIENT_SECRET` | Client secret |
+| `OIDC_REQUIRED_GROUP` | Group whose members may sign in. Default `homelab-admin` |
+| `PUBLIC_URL` | Required. Origin only, no path; the SSO button appears only there |
+
+Behind HTTPS also set `TRUST_PROXY=true` (see above).
+
+On an Instance without Admins the setup page offers SSO too: the first one in the group who signs in becomes the first Admin, without a password.
 
 The Instance must reach the Identity Provider (discovery, keys, token endpoint). Outbound only.
 
@@ -105,9 +115,9 @@ The group is checked at every sign-in. Leaving it does not end running sessions 
 
 ### One address for Admins
 
-Sessions are cookies bound to **one host**. The SSO button and the SSO session exist only on the public base URL. On any other address (`family-agenda.local`, an IP, a short LAN name) there is no session after an SSO sign-in.
+Sessions are cookies bound to **one host**. The SSO button and the SSO session exist only on `PUBLIC_URL`. On any other address (`family-agenda.local`, an IP, a short LAN name) there is no session after an SSO sign-in.
 
-- Open Admin links on the public base URL. A link such as "Open the message" on an Agenda opened at `family-agenda.local` stays on that host and asks for a sign-in. Let your proxy or DNS redirect the other names to the public base URL, or use the public base URL as `PUBLIC_URL`, so Agendas link there.
+- Open Admin links on `PUBLIC_URL`. A link such as "Open the message" on an Agenda opened at another host stays on that host and asks for a sign-in. Let your proxy or DNS redirect the other names to `PUBLIC_URL`.
 - Plain Agendas and ICS feeds need no session and work on every address.
 - Password sign-in works on every address, at any time.
 
@@ -115,13 +125,13 @@ Sessions are cookies bound to **one host**. The SSO button and the SSO session e
 
 - Password sign-in still works. Forgotten: another Admin or the CLI can set a new one (ADR-0004).
 - Identity Provider down: use the password.
-- Wrong settings blocking you: sign in with the password, switch SSO off in Settings.
+- Wrong settings: fix or unset the `OIDC_*` variables and restart.
 
 ## Troubleshooting
 
 | Symptom | Cause |
 |---|---|
-| No SSO button on the sign-in page | Not on the public base URL, or `TRUST_PROXY` is not `true` behind HTTPS |
+| No SSO button on the sign-in page | `OIDC_ISSUER_URL` unset, not on `PUBLIC_URL`, or `TRUST_PROXY` is not `true` behind HTTPS |
 | SSO refused with "not in the group" | User not in the required group, or the `groups` claim is missing |
 | SSO refused, email problem | Email not verified at the Identity Provider |
 | Asked to sign in again on a link | Link opened on another host than the one signed in on, see "One address for Admins" |

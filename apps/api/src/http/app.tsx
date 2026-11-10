@@ -58,7 +58,6 @@ import {
   LlmNavSummary,
   LlmStatusFragment,
   LlmTestFragment,
-  SingleSignOnPage,
   MessagePage,
   RecoveryKitPage,
   recoveryKitText,
@@ -131,10 +130,6 @@ const problemIn = (c: Context<Env>, problem: ProblemKey): string =>
   c.get("translation").t.problems[problem];
 
 const sessionCookie = "fb_session";
-
-type SingleSignOnFormValues = NonNullable<
-  Parameters<typeof SingleSignOnPage>[0]["entered"]
->;
 
 /** What the single sign-on cookie holds, or null if it is missing or not what `/sso/start` set. */
 function pendingSignInOf(cookie: string | undefined): PendingSignIn | null {
@@ -291,11 +286,11 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     }),
   );
 
-  // Until the first Admin exists, every page leads to creating one; afterwards that page is gone.
+  // Until the first Admin exists, every page leads to creating one, by password or through the Identity Provider; afterwards that page is gone.
   app.use(async (c, next) => {
     const onSetup = c.req.path === "/setup";
     const needed = await admins.needsFirstAdmin();
-    if (needed && !onSetup) return c.redirect("/setup");
+    if (needed && !onSetup && !c.req.path.startsWith("/sso/")) return c.redirect("/setup");
     if (!needed && onSetup) return c.notFound();
     await next();
   });
@@ -311,7 +306,13 @@ export function createHttpApp(application: Application, options: HttpOptions) {
   });
 
   app.get("/setup", (c) =>
-    render(c, <FirstAdminPage language={c.get("translation").language} />),
+    render(
+      c,
+      <FirstAdminPage
+        language={c.get("translation").language}
+        singleSignOn={singleSignOn.isOfferedAt(requestOriginOf(c))}
+      />,
+    ),
   );
 
   app.post("/setup", async (c) => {
@@ -332,6 +333,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
           language={c.get("translation").language}
           email={email}
           problem={problemIn(c, result.problem)}
+          singleSignOn={singleSignOn.isOfferedAt(requestOriginOf(c))}
         />
       );
       return render(c, page, 400);
@@ -533,7 +535,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     render(
       c,
       <SignInPage
-        singleSignOn={await singleSignOn.isOfferedAt(requestOriginOf(c))}
+        singleSignOn={singleSignOn.isOfferedAt(requestOriginOf(c))}
       />,
     ),
   );
@@ -559,8 +561,8 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     const origin = requestOriginOf(c);
     const pending = pendingSignInOf(getCookie(c, singleSignOnCookie));
     deleteCookie(c, singleSignOnCookie, { path: "/sso" });
-    const offered = await singleSignOn.isOfferedAt(origin);
-    if (!offered) return c.notFound();
+    if (!singleSignOn.isOfferedAt(origin)) return c.notFound();
+    const first = await admins.needsFirstAdmin();
     const result = pending
       ? await singleSignOn.complete({
           origin,
@@ -569,14 +571,16 @@ export function createHttpApp(application: Application, options: HttpOptions) {
         })
       : ({ ok: false, problem: "sso-failed" } as const);
     if (!result.ok) {
-      return render(
-        c,
-        <SignInPage problem={problemIn(c, result.problem)} singleSignOn />,
-        401,
+      const problem = problemIn(c, result.problem);
+      const page = first ? (
+        <FirstAdminPage language={c.get("translation").language} problem={problem} singleSignOn />
+      ) : (
+        <SignInPage problem={problem} singleSignOn />
       );
+      return render(c, page, 401);
     }
     startSession(c, result.sessionToken);
-    return c.redirect("/admin", 303);
+    return c.redirect(first ? "/admin/recovery-kit" : "/admin", 303);
   });
 
   app.post("/admin/sign-in", async (c) => {
@@ -644,7 +648,6 @@ export function createHttpApp(application: Application, options: HttpOptions) {
       ).length,
       llm: endpoint ? { model: endpoint.model, local: endpoint.local } : null,
       admins: (await admins.listAdmins()).length,
-      singleSignOn: (await singleSignOn.current())?.enabled ?? false,
       kitSaved: await recoveryKit.isConfirmed(),
       version,
       family: language.language,
@@ -1616,45 +1619,6 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     );
     return render(c, page, problem ? 400 : 200);
   };
-
-  const singleSignOnPage = async (
-    c: Context<Env>,
-    extra: { problem?: string; entered?: SingleSignOnFormValues } = {},
-  ) => {
-    const page = (
-      <SingleSignOnPage
-        admin={c.get("admin")}
-        current={await singleSignOn.current()}
-        suggestedBaseUrl={requestOriginOf(c)}
-        {...(extra.problem ? { problem: extra.problem } : {})}
-        {...(extra.entered ? { entered: extra.entered } : {})}
-      />
-    );
-    return render(c, page, extra.problem ? 400 : 200);
-  };
-
-  app.get("/admin/sso", (c) => singleSignOnPage(c));
-
-  app.post("/admin/sso", async (c) => {
-    const form = await c.req.parseBody();
-    const entered = {
-      enabled: field(form, "enabled") === "yes",
-      issuerUrl: field(form, "issuerUrl"),
-      clientId: field(form, "clientId"),
-      requiredGroup: field(form, "requiredGroup"),
-      publicBaseUrl: field(form, "publicBaseUrl"),
-    };
-    const result = await singleSignOn.save({
-      ...entered,
-      clientSecret: field(form, "clientSecret"),
-    });
-    if (result.ok) return c.redirect("/admin/sso", 303);
-    const problem =
-      result.problem === "discovery-failed"
-        ? c.get("translation").t.problemsWith.discoveryFailed(result.message)
-        : problemIn(c, result.problem);
-    return singleSignOnPage(c, { problem, entered });
-  });
 
   app.get("/admin/display", (c) => displayPage(c));
 

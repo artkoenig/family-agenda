@@ -576,22 +576,6 @@ export const llmEndpoints = pgTable(
   (table) => [singleRow("llm_endpoint", table.id)],
 );
 
-/** The Family's one OIDC Identity Provider that Admins may sign in through; its client secret is in the SecretStore. */
-export const identityProviders = pgTable(
-  "identity_provider",
-  {
-    id: singleRowId(),
-    enabled: boolean("enabled").notNull(),
-    issuerUrl: text("issuer_url").notNull(),
-    clientId: text("client_id").notNull(),
-    clientSecretRef: text("client_secret_ref"),
-    requiredGroup: text("required_group").notNull(),
-    publicBaseUrl: text("public_base_url").notNull(),
-    savedAt: timestamptz("saved_at").notNull(),
-  },
-  (table) => [singleRow("identity_provider", table.id)],
-);
-
 /** What the worker is busy with, one row while it is; read by the api for the Agendas. */
 export const backgroundActivities = pgTable(
   "background_activity",

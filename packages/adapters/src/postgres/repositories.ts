@@ -10,7 +10,6 @@ import type {
   DeclaredAttribute,
   FamilyMemberRepository,
   FamilyRepository,
-  IdentityProviderRepository,
   SoleAssignment,
   LlmEndpointRepository,
   PlainConfig,
@@ -21,7 +20,6 @@ import type {
   SourceRepository,
   SourceTypeRecord,
   SourceTypeRepository,
-  StoredIdentityProvider,
   StoredLlmEndpoint,
   AgendaRepository,
 } from "@family-agenda/application";
@@ -55,7 +53,6 @@ import {
   catalogueEntries,
   family,
   familyMembers,
-  identityProviders,
   llmEndpoints,
   signInFailures,
   sourceAttributeMembers,
@@ -717,40 +714,6 @@ export class PostgresLlmEndpointRepository implements LlmEndpointRepository {
 
   async remove(): Promise<void> {
     await this.db.delete(llmEndpoints);
-  }
-}
-
-export class PostgresIdentityProviderRepository implements IdentityProviderRepository {
-  constructor(private readonly db: Database) {}
-
-  async find(): Promise<StoredIdentityProvider | null> {
-    const [row] = await this.db.select().from(identityProviders);
-    if (!row) return null;
-    return {
-      enabled: row.enabled,
-      issuerUrl: row.issuerUrl,
-      clientId: row.clientId,
-      clientSecret: row.clientSecretRef as SecretRef | null,
-      requiredGroup: row.requiredGroup,
-      publicBaseUrl: row.publicBaseUrl,
-      savedAt: row.savedAt,
-    };
-  }
-
-  async save(provider: StoredIdentityProvider): Promise<void> {
-    const values = {
-      enabled: provider.enabled,
-      issuerUrl: provider.issuerUrl,
-      clientId: provider.clientId,
-      clientSecretRef: provider.clientSecret,
-      requiredGroup: provider.requiredGroup,
-      publicBaseUrl: provider.publicBaseUrl,
-      savedAt: provider.savedAt,
-    };
-    await this.db
-      .insert(identityProviders)
-      .values(values)
-      .onConflictDoUpdate({ target: identityProviders.id, set: values });
   }
 }
 

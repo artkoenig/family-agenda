@@ -1,3 +1,4 @@
+import { parseIdentityProviderSettings, type IdentityProviderSettings } from "@family-agenda/application";
 import { parseEgressTokens, parsePluginEgress } from "./egress/allowlist";
 import { parsePluginUrls, type PluginBinding } from "./plugin-containers/bindings";
 import { versionOf } from "./version";
@@ -20,6 +21,8 @@ export type Config = {
   trustProxy: boolean;
   /** The address the Family reaches the Instance at, such as `http://192.168.1.10:8080`; null to use the one a request came by. */
   publicUrl: string | null;
+  /** The Identity Provider from the `OIDC_*` variables, below `PUBLIC_URL`; null when `OIDC_ISSUER_URL` is not set. */
+  identityProvider: IdentityProviderSettings | null;
   /** The release the image was built from, such as `0.3.1` or `main-1a2b3c4`; `dev` for a build from the working tree. */
   version: string;
 };
@@ -27,6 +30,7 @@ export type Config = {
 export function readConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const databaseUrl = env.DATABASE_URL;
   if (!databaseUrl) throw new Error("DATABASE_URL is not set");
+  const publicUrl = publicUrlOf(env.PUBLIC_URL);
   return {
     databaseUrl,
     masterKeyFile: env.MASTER_KEY_FILE ?? "/var/lib/family-agenda/master-key/master.key",
@@ -38,7 +42,8 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): Config {
     bundledTessdataDirectory: (env.BUNDLED_TESSDATA_DIRECTORY ?? "/usr/share/tesseract-ocr/5/tessdata") || null,
     port: Number(env.PORT ?? 3000),
     trustProxy: env.TRUST_PROXY === "true",
-    publicUrl: publicUrlOf(env.PUBLIC_URL),
+    publicUrl,
+    identityProvider: identityProviderOf(env, publicUrl),
     version: versionOf(env),
   };
 }
@@ -49,4 +54,24 @@ function publicUrlOf(value: string | undefined): string | null {
     throw new Error("PUBLIC_URL must be an http or https address, such as http://192.168.1.10:8080");
   }
   return new URL(value).origin;
+}
+
+const identityProviderProblems = {
+  "invalid-issuer-url": "OIDC_ISSUER_URL must be an http or https address without query, such as https://id.example.ts.net",
+  "invalid-client-id": "OIDC_CLIENT_ID must be set when OIDC_ISSUER_URL is",
+  "client-secret-missing": "OIDC_CLIENT_SECRET must be set when OIDC_ISSUER_URL is",
+  "invalid-required-group": "OIDC_REQUIRED_GROUP must not be empty",
+  "invalid-public-url": "PUBLIC_URL must be set when OIDC_ISSUER_URL is: the redirect URI lies below it",
+} as const;
+
+function identityProviderOf(env: NodeJS.ProcessEnv, publicUrl: string | null): IdentityProviderSettings | null {
+  const parsed = parseIdentityProviderSettings({
+    issuerUrl: env.OIDC_ISSUER_URL,
+    clientId: env.OIDC_CLIENT_ID,
+    clientSecret: env.OIDC_CLIENT_SECRET,
+    requiredGroup: env.OIDC_REQUIRED_GROUP || undefined,
+    publicBaseUrl: publicUrl,
+  });
+  if (!parsed.ok) throw new Error(identityProviderProblems[parsed.problem]);
+  return parsed.settings;
 }
