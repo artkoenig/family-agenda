@@ -288,6 +288,12 @@ export function createSourceAccess(deps: SourcesDeps) {
     };
   }
 
+  /** Where the values a choice field offers are kept: per field of a Source as it is configured now. */
+  function choiceKey(source: Source, key: string): string {
+    const configuration = JSON.stringify([source.id, source.sourceTypeId, source.configVersion, source.plain, source.secrets]);
+    return `choices:${configuration}:${key}`;
+  }
+
   /**
    * The values each choice field of a Source offers, as its plugin offered them lately, so that a page
    * showing a Source does not ask its plugin again each time, such as an IMAP plugin logging in to list
@@ -297,7 +303,6 @@ export function createSourceAccess(deps: SourcesDeps) {
     const sourceType = await enabled(source.sourceTypeId);
     const fields = sourceType?.configuration.fields.filter((field) => field.choice) ?? [];
     if (!sourceType || fields.length === 0) return {};
-    const configuration = JSON.stringify([source.id, source.sourceTypeId, source.configVersion, source.plain, source.secrets]);
     // Built once, and only if a field's values are not kept: it reads the Source's secrets.
     let context: Promise<SourceRunContext> | undefined;
     const contextOnce = () => {
@@ -307,7 +312,7 @@ export function createSourceAccess(deps: SourcesDeps) {
     const choices: Record<string, PluginAnswer<KnownValue[]>> = {};
     // One after another, so that a plugin such as an IMAP one logs in once at a time.
     for (const field of fields) {
-      choices[field.key] = await cached(`choices:${configuration}:${field.key}`, choicesMaxAgeMs, failedChoicesMaxAgeMs, async () =>
+      choices[field.key] = await cached(choiceKey(source, field.key), choicesMaxAgeMs, failedChoicesMaxAgeMs, async () =>
         sourceType.choices(field.key, await contextOnce()),
       );
     }
@@ -445,7 +450,23 @@ export function createSourceAccess(deps: SourcesDeps) {
       return Promise.all(ofType.map((source) => summaryOf(source)));
     },
 
-    /** A Source with the values its choice fields offer, as its own page shows them; null if there is none. */
+    /**
+     * The values one choice field of a Source offers, as the fragment of its page asks for them; null
+     * if there is no such Source, or the field is no choice field of its enabled Source Type.
+     */
+    async choiceOf(
+      id: SourceId,
+      key: string,
+    ): Promise<{ field: ConfigFieldSpec; source: { id: SourceId; plain: PlainConfig; choices: Record<string, PluginAnswer<KnownValue[]>> } } | null> {
+      const source = await sources.findById(id);
+      const sourceType = source && (await enabled(source.sourceTypeId));
+      const field = sourceType?.configuration.fields.find((candidate) => candidate.choice && !candidate.setByPlugin && candidate.key === key);
+      if (!source || !sourceType || !field) return null;
+      const answer = await cached(choiceKey(source, key), choicesMaxAgeMs, failedChoicesMaxAgeMs, async () => sourceType.choices(key, await contextOf(source)));
+      return { field, source: { id: source.id, plain: source.plain, choices: { [key]: answer } } };
+    },
+
+    /** A Source with the values all its choice fields offer, as its row's values fragment tells them; null if there is none. */
     async find(id: SourceId): Promise<SourceSummary | null> {
       const source = await sources.findById(id);
       return source && { ...(await summaryOf(source)), choices: await choicesOf(source) };
