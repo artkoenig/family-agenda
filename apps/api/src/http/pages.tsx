@@ -1225,6 +1225,69 @@ function LoadabilityProblems({ sourceType, types }: { sourceType: SourceTypeSumm
   );
 }
 
+/** A Source Type's catalogue with the Sources at each entry, and its Sources at none, as its page shows them. */
+function SourceTypeSources(props: {
+  sourceType: SourceTypeSummary | null;
+  sourceTypeId: string;
+  sources: SourceSummary[];
+  form: SourceForm | undefined;
+  catalogue: CatalogueSummary | undefined;
+  configKey: string | undefined;
+  listed: SourceSummary[];
+  name: string;
+  members: FamilyMemberSummary[];
+  timeZone: string;
+  addings?: Adding[];
+}) {
+  const { catalogue, configKey } = props;
+  const s = useTranslation().t.sources;
+  return (
+    <>
+      {catalogue && configKey !== undefined ? (
+        <CatalogueEntries catalogue={catalogue} form={props.form} configKey={configKey} sources={props.sources} members={props.members} timeZone={props.timeZone} />
+      ) : null}
+      <SourceListSection sourceType={props.sourceType} catalogue={catalogue} listed={props.listed} addings={props.addings ?? []} form={props.form} name={props.name} sourceTypeId={props.sourceTypeId} members={props.members} timeZone={props.timeZone} s={s} />
+    </>
+  );
+}
+
+/**
+ * The catalogue of a Source Type, such as its Messengers with their accounts, and its Sources at no
+ * entry, as the fragment its page loads once the plugin listed the entries.
+ */
+export function SourceTypeCatalogue(props: {
+  sourceTypeId: string;
+  sourceType: SourceTypeSummary | null;
+  displayName: MultilingualText;
+  sources: SourceSummary[];
+  form: SourceForm | undefined;
+  catalogue: CatalogueSummary | undefined;
+  members: FamilyMemberSummary[];
+  timeZone: string;
+  addings?: Adding[];
+}) {
+  const translation = useTranslation();
+  const s = translation.t.sources;
+  const { configKey, catalogue, listed } = sourceTypeModel({ sourceType: props.sourceType, form: props.form, catalogue: props.catalogue, sources: props.sources, s });
+  return <SourceTypeSources {...props} catalogue={catalogue} configKey={configKey} listed={listed} name={translation.text(props.displayName)} />;
+}
+
+/** The catalogue's place on its Source Type's page while its plugin lists the entries, which load after the page. */
+function CatalogueLoading(props: { href: string; title: MultilingualText }) {
+  const { t, text } = useTranslation();
+  return (
+    <LazyFragment href={props.href}>
+      <p class="fam-group__empty">{t.loading.catalogue(text(props.title))}</p>
+    </LazyFragment>
+  );
+}
+
+/** Its catalogue and Sources, or, while the catalogue has not loaded yet, a placeholder that loads them. */
+function SourceTypeBody(props: Parameters<typeof SourceTypeSources>[0] & { pending: boolean; href: string; displayName: MultilingualText }) {
+  if (props.configKey === undefined || !props.pending) return <SourceTypeSources {...props} />;
+  return <CatalogueLoading href={`${props.href}/catalogue`} title={props.form?.catalogue?.title ?? props.displayName} />;
+}
+
 export function SourceTypePage(props: {
   admin: SignedInAdmin;
   sourceTypeId: string;
@@ -1270,10 +1333,7 @@ export function SourceTypePage(props: {
       {sourceType ? <LoadabilityProblems sourceType={sourceType} types={types} /> : null}
       <Problem message={props.problem} />
       {switchable ? <SourceSwitchSection switchable={switchable} name={name} sources={props.sources} href={href} types={types} /> : null}
-      {catalogue && configKey !== undefined ? (
-        <CatalogueEntries catalogue={catalogue} form={props.form} configKey={configKey} sources={props.sources} members={props.members} timeZone={props.timeZone} />
-      ) : null}
-      <SourceListSection sourceType={sourceType} catalogue={catalogue} listed={listed} addings={props.addings ?? []} form={props.form} name={name} sourceTypeId={props.sourceTypeId} members={props.members} timeZone={props.timeZone} s={s} />
+      <SourceTypeBody {...props} catalogue={catalogue} pending={props.catalogue === undefined} configKey={configKey} listed={listed} name={name} href={href} />
     </AdminLayout>
   );
 }

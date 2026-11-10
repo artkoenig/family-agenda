@@ -110,6 +110,7 @@ export const en = {
   loading: {
     default: "Loading…",
     choices: (label: string) => `Loading ${label}…`,
+    catalogue: (title: string) => `Loading ${title}…`,
     failed: "This could not be loaded.",
     failedMessage: "The page could not reach the server. Reload it to try again.",
     gone: "What this showed no longer exists. Reload the page.",

@@ -7,11 +7,14 @@ import type {
   SourceTypeRegistry,
   SourceTypeRepository,
 } from "./ports";
+import type { Cached } from "./cached";
 import { enabledSourceType } from "./enabled-source-type";
 import { isPollInterval } from "./poll-interval";
 import { disableIfUnused, enableIfAllowed, type DisableResult, type Enableable, type EnableResult } from "./enablement";
 
 export type CataloguesDeps = {
+  /** Where the entries plugins list are kept briefly, shared with the Sources' forms. */
+  cached: Cached;
   registry: SourceTypeRegistry;
   sourceTypes: SourceTypeRepository;
   catalogues: CatalogueRepository;
@@ -36,6 +39,18 @@ export type CatalogueSummary = {
 const problems = { unknown: "unknown-entry", unavailable: "not-installed", inUse: "entry-in-use" } as const;
 
 
+/** How long the entries a plugin listed are used before it is asked again, and after it failed to list them. */
+const entriesMaxAgeMs = 10_000;
+const failedEntriesMaxAgeMs = 5_000;
+
+/**
+ * The entries a plugin's catalogue lists, as it listed them lately, so that one page, which needs
+ * them for the catalogue and for the form of its Sources, asks the plugin once.
+ */
+function entriesOf(sourceTypeId: SourceTypeId, catalogue: NonNullable<LoadedSourceType["catalogue"]>, cached: Cached) {
+  return cached(`catalogue:${sourceTypeId}`, entriesMaxAgeMs, failedEntriesMaxAgeMs, () => catalogue.entries());
+}
+
 /**
  * The entries of a catalogue that a Source can use: enabled by an Admin, and installed. An entry
  * whose bridge is gone stays enabled, but is not offered.
@@ -44,11 +59,12 @@ export async function usableEntries(
   sourceTypeId: SourceTypeId,
   sourceType: LoadedSourceType,
   catalogues: CatalogueRepository,
+  cached: Cached,
 ): Promise<CatalogueEntrySpec[]> {
   if (!sourceType.catalogue) return [];
   const enabled = new Set((await catalogues.list(sourceTypeId)).filter((record) => record.enabled).map((record) => record.entryId));
   // The Source form offers no entries then; the Source Type page shows why (`CatalogueSummary.problem`).
-  return valueOr(await sourceType.catalogue.entries(), []).filter((entry) => entry.installed && enabled.has(entry.id));
+  return valueOr(await entriesOf(sourceTypeId, sourceType.catalogue, cached), []).filter((entry) => entry.installed && enabled.has(entry.id));
 }
 
 /**
@@ -57,7 +73,7 @@ export async function usableEntries(
  * update, and one that a Source uses cannot be disabled.
  */
 export function createCatalogueAccess(deps: CataloguesDeps) {
-  const { registry, sourceTypes, catalogues } = deps;
+  const { cached, registry, sourceTypes, catalogues } = deps;
 
   /** The enabled Source Types that have a catalogue, with their plugins. */
   async function withCatalogues(): Promise<{ id: SourceTypeId; sourceType: LoadedSourceType }[]> {
@@ -73,7 +89,7 @@ export function createCatalogueAccess(deps: CataloguesDeps) {
   async function summaryOf(id: SourceTypeId, sourceType: LoadedSourceType): Promise<CatalogueSummary | null> {
     const { catalogue } = sourceType;
     if (!catalogue) return null;
-    const answer = await catalogue.entries();
+    const answer = await entriesOf(id, catalogue, cached);
     const entries = valueOr(answer, []);
     // A plugin that failed to answer discovered nothing.
     if (answer.ok) await catalogues.recordDiscovered(id, entries.map((entry) => entry.id));
@@ -126,6 +142,12 @@ export function createCatalogueAccess(deps: CataloguesDeps) {
         if (summary) summaries.push(summary);
       }
       return summaries;
+    },
+
+    /** The catalogue of one enabled Source Type, as its page loads it; null for one without. */
+    async of(sourceTypeId: string): Promise<CatalogueSummary | null> {
+      const found = (await withCatalogues()).find((candidate) => candidate.id === sourceTypeId);
+      return found ? summaryOf(found.id, found.sourceType) : null;
     },
 
     /** Enables an installed entry; one with a risk notice only once an Admin acknowledged it. */

@@ -259,14 +259,15 @@ export async function bootApplication(config: ApplicationConfig): Promise<Applic
     sources: sourceRepository,
     clock,
   });
+  // Slow plugin and LLM answers, kept briefly for all use cases and pages.
+  const cached = createCache(clock);
   const catalogueRepository = new PostgresCatalogueRepository(postgres.db);
   const catalogues = createCatalogueAccess({
+    cached,
     registry,
     sourceTypes: sourceTypeRepository,
     catalogues: catalogueRepository,
   });
-  // Slow plugin and LLM answers, kept briefly for all use cases and pages.
-  const cached = createCache(clock);
   const sources = createSourceAccess({
     clock,
     cached,

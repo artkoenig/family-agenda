@@ -59,6 +59,7 @@ import {
   SourcesPage,
   SourcePage,
   SourceAttributesSection,
+  SourceTypeCatalogue,
   SourceTypePage,
   SourceValues,
   sourceHref,
@@ -795,8 +796,9 @@ function shownStatus(status: 200 | 400 | 413 | undefined, problems: (string | un
         sourceType={sourceType}
         displayName={displayName}
         sources={ofType}
-        form={(await sources.forms()).find((form) => form.sourceTypeId === id)}
-        catalogue={(await catalogues.list()).find((catalogue) => catalogue.sourceTypeId === id)}
+        // Without the catalogue's entries, which load after the page.
+        form={await sources.formOf(id, false)}
+        catalogue={undefined}
         members={await familyMembers.list()}
         timeZone={timeZone}
         {...(shown.problem ? { problem: shown.problem } : {})}
@@ -811,6 +813,28 @@ function shownStatus(status: 200 | 400 | 413 | undefined, problems: (string | un
     shown.problem || shown.adding?.problem ? 400 : 200;
 
   app.get("/admin/source-types/:id", (c) => sourceTypePage(c, c.req.param("id")));
+
+  // A Source Type's catalogue with the Sources at its entries, loaded after its page.
+  app.get("/admin/source-types/:id/catalogue", async (c) => {
+    const id = c.req.param("id");
+    const catalogue = await catalogues.of(id);
+    if (!catalogue) return c.body(null, 404);
+    const sourceType = (await sourceTypes.list()).find((type) => type.id === id) ?? null;
+    return render(
+      c,
+      <SourceTypeCatalogue
+        sourceTypeId={id}
+        sourceType={sourceType}
+        displayName={sourceType?.displayName ?? catalogue.title}
+        sources={await sources.listOfType(id)}
+        form={await sources.formOf(id)}
+        catalogue={catalogue}
+        members={await familyMembers.list()}
+        timeZone={timeZone}
+        addings={sources.addingsOf(id)}
+      />,
+    );
+  });
 
   /** Enabling or disabling a Source Type or a catalogue entry: the same form, refused the same way. */
   const enablement = (

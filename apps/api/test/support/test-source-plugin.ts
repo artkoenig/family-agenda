@@ -75,6 +75,7 @@ const undeclared = new Set<string>();
 const knownValues = new Map<string, { value: string; label: string }[]>();
 const choicesAsked = new Map<string, number>();
 const catalogueEntries = new Map<string, CatalogueEntry[]>();
+const catalogueAsked = new Map<string, number>();
 const setupProgress = new Map<string, SetupProgress>();
 const addingFails = new Set<string>();
 const addingHeld = new Map<string, Promise<void>>();
@@ -151,6 +152,10 @@ export const testPluginControls = {
     knownValues.set(sourceTypeId, values);
   },
   /** How often the plugin's choice fields were asked for their values. */
+  /** How often the plugin was asked for its catalogue's entries. */
+  catalogueAsked(sourceTypeId: string): number {
+    return catalogueAsked.get(sourceTypeId) ?? 0;
+  },
   choicesAsked(sourceTypeId: string): number {
     return choicesAsked.get(sourceTypeId) ?? 0;
   },
@@ -265,7 +270,10 @@ export function testSourcePlugin(plugin: TestPluginPackage): PluginImplementatio
           },
         }
       : {}),
-    catalogueEntries: () => ({ entries: askedOf(sourceTypeId, catalogueEntries.get(sourceTypeId) ?? []) }),
+    catalogueEntries: () => {
+      catalogueAsked.set(sourceTypeId, (catalogueAsked.get(sourceTypeId) ?? 0) + 1);
+      return { entries: askedOf(sourceTypeId, catalogueEntries.get(sourceTypeId) ?? []) };
+    },
     setupProgress: () => setupProgress.get(sourceTypeId) ?? { status: "waiting" },
     configMigration: ({ fromVersion, plain }) => {
       const migrate = configuration.migrations?.[fromVersion];

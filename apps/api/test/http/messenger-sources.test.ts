@@ -36,8 +36,15 @@ describe("Sources of a Source Type with a catalogue and a live setup step", () =
     await instance.close();
   });
 
-  it("lists the catalogue under its Source Type and enables an entry once its risk is acknowledged", async () => {
+  /** The Source Type's page with its catalogue, which loads after it. */
+  const sourceTypePage = async () => {
     const page = await (await instance.get("/admin/source-types/bridged", { cookie })).text();
+    const catalogue = await instance.get("/admin/source-types/bridged/catalogue", { cookie });
+    return `${page}${catalogue.ok ? await catalogue.text() : ""}`;
+  };
+
+  it("lists the catalogue under its Source Type and enables an entry once its risk is acknowledged", async () => {
+    const page = await sourceTypePage();
     expect(page).toContain("Reads WhatsApp groups.");
     expect(page).toContain("Against WhatsApp&#39;s terms.");
     expect(page).toContain("Not installed on this Instance");
@@ -51,18 +58,18 @@ describe("Sources of a Source Type with a catalogue and a live setup step", () =
 
     const enabled = await instance.post("/admin/source-types/bridged/catalogue/whatsapp/enable", { riskAcknowledged: "yes" }, { cookie });
     expect(enabled.status).toBe(303);
-    const after = await (await instance.get("/admin/source-types/bridged", { cookie })).text();
+    const after = await sourceTypePage();
     expect(after).toContain('action="/admin/source-types/bridged/catalogue/whatsapp/disable"');
     expect(after).not.toContain("Against WhatsApp&#39;s terms.");
   });
 
   it("adds an account at each enabled Messenger, starting its setup at once", async () => {
-    const before = await (await instance.get("/admin/source-types/bridged", { cookie })).text();
+    const before = await sourceTypePage();
     expect(before).not.toContain("Add Matrix");
     expect(before).not.toContain("Add account");
 
     await instance.app.catalogues.enable("bridged", "whatsapp", { riskAcknowledged: true });
-    const page = await (await instance.get("/admin/source-types/bridged", { cookie })).text();
+    const page = await sourceTypePage();
     expect(page).not.toContain("Add Matrix");
     expect(page).toContain('<input type="hidden" name="plain.messenger" value="whatsapp"/>');
     expect(page).toContain('aria-label="Add a WhatsApp account">Add account</button>');
@@ -75,14 +82,14 @@ describe("Sources of a Source Type with a catalogue and a live setup step", () =
 
   it("lists a Messenger's accounts in its sheet, and switches it off only once it has none", async () => {
     await instance.app.catalogues.enable("bridged", "whatsapp", { riskAcknowledged: true });
-    const empty = await (await instance.get("/admin/source-types/bridged", { cookie })).text();
+    const empty = await sourceTypePage();
     expect(empty).toContain("No accounts yet.");
     expect(empty).toMatch(/<button type="submit" role="switch" aria-checked="true" aria-label="Enable WhatsApp" class="fam-switch">/);
 
     const added = await instance.app.sources.add({ sourceTypeId: "bridged", plain: { messenger: "whatsapp" }, secrets: {} });
     if (!added.ok) throw new Error("adding failed");
 
-    const page = await (await instance.get("/admin/source-types/bridged", { cookie })).text();
+    const page = await sourceTypePage();
     expect(page).not.toContain("No accounts yet.");
     expect(page).toContain(`href="/admin/sources/${added.id}"`);
     expect(page, "its accounts are not listed again as the Source Type's Sources").not.toContain('<h2 class="fam-group__title">Sources</h2>');
@@ -93,7 +100,7 @@ describe("Sources of a Source Type with a catalogue and a live setup step", () =
     expect(page).not.toContain("account-1");
 
     await instance.post(`/admin/sources/${added.id}/name`, { name: "Class 3b" }, { cookie });
-    const renamed = await (await instance.get("/admin/source-types/bridged", { cookie })).text();
+    const renamed = await sourceTypePage();
     expect(renamed).toMatch(/<span class="fam-row__label">Class 3b<\/span><span class="fam-row__hint">Chats: none yet<\/span>/);
   });
 
@@ -109,14 +116,14 @@ describe("Sources of a Source Type with a catalogue and a live setup step", () =
 
   it("sets how often all accounts of a Messenger are checked", async () => {
     await instance.app.catalogues.enable("bridged", "whatsapp", { riskAcknowledged: true });
-    const page = await (await instance.get("/admin/source-types/bridged", { cookie })).text();
+    const page = await sourceTypePage();
     expect(page).toContain('action="/admin/source-types/bridged/catalogue/whatsapp/interval"');
     expect(page).toMatch(/<label for="interval-whatsapp" class="fam-row__label">Polling interval \(optional\)<\/label>/);
     expect(page).toContain("For all WhatsApp accounts. Empty for the suggested 10.");
 
     const saved = await instance.post("/admin/source-types/bridged/catalogue/whatsapp/interval", { pollIntervalMinutes: "15" }, { cookie });
     expect(saved.status).toBe(303);
-    expect(await (await instance.get("/admin/source-types/bridged", { cookie })).text()).toMatch(/id="interval-whatsapp"[^>]*value="15"/);
+    expect(await sourceTypePage()).toMatch(/id="interval-whatsapp"[^>]*value="15"/);
 
     const refused = await instance.post("/admin/source-types/bridged/catalogue/whatsapp/interval", { pollIntervalMinutes: "0" }, { cookie });
     expect(refused.status).toBe(400);
@@ -167,7 +174,8 @@ describe("Sources of a Source Type with a catalogue and a live setup step", () =
   const addHeld = async () => {
     const started = await instance.post("/admin/sources", { sourceTypeId: "bridged", "plain.messenger": "whatsapp" }, { cookie });
     expect(started.status).toBe(303);
-    const page = await (await instance.get(started.headers.get("location")!, { cookie })).text();
+    expect(started.headers.get("location")).toBe("/admin/source-types/bridged");
+    const page = await sourceTypePage();
     const row = /hx-get="(\/admin\/sources\/adding\/[^"]+)\/row"/.exec(page)?.[1];
     if (!row) throw new Error("no row of a Source being added");
     return { page, adding: row };
@@ -203,7 +211,7 @@ describe("Sources of a Source Type with a catalogue and a live setup step", () =
     await vi.waitFor(async () => {
       expect(await (await instance.get(`${adding}/row`, { cookie })).text()).toContain("the homeserver is unreachable");
     });
-    expect(await (await instance.get("/admin/source-types/bridged", { cookie })).text()).toContain(`href="${adding}"`);
+    expect(await sourceTypePage()).toContain(`href="${adding}"`);
 
     const refused = await instance.get(adding, { cookie });
     expect(refused.status).toBe(400);
@@ -256,13 +264,15 @@ describe("Sources of a Source Type with a catalogue and a live setup step", () =
     const added = await instance.app.sources.add({ sourceTypeId: "bridged", plain: { messenger: "whatsapp" }, secrets: {} });
     if (!added.ok) throw new Error("adding failed");
     testPluginControls.failAsking("bridged", "The bridge is restarting.");
+    // Past the entries kept from adding the Source.
+    instance.clock.advance(10_000);
     try {
       const own = await (await instance.get(`/admin/sources/${added.id}`, { cookie })).text();
       expect(own).toContain("The plugin could not offer anything to choose from.");
       expect(own).toContain("The bridge is restarting.");
       expect(own).not.toContain("Nothing to choose from yet.");
 
-      const sourceType = await (await instance.get("/admin/source-types/bridged", { cookie })).text();
+      const sourceType = await sourceTypePage();
       expect(sourceType).toContain("The plugin could not list them.");
       expect(sourceType).toContain("The bridge is restarting.");
     } finally {
