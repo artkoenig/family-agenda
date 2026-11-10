@@ -466,6 +466,12 @@ export function createSourceAccess(deps: SourcesDeps) {
       return { field, source: { id: source.id, plain: source.plain, choices: { [key]: answer } } };
     },
 
+    /** A Source as its list tells it, without asking its plugin for choices; null if there is none. */
+    async summary(id: SourceId): Promise<SourceSummary | null> {
+      const source = await sources.findById(id);
+      return source && summaryOf(source);
+    },
+
     /** A Source with the values all its choice fields offer, as its row's values fragment tells them; null if there is none. */
     async find(id: SourceId): Promise<SourceSummary | null> {
       const source = await sources.findById(id);

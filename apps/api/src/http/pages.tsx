@@ -40,7 +40,7 @@ import { raw } from "hono/html";
 import { useTranslation, type Translation } from "./i18n/translation";
 import type { Catalogue } from "./i18n/en";
 import { Layout, Problem } from "./layout";
-import { FragmentError, LazyFragment } from "./lazy-fragment";
+import { FragmentError, LazyFragment, notReadyYet, type FragmentPoll } from "./lazy-fragment";
 import { Avatar, MessageItems, agendaUrl } from "./agenda-page";
 
 /** The Family Languages to choose from, the given one selected. */
@@ -1409,7 +1409,7 @@ function SourceAttributesForm(props: {
 }) {
   const { source, members, href, t, s, asked } = props;
   if (members.length === 0) return null;
-  if (source.attributes.length === 0 && !asked) return <AttributesPending source={source} href={href} s={s} />;
+  if (source.attributes.length === 0 && !asked) return <AttributesPending source={source} s={s} />;
   const problem = asked?.problem ? <p class="fam-problem">{s.attributesFailed(asked.problem)}</p> : null;
   if (source.attributes.length === 0) {
     return (
@@ -1478,34 +1478,78 @@ export function SourceAttributesSection(props: { source: SourceSummary; members:
   return <SourceAttributesForm source={props.source} members={props.members} href={sourceHref(props.source.id)} t={t} s={t.sources} asked={{ problem: props.problem }} />;
 }
 
-/** How often a Source waiting for its first read asks again whether its Source Attributes are there. */
-const attributesPollSeconds = 2;
+/**
+ * Whether a Source's Source Attributes will come with its next read, as its parts were chosen, such
+ * as its folders or groups, and none are known yet. One with nothing chosen declares none, and once
+ * read it has declared what it will.
+ */
+function attributesPendingOf(source: SourceSummary): boolean {
+  if (!source.health.awaitingRead || source.attributes.length > 0) return false;
+  return Object.values(source.plain).some((value) => Array.isArray(value) && value.length > 0);
+}
 
 /**
- * Where the Source Attributes will be once the Source has been read after its parts were chosen,
- * such as its folders or groups: until then it asks again every few seconds and replaces itself, so
- * that the Admin can assign them as soon as they are declared. A Source with nothing chosen, or
- * failing, declares none and does not wait.
+ * Where the Source Attributes will be once the Source has been read after its parts were chosen:
+ * `SourceReadPoller` brings them in as soon as they are declared, so that the Admin can assign them.
  */
-function AttributesPending(props: { source: SourceSummary; href: string; s: Translation["t"]["sources"] }) {
-  const { source, href, s } = props;
-  const chosen = Object.values(source.plain).some((value) => Array.isArray(value) && value.length > 0);
-  if (!chosen || source.health.status === "failing") return null;
+function AttributesPending(props: { source: SourceSummary; s: Translation["t"]["sources"] }) {
+  const { source, s } = props;
+  if (!attributesPendingOf(source)) return null;
   return (
-    <div
-      id="source-attributes"
-      class="fam-sheet__form"
-      hx-get={href}
-      hx-trigger={`load delay:${attributesPollSeconds}s`}
-      hx-select="#source-attributes"
-      hx-target="this"
-      hx-swap="outerHTML"
-      aria-live="polite"
-    >
+    <div id="source-attributes" class="fam-sheet__form" aria-live="polite">
       <Group title={s.attributes} level={2}>
         <p class="fam-group__empty">{s.attributesPending}</p>
       </Group>
     </div>
+  );
+}
+
+/** How a Source's page asks for its health line while it waits for a read: soon, then less often, for a few minutes. */
+const sourceReadPoll: FragmentPoll = { every: 2, backoff: 1.5, maxSeconds: 300 };
+
+/**
+ * Asks for a Source's health line again after a while, with backoff and a cap, while it awaits a
+ * read; invisible, as the line itself says it was not read yet. `attributes=pending` asks for the
+ * Source Attributes too, which come with that read.
+ */
+function SourceReadPoller(props: { source: SourceSummary; waitedSeconds: number; attributesPending?: boolean }) {
+  const { source } = props;
+  // Also while a failure is stored: after a Fix, the next read tells whether it worked.
+  if (!source.health.awaitingRead) return null;
+  const pending = props.attributesPending ?? attributesPendingOf(source);
+  const href = `${sourceHref(source.id)}/health${pending ? "?attributes=pending" : ""}`;
+  return notReadyYet({ href, poll: sourceReadPoll, waitedSeconds: props.waitedSeconds, silent: true });
+}
+
+/**
+ * What `/admin/sources/:id/health` answers: the Source's health line out of band, its Source
+ * Attributes too while they were pending, and the next poll while it still awaits a read.
+ */
+export function SourceHealthFragment(props: {
+  source: SourceSummary;
+  form: SourceForm | undefined;
+  members: FamilyMemberSummary[];
+  timeZone: string;
+  waitedSeconds: number;
+  attributesPending: boolean;
+}) {
+  const { source, form } = props;
+  const translation = useTranslation();
+  const { t, text } = translation;
+  const href = sourceHref(source.id);
+  const { name } = sourceLabel(source, form, translation);
+  return (
+    <>
+      <div id="source-health" hx-swap-oob="true">
+        <SourcePageHeader name={name} health={source.health} entry={entryOf(form, source)} form={form} href={href} timeZone={props.timeZone} s={t.sources} text={text} />
+      </div>
+      {props.attributesPending && !attributesPendingOf(source) ? (
+        <div id="source-attributes-slot" hx-swap-oob="true">
+          <SourceAttributesForm source={source} members={props.members} href={href} t={t} s={t.sources} />
+        </div>
+      ) : null}
+      <SourceReadPoller source={source} waitedSeconds={props.waitedSeconds} attributesPending={props.attributesPending} />
+    </>
   );
 }
 
@@ -1673,16 +1717,21 @@ export function SourcePage(props: {
         <a href={sourceTypeHref(source.sourceTypeId)}>{text(source.displayName)}</a> <span aria-hidden="true">›</span>{" "}
         <span aria-current="page">{name}</span>
       </nav>
-      <SourcePageHeader name={name} health={source.health} entry={entry} form={form} href={href} timeZone={props.timeZone} s={s} text={text} />
+      <div id="source-health">
+        <SourcePageHeader name={name} health={source.health} entry={entry} form={form} href={href} timeZone={props.timeZone} s={s} text={text} />
+      </div>
+      <SourceReadPoller source={source} waitedSeconds={0} />
       <Problem message={props.problem} />
       <section class="fam-sheet">
         {!form ? <p class="fam-problem">{s.notRead}</p> : null}
         <SourcePageForm source={source} form={form} members={props.members} editable={editable} href={href} derived={derived} t={t} s={s} />
-        {props.attributesOnDemand && props.members.length > 0 ? (
-          <AttributesLoading href={href} s={s} />
-        ) : (
-          <SourceAttributesForm source={source} members={props.members} href={href} t={t} s={s} />
-        )}
+        <div id="source-attributes-slot" data-edit-guard="">
+          {props.attributesOnDemand && props.members.length > 0 ? (
+            <AttributesLoading href={href} s={s} />
+          ) : (
+            <SourceAttributesForm source={source} members={props.members} href={href} t={t} s={s} />
+          )}
+        </div>
         <SourceTimelineSection source={source} href={href} s={s} waiting={props.waiting} />
         <SourceManagementSection href={href} s={s} />
       </section>

@@ -42,6 +42,17 @@ describe("Source health", () => {
 
   const health = async () => (await instance.app.sources.list()).find((s) => s.id === source)?.health;
 
+  it("awaits a read until it has run, and again once an Admin changed it", async () => {
+    expect((await health())?.awaitingRead).toBe(true);
+
+    await tick();
+    expect((await health())?.awaitingRead).toBe(false);
+
+    const edited = await instance.app.sources.edit(source, { plain: { url: "https://other.example.org" }, secrets: {} });
+    expect(edited.ok).toBe(true);
+    expect((await health())?.awaitingRead).toBe(true);
+  });
+
   it("is OK once it has run successfully, with the time of that run", async () => {
     await tick();
 
@@ -51,6 +62,7 @@ describe("Source health", () => {
       lastSuccessAt: new Date("2026-09-14T07:10:00Z"),
       invalidRecords: [],
       unknownAttributes: [],
+      awaitingRead: false,
     });
   });
 
@@ -65,6 +77,7 @@ describe("Source health", () => {
       lastSuccessAt: new Date("2026-09-14T07:10:00Z"),
       invalidRecords: [],
       unknownAttributes: [],
+      awaitingRead: false,
     });
   });
 
@@ -78,6 +91,7 @@ describe("Source health", () => {
       lastSuccessAt: new Date("2026-09-14T07:10:00Z"),
       invalidRecords: [],
       unknownAttributes: [],
+      awaitingRead: false,
     });
 
     testPluginControls.failNext("school-portal", "temporary");
@@ -92,11 +106,11 @@ describe("Source health", () => {
   it("is OK again after a successful run", async () => {
     testPluginControls.failNext("school-portal", "definite");
     await tick();
-    expect(await health()).toMatchObject({ status: "failing", lastSuccessAt: null, invalidRecords: [], unknownAttributes: [] });
+    expect(await health()).toMatchObject({ status: "failing", lastSuccessAt: null, invalidRecords: [], unknownAttributes: [], awaitingRead: false });
 
     await tick();
 
-    expect(await health()).toEqual({ status: "ok", problem: null, lastSuccessAt: new Date("2026-09-14T07:20:00Z"), invalidRecords: [], unknownAttributes: [] });
+    expect(await health()).toEqual({ status: "ok", problem: null, lastSuccessAt: new Date("2026-09-14T07:20:00Z"), invalidRecords: [], unknownAttributes: [], awaitingRead: false });
   });
 
   it("stays Failing after a definite error until a run succeeds, whatever errors follow", async () => {
@@ -111,6 +125,7 @@ describe("Source health", () => {
       lastSuccessAt: null,
       invalidRecords: [],
       unknownAttributes: [],
+      awaitingRead: false,
     });
   });
 
@@ -164,6 +179,7 @@ describe("Source health", () => {
       lastSuccessAt: new Date("2026-09-14T07:10:00Z"),
       invalidRecords: [],
       unknownAttributes: [],
+      awaitingRead: false,
     });
     const [items] = await instance.query("SELECT count(*)::int AS items FROM item");
     expect(items).toEqual({ items: 1 });
@@ -173,7 +189,7 @@ describe("Source health", () => {
     await tick();
 
     expect(testPluginControls.runs("school-portal").at(-1)?.syncCursor).toBe("1");
-    expect(await health()).toEqual({ status: "ok", problem: null, lastSuccessAt: new Date("2026-09-14T07:30:00Z"), invalidRecords: [], unknownAttributes: [] });
+    expect(await health()).toEqual({ status: "ok", problem: null, lastSuccessAt: new Date("2026-09-14T07:30:00Z"), invalidRecords: [], unknownAttributes: [], awaitingRead: false });
   });
 
   it("tells every Agenda it may be out of date while a Source is Failing, and only then", async () => {
