@@ -150,14 +150,40 @@ describe("Sources of a Source Type with a catalogue and a live setup step", () =
     expect(added.headers.get("location")).toBe(`/admin/sources/${source!.id}/setup`);
 
     const setup = await (await instance.get(`/admin/sources/${source!.id}/setup`, { cookie })).text();
-    expect(setup).toContain('aria-label="QR code to scan"');
-    expect(setup).toMatch(/<svg[^>]*viewBox/);
-    expect(setup).toContain(`hx-get="/admin/sources/${source!.id}/setup/login"`);
+    // The dialog does not wait for the step: it loads at once, as its own fragment.
+    expect(setup).not.toContain('aria-label="QR code to scan"');
+    expect(setup).toContain(`hx-get="/admin/sources/${source!.id}/setup/login" hx-trigger="load"`);
+    expect(setup).toContain("This could not be loaded.");
+
+    const waiting = await (await instance.get(`/admin/sources/${source!.id}/setup/login`, { cookie })).text();
+    expect(waiting).toContain('aria-label="QR code to scan"');
+    expect(waiting).toMatch(/<svg[^>]*viewBox/);
+    // It keeps asking, and a failed poll becomes an explained message.
+    expect(waiting).toContain(`hx-get="/admin/sources/${source!.id}/setup/login" hx-trigger="load delay:3s"`);
+    expect(waiting).toContain('aria-busy="true"');
+    expect(waiting).toContain("What this showed no longer exists.");
 
     testPluginControls.setupShows("bridged", { status: "done" });
     const fragment = await (await instance.get(`/admin/sources/${source!.id}/setup/login`, { cookie })).text();
     expect(fragment).toContain("Done.");
     expect(fragment).not.toContain("hx-get");
+  });
+
+  it("opens the Fix dialog without waiting for its live step, which loads at once", async () => {
+    await instance.app.catalogues.enable("bridged", "whatsapp", { riskAcknowledged: true });
+    const added = await instance.app.sources.add({ sourceTypeId: "bridged", plain: { messenger: "whatsapp" }, secrets: {} });
+    if (!added.ok) throw new Error("not added");
+    const [source] = await instance.app.sources.list();
+    const fix = await (await instance.get(`/admin/sources/${source!.id}/fix`, { cookie })).text();
+    expect(fix).not.toContain('aria-label="QR code to scan"');
+    expect(fix).toContain(`hx-get="/admin/sources/${source!.id}/setup/login" hx-trigger="load"`);
+  });
+
+  it("answers 404 for a live step that is not there, which its fragment explains", async () => {
+    await instance.app.catalogues.enable("bridged", "whatsapp", { riskAcknowledged: true });
+    await instance.app.sources.add({ sourceTypeId: "bridged", plain: { messenger: "whatsapp" }, secrets: {} });
+    const [source] = await instance.app.sources.list();
+    expect((await instance.get(`/admin/sources/${source!.id}/setup/nothing`, { cookie })).status).toBe(404);
   });
 
   it("shows why a Source could not be set up", async () => {

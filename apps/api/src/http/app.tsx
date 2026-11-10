@@ -42,7 +42,11 @@ import {
 } from "@family-agenda/application";
 import type { Application } from "../composition-root";
 import type { Catalogue } from "./i18n/en";
-import { TranslationContext, translationFor, type Translation } from "./i18n/translation";
+import {
+  TranslationContext,
+  translationFor,
+  type Translation,
+} from "./i18n/translation";
 import {
   AdminsPage,
   FamilyMembersPage,
@@ -110,11 +114,21 @@ type Env = {
 type ProblemKey = keyof Catalogue["problems"];
 
 /** A page or fragment rendered in the request's Translation. */
-const render = (c: Context<Env>, node: Child, status?: 200 | 400 | 401 | 413 | 429) =>
-  c.html(<TranslationContext.Provider value={c.get("translation")}>{node}</TranslationContext.Provider>, status);
+const render = (
+  c: Context<Env>,
+  node: Child,
+  status?: 200 | 400 | 401 | 413 | 429,
+) =>
+  c.html(
+    <TranslationContext.Provider value={c.get("translation")}>
+      {node}
+    </TranslationContext.Provider>,
+    status,
+  );
 
 /** What the catalogue of the request's Translation says about a problem. */
-const problemIn = (c: Context<Env>, problem: ProblemKey): string => c.get("translation").t.problems[problem];
+const problemIn = (c: Context<Env>, problem: ProblemKey): string =>
+  c.get("translation").t.problems[problem];
 
 const sessionCookie = "fb_session";
 
@@ -138,7 +152,9 @@ function pendingSignInOf(cookie: string | undefined): PendingSignIn | null {
   }
 }
 
-const htmx = readFileSync(createRequire(import.meta.url).resolve("htmx.org/dist/htmx.min.js"));
+const htmx = readFileSync(
+  createRequire(import.meta.url).resolve("htmx.org/dist/htmx.min.js"),
+);
 
 const resolve = createRequire(import.meta.url).resolve;
 
@@ -150,13 +166,20 @@ const stylesheets: Record<string, typeof htmx> = {
 
 /** The font files `tokens.css` names, from their packages: the Instance serves them itself, as it runs offline. */
 const fonts: Record<string, typeof htmx> = Object.fromEntries(
-  ["atkinson-hyperlegible-next", "atkinson-hyperlegible-mono"].flatMap((family) =>
-    (family.endsWith("next") ? ["normal", "italic"] : ["normal"]).flatMap((style) =>
-      ["latin", "latin-ext"].map((subset) => {
-        const file = `${family}-${subset}-wght-${style}.woff2`;
-        return [file, readFileSync(resolve(`@fontsource-variable/${family}/files/${file}`))] as const;
-      }),
-    ),
+  ["atkinson-hyperlegible-next", "atkinson-hyperlegible-mono"].flatMap(
+    (family) =>
+      (family.endsWith("next") ? ["normal", "italic"] : ["normal"]).flatMap(
+        (style) =>
+          ["latin", "latin-ext"].map((subset) => {
+            const file = `${family}-${subset}-wght-${style}.woff2`;
+            return [
+              file,
+              readFileSync(
+                resolve(`@fontsource-variable/${family}/files/${file}`),
+              ),
+            ] as const;
+          }),
+      ),
   ),
 );
 
@@ -201,7 +224,11 @@ export function createHttpApp(application: Application, options: HttpOptions) {
 
   /** The address the request came from; behind a trusted proxy, the one the proxy saw. */
   const clientOf = (c: Context<Env>) => {
-    const forwarded = c.req.header("x-forwarded-for")?.split(",").at(-1)?.trim();
+    const forwarded = c.req
+      .header("x-forwarded-for")
+      ?.split(",")
+      .at(-1)
+      ?.trim();
     if (options.trustProxy && forwarded) return forwarded;
     // In-process requests, as in tests, come without Node bindings.
     const bindings = c.env as Partial<HttpBindings> | undefined;
@@ -228,27 +255,39 @@ export function createHttpApp(application: Application, options: HttpOptions) {
   app.get("/static/:file{[a-z]+\\.css}", (c) => {
     const css = stylesheets[c.req.param("file")];
     if (!css) return c.notFound();
-    return c.body(css, 200, { "content-type": "text/css; charset=utf-8", "cache-control": "public, max-age=86400" });
+    return c.body(css, 200, {
+      "content-type": "text/css; charset=utf-8",
+      "cache-control": "public, max-age=86400",
+    });
   });
 
   app.get("/static/icons/:file", (c) => {
     const icon = icons[c.req.param("file")];
     if (!icon) return c.notFound();
-    return c.body(icon, 200, { "content-type": "image/png", "cache-control": "public, max-age=86400" });
+    return c.body(icon, 200, {
+      "content-type": "image/png",
+      "cache-control": "public, max-age=86400",
+    });
   });
 
   app.get("/static/fonts/:file", (c) => {
     const font = fonts[c.req.param("file")];
     if (!font) return c.notFound();
-    return c.body(font, 200, { "content-type": "font/woff2", "cache-control": "public, max-age=604800" });
+    return c.body(font, 200, {
+      "content-type": "font/woff2",
+      "cache-control": "public, max-age=604800",
+    });
   });
 
-  app.get("/api/health", (c) => c.json({ status: "ok", version } satisfies HealthResponse));
+  app.get("/api/health", (c) =>
+    c.json({ status: "ok", version } satisfies HealthResponse),
+  );
 
   app.use(
     csrf({
       // Compares hosts, so that it works behind a proxy terminating HTTPS too.
-      origin: (origin, c) => URL.canParse(origin) && new URL(origin).host === hostOf(c),
+      origin: (origin, c) =>
+        URL.canParse(origin) && new URL(origin).host === hostOf(c),
     }),
   );
 
@@ -264,12 +303,16 @@ export function createHttpApp(application: Application, options: HttpOptions) {
   // The pages speak the Family Language; the setup speaks the one the browser prefers until one is chosen.
   app.use(async (c, next) => {
     const language =
-      c.req.path === "/setup" ? preferredFamilyLanguage(c.req.header("accept-language")) : await languages.familyLanguage();
+      c.req.path === "/setup"
+        ? preferredFamilyLanguage(c.req.header("accept-language"))
+        : await languages.familyLanguage();
     c.set("translation", translationFor(language));
     await next();
   });
 
-  app.get("/setup", (c) => render(c, <FirstAdminPage language={c.get("translation").language} />));
+  app.get("/setup", (c) =>
+    render(c, <FirstAdminPage language={c.get("translation").language} />),
+  );
 
   app.post("/setup", async (c) => {
     const form = await c.req.parseBody();
@@ -282,8 +325,15 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     });
     if (!result.ok) {
       if (result.problem === "admin-exists") return c.notFound();
-      if (isFamilyLanguage(language)) c.set("translation", translationFor(language));
-      const page = <FirstAdminPage language={c.get("translation").language} email={email} problem={problemIn(c, result.problem)} />;
+      if (isFamilyLanguage(language))
+        c.set("translation", translationFor(language));
+      const page = (
+        <FirstAdminPage
+          language={c.get("translation").language}
+          email={email}
+          problem={problemIn(c, result.problem)}
+        />
+      );
       return render(c, page, 400);
     }
     startSession(c, result.sessionToken);
@@ -305,15 +355,30 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     c.header("cache-control", "no-store");
     c.header("vary", "HX-Request");
     // htmx asks for the whole page when it restores history it has not cached.
-    const fragment = c.req.header("hx-request") === "true" && !c.req.header("hx-history-restore-request");
-    if (page.layout === "task_list") return render(c, fragment ? <TaskList page={page} /> : <TaskListDocument page={page} />);
-    return render(c, fragment ? <AgendaTimeline page={page} /> : <AgendaPageDocument page={page} />);
+    const fragment =
+      c.req.header("hx-request") === "true" &&
+      !c.req.header("hx-history-restore-request");
+    if (page.layout === "task_list")
+      return render(
+        c,
+        fragment ? <TaskList page={page} /> : <TaskListDocument page={page} />,
+      );
+    return render(
+      c,
+      fragment ? (
+        <AgendaTimeline page={page} />
+      ) : (
+        <AgendaPageDocument page={page} />
+      ),
+    );
   });
 
   // What puts an Agenda on a home screen as an app that opens fullscreen. Its addresses come from the path
   // it was asked at, so that they stay right whatever address an Agenda is opened at.
   app.get("/agendas/:id/manifest.webmanifest", async (c) => {
-    const page = await agendas.open(c.req.param("id") as AgendaId, { access: options.agendaAccess });
+    const page = await agendas.open(c.req.param("id") as AgendaId, {
+      access: options.agendaAccess,
+    });
     if (!page) return c.notFound();
     const name = page.layout === "task_list" ? "Todos" : "Agenda";
     const address = c.req.path.replace(/\/manifest\.webmanifest$/, "");
@@ -331,12 +396,25 @@ export function createHttpApp(application: Application, options: HttpOptions) {
           { src: iconUrl("icon-192.png"), sizes: "192x192", type: "image/png" },
           { src: iconUrl("icon-512.png"), sizes: "512x512", type: "image/png" },
           // Full-bleed art with the content inside the safe zone: Android masks it to its own shape instead of putting it on white.
-          { src: iconUrl("icon-192.png"), sizes: "192x192", type: "image/png", purpose: "maskable" },
-          { src: iconUrl("icon-512.png"), sizes: "512x512", type: "image/png", purpose: "maskable" },
+          {
+            src: iconUrl("icon-192.png"),
+            sizes: "192x192",
+            type: "image/png",
+            purpose: "maskable",
+          },
+          {
+            src: iconUrl("icon-512.png"),
+            sizes: "512x512",
+            type: "image/png",
+            purpose: "maskable",
+          },
         ],
       }),
       200,
-      { "content-type": "application/manifest+json; charset=utf-8", "cache-control": "no-store" },
+      {
+        "content-type": "application/manifest+json; charset=utf-8",
+        "cache-control": "no-store",
+      },
     );
   });
 
@@ -344,7 +422,11 @@ export function createHttpApp(application: Application, options: HttpOptions) {
   app.get("/agendas/:id/days", async (c) => {
     const days = timelineDaysOf(c.req.query("from"), c.req.query("until"));
     const then = c.req.query("then");
-    if (days === "invalid" || !days.days || (then !== "earlier" && then !== "later")) {
+    if (
+      days === "invalid" ||
+      !days.days ||
+      (then !== "earlier" && then !== "later")
+    ) {
       return c.text("Unacceptable days", 400);
     }
     const page = await agendas.open(c.req.param("id") as AgendaId, {
@@ -361,7 +443,11 @@ export function createHttpApp(application: Application, options: HttpOptions) {
       c,
       <>
         <AgendaDays page={page} earlier={earlier} later={!earlier} />
-        <ShownDay side={earlier ? "from" : "until"} date={earlier ? days.days.first : days.days.last} oob />
+        <ShownDay
+          side={earlier ? "from" : "until"}
+          date={earlier ? days.days.first : days.days.last}
+          oob
+        />
       </>,
     );
   });
@@ -369,26 +455,37 @@ export function createHttpApp(application: Application, options: HttpOptions) {
   // What the worker is busy with, as an Agenda's indicator asks for it while the Agenda is open.
   app.get("/agendas/:id/activity", async (c) => {
     const id = c.req.param("id") as AgendaId;
-    const activity = await agendas.activity(id, { access: options.agendaAccess });
+    const activity = await agendas.activity(id, {
+      access: options.agendaAccess,
+    });
     if (activity === undefined) return c.notFound();
     c.header("cache-control", "no-store");
     // Once the worker is done, the timeline refreshes to show what it brought.
-    if (!activity && c.req.query("was") === "busy") c.header("hx-trigger", activityEnded);
+    if (!activity && c.req.query("was") === "busy")
+      c.header("hx-trigger", activityEnded);
     return render(c, <ActivityIndicator agendaId={id} activity={activity} />);
   });
 
   // Ticking a Task done, or taking the tick back, is the one write an Agenda makes, without a session.
   app.post("/agendas/:id/tasks/:task/:tick{done|undone}", async (c) => {
     const id = c.req.param("id") as AgendaId;
-    const result = await tasks.tickFromAgenda(id, c.req.param("task") as ItemId, {
-      done: c.req.param("tick") === "done",
-      access: options.agendaAccess,
-    });
+    const result = await tasks.tickFromAgenda(
+      id,
+      c.req.param("task") as ItemId,
+      {
+        done: c.req.param("tick") === "done",
+        access: options.agendaAccess,
+      },
+    );
     if (!result.ok) return c.notFound();
-    if (c.req.header("hx-request") !== "true") return c.redirect(agendaUrl(id), 303);
+    if (c.req.header("hx-request") !== "true")
+      return c.redirect(agendaUrl(id), 303);
     // htmx swaps the timeline or the Task List as it was, the days scrolled to and the quick filter included.
     const form = await c.req.parseBody();
-    const days = timelineDaysOf(field(form, "from") || undefined, field(form, "until") || undefined);
+    const days = timelineDaysOf(
+      field(form, "from") || undefined,
+      field(form, "until") || undefined,
+    );
     const show = field(form, "show");
     const page = await agendas.open(id, {
       access: options.agendaAccess,
@@ -397,12 +494,21 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     });
     if (!page) return c.notFound();
     c.header("cache-control", "no-store");
-    return render(c, page.layout === "task_list" ? <TaskList page={page} /> : <AgendaTimeline page={page} />);
+    return render(
+      c,
+      page.layout === "task_list" ? (
+        <TaskList page={page} />
+      ) : (
+        <AgendaTimeline page={page} />
+      ),
+    );
   });
 
   // An Agenda's feed follows the Agenda's access, so that calendar apps can subscribe without a session.
   app.get("/agendas/:id/feed.ics", async (c) => {
-    const feed = await agendas.feed(c.req.param("id") as AgendaId, { access: options.agendaAccess });
+    const feed = await agendas.feed(c.req.param("id") as AgendaId, {
+      access: options.agendaAccess,
+    });
     if (!feed) return c.notFound();
     const agendaLink = `${originOf(c)}${agendaUrl(feed.id)}`;
     return c.body(icsFeed(feed, agendaLink), 200, {
@@ -412,7 +518,9 @@ export function createHttpApp(application: Application, options: HttpOptions) {
   });
 
   app.get("/family-members/:id/photo", async (c) => {
-    const photo = await familyMembers.photo(c.req.param("id") as FamilyMemberId);
+    const photo = await familyMembers.photo(
+      c.req.param("id") as FamilyMemberId,
+    );
     if (!photo) return c.notFound();
     return c.body(photo.bytes, 200, {
       "content-type": photo.contentType,
@@ -481,7 +589,11 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     });
     if (!result.ok) {
       const status = result.problem === "rate-limited" ? 429 : 401;
-      return render(c, <SignInPage email={email} problem={problemIn(c, result.problem)} />, status);
+      return render(
+        c,
+        <SignInPage email={email} problem={problemIn(c, result.problem)} />,
+        status,
+      );
     }
     startSession(c, result.sessionToken);
     return c.redirect("/admin", 303);
@@ -494,11 +606,28 @@ export function createHttpApp(application: Application, options: HttpOptions) {
    * answer while it is asked again in the background (`stale`); the AI page waits for a fresh one.
    */
   let llmSaved = 0;
-  const llmCheckOf = async (c: Context<Env>, endpoint: LlmEndpointSummary, stale: boolean): Promise<EndpointCheck | null> => {
-    const asking = () => llmEndpoint.check().catch((error: unknown) => ({ ok: false as const, message: String(error) }));
-    return cached(`llm-check:${llmSaved}:${JSON.stringify(endpoint)}`, 60_000, 15_000, asking, { stale }).catch(
-      () => ({ ok: false as const, message: c.get("translation").t.llm.noAnswer }),
-    );
+  const llmCheckOf = async (
+    c: Context<Env>,
+    endpoint: LlmEndpointSummary,
+    stale: boolean,
+  ): Promise<EndpointCheck | null> => {
+    const asking = () =>
+      llmEndpoint
+        .check()
+        .catch((error: unknown) => ({
+          ok: false as const,
+          message: String(error),
+        }));
+    return cached(
+      `llm-check:${llmSaved}:${JSON.stringify(endpoint)}`,
+      60_000,
+      15_000,
+      asking,
+      { stale },
+    ).catch(() => ({
+      ok: false as const,
+      message: c.get("translation").t.llm.noAnswer,
+    }));
   };
 
   /** What the settings list says about each section. */
@@ -510,7 +639,9 @@ export function createHttpApp(application: Application, options: HttpOptions) {
       members: (await familyMembers.list()).map((member) => member.name),
       agendas: (await agendas.list()).length,
       sources: allSources.length,
-      failingSources: allSources.filter((source) => source.health.status === "failing").length,
+      failingSources: allSources.filter(
+        (source) => source.health.status === "failing",
+      ).length,
       llm: endpoint ? { model: endpoint.model, local: endpoint.local } : null,
       admins: (await admins.listAdmins()).length,
       singleSignOn: (await singleSignOn.current())?.enabled ?? false,
@@ -520,7 +651,9 @@ export function createHttpApp(application: Application, options: HttpOptions) {
       ocr: {
         enabled: language.ocrEnabled,
         languages: language.ocrLanguages.map((ocr) => ocr.language),
-        missing: language.ocrEnabled && language.ocrLanguages.some((ocr) => !ocr.installed),
+        missing:
+          language.ocrEnabled &&
+          language.ocrLanguages.some((ocr) => !ocr.installed),
       },
     };
   };
@@ -538,9 +671,11 @@ export function createHttpApp(application: Application, options: HttpOptions) {
   });
   // Until an Admin confirms saving the Recovery Kit, the Admin area shows only the kit (ADR-0003).
   const requireSavedRecoveryKit = createMiddleware<Env>(async (c, next) => {
-    const exempt = ["/admin/sign-in", "/admin/sign-out"].includes(c.req.path) ||
+    const exempt =
+      ["/admin/sign-in", "/admin/sign-out"].includes(c.req.path) ||
       c.req.path.startsWith("/admin/recovery-kit");
-    if (!exempt && !(await recoveryKit.isConfirmed())) return c.redirect("/admin/recovery-kit");
+    if (!exempt && !(await recoveryKit.isConfirmed()))
+      return c.redirect("/admin/recovery-kit");
     await next();
   });
   /**
@@ -550,14 +685,28 @@ export function createHttpApp(application: Application, options: HttpOptions) {
    */
   const dialogResponses = createMiddleware<Env>(async (c, next) => {
     await next();
-    if (c.req.header("hx-request") !== "true" || c.req.header("hx-target") !== "fam-dialog-slot" || c.req.header("hx-history-restore-request")) return;
+    if (
+      c.req.header("hx-request") !== "true" ||
+      c.req.header("hx-target") !== "fam-dialog-slot" ||
+      c.req.header("hx-history-restore-request")
+    )
+      return;
     const location = c.res.headers.get("location");
-    const page = location === null && (await c.res.clone().text()).startsWith("<!DOCTYPE");
+    const page =
+      location === null && (await c.res.clone().text()).startsWith("<!DOCTYPE");
     if (location === null && !page) return;
-    const to = location ?? (c.req.method === "GET" ? new URL(c.req.url).pathname + new URL(c.req.url).search : (c.req.header("referer") ?? "/admin/sources"));
-    c.res = new Response(null, { status: 204, headers: { "HX-Redirect": to, "cache-control": "no-store" } });
+    const to =
+      location ??
+      (c.req.method === "GET"
+        ? new URL(c.req.url).pathname + new URL(c.req.url).search
+        : (c.req.header("referer") ?? "/admin/sources"));
+    c.res = new Response(null, {
+      status: 204,
+      headers: { "HX-Redirect": to, "cache-control": "no-store" },
+    });
   });
-  for (const path of ["/admin", "/admin/*"]) app.use(path, dialogResponses, requireAdmin, requireSavedRecoveryKit);
+  for (const path of ["/admin", "/admin/*"])
+    app.use(path, dialogResponses, requireAdmin, requireSavedRecoveryKit);
 
   app.post("/admin/sign-out", async (c) => {
     const token = getCookie(c, sessionCookie);
@@ -582,15 +731,21 @@ export function createHttpApp(application: Application, options: HttpOptions) {
   app.get("/admin/recovery-kit", (c) => recoveryKitPage(c));
 
   app.get("/admin/recovery-kit/download", (c) =>
-    c.text(recoveryKitText(recoveryKit.contents(), c.get("translation").t), 200, {
-      "cache-control": "no-store",
-      "content-disposition": 'attachment; filename="family-agenda-recovery-kit.txt"',
-    }),
+    c.text(
+      recoveryKitText(recoveryKit.contents(), c.get("translation").t),
+      200,
+      {
+        "cache-control": "no-store",
+        "content-disposition":
+          'attachment; filename="family-agenda-recovery-kit.txt"',
+      },
+    ),
   );
 
   app.post("/admin/recovery-kit/confirm", async (c) => {
     const form = await c.req.parseBody();
-    if (field(form, "saved") !== "yes") return recoveryKitPage(c, problemIn(c, "kit-not-saved"));
+    if (field(form, "saved") !== "yes")
+      return recoveryKitPage(c, problemIn(c, "kit-not-saved"));
     await recoveryKit.confirm();
     return c.redirect("/admin", 303);
   });
@@ -600,7 +755,11 @@ export function createHttpApp(application: Application, options: HttpOptions) {
 
   const adminsPage = async (
     c: Context<Env>,
-    shown: { problem?: string; adding?: { email?: string; problem?: string }; editing?: { id: AdminId; problem?: string } } = {},
+    shown: {
+      problem?: string;
+      adding?: { email?: string; problem?: string };
+      editing?: { id: AdminId; problem?: string };
+    } = {},
   ) => {
     const page = (
       <AdminsPage
@@ -611,7 +770,15 @@ export function createHttpApp(application: Application, options: HttpOptions) {
         {...(shown.editing ? { editing: shown.editing } : {})}
       />
     );
-    return render(c, page, shownStatus(undefined, [shown.problem, shown.adding?.problem, shown.editing?.problem]));
+    return render(
+      c,
+      page,
+      shownStatus(undefined, [
+        shown.problem,
+        shown.adding?.problem,
+        shown.editing?.problem,
+      ]),
+    );
   };
 
   app.get("/admin/admins", (c) => adminsPage(c));
@@ -619,13 +786,21 @@ export function createHttpApp(application: Application, options: HttpOptions) {
   app.get("/admin/admins/new", (c) => adminsPage(c, { adding: {} }));
 
   // Another Admin opens in a dialog, where their password is reset.
-  app.get("/admin/admins/:id", (c) => adminsPage(c, { editing: { id: c.req.param("id") as AdminId } }));
+  app.get("/admin/admins/:id", (c) =>
+    adminsPage(c, { editing: { id: c.req.param("id") as AdminId } }),
+  );
 
   app.post("/admin/admins", async (c) => {
     const form = await c.req.parseBody();
     const email = field(form, "email");
-    const result = await admins.createAdmin({ email, password: field(form, "password") });
-    if (!result.ok) return adminsPage(c, { adding: { email, problem: problemIn(c, result.problem) } });
+    const result = await admins.createAdmin({
+      email,
+      password: field(form, "password"),
+    });
+    if (!result.ok)
+      return adminsPage(c, {
+        adding: { email, problem: problemIn(c, result.problem) },
+      });
     return c.redirect("/admin/admins", 303);
   });
 
@@ -635,15 +810,26 @@ export function createHttpApp(application: Application, options: HttpOptions) {
       adminId: c.req.param("id") as AdminId,
       newPassword: field(form, "password"),
     });
-    if (!result.ok) return adminsPage(c, { editing: { id: c.req.param("id") as AdminId, problem: problemIn(c, result.problem) } });
+    if (!result.ok)
+      return adminsPage(c, {
+        editing: {
+          id: c.req.param("id") as AdminId,
+          problem: problemIn(c, result.problem),
+        },
+      });
     return c.redirect("/admin/admins", 303);
   });
 
-function shownStatus(status: 200 | 400 | 413 | undefined, problems: (string | undefined)[]): 200 | 400 | 413 {
-  return status ?? (problems.some((p) => p !== undefined && p !== "") ? 400 : 200);
-}
+  function shownStatus(
+    status: 200 | 400 | 413 | undefined,
+    problems: (string | undefined)[],
+  ): 200 | 400 | 413 {
+    return (
+      status ?? (problems.some((p) => p !== undefined && p !== "") ? 400 : 200)
+    );
+  }
 
-    const familyMembersPage = async (
+  const familyMembersPage = async (
     c: Context<Env>,
     shown: {
       problem?: string;
@@ -662,7 +848,11 @@ function shownStatus(status: 200 | 400 | 413 | undefined, problems: (string | un
         {...(editing ? { editing } : {})}
       />
     );
-    return render(c, page, shownStatus(shown.status, [problem, adding?.problem, editing?.problem]));
+    return render(
+      c,
+      page,
+      shownStatus(shown.status, [problem, adding?.problem, editing?.problem]),
+    );
   };
 
   // A photo and the rest of the form; larger uploads are refused before they are read.
@@ -671,43 +861,70 @@ function shownStatus(status: 200 | 400 | 413 | undefined, problems: (string | un
     onError: (c: Context<Env>) => {
       const problem = problemIn(c, "photo-too-large");
       // Adding and editing show the problem in their dialog.
-      const editing = /^\/admin\/family-members\/([^/]+)$/.exec(c.req.path)?.[1];
-      const shown = editing ? { editing: { id: editing as FamilyMemberId, problem } } : { adding: { problem } };
+      const editing = /^\/admin\/family-members\/([^/]+)$/.exec(
+        c.req.path,
+      )?.[1];
+      const shown = editing
+        ? { editing: { id: editing as FamilyMemberId, problem } }
+        : { adding: { problem } };
       return familyMembersPage(c, { ...shown, status: 413 });
     },
   });
 
   app.get("/admin/family-members", (c) => familyMembersPage(c));
 
-  app.get("/admin/family-members/new", (c) => familyMembersPage(c, { adding: {} }));
+  app.get("/admin/family-members/new", (c) =>
+    familyMembersPage(c, { adding: {} }),
+  );
 
-  app.get("/admin/family-members/:id", (c) => familyMembersPage(c, { editing: { id: c.req.param("id") as FamilyMemberId } }));
+  app.get("/admin/family-members/:id", (c) =>
+    familyMembersPage(c, {
+      editing: { id: c.req.param("id") as FamilyMemberId },
+    }),
+  );
 
   app.post("/admin/family-members", photoUpload, async (c) => {
     const form = await c.req.parseBody();
     const name = field(form, "name");
     const photo = await upload(form, "photo");
-    const result = await familyMembers.add({ name, ...(photo ? { photo } : {}) });
-    if (!result.ok) return familyMembersPage(c, { adding: { name, problem: problemIn(c, result.problem) } });
+    const result = await familyMembers.add({
+      name,
+      ...(photo ? { photo } : {}),
+    });
+    if (!result.ok)
+      return familyMembersPage(c, {
+        adding: { name, problem: problemIn(c, result.problem) },
+      });
     return c.redirect("/admin/family-members", 303);
   });
 
   app.post("/admin/family-members/:id", photoUpload, async (c) => {
     const form = await c.req.parseBody();
-    const photo = field(form, "removePhoto") === "yes" ? null : await upload(form, "photo");
-    const result = await familyMembers.edit(c.req.param("id") as FamilyMemberId, {
-      name: field(form, "name"),
-      ...(photo !== undefined ? { photo } : {}),
-    });
+    const photo =
+      field(form, "removePhoto") === "yes" ? null : await upload(form, "photo");
+    const result = await familyMembers.edit(
+      c.req.param("id") as FamilyMemberId,
+      {
+        name: field(form, "name"),
+        ...(photo !== undefined ? { photo } : {}),
+      },
+    );
     if (!result.ok) {
-      return familyMembersPage(c, { editing: { id: c.req.param("id") as FamilyMemberId, problem: problemIn(c, result.problem) } });
+      return familyMembersPage(c, {
+        editing: {
+          id: c.req.param("id") as FamilyMemberId,
+          problem: problemIn(c, result.problem),
+        },
+      });
     }
     return c.redirect("/admin/family-members", 303);
   });
 
   app.post("/admin/family-members/:id/remove", async (c) => {
     const id = c.req.param("id") as FamilyMemberId;
-    const name = (await familyMembers.list()).find((member) => member.id === id)?.name ?? "";
+    const name =
+      (await familyMembers.list()).find((member) => member.id === id)?.name ??
+      "";
     const result = await familyMembers.remove(id);
     if (result.ok) return c.redirect("/admin/family-members", 303);
     // Say which Source Attributes keep them, each with its Source's name.
@@ -717,12 +934,18 @@ function shownStatus(status: 200 | 400 | 413 | undefined, problems: (string | un
       return `${source?.name ?? (source ? c.get("translation").text(source.displayName) : "")}: ${attribute}`;
     });
     const { t, list } = c.get("translation");
-    return familyMembersPage(c, { problem: t.members.soleAssignee(name, list(blocking)) });
+    return familyMembersPage(c, {
+      problem: t.members.soleAssignee(name, list(blocking)),
+    });
   });
 
   const agendasPage = async (
     c: Context<Env>,
-    shown: { problem?: string; creating?: { problem?: string }; editing?: { id: AgendaId; problem?: string } } = {},
+    shown: {
+      problem?: string;
+      creating?: { problem?: string };
+      editing?: { id: AgendaId; problem?: string };
+    } = {},
   ) => {
     const page = (
       <AgendasPage
@@ -735,7 +958,15 @@ function shownStatus(status: 200 | 400 | 413 | undefined, problems: (string | un
         {...(shown.editing ? { editing: shown.editing } : {})}
       />
     );
-    return render(c, page, shownStatus(undefined, [shown.problem, shown.creating?.problem, shown.editing?.problem]));
+    return render(
+      c,
+      page,
+      shownStatus(undefined, [
+        shown.problem,
+        shown.creating?.problem,
+        shown.editing?.problem,
+      ]),
+    );
   };
 
   const agendaSettingsOf = async (c: Context<Env>) => {
@@ -755,17 +986,31 @@ function shownStatus(status: 200 | 400 | 413 | undefined, problems: (string | un
 
   app.get("/admin/agendas/new", (c) => agendasPage(c, { creating: {} }));
 
-  app.get("/admin/agendas/:id", (c) => agendasPage(c, { editing: { id: c.req.param("id") as AgendaId } }));
+  app.get("/admin/agendas/:id", (c) =>
+    agendasPage(c, { editing: { id: c.req.param("id") as AgendaId } }),
+  );
 
   app.post("/admin/agendas", async (c) => {
     const result = await agendas.create(await agendaSettingsOf(c));
-    if (!result.ok) return agendasPage(c, { creating: { problem: problemIn(c, result.problem) } });
+    if (!result.ok)
+      return agendasPage(c, {
+        creating: { problem: problemIn(c, result.problem) },
+      });
     return c.redirect("/admin/agendas", 303);
   });
 
   app.post("/admin/agendas/:id", async (c) => {
-    const result = await agendas.edit(c.req.param("id") as AgendaId, await agendaSettingsOf(c));
-    if (!result.ok) return agendasPage(c, { editing: { id: c.req.param("id") as AgendaId, problem: problemIn(c, result.problem) } });
+    const result = await agendas.edit(
+      c.req.param("id") as AgendaId,
+      await agendaSettingsOf(c),
+    );
+    if (!result.ok)
+      return agendasPage(c, {
+        editing: {
+          id: c.req.param("id") as AgendaId,
+          problem: problemIn(c, result.problem),
+        },
+      });
     return c.redirect("/admin/agendas", 303);
   });
 
@@ -776,7 +1021,13 @@ function shownStatus(status: 200 | 400 | 413 | undefined, problems: (string | un
 
   // Each Source Type's card, leading to its page with its Sources.
   const sourcesPage = async (c: Context<Env>) => {
-    const page = <SourcesPage admin={c.get("admin")} sourceTypes={await sourceTypes.list()} sources={await sources.list()} />;
+    const page = (
+      <SourcesPage
+        admin={c.get("admin")}
+        sourceTypes={await sourceTypes.list()}
+        sources={await sources.list()}
+      />
+    );
     return render(c, page);
   };
 
@@ -792,13 +1043,27 @@ function shownStatus(status: 200 | 400 | 413 | undefined, problems: (string | un
   const sourceTypePage = async (
     c: Context<Env>,
     id: string,
-    shown: { problem?: string; adding?: SourceAdding; settingUp?: SourceSummary } = {},
+    shown: {
+      problem?: string;
+      adding?: SourceAdding;
+      settingUp?: SourceSummary;
+    } = {},
   ) => {
-    const [types, ofType] = await Promise.all([sourceTypes.list(), sources.listOfType(id)]);
+    const [types, ofType] = await Promise.all([
+      sourceTypes.list(),
+      sources.listOfType(id),
+    ]);
     const sourceType = types.find((type) => type.id === id) ?? null;
     const displayName = sourceType?.displayName ?? ofType[0]?.displayName;
     if (!displayName) return c.redirect("/admin/sources");
-    const page = await sourceTypePageElement(c, id, sourceType, displayName, ofType, shown);
+    const page = await sourceTypePageElement(
+      c,
+      id,
+      sourceType,
+      displayName,
+      ofType,
+      shown,
+    );
     return render(c, page, refusedStatus(shown));
   };
 
@@ -808,7 +1073,11 @@ function shownStatus(status: 200 | 400 | 413 | undefined, problems: (string | un
     sourceType: SourceTypeSummary | null,
     displayName: MultilingualText,
     ofType: SourceSummary[],
-    shown: { problem?: string; adding?: SourceAdding; settingUp?: SourceSummary },
+    shown: {
+      problem?: string;
+      adding?: SourceAdding;
+      settingUp?: SourceSummary;
+    },
   ) {
     const [form, members, recordedEntryIds] = await Promise.all([
       // Without the catalogue's entries, which load after the page.
@@ -830,7 +1099,7 @@ function shownStatus(status: 200 | 400 | 413 | undefined, problems: (string | un
         {...(shown.problem ? { problem: shown.problem } : {})}
         {...(shown.adding ? { adding: shown.adding } : {})}
         addings={sources.addingsOf(id)}
-        {...(shown.settingUp ? { settingUp: shown.settingUp, liveSteps: await liveStepsOf(shown.settingUp) } : {})}
+        {...(shown.settingUp ? { settingUp: shown.settingUp } : {})}
       />
     );
   }
@@ -838,19 +1107,22 @@ function shownStatus(status: 200 | 400 | 413 | undefined, problems: (string | un
   const refusedStatus = (shown: { problem?: string; adding?: SourceAdding }) =>
     shown.problem || shown.adding?.problem ? 400 : 200;
 
-  app.get("/admin/source-types/:id", (c) => sourceTypePage(c, c.req.param("id")));
+  app.get("/admin/source-types/:id", (c) =>
+    sourceTypePage(c, c.req.param("id")),
+  );
 
   // A Source Type's catalogue with the Sources at its entries, loaded after its page.
   app.get("/admin/source-types/:id/catalogue", async (c) => {
     const id = c.req.param("id");
-    const [catalogue, types, ofType, form, members, recordedEntryIds] = await Promise.all([
-      catalogues.of(id),
-      sourceTypes.list(),
-      sources.listOfType(id),
-      sources.formOf(id),
-      familyMembers.list(),
-      catalogues.recordedEntryIds(id),
-    ]);
+    const [catalogue, types, ofType, form, members, recordedEntryIds] =
+      await Promise.all([
+        catalogues.of(id),
+        sourceTypes.list(),
+        sources.listOfType(id),
+        sources.formOf(id),
+        familyMembers.list(),
+        catalogues.recordedEntryIds(id),
+      ]);
     if (!catalogue) return c.body(null, 404);
     const sourceType = types.find((type) => type.id === id) ?? null;
     return render(
@@ -872,51 +1144,72 @@ function shownStatus(status: 200 | 400 | 413 | undefined, problems: (string | un
   /** Enabling or disabling a Source Type or a catalogue entry: the same form, refused the same way. */
   const enablement = (
     path: string,
-    act: (params: Record<string, string>, riskAcknowledged: boolean) => Promise<{ ok: true } | { ok: false; problem: ProblemKey }>,
+    act: (
+      params: Record<string, string>,
+      riskAcknowledged: boolean,
+    ) => Promise<{ ok: true } | { ok: false; problem: ProblemKey }>,
   ) => {
     app.post(path, async (c) => {
       const form = await c.req.parseBody();
       const id = c.req.param("id") ?? "";
-      const result = await act(c.req.param(), field(form, "riskAcknowledged") === "yes");
-      if (!result.ok) return sourceTypePage(c, id, { problem: problemIn(c, result.problem) });
+      const result = await act(
+        c.req.param(),
+        field(form, "riskAcknowledged") === "yes",
+      );
+      if (!result.ok)
+        return sourceTypePage(c, id, { problem: problemIn(c, result.problem) });
       return c.redirect(sourceTypeHref(id), 303);
     });
   };
 
-  enablement("/admin/source-types/:id/enable", ({ id = "" }, riskAcknowledged) => sourceTypes.enable(id, { riskAcknowledged }));
-  enablement("/admin/source-types/:id/disable", ({ id = "" }) => sourceTypes.disable(id));
-  enablement("/admin/source-types/:id/catalogue/:entry/enable", ({ id = "", entry = "" }, riskAcknowledged) =>
-    catalogues.enable(id, entry, { riskAcknowledged }),
+  enablement(
+    "/admin/source-types/:id/enable",
+    ({ id = "" }, riskAcknowledged) =>
+      sourceTypes.enable(id, { riskAcknowledged }),
   );
-  enablement("/admin/source-types/:id/catalogue/:entry/disable", ({ id = "", entry = "" }) => catalogues.disable(id, entry));
+  enablement("/admin/source-types/:id/disable", ({ id = "" }) =>
+    sourceTypes.disable(id),
+  );
+  enablement(
+    "/admin/source-types/:id/catalogue/:entry/enable",
+    ({ id = "", entry = "" }, riskAcknowledged) =>
+      catalogues.enable(id, entry, { riskAcknowledged }),
+  );
+  enablement(
+    "/admin/source-types/:id/catalogue/:entry/disable",
+    ({ id = "", entry = "" }) => catalogues.disable(id, entry),
+  );
 
   // How often the Sources using a catalogue entry are polled, such as all WhatsApp accounts.
   app.post("/admin/source-types/:id/catalogue/:entry/interval", async (c) => {
     const id = c.req.param("id");
-    const minutes = field(await c.req.parseBody(), "pollIntervalMinutes").trim();
-    const result = await catalogues.setPollInterval(id, c.req.param("entry"), minutes === "" ? null : Number(minutes) * 60);
-    if (!result.ok) return sourceTypePage(c, id, { problem: problemIn(c, result.problem) });
+    const minutes = field(
+      await c.req.parseBody(),
+      "pollIntervalMinutes",
+    ).trim();
+    const result = await catalogues.setPollInterval(
+      id,
+      c.req.param("entry"),
+      minutes === "" ? null : Number(minutes) * 60,
+    );
+    if (!result.ok)
+      return sourceTypePage(c, id, { problem: problemIn(c, result.problem) });
     return c.redirect(sourceTypeHref(id), 303);
   });
 
-  /** What the live setup steps of a Source show now, such as a QR code to scan. */
-  const liveStepsOf = async (source: SourceSummary): Promise<LiveStep[]> => {
-    const form = (await sources.forms()).find((candidate) => candidate.sourceTypeId === source.sourceTypeId);
-    const candidates = form ? form.setupSteps : [];
-    const steps: LiveStep[] = [];
-    for (const step of candidates.filter((candidate) => candidate.live)) {
-      const live = await liveStepOf(source.id, step.id);
-      if (live) steps.push(live);
-    }
-    return steps;
-  };
-
-  const liveStepOf = async (sourceId: SourceId, stepId: string): Promise<LiveStep | null> => {
+  const liveStepOf = async (
+    sourceId: SourceId,
+    stepId: string,
+  ): Promise<LiveStep | null> => {
     const progress = await sources.setupProgress(sourceId, stepId);
     if (!progress) return null;
     const qrSvg =
       progress.status === "waiting" && progress.qrCode !== null
-        ? await QRCode.toString(progress.qrCode, { type: "svg", margin: 0, errorCorrectionLevel: "L" })
+        ? await QRCode.toString(progress.qrCode, {
+            type: "svg",
+            margin: 0,
+            errorCorrectionLevel: "L",
+          })
         : null;
     return { sourceId, stepId, progress, qrSvg };
   };
@@ -924,13 +1217,23 @@ function shownStatus(status: 200 | 400 | 413 | undefined, problems: (string | un
   /** The message for a Source that cannot be saved, naming the fields by their labels. */
   const sourceProblem = async (
     c: Context<Env>,
-    result: { problem: ProblemKey } | { problem: "invalid-config"; fields: string[] } | { problem: "setup-failed"; message: string },
+    result:
+      | { problem: ProblemKey }
+      | { problem: "invalid-config"; fields: string[] }
+      | { problem: "setup-failed"; message: string },
   ) => {
-    if (result.problem === "setup-failed") return c.get("translation").t.problemsWith.setupFailed(result.message);
+    if (result.problem === "setup-failed")
+      return c.get("translation").t.problemsWith.setupFailed(result.message);
     if (!("fields" in result)) return problemIn(c, result.problem);
     const { t, text, list } = c.get("translation");
-    const labels = new Map((await sources.forms()).flatMap((form) => form.fields.map((f) => [f.key, text(f.label)])));
-    return t.problemsWith.invalidConfig(list(result.fields.map((key) => labels.get(key) ?? key)));
+    const labels = new Map(
+      (await sources.forms()).flatMap((form) =>
+        form.fields.map((f) => [f.key, text(f.label)]),
+      ),
+    );
+    return t.problemsWith.invalidConfig(
+      list(result.fields.map((key) => labels.get(key) ?? key)),
+    );
   };
 
   /**
@@ -941,7 +1244,10 @@ function shownStatus(status: 200 | 400 | 413 | undefined, problems: (string | un
     c.header("vary", "HX-Request");
     // One address answers the dialog alone or the whole page.
     c.header("cache-control", "no-store");
-    return c.req.header("hx-request") === "true" && !c.req.header("hx-history-restore-request");
+    return (
+      c.req.header("hx-request") === "true" &&
+      !c.req.header("hx-history-restore-request")
+    );
   };
 
   /** Where a dialog's submit goes on: htmx is told to load that page, a plain form is redirected. */
@@ -953,25 +1259,34 @@ function shownStatus(status: 200 | 400 | 413 | undefined, problems: (string | un
 
   /** The Add dialog, alone for htmx, over its Source Type's page otherwise. */
   const addingShown = (c: Context<Env>, adding: SourceAdding) =>
-    dialogAlone(c) ? render(c, <AddSourceDialog adding={adding} />) : sourceTypePage(c, adding.form.sourceTypeId, { adding });
+    dialogAlone(c)
+      ? render(c, <AddSourceDialog adding={adding} />)
+      : sourceTypePage(c, adding.form.sourceTypeId, { adding });
 
   /** The page of a Source being added in the background. */
-  const addingHref = (id: AddingId) => `/admin/sources/adding/${encodeURIComponent(id)}`;
+  const addingHref = (id: AddingId) =>
+    `/admin/sources/adding/${encodeURIComponent(id)}`;
 
   /** A Source by its id, for the page of its Source Type. */
-  const sourceOf = async (id: string) => (await sources.list()).find((source) => source.id === id);
+  const sourceOf = async (id: string) =>
+    (await sources.list()).find((source) => source.id === id);
 
   // Adding a Source: its Source Type's form, in a dialog over that Source Type's page.
   app.get("/admin/sources/new", async (c) => {
     const type = c.req.query("type");
     dialogAlone(c);
     if (type === undefined) return c.redirect("/admin/sources");
-    const form = (await sources.forms()).find((candidate) => candidate.sourceTypeId === type);
+    const form = (await sources.forms()).find(
+      (candidate) => candidate.sourceTypeId === type,
+    );
     if (!form) return c.redirect(sourceTypeHref(type));
     // Added at a catalogue entry, such as a Messenger, the Source uses that entry.
     const entry = c.req.query("entry");
     if (form.catalogue && entry !== undefined) {
-      return addingShown(c, { form, entered: { plain: { [form.catalogue.configKey]: entry }, interval: "" } });
+      return addingShown(c, {
+        form,
+        entered: { plain: { [form.catalogue.configKey]: entry }, interval: "" },
+      });
     }
     return addingShown(c, { form });
   });
@@ -983,13 +1298,27 @@ function shownStatus(status: 200 | 400 | 413 | undefined, problems: (string | un
     const result = await sources.startAdding({ sourceTypeId, ...input });
     if (!result.ok) {
       const problem = await sourceProblem(c, result);
-      const sourceForm = (await sources.forms()).find((candidate) => candidate.sourceTypeId === sourceTypeId);
+      const sourceForm = (await sources.forms()).find(
+        (candidate) => candidate.sourceTypeId === sourceTypeId,
+      );
       // Its Source Type cannot be added to now; its page, loaded whole, says why.
-      if (!sourceForm) return dialogAlone(c) ? goOn(c, sourceTypeHref(sourceTypeId)) : sourceTypePage(c, sourceTypeId, { problem });
-      return addingShown(c, { form: sourceForm, entered: enteredOf(form, input), problem });
+      if (!sourceForm)
+        return dialogAlone(c)
+          ? goOn(c, sourceTypeHref(sourceTypeId))
+          : sourceTypePage(c, sourceTypeId, { problem });
+      return addingShown(c, {
+        form: sourceForm,
+        entered: enteredOf(form, input),
+        problem,
+      });
     }
     if ("adding" in result) return goOn(c, sourceTypeHref(sourceTypeId));
-    return goOn(c, result.setUp ? `/admin/sources/${result.id}/setup` : sourceTypeHref(sourceTypeId));
+    return goOn(
+      c,
+      result.setUp
+        ? `/admin/sources/${result.id}/setup`
+        : sourceTypeHref(sourceTypeId),
+    );
   });
 
   // A Source added in the background: once its plugin prepared it, where it goes on; once it failed, its form again.
@@ -997,15 +1326,36 @@ function shownStatus(status: 200 | 400 | 413 | undefined, problems: (string | un
     const id = c.req.param("adding") as AddingId;
     const progress = sources.adding(id);
     if (!progress) return c.redirect("/admin/sources");
-    if (progress.status === "added") return c.redirect(progress.setUp ? `/admin/sources/${progress.id}/setup` : sourceTypeHref(progress.sourceTypeId));
-    if (progress.status === "running") return c.redirect(sourceTypeHref(progress.sourceTypeId));
+    if (progress.status === "added")
+      return c.redirect(
+        progress.setUp
+          ? `/admin/sources/${progress.id}/setup`
+          : sourceTypeHref(progress.sourceTypeId),
+      );
+    if (progress.status === "running")
+      return c.redirect(sourceTypeHref(progress.sourceTypeId));
     sources.forgetAdding(id);
-    const sourceForm = (await sources.forms()).find((candidate) => candidate.sourceTypeId === progress.sourceTypeId);
-    const problem = c.get("translation").t.problemsWith.setupFailed(progress.message);
-    if (!sourceForm) return sourceTypePage(c, progress.sourceTypeId, { problem });
-    const plain = Object.fromEntries(Object.entries(progress.plain).map(([key, value]) => [key, String(value)]));
-    const interval = progress.pollIntervalSeconds === null ? "" : String(progress.pollIntervalSeconds / 60);
-    return sourceTypePage(c, progress.sourceTypeId, { adding: { form: sourceForm, entered: { plain, interval }, problem } });
+    const sourceForm = (await sources.forms()).find(
+      (candidate) => candidate.sourceTypeId === progress.sourceTypeId,
+    );
+    const problem = c
+      .get("translation")
+      .t.problemsWith.setupFailed(progress.message);
+    if (!sourceForm)
+      return sourceTypePage(c, progress.sourceTypeId, { problem });
+    const plain = Object.fromEntries(
+      Object.entries(progress.plain).map(([key, value]) => [
+        key,
+        String(value),
+      ]),
+    );
+    const interval =
+      progress.pollIntervalSeconds === null
+        ? ""
+        : String(progress.pollIntervalSeconds / 60);
+    return sourceTypePage(c, progress.sourceTypeId, {
+      adding: { form: sourceForm, entered: { plain, interval }, problem },
+    });
   });
 
   // A row of a Source being added, asked for every few seconds; once it is no longer, the page goes on.
@@ -1013,7 +1363,9 @@ function shownStatus(status: 200 | 400 | 413 | undefined, problems: (string | un
     const id = c.req.param("adding") as AddingId;
     const progress = sources.adding(id);
     if (progress?.status === "running" || progress?.status === "failed") {
-      const form = (await sources.forms()).find((candidate) => candidate.sourceTypeId === progress.sourceTypeId);
+      const form = (await sources.forms()).find(
+        (candidate) => candidate.sourceTypeId === progress.sourceTypeId,
+      );
       return render(c, <AddingRow adding={{ id, progress }} form={form} />);
     }
     c.header("HX-Redirect", progress ? addingHref(id) : "/admin/sources");
@@ -1027,23 +1379,37 @@ function shownStatus(status: 200 | 400 | 413 | undefined, problems: (string | un
     return sourceTypePage(c, settingUp.sourceTypeId, { settingUp });
   });
 
-  // What a live setup step shows now; asked for again every few seconds while it waits.
+  // What a live setup step shows now, loaded by its dialog at once and asked for again every few seconds while it waits.
   app.get("/admin/sources/:id/setup/:step", async (c) => {
-    const live = await liveStepOf(c.req.param("id") as SourceId, c.req.param("step"));
+    const live = await liveStepOf(
+      c.req.param("id") as SourceId,
+      c.req.param("step"),
+    );
     if (!live) return c.body(null, 404);
     return render(c, <LiveStepProgress step={live} />);
   });
 
-  /** What a Source's page and its Fix dialog show of it: its form, the Members, and its live setup steps when fixing. */
-  const sourceShown = async (listed: SourceSummary, fixing: boolean) => {
+  /** What a Source's page and its Fix dialog show of it: its form and the Members; its live setup steps load on their own. */
+  const sourceShown = async (listed: SourceSummary) => {
     // The values its choice fields offer load after it, each on its own.
-    const [forms, members, liveSteps] = await Promise.all([sources.forms(), familyMembers.list(), fixing ? liveStepsOf(listed) : Promise.resolve([])]);
-    return { source: listed, form: forms.find((form) => form.sourceTypeId === listed.sourceTypeId), members, liveSteps };
+    const [forms, members] = await Promise.all([
+      sources.forms(),
+      familyMembers.list(),
+    ]);
+    return {
+      source: listed,
+      form: forms.find((form) => form.sourceTypeId === listed.sourceTypeId),
+      members,
+    };
   };
 
   /** A Source's page, with its Fix dialog over it once its Fix button is pressed. */
-  const sourcePage = async (c: Context<Env>, listed: SourceSummary, shown: { problem?: string; fixing?: boolean } = {}) => {
-    const { source, form, members, liveSteps } = await sourceShown(listed, shown.fixing === true);
+  const sourcePage = async (
+    c: Context<Env>,
+    listed: SourceSummary,
+    shown: { problem?: string; fixing?: boolean } = {},
+  ) => {
+    const { source, form, members } = await sourceShown(listed);
     const page = (
       <SourcePage
         admin={c.get("admin")}
@@ -1052,9 +1418,11 @@ function shownStatus(status: 200 | 400 | 413 | undefined, problems: (string | un
         members={members}
         timeZone={timeZone}
         {...(shown.problem ? { problem: shown.problem } : {})}
-        {...(shown.fixing ? { fixing: true, liveSteps } : {})}
+        {...(shown.fixing ? { fixing: true } : {})}
         attributesOnDemand={await sources.namesAttributesOnDemand(source.id)}
-        {...((await sourceTypes.list()).find((type) => type.id === source.sourceTypeId)?.needsLlm
+        {...((await sourceTypes.list()).find(
+          (type) => type.id === source.sourceTypeId,
+        )?.needsLlm
           ? { waiting: await extraction.waiting({ sourceId: source.id }) }
           : {})}
       />
@@ -1066,12 +1434,24 @@ function shownStatus(status: 200 | 400 | 413 | undefined, problems: (string | un
    * The Fix dialog of a Source alone, with what was entered and why it was refused, if it was;
    * for one whose plugin cannot be loaded, which has no form, htmx loads its page whole.
    */
-  const fixDialog = async (c: Context<Env>, listed: SourceSummary, refused?: { problem: string; entered: Entered }) => {
-    const { source, form, members, liveSteps } = await sourceShown(listed, true);
+  const fixDialog = async (
+    c: Context<Env>,
+    listed: SourceSummary,
+    refused?: { problem: string; entered: Entered },
+  ) => {
+    const { source, form, members } = await sourceShown(listed);
     if (!form) return goOn(c, sourceHref(source.id));
     return render(
       c,
-      <FixDialog source={source} problem={refused?.problem} entered={refused?.entered} form={form} closeHref={sourceHref(source.id)} timeZone={timeZone} liveSteps={liveSteps} members={members} />,
+      <FixDialog
+        source={source}
+        problem={refused?.problem}
+        entered={refused?.entered}
+        form={form}
+        closeHref={sourceHref(source.id)}
+        timeZone={timeZone}
+        members={members}
+      />,
     );
   };
 
@@ -1085,7 +1465,9 @@ function shownStatus(status: 200 | 400 | 413 | undefined, problems: (string | un
   app.get("/admin/sources/:id/fix", async (c) => {
     const fixing = await sourceOf(c.req.param("id"));
     if (!fixing) return c.redirect("/admin/sources");
-    return dialogAlone(c) ? fixDialog(c, fixing) : sourcePage(c, fixing, { fixing: true });
+    return dialogAlone(c)
+      ? fixDialog(c, fixing)
+      : sourcePage(c, fixing, { fixing: true });
   });
 
   app.post("/admin/sources/:id", async (c) => {
@@ -1095,14 +1477,21 @@ function shownStatus(status: 200 | 400 | 413 | undefined, problems: (string | un
     // Its name is saved with the rest of its form; a name it refuses leaves everything as it was.
     if (typeof form.name === "string") {
       const renamed = await sources.rename(source.id, form.name);
-      if (!renamed.ok) return sourcePage(c, source, { problem: problemIn(c, renamed.problem) });
+      if (!renamed.ok)
+        return sourcePage(c, source, {
+          problem: problemIn(c, renamed.problem),
+        });
     }
     const input = sourceInputOf(form);
     const result = await sources.edit(source.id, input);
     if (!result.ok) {
       const problem = await sourceProblem(c, result);
       // The Fix dialog, loaded on its own, is answered alone.
-      if (dialogAlone(c)) return fixDialog(c, source, { problem, entered: enteredOf(form, input) });
+      if (dialogAlone(c))
+        return fixDialog(c, source, {
+          problem,
+          entered: enteredOf(form, input),
+        });
       return sourcePage(c, source, { problem });
     }
     return goOn(c, sourceHref(source.id));
@@ -1111,8 +1500,12 @@ function shownStatus(status: 200 | 400 | 413 | undefined, problems: (string | un
   app.post("/admin/sources/:id/name", async (c) => {
     const source = await sourceOf(c.req.param("id"));
     if (!source) return c.redirect("/admin/sources", 303);
-    const result = await sources.rename(source.id, field(await c.req.parseBody(), "name"));
-    if (!result.ok) return sourcePage(c, source, { problem: problemIn(c, result.problem) });
+    const result = await sources.rename(
+      source.id,
+      field(await c.req.parseBody(), "name"),
+    );
+    if (!result.ok)
+      return sourcePage(c, source, { problem: problemIn(c, result.problem) });
     return c.redirect(sourceHref(source.id), 303);
   });
 
@@ -1129,7 +1522,10 @@ function shownStatus(status: 200 | 400 | 413 | undefined, problems: (string | un
     const source = await sources.summary(c.req.param("id") as SourceId);
     if (!source) return c.body(null, 404);
     const attributesPending = c.req.query("attributes") === "pending";
-    const [form, members] = await Promise.all([sources.formOf(source.sourceTypeId, false), attributesPending ? familyMembers.list() : []]);
+    const [form, members] = await Promise.all([
+      sources.formOf(source.sourceTypeId, false),
+      attributesPending ? familyMembers.list() : [],
+    ]);
     const waited = Number(c.req.query("waited"));
     return render(
       c,
@@ -1146,9 +1542,18 @@ function shownStatus(status: 200 | 400 | 413 | undefined, problems: (string | un
 
   // Its Source Attributes as its plugin names them now, fetched by its page once shown.
   app.get("/admin/sources/:id/attributes", async (c) => {
-    const refreshed = await sources.refreshAttributes(c.req.param("id") as SourceId);
+    const refreshed = await sources.refreshAttributes(
+      c.req.param("id") as SourceId,
+    );
     if (!refreshed) return c.body(null, 404);
-    return render(c, <SourceAttributesSection source={refreshed.source} members={await familyMembers.list()} problem={refreshed.problem} />);
+    return render(
+      c,
+      <SourceAttributesSection
+        source={refreshed.source}
+        members={await familyMembers.list()}
+        problem={refreshed.problem}
+      />,
+    );
   });
 
   // One choice field of a Source's form with the values its plugin offers, loaded after the form.
@@ -1156,7 +1561,14 @@ function shownStatus(status: 200 | 400 | 413 | undefined, problems: (string | un
     const key = c.req.param("field");
     const found = await sources.choiceOf(c.req.param("id") as SourceId, key);
     if (!found) return c.body(null, 404);
-    return render(c, <LoadedChoiceField field={found.field} id={c.req.query("id") ?? `${found.source.id}-${key}`} source={found.source} />);
+    return render(
+      c,
+      <LoadedChoiceField
+        field={found.field}
+        id={c.req.query("id") ?? `${found.source.id}-${key}`}
+        source={found.source}
+      />,
+    );
   });
 
   // What a Source's row on its Source Type's page tells of its choices, such as its chats by name, loaded after the page.
@@ -1174,9 +1586,15 @@ function shownStatus(status: 200 | 400 | 413 | undefined, problems: (string | un
     const form = await c.req.parseBody({ all: true });
     for (const attribute of source.attributes) {
       const chosen = form[`member.${attribute.id}`];
-      const concerns = (Array.isArray(chosen) ? chosen : [chosen]).filter((id): id is string => typeof id === "string");
-      const result = await sources.assignAttribute(attribute.id, concerns as FamilyMemberId[]);
-      if (!result.ok) return sourcePage(c, source, { problem: problemIn(c, result.problem) });
+      const concerns = (Array.isArray(chosen) ? chosen : [chosen]).filter(
+        (id): id is string => typeof id === "string",
+      );
+      const result = await sources.assignAttribute(
+        attribute.id,
+        concerns as FamilyMemberId[],
+      );
+      if (!result.ok)
+        return sourcePage(c, source, { problem: problemIn(c, result.problem) });
     }
     return c.redirect(sourceHref(source.id), 303);
   });
@@ -1189,7 +1607,13 @@ function shownStatus(status: 200 | 400 | 413 | undefined, problems: (string | un
   });
 
   const displayPage = async (c: Context<Env>, problem?: string) => {
-    const page = <DisplayPage admin={c.get("admin")} family={await languages.familyLanguage()} {...(problem ? { problem } : {})} />;
+    const page = (
+      <DisplayPage
+        admin={c.get("admin")}
+        family={await languages.familyLanguage()}
+        {...(problem ? { problem } : {})}
+      />
+    );
     return render(c, page, problem ? 400 : 200);
   };
 
@@ -1235,7 +1659,9 @@ function shownStatus(status: 200 | 400 | 413 | undefined, problems: (string | un
   app.get("/admin/display", (c) => displayPage(c));
 
   app.post("/admin/display", async (c) => {
-    const result = await languages.setLanguage(field(await c.req.parseBody(), "language"));
+    const result = await languages.setLanguage(
+      field(await c.req.parseBody(), "language"),
+    );
     if (!result.ok) return displayPage(c, problemIn(c, result.problem));
     return c.redirect("/admin/display", 303);
   });
@@ -1254,13 +1680,17 @@ function shownStatus(status: 200 | 400 | 413 | undefined, problems: (string | un
   };
 
   app.post("/admin/llm/ocr/enabled", async (c) => {
-    await languages.setOcrEnabled(field(await c.req.parseBody(), "ocr") === "yes");
+    await languages.setOcrEnabled(
+      field(await c.req.parseBody(), "ocr") === "yes",
+    );
     return c.redirect("/admin/llm", 303);
   });
 
   // Adds an OCR language, downloading its model where needed; for a listed one whose model is missing, downloads it again.
   app.post("/admin/llm/ocr", async (c) => {
-    const result = await languages.addOcrLanguage(field(await c.req.parseBody(), "language"));
+    const result = await languages.addOcrLanguage(
+      field(await c.req.parseBody(), "language"),
+    );
     if (!result.ok) {
       const problem =
         result.problem === "download-failed"
@@ -1296,7 +1726,13 @@ function shownStatus(status: 200 | 400 | 413 | undefined, problems: (string | un
     const endpoint = await llmEndpoint.current();
     const check = endpoint ? await llmCheckOf(c, endpoint, false) : null;
     if (!endpoint || !check) return c.notFound();
-    return render(c, <LlmStatusFragment shown={{ model: c.req.query("model") ?? endpoint.model }} check={check} />);
+    return render(
+      c,
+      <LlmStatusFragment
+        shown={{ model: c.req.query("model") ?? endpoint.model }}
+        check={check}
+      />,
+    );
   });
 
   // The AI's summary in the settings list, loaded after every Admin page.
@@ -1304,25 +1740,44 @@ function shownStatus(status: 200 | 400 | 413 | undefined, problems: (string | un
     const endpoint = await llmEndpoint.current();
     const check = endpoint ? await llmCheckOf(c, endpoint, true) : null;
     if (!check) return c.notFound();
-    return render(c, <LlmNavSummary admin={c.get("admin")} health={check.ok ? "ok" : "failing"} />);
+    return render(
+      c,
+      <LlmNavSummary
+        admin={c.get("admin")}
+        health={check.ok ? "ok" : "failing"}
+      />,
+    );
   });
 
   // Tests the endpoint being entered, with the entered API key, when the Admin asks; never cached.
   app.post("/admin/llm/test", async (c) => {
     const form = await c.req.parseBody();
-    const answer = await llmEndpoint.checkAt({ baseUrl: field(form, "baseUrl"), apiKey: field(form, "apiKey") });
-    const check = "problem" in answer ? { ok: false as const, message: problemIn(c, answer.problem) } : answer;
-    return render(c, <LlmTestFragment shown={{ model: field(form, "model") }} check={check} />);
+    const answer = await llmEndpoint.checkAt({
+      baseUrl: field(form, "baseUrl"),
+      apiKey: field(form, "apiKey"),
+    });
+    const check =
+      "problem" in answer
+        ? { ok: false as const, message: problemIn(c, answer.problem) }
+        : answer;
+    return render(
+      c,
+      <LlmTestFragment shown={{ model: field(form, "model") }} check={check} />,
+    );
   });
 
   app.post("/admin/llm", async (c) => {
     const form = await c.req.parseBody();
-    const entered = { baseUrl: field(form, "baseUrl"), model: field(form, "model") };
+    const entered = {
+      baseUrl: field(form, "baseUrl"),
+      model: field(form, "model"),
+    };
     const result = await llmEndpoint.save({
       ...entered,
       apiKey: field(form, "apiKey"),
       removeApiKey: field(form, "removeApiKey") === "yes",
-      thirdPartiesAcknowledged: field(form, "thirdPartiesAcknowledged") === "yes",
+      thirdPartiesAcknowledged:
+        field(form, "thirdPartiesAcknowledged") === "yes",
     });
     llmSaved++;
     if (!result.ok) {
@@ -1347,22 +1802,38 @@ function shownStatus(status: 200 | 400 | 413 | undefined, problems: (string | un
     if (!message) return c.notFound();
     c.header("cache-control", "no-store");
     const items = await agendas.messageItemRows(message.items);
-    return render(c, <MessagePage admin={c.get("admin")} message={message} items={items} timeZone={timeZone} />);
+    return render(
+      c,
+      <MessagePage
+        admin={c.get("admin")}
+        message={message}
+        items={items}
+        timeZone={timeZone}
+      />,
+    );
   });
 
   // An Admin's only correction of an Item is deleting it (ADR-0005); back to the message it came from.
   app.post("/admin/items/:id/delete", async (c) => {
     await messages.deleteItem(c.req.param("id") as ItemId);
     const message = field(await c.req.parseBody(), "message");
-    return c.redirect(/^[0-9a-f-]{36}$/.test(message) ? `/admin/messages/${message}` : "/admin", 303);
+    return c.redirect(
+      /^[0-9a-f-]{36}$/.test(message) ? `/admin/messages/${message}` : "/admin",
+      303,
+    );
   });
 
   // Downloaded, never shown inline: an attachment is a third party's file and may be HTML or a script.
   app.get("/admin/messages/:id/attachments/:position{[0-9]+}", async (c) => {
-    const attachment = await messages.attachment(c.req.param("id") as RawMessageId, Number(c.req.param("position")));
+    const attachment = await messages.attachment(
+      c.req.param("id") as RawMessageId,
+      Number(c.req.param("position")),
+    );
     if (!attachment) return c.notFound();
     return c.body(attachment.bytes, 200, {
-      "content-type": mediaTypePattern.test(attachment.contentType) ? attachment.contentType : "application/octet-stream",
+      "content-type": mediaTypePattern.test(attachment.contentType)
+        ? attachment.contentType
+        : "application/octet-stream",
       "content-disposition": contentDisposition(attachment.filename),
       "content-security-policy": "sandbox",
       "x-content-type-options": "nosniff",
@@ -1382,7 +1853,9 @@ function shownStatus(status: 200 | 400 | 413 | undefined, problems: (string | un
 type Entered = { plain: Record<string, string>; interval: string };
 
 function enteredOf(form: Record<string, unknown>, input: SourceInput): Entered {
-  const plain = Object.fromEntries(Object.entries(input.plain).map(([key, value]) => [key, String(value)]));
+  const plain = Object.fromEntries(
+    Object.entries(input.plain).map(([key, value]) => [key, String(value)]),
+  );
   return { plain, interval: field(form, "pollIntervalMinutes").trim() };
 }
 
@@ -1390,40 +1863,65 @@ function sourceInputOf(form: Record<string, unknown>): SourceInput {
   const plain: Record<string, string | string[]> = {};
   const secrets: Record<string, string> = {};
   for (const [name, given] of Object.entries(form)) {
-    const values = (Array.isArray(given) ? given : [given]).filter((value): value is string => typeof value === "string");
+    const values = (Array.isArray(given) ? given : [given]).filter(
+      (value): value is string => typeof value === "string",
+    );
     classifyField(name, values, plain, secrets);
   }
   const minutes = field(form, "pollIntervalMinutes").trim();
-  return { plain, secrets, pollIntervalSeconds: minutes === "" ? null : Number(minutes) * 60 };
+  return {
+    plain,
+    secrets,
+    pollIntervalSeconds: minutes === "" ? null : Number(minutes) * 60,
+  };
 }
 
 /** Fills `plain` or `secrets` from one form field. */
-function classifyField(name: string, values: string[], plain: Record<string, string | string[]>, secrets: Record<string, string>): void {
+function classifyField(
+  name: string,
+  values: string[],
+  plain: Record<string, string | string[]>,
+  secrets: Record<string, string>,
+): void {
   if (name.startsWith("choice.")) {
-    plain[name.slice("choice.".length)] = values.map((value) => value.trim()).filter((value) => value !== "");
+    plain[name.slice("choice.".length)] = values
+      .map((value) => value.trim())
+      .filter((value) => value !== "");
     return;
   }
   const value = values.at(-1);
   if (value === undefined) return;
-  if (name.startsWith("plain.")) plain[name.slice("plain.".length)] = value.trim();
-  if (name.startsWith("secret.")) secrets[name.slice("secret.".length)] = value.trim();
+  if (name.startsWith("plain."))
+    plain[name.slice("plain.".length)] = value.trim();
+  if (name.startsWith("secret."))
+    secrets[name.slice("secret.".length)] = value.trim();
 }
 
 /**
  * The Family Language the browser prefers most by its `Accept-Language` header, such as `de` for
  * `fr-FR,fr;q=0.9,de;q=0.7`; English if it prefers neither.
  */
-function preferredFamilyLanguage(acceptLanguage: string | undefined): FamilyLanguage {
+function preferredFamilyLanguage(
+  acceptLanguage: string | undefined,
+): FamilyLanguage {
   const ranked = (acceptLanguage ?? "")
     .split(",")
     .map((entry) => {
       const [tag = "", ...parameters] = entry.trim().split(";");
-      const quality = parameters.map((parameter) => /^\s*q=([\d.]+)\s*$/.exec(parameter)?.[1]).find(Boolean);
-      return { language: tag.split("-")[0]?.toLowerCase() ?? "", quality: quality ? Number(quality) : 1 };
+      const quality = parameters
+        .map((parameter) => /^\s*q=([\d.]+)\s*$/.exec(parameter)?.[1])
+        .find(Boolean);
+      return {
+        language: tag.split("-")[0]?.toLowerCase() ?? "",
+        quality: quality ? Number(quality) : 1,
+      };
     })
     .filter((entry) => entry.quality > 0)
     .sort((a, b) => b.quality - a.quality);
-  return ranked.map((entry) => entry.language).find(isFamilyLanguage) ?? defaultFamilyLanguage;
+  return (
+    ranked.map((entry) => entry.language).find(isFamilyLanguage) ??
+    defaultFamilyLanguage
+  );
 }
 
 /** The quick filter's setting from the `show` query parameter: `all`, or ids separated by commas. */
@@ -1435,14 +1933,28 @@ function showingOf(show: string | undefined): { show?: Showing } {
 
 /** The days a timeline was scrolled to, none for the horizon from today, or "invalid". */
 // eslint-disable-next-line sonarjs/function-return-type -- the result is either a days object or "invalid"
-function timelineDaysOf(from: string | undefined, until: string | undefined): { days?: TimelineDays } | "invalid" {
+function timelineDaysOf(
+  from: string | undefined,
+  until: string | undefined,
+): { days?: TimelineDays } | "invalid" {
   if (from === undefined && until === undefined) return {};
-  if (from === undefined || until === undefined || !isLocalDate(from) || !isLocalDate(until)) return "invalid";
-  return isAcceptableTimelineRange(from, until) ? { days: { first: from, last: until } } : "invalid";
+  if (
+    from === undefined ||
+    until === undefined ||
+    !isLocalDate(from) ||
+    !isLocalDate(until)
+  )
+    return "invalid";
+  return isAcceptableTimelineRange(from, until)
+    ? { days: { first: from, last: until } }
+    : "invalid";
 }
 
 /** An uploaded file's contents, or undefined if none was chosen. */
-async function upload(form: Record<string, unknown>, name: string): Promise<Uint8Array | undefined> {
+async function upload(
+  form: Record<string, unknown>,
+  name: string,
+): Promise<Uint8Array | undefined> {
   const value = form[name];
   if (!(value instanceof File) || value.size === 0) return undefined;
   return new Uint8Array(await value.arrayBuffer());
@@ -1454,11 +1966,15 @@ function field(form: Record<string, unknown>, name: string): string {
 }
 
 /** A bare media type such as `application/pdf`, which is safe to put into a header as it is. */
-const mediaTypePattern = /^[a-z0-9][a-z0-9!#$&^_.+-]*\/[a-z0-9][a-z0-9!#$&^_.+-]*$/i;
+const mediaTypePattern =
+  /^[a-z0-9][a-z0-9!#$&^_.+-]*\/[a-z0-9][a-z0-9!#$&^_.+-]*$/i;
 
 /** Asks the browser to save a file under its name, which may hold any character (RFC 6266). */
 function contentDisposition(filename: string): string {
   const fallback = filename.replace(/[^\x20-\x7e]|["\\]/g, "_");
-  const encoded = encodeURIComponent(filename).replace(/['()*]/g, (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`);
+  const encoded = encodeURIComponent(filename).replace(
+    /['()*]/g,
+    (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`,
+  );
   return `attachment; filename="${fallback}"; filename*=UTF-8''${encoded}`;
 }
