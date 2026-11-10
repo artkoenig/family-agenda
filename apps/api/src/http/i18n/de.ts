@@ -95,6 +95,7 @@ export const de: Catalogue = {
   loading: {
     default: "Wird geladen …",
     choices: (label: string) => `${label} werden geladen …`,
+    catalogue: (title: string) => `${title} werden geladen …`,
     failed: "Das konnte nicht geladen werden.",
     failedMessage: "Die Seite hat den Server nicht erreicht. Lade sie neu, um es noch einmal zu versuchen.",
     gone: "Was hier stand, gibt es nicht mehr. Lade die Seite neu.",

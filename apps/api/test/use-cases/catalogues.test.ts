@@ -87,7 +87,7 @@ describe("a Source Type's catalogue and the Sources that use it", () => {
 
   it("offers only enabled, installed entries when adding a Source, and refuses others", async () => {
     const form = async () => (await instance.app.sources.forms())[0];
-    expect((await form())?.catalogue).toEqual({ configKey: "network", entries: [] });
+    expect((await form())?.catalogue).toEqual({ configKey: "network", title: "Networks", entries: [] });
     expect(await instance.app.sources.add({ sourceTypeId: "bridged", plain: { network: "whatsapp" }, secrets: {} })).toEqual({
       ok: false,
       problem: "invalid-config",

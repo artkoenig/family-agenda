@@ -41,12 +41,14 @@ describe("The Source Type page, which loads what its plugin offers as fragments"
   it("renders without asking the plugin for choices, each Source row loading its values as a fragment", async () => {
     const asked = testPluginControls.choicesAsked("bridged");
     const page = await (await instance.get("/admin/source-types/bridged", { cookie })).text();
+    // Its accounts are in its catalogue, which loads after it.
+    const catalogue = await (await instance.get("/admin/source-types/bridged/catalogue", { cookie })).text();
     expect(testPluginControls.choicesAsked("bridged")).toBe(asked);
-    expect(page).toContain(
+    expect(catalogue).toContain(
       `<span class="fam-lazy" hx-get="/admin/sources/${id}/values" hx-trigger="load" hx-swap="outerHTML" aria-busy="true" aria-live="polite" data-failed="This could not be loaded."`,
     );
-    expect(page).toContain("Loading Chats…");
-    expect(page, "a choice field with nothing chosen is told at once").toContain("Contacts: none yet");
+    expect(catalogue).toContain("Loading Chats…");
+    expect(catalogue, "a choice field with nothing chosen is told at once").toContain("Contacts: none yet");
     expect(page, "a failed request turns a pending fragment into an error").toContain("htmx:responseError");
     expect(page).toContain("htmx:sendError");
     expect(page, "an answer such as 404 for a Source removed meanwhile has words of its own").toContain(

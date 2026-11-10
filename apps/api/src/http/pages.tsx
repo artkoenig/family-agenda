@@ -1127,22 +1127,6 @@ function catalogueOf(configKey: string | undefined, catalogue: CatalogueSummary 
   return configKey !== undefined && catalogue && (catalogue.entries.length > 0 || catalogue.problem !== null) ? catalogue : undefined;
 }
 
-function sourceTypeModel(props: {
-  sourceType: SourceTypeSummary | null;
-  form: SourceForm | undefined;
-  catalogue: CatalogueSummary | undefined;
-  sources: SourceSummary[];
-  s: Translation["t"]["sources"];
-}) {
-  const { sourceType, form, catalogue, sources, s } = props;
-  const configKey = configKeyOf(sourceType, form);
-  const hasCatalogue = catalogueOf(configKey, catalogue);
-  const entryIds = new Set(hasCatalogue?.entries.map((entry) => entry.id));
-  const listed = sourceTypeListed(sources, configKey, entryIds);
-  const { status, switchable } = sourceTypeLoadability(sourceType, s);
-  return { configKey, catalogue: hasCatalogue, listed, status, switchable };
-}
-
 function SourceSwitchSection(props: { switchable: SourceTypeSummary; name: string; sources: SourceSummary[]; href: string; types: Translation["t"]["sourceTypes"] }) {
   const { switchable, name, sources, href, types } = props;
   const locked = switchable.enabled && sources.length > 0;
@@ -1171,7 +1155,8 @@ function SourceSwitchSection(props: { switchable: SourceTypeSummary; name: strin
 
 function SourceListSection(props: {
   sourceType: SourceTypeSummary | null;
-  catalogue: CatalogueSummary | undefined;
+  /** Whether its Sources are listed at the entries of a catalogue, so that none is left here. */
+  hasCatalogue: boolean;
   listed: SourceSummary[];
   addings: Adding[];
   form: SourceForm | undefined;
@@ -1181,8 +1166,8 @@ function SourceListSection(props: {
   timeZone: string;
   s: Translation["t"]["sources"];
 }) {
-  const { sourceType, catalogue, listed, addings, form, name, sourceTypeId, members, timeZone, s } = props;
-  if (!(sourceType?.enabled && !catalogue) && listed.length === 0 && addings.length === 0) return null;
+  const { sourceType, hasCatalogue, listed, addings, form, name, sourceTypeId, members, timeZone, s } = props;
+  if (!(sourceType?.enabled && !hasCatalogue) && listed.length === 0 && addings.length === 0) return null;
   return (
     <section class="fam-sheet">
       <Group title={s.title} level={2} intro={s.sourcesIntro}>
@@ -1225,6 +1210,78 @@ function LoadabilityProblems({ sourceType, types }: { sourceType: SourceTypeSumm
   );
 }
 
+/**
+ * The catalogue of a Source Type, such as its Messengers with their accounts, as the fragment its
+ * page loads once the plugin listed the entries; with the Sources at entries it did not list, such as
+ * while it fails to, which the page leaves to the catalogue.
+ */
+export function SourceTypeCatalogue(props: {
+  sourceTypeId: string;
+  sourceType: SourceTypeSummary | null;
+  displayName: MultilingualText;
+  sources: SourceSummary[];
+  /** The entries recorded for the catalogue, at which the page does not show Sources. */
+  recordedEntryIds: Set<string>;
+  form: SourceForm | undefined;
+  catalogue: CatalogueSummary;
+  members: FamilyMemberSummary[];
+  timeZone: string;
+}) {
+  const translation = useTranslation();
+  const s = translation.t.sources;
+  const configKey = configKeyOf(props.sourceType, props.form);
+  if (configKey === undefined) return null;
+  const catalogue = catalogueOf(configKey, props.catalogue);
+  const listedIds = new Set(catalogue?.entries.map((entry) => entry.id));
+  const unlisted = props.sources.filter((source) => props.recordedEntryIds.has(String(source.plain[configKey])) && !listedIds.has(String(source.plain[configKey])));
+  return (
+    <>
+      {catalogue ? <CatalogueEntries catalogue={catalogue} form={props.form} configKey={configKey} sources={props.sources} members={props.members} timeZone={props.timeZone} /> : null}
+      <SourceListSection sourceType={props.sourceType} hasCatalogue listed={unlisted} addings={[]} form={props.form} name={translation.text(props.displayName)} sourceTypeId={props.sourceTypeId} members={props.members} timeZone={props.timeZone} s={s} />
+    </>
+  );
+}
+
+/** The catalogue's place on its Source Type's page while its plugin lists the entries, which load after the page. */
+function CatalogueLoading(props: { href: string; title: MultilingualText }) {
+  const { t, text } = useTranslation();
+  return (
+    <LazyFragment href={props.href} block>
+      <p class="fam-group__empty">
+        <span class="fam-spinner" aria-hidden="true"></span> {t.loading.catalogue(text(props.title))}
+      </p>
+    </LazyFragment>
+  );
+}
+
+/**
+ * What a Source Type's page shows of its Sources at once: those at no catalogue entry and those
+ * being added, with a placeholder for the catalogue, which loads after the page.
+ */
+function SourceTypeSources(props: {
+  sourceType: SourceTypeSummary | null;
+  sourceTypeId: string;
+  displayName: MultilingualText;
+  sources: SourceSummary[];
+  form: SourceForm | undefined;
+  recordedEntryIds: Set<string>;
+  members: FamilyMemberSummary[];
+  timeZone: string;
+  addings?: Adding[];
+  name: string;
+  href: string;
+}) {
+  const s = useTranslation().t.sources;
+  const configKey = configKeyOf(props.sourceType, props.form);
+  const listed = sourceTypeListed(props.sources, configKey, props.recordedEntryIds);
+  return (
+    <>
+      {configKey !== undefined ? <CatalogueLoading href={`${props.href}/catalogue`} title={props.form?.catalogue?.title ?? props.displayName} /> : null}
+      <SourceListSection sourceType={props.sourceType} hasCatalogue={configKey !== undefined && props.recordedEntryIds.size > 0} listed={listed} addings={props.addings ?? []} form={props.form} name={props.name} sourceTypeId={props.sourceTypeId} members={props.members} timeZone={props.timeZone} s={s} />
+    </>
+  );
+}
+
 export function SourceTypePage(props: {
   admin: SignedInAdmin;
   sourceTypeId: string;
@@ -1235,7 +1292,8 @@ export function SourceTypePage(props: {
   sources: SourceSummary[];
   /** The form of its Sources, while it is enabled and can be loaded. */
   form: SourceForm | undefined;
-  catalogue: CatalogueSummary | undefined;
+  /** The entries recorded for its catalogue: the Sources at them load with the catalogue. */
+  recordedEntryIds: Set<string>;
   /** The Family's Members, named on the rows of the Sources assigned to them. */
   members: FamilyMemberSummary[];
   /** The IANA time zone the Family lives in, which times are shown in. */
@@ -1256,7 +1314,7 @@ export function SourceTypePage(props: {
   const href = sourceTypeHref(props.sourceTypeId);
   const name = text(props.displayName);
   const dialog = sourceTypeDialog(props, s, text, href);
-  const { configKey, catalogue, listed, status, switchable } = sourceTypeModel({ sourceType, form: props.form, catalogue: props.catalogue, sources: props.sources, s });
+  const { status, switchable } = sourceTypeLoadability(sourceType, s);
   return (
     <AdminLayout title={name} admin={props.admin} current="sources" dialog={dialog}>
       <nav class="fam-breadcrumb" aria-label={s.breadcrumb}>
@@ -1270,10 +1328,7 @@ export function SourceTypePage(props: {
       {sourceType ? <LoadabilityProblems sourceType={sourceType} types={types} /> : null}
       <Problem message={props.problem} />
       {switchable ? <SourceSwitchSection switchable={switchable} name={name} sources={props.sources} href={href} types={types} /> : null}
-      {catalogue && configKey !== undefined ? (
-        <CatalogueEntries catalogue={catalogue} form={props.form} configKey={configKey} sources={props.sources} members={props.members} timeZone={props.timeZone} />
-      ) : null}
-      <SourceListSection sourceType={sourceType} catalogue={catalogue} listed={listed} addings={props.addings ?? []} form={props.form} name={name} sourceTypeId={props.sourceTypeId} members={props.members} timeZone={props.timeZone} s={s} />
+      <SourceTypeSources {...props} name={name} href={href} />
     </AdminLayout>
   );
 }
@@ -1457,10 +1512,21 @@ function editableOf(form: SourceForm | undefined, suggestedSeconds: number | nul
   return form !== undefined && (form.fields.length > 0 || suggestedSeconds !== null);
 }
 
+/**
+ * The usable catalogue entry with an id, to name a Source by. A form whose entries were not asked for
+ * (`entries: null`) names none: only the Source Type page has one, and it shows there only the
+ * Sources at no entry, the others loading with the catalogue.
+ */
+function entryIn(form: SourceForm | undefined, id: unknown): { id: string; displayName: MultilingualText } | undefined {
+  const entries = form?.catalogue?.entries;
+  if (!entries) return undefined;
+  return entries.find((candidate) => candidate.id === id);
+}
+
 /** The catalogue entry it uses, such as its Messenger, which cannot change. */
 function entryOf(form: SourceForm | undefined, source: SourceSummary) {
   const entryKey = form?.catalogue?.configKey;
-  return entryKey !== undefined ? form?.catalogue?.entries.find((candidate) => candidate.id === source.plain[entryKey]) : undefined;
+  return entryKey !== undefined ? entryIn(form, source.plain[entryKey]) : undefined;
 }
 
 function SourcePageHeader(props: { name: string; health: SourceHealth; entry: { id: string; displayName: MultilingualText } | undefined; form: SourceForm | undefined; href: string; timeZone: string; s: Translation["t"]["sources"]; text: (text: MultilingualText) => string }) {
@@ -1817,7 +1883,7 @@ function AddAtEntry(props: { form: SourceForm; entryId: string; name: string }) 
 function addedEntry(adding: SourceAdding) {
   const { catalogue } = adding.form;
   const chosen = catalogue ? adding.entered?.plain[catalogue.configKey] : undefined;
-  return catalogue?.entries.find((entry) => entry.id === chosen);
+  return entryIn(adding.form, chosen);
 }
 
 /** The dialog a Fix button opens: the form adding a Source uses, filled in with the Source's settings. */
@@ -1858,7 +1924,7 @@ function CatalogueEntries(props: {
   timeZone: string;
 }) {
   const { catalogue, form } = props;
-  const usable = new Set(form?.catalogue?.entries.map((entry) => entry.id));
+  const usable = new Set(form?.catalogue?.entries?.map((entry) => entry.id));
   const { t, text } = useTranslation();
   const s = t.sourceTypes;
   const base = `${sourceTypeHref(catalogue.sourceTypeId)}/catalogue`;
@@ -2186,7 +2252,7 @@ function plainValues(fields: SourceForm["fields"] | undefined, plain: Record<str
 
 /** The name a Source derives from its settings: its first plain value, or its catalogue entry's name, or its display name. */
 function derivedName(source: SourceSummary, configKey: string | undefined, form: SourceForm | undefined, first: string | undefined, text: Translation["text"]): string {
-  const entry = configKey !== undefined ? form?.catalogue?.entries.find((candidate) => candidate.id === source.plain[configKey]) : undefined;
+  const entry = configKey !== undefined ? entryIn(form, source.plain[configKey]) : undefined;
   return first ?? text(entry?.displayName ?? source.displayName);
 }
 

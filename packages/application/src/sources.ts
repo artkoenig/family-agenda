@@ -84,7 +84,12 @@ export type SourceForm = {
    * The field naming the catalogue entry a Source uses, such as its Messenger, with the entries
    * that are enabled and installed; null if the Source Type has no catalogue.
    */
-  catalogue: { configKey: string; entries: { id: string; displayName: MultilingualText }[] } | null;
+  catalogue: {
+    configKey: string;
+    title: MultilingualText;
+    /** Null where they were not asked for, for a page that loads them afterwards. */
+    entries: { id: string; displayName: MultilingualText }[] | null;
+  } | null;
   /** Interactive steps shown with the fields, when adding a Source and when fixing one. */
   setupSteps: SetupStepSpec[];
   /** Null if its Sources are not polled. */
@@ -349,7 +354,7 @@ export function createSourceAccess(deps: SourcesDeps) {
     const sourceTypeId = input.sourceTypeId as SourceTypeId;
     const sourceType = await enabled(sourceTypeId);
     if (!sourceType) return { ok: false, problem: "source-type-not-enabled" };
-    const usable = sourceType.catalogue ? (await usableEntries(sourceTypeId, sourceType, catalogues)).map((entry) => entry.id) : null;
+    const usable = sourceType.catalogue ? (await usableEntries(sourceTypeId, sourceType, catalogues, cached, "fresh")).map((entry) => entry.id) : null;
     return check(sourceType, input, [], usable) ?? { sourceType };
   }
 
@@ -402,7 +407,7 @@ export function createSourceAccess(deps: SourcesDeps) {
   }
 
   /** The form of an enabled Source Type, for adding and editing its Sources. */
-  async function formOf(id: SourceTypeId): Promise<SourceForm | undefined> {
+  async function formOf(id: SourceTypeId, withEntries = true): Promise<SourceForm | undefined> {
     const type = registry.installed().find((candidate) => candidate.id === id);
     const sourceType = type && (await enabled(type.id));
     if (!type || !sourceType) return undefined;
@@ -414,7 +419,8 @@ export function createSourceAccess(deps: SourcesDeps) {
       catalogue: catalogue
         ? {
             configKey: catalogue.configKey,
-            entries: (await usableEntries(type.id, sourceType, catalogues)).map(({ id: entry, displayName }) => ({ id: entry, displayName })),
+            title: catalogue.title,
+            entries: withEntries ? (await usableEntries(type.id, sourceType, catalogues, cached, "cached")).map(({ id: entry, displayName }) => ({ id: entry, displayName })) : null,
           }
         : null,
       setupSteps: sourceType.setupSteps,
@@ -466,9 +472,12 @@ export function createSourceAccess(deps: SourcesDeps) {
       return forms.sort((a, b) => textIn(a.displayName, "en").localeCompare(textIn(b.displayName, "en")));
     },
 
-    /** The form of one enabled Source Type; undefined for one not installed or not enabled. */
-    formOf(sourceTypeId: string): Promise<SourceForm | undefined> {
-      return formOf(sourceTypeId as SourceTypeId);
+    /**
+     * The form of one enabled Source Type; undefined for one not installed or not enabled. Without
+     * `withEntries`, its catalogue has no entries, for a page that loads them afterwards.
+     */
+    formOf(sourceTypeId: string, withEntries = true): Promise<SourceForm | undefined> {
+      return formOf(sourceTypeId as SourceTypeId, withEntries);
     },
 
     /** Adds a Source of an enabled Source Type, configured by the fields its plugin declares. */

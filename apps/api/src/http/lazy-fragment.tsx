@@ -9,13 +9,15 @@ export type FragmentPoll = { every: number; backoff: number; maxSeconds: number 
  * for it: `href` answers with the content, or with `FragmentError` explaining why there is none.
  * `children` stand in meanwhile; without them a spinner with a default text. A failed request
  * becomes an error too (`lazyFragmentErrors`), so that loading never stops silently. `delaySeconds`
- * is how long it waits before asking, as `notReadyYet` sets it.
+ * is how long it waits before asking, as `notReadyYet` sets it. `block` makes it a `div`, for one
+ * standing in for a section, whose placeholder may hold block content.
  */
-export function LazyFragment(props: { href: string; children?: Child; delaySeconds?: number }) {
+export function LazyFragment(props: { href: string; children?: Child; delaySeconds?: number; block?: boolean }) {
   const { t } = useTranslation();
   const trigger = props.delaySeconds ? `load delay:${props.delaySeconds}s` : "load";
+  const Tag = props.block ? "div" : "span";
   return (
-    <span
+    <Tag
       class="fam-lazy"
       hx-get={props.href}
       hx-trigger={trigger}
@@ -31,7 +33,7 @@ export function LazyFragment(props: { href: string; children?: Child; delaySecon
           <span class="fam-spinner" aria-hidden="true"></span> {t.loading.default}
         </>
       )}
-    </span>
+    </Tag>
   );
 }
 

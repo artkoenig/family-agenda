@@ -580,11 +580,14 @@ describe("The Source wizard of a Source Type whose plugin runs in a container", 
   it("tells why its plugin could not offer choices or Catalogue entries", async () => {
     const id = await added();
     failing = true;
+    // Past the entries kept from adding the Source.
+    instance.clock.advance(10_000);
 
     expect(await instance.app.sources.find(id)).toMatchObject({ choices: { classes: { ok: false, message: "The account is signed out." } } });
     expect((await instance.app.catalogues.list())[0]).toMatchObject({ problem: "The portal is down.", entries: [] });
 
     failing = false;
+    instance.clock.advance(5_000);
     expect((await instance.app.catalogues.list())[0]?.entries, "an entry stays enabled through the outage").toMatchObject([{ id: "north", enabled: true }]);
   });
 

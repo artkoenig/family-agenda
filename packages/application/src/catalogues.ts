@@ -1,5 +1,5 @@
 import { textIn, type MultilingualText, type SourceTypeId } from "@family-agenda/domain";
-import { valueOr } from "./ports";
+import { valueOr, type PluginAnswer } from "./ports";
 import type {
   CatalogueEntrySpec,
   CatalogueRepository,
@@ -7,11 +7,14 @@ import type {
   SourceTypeRegistry,
   SourceTypeRepository,
 } from "./ports";
+import type { Cached } from "./cached";
 import { enabledSourceType } from "./enabled-source-type";
 import { isPollInterval } from "./poll-interval";
 import { disableIfUnused, enableIfAllowed, type DisableResult, type Enableable, type EnableResult } from "./enablement";
 
 export type CataloguesDeps = {
+  /** Where the entries plugins list are kept briefly, shared with the Sources' forms. */
+  cached: Cached;
   registry: SourceTypeRegistry;
   sourceTypes: SourceTypeRepository;
   catalogues: CatalogueRepository;
@@ -36,6 +39,32 @@ export type CatalogueSummary = {
 const problems = { unknown: "unknown-entry", unavailable: "not-installed", inUse: "entry-in-use" } as const;
 
 
+/** How long the entries a plugin listed are used before it is asked again, and after it failed to list them. */
+const entriesMaxAgeMs = 10_000;
+const failedEntriesMaxAgeMs = 5_000;
+
+/** Where the entries a plugin listed come from: `cached` for a page that shows them, `fresh` for what decides on them. */
+export type EntriesFrom = "cached" | "fresh";
+
+/**
+ * The entries a plugin's catalogue lists. A page, which needs them for the catalogue and the form of
+ * its Sources, takes them as listed lately, so that it asks the plugin once; enabling an entry or
+ * adding a Source asks anew. An answer that throws or takes too long is a failure to list them.
+ */
+async function entriesOf(
+  sourceTypeId: SourceTypeId,
+  catalogue: NonNullable<LoadedSourceType["catalogue"]>,
+  cached: Cached,
+  from: EntriesFrom,
+): Promise<PluginAnswer<CatalogueEntrySpec[]>> {
+  const ask = () => catalogue.entries();
+  try {
+    return await (from === "cached" ? cached(`catalogue:${sourceTypeId}`, entriesMaxAgeMs, failedEntriesMaxAgeMs, ask) : ask());
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : String(error) };
+  }
+}
+
 /**
  * The entries of a catalogue that a Source can use: enabled by an Admin, and installed. An entry
  * whose bridge is gone stays enabled, but is not offered.
@@ -44,11 +73,13 @@ export async function usableEntries(
   sourceTypeId: SourceTypeId,
   sourceType: LoadedSourceType,
   catalogues: CatalogueRepository,
+  cached: Cached,
+  from: EntriesFrom,
 ): Promise<CatalogueEntrySpec[]> {
   if (!sourceType.catalogue) return [];
   const enabled = new Set((await catalogues.list(sourceTypeId)).filter((record) => record.enabled).map((record) => record.entryId));
   // The Source form offers no entries then; the Source Type page shows why (`CatalogueSummary.problem`).
-  return valueOr(await sourceType.catalogue.entries(), []).filter((entry) => entry.installed && enabled.has(entry.id));
+  return valueOr(await entriesOf(sourceTypeId, sourceType.catalogue, cached, from), []).filter((entry) => entry.installed && enabled.has(entry.id));
 }
 
 /**
@@ -57,7 +88,7 @@ export async function usableEntries(
  * update, and one that a Source uses cannot be disabled.
  */
 export function createCatalogueAccess(deps: CataloguesDeps) {
-  const { registry, sourceTypes, catalogues } = deps;
+  const { cached, registry, sourceTypes, catalogues } = deps;
 
   /** The enabled Source Types that have a catalogue, with their plugins. */
   async function withCatalogues(): Promise<{ id: SourceTypeId; sourceType: LoadedSourceType }[]> {
@@ -69,11 +100,19 @@ export function createCatalogueAccess(deps: CataloguesDeps) {
     return found;
   }
 
+  /** An enabled Source Type with a catalogue, with its plugin; only that one is looked up. */
+  async function catalogueOf(sourceTypeId: string): Promise<{ id: SourceTypeId; sourceType: LoadedSourceType } | null> {
+    if (!registry.installed().some((type) => type.id === sourceTypeId)) return null;
+    const id = sourceTypeId as SourceTypeId;
+    const sourceType = await enabledSourceType(id, { registry, sourceTypes });
+    return sourceType?.catalogue ? { id, sourceType } : null;
+  }
+
   /** The catalogue as the plugin lists it now, its new entries recorded as disabled. */
-  async function summaryOf(id: SourceTypeId, sourceType: LoadedSourceType): Promise<CatalogueSummary | null> {
+  async function summaryOf(id: SourceTypeId, sourceType: LoadedSourceType, from: EntriesFrom): Promise<CatalogueSummary | null> {
     const { catalogue } = sourceType;
     if (!catalogue) return null;
-    const answer = await catalogue.entries();
+    const answer = await entriesOf(id, catalogue, cached, from);
     const entries = valueOr(answer, []);
     // A plugin that failed to answer discovered nothing.
     if (answer.ok) await catalogues.recordDiscovered(id, entries.map((entry) => entry.id));
@@ -95,10 +134,10 @@ export function createCatalogueAccess(deps: CataloguesDeps) {
 
   /** An entry of an enabled Source Type's catalogue, as an Admin enables or disables it. */
   async function enableable(sourceTypeId: string, entryId: string): Promise<Enableable | null> {
-    const found = (await withCatalogues()).find((candidate) => candidate.id === sourceTypeId);
+    const found = await catalogueOf(sourceTypeId);
     if (!found) return null;
     const { catalogue } = found.sourceType;
-    const summary = await summaryOf(found.id, found.sourceType);
+    const summary = await summaryOf(found.id, found.sourceType, "fresh");
     const entry = summary?.entries.find((candidate) => candidate.id === entryId);
     if (!catalogue || !entry) return null;
     return {
@@ -115,17 +154,28 @@ export function createCatalogueAccess(deps: CataloguesDeps) {
   return {
     /** At startup: records the entries seen for the first time as disabled. Nothing is ever enabled here. */
     async start(): Promise<void> {
-      for (const { id, sourceType } of await withCatalogues()) await summaryOf(id, sourceType);
+      for (const { id, sourceType } of await withCatalogues()) await summaryOf(id, sourceType, "fresh");
     },
 
     /** The catalogues of the enabled Source Types, as an Admin opens them. */
     async list(): Promise<CatalogueSummary[]> {
       const summaries: CatalogueSummary[] = [];
       for (const { id, sourceType } of await withCatalogues()) {
-        const summary = await summaryOf(id, sourceType);
+        const summary = await summaryOf(id, sourceType, "cached");
         if (summary) summaries.push(summary);
       }
       return summaries;
+    },
+
+    /** The catalogue of one enabled Source Type, as its page loads it; null for one without. */
+    async of(sourceTypeId: string): Promise<CatalogueSummary | null> {
+      const found = await catalogueOf(sourceTypeId);
+      return found ? summaryOf(found.id, found.sourceType, "cached") : null;
+    },
+
+    /** The entries recorded for a Source Type's catalogue, without asking its plugin, for the Sources at none of them. */
+    async recordedEntryIds(sourceTypeId: string): Promise<Set<string>> {
+      return new Set((await catalogues.list(sourceTypeId as SourceTypeId)).map((record) => record.entryId));
     },
 
     /** Enables an installed entry; one with a risk notice only once an Admin acknowledged it. */
@@ -146,8 +196,8 @@ export function createCatalogueAccess(deps: CataloguesDeps) {
       entryId: string,
       seconds: number | null,
     ): Promise<{ ok: true } | { ok: false; problem: "unknown-entry" | "invalid-interval" }> {
-      const found = (await withCatalogues()).find((candidate) => candidate.id === sourceTypeId);
-      const summary = found ? await summaryOf(found.id, found.sourceType) : null;
+      const found = await catalogueOf(sourceTypeId);
+      const summary = found ? await summaryOf(found.id, found.sourceType, "fresh") : null;
       if (!found || !summary?.entries.some((entry) => entry.id === entryId)) return { ok: false, problem: "unknown-entry" };
       if (!isPollInterval(seconds)) return { ok: false, problem: "invalid-interval" };
       await catalogues.setPollInterval(found.id, entryId, seconds);
