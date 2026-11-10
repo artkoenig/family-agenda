@@ -120,7 +120,7 @@ describe("the schemas", () => {
 describe("the endpoints", () => {
   it("are every function of a plugin, each with its own path", () => {
     expect(Object.keys(endpoints).sort()).toEqual(
-      ["catalogueEntries", "configMigration", "description", "fieldChoices", "poll", "receive", "setupProgress", "sourceAdded", "sourceRemoved"].sort(),
+      ["catalogueEntries", "configMigration", "description", "fieldChoices", "poll", "receive", "setupProgress", "sourceAdded", "sourceAttributes", "sourceRemoved"].sort(),
     );
     const paths = Object.values(endpoints).map((endpoint) => endpoint.path);
     expect(new Set(paths).size).toBe(paths.length);

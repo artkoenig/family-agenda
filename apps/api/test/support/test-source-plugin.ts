@@ -80,6 +80,8 @@ const addingFails = new Set<string>();
 const addingHeld = new Map<string, Promise<void>>();
 const askingFails = new Map<string, string>();
 const removed = new Map<string, RunContext[]>();
+const named = new Map<string, { declared: SourceAttributeDeclaration[]; archived: string[] }>();
+const namingAsked = new Map<string, number>();
 let accounts = 0;
 
 /** Controls what the test plugin of a Source Type does on its next run. */
@@ -145,6 +147,14 @@ export const testPluginControls = {
   choicesAsked(sourceTypeId: string): number {
     return choicesAsked.get(sourceTypeId) ?? 0;
   },
+  /** The Source Attributes the plugin names apart from a run from now on, if it does; failing as `failAsking` makes it. */
+  nameAttributes(sourceTypeId: string, attributes: { declared: SourceAttributeDeclaration[]; archived?: string[] }): void {
+    named.set(sourceTypeId, { declared: attributes.declared, archived: attributes.archived ?? [] });
+  },
+  /** How often the plugin was asked for its Source Attributes apart from a run. */
+  attributesAsked(sourceTypeId: string): number {
+    return namingAsked.get(sourceTypeId) ?? 0;
+  },
   /** What the plugin of a Source Type was run with so far, oldest first. */
   runs(sourceTypeId: string): RunContext[] {
     return runs.get(sourceTypeId) ?? [];
@@ -166,6 +176,8 @@ export type TestPluginPackage = {
   catalogue?: { configKey: string };
   /** Setup steps driven live through `testPluginControls.setupShows`. */
   liveSteps?: string[];
+  /** Whether it names its Source Attributes apart from a run, as `testPluginControls.nameAttributes` sets them. */
+  namesAttributes?: boolean;
 };
 
 const defaultConfiguration: TestConfiguration = {
@@ -236,6 +248,14 @@ export function testSourcePlugin(plugin: TestPluginPackage): PluginImplementatio
       choicesAsked.set(sourceTypeId, (choicesAsked.get(sourceTypeId) ?? 0) + 1);
       return { choices: askedOf(sourceTypeId, knownValues.get(sourceTypeId) ?? []) };
     },
+    ...(plugin.namesAttributes
+      ? {
+          sourceAttributes: () => {
+            namingAsked.set(sourceTypeId, (namingAsked.get(sourceTypeId) ?? 0) + 1);
+            return askedOf(sourceTypeId, named.get(sourceTypeId) ?? { declared: [], archived: [] });
+          },
+        }
+      : {}),
     catalogueEntries: () => ({ entries: askedOf(sourceTypeId, catalogueEntries.get(sourceTypeId) ?? []) }),
     setupProgress: () => setupProgress.get(sourceTypeId) ?? { status: "waiting" },
     configMigration: ({ fromVersion, plain }) => {

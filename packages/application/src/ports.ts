@@ -317,7 +317,15 @@ export type LoadedSourceType = {
   ): Promise<{ ok: true; plain: PlainConfig; secrets: Record<string, string> } | { ok: false; message: string }>;
   /** Cleans up after a removed Source; failures are ignored. */
   sourceRemoved(context: SourceRunContext): Promise<void>;
+  /**
+   * The Source Attributes of a Source as its plugin names them now, apart from a run, and those to
+   * archive; null where the plugin names them only in a run.
+   */
+  attributes: ((context: SourceRunContext) => Promise<PluginAnswer<ReportedAttributes>>) | null;
 };
+
+/** Source Attributes a plugin names: those to declare, and the external ids of those to archive. */
+export type ReportedAttributes = { declared: DeclaredAttribute[]; archived: string[] };
 
 /** What a plugin answered, or why asking it failed, in words an Admin can act on. */
 export type PluginAnswer<T> = { ok: true; value: T } | { ok: false; message: string };

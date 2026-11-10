@@ -84,6 +84,12 @@ export function loadedSourceType(description: Description, call: PluginCall): Lo
       if (!answer.ok) return { ok: false, message: answer.message };
       return { ok: true, plain: answer.body.plain, secrets: answer.body.secrets };
     },
+    attributes: description.endpoints.sourceAttributes
+      ? async (context) => {
+          const answer = await call("sourceAttributes", runContextOf(context));
+          return answer.ok ? { ok: true, value: answer.body } : { ok: false, message: answer.message };
+        }
+      : null,
     async sourceRemoved(context) {
       if (!description.endpoints.sourceRemoved) return;
       const answer = await call("sourceRemoved", runContextOf(context));

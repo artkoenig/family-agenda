@@ -57,6 +57,7 @@ import {
   SignInPage,
   SourcesPage,
   SourcePage,
+  SourceAttributesSection,
   SourceTypePage,
   sourceHref,
   sourceTypeHref,
@@ -970,6 +971,7 @@ function shownStatus(status: 200 | 400 | 413 | undefined, problems: (string | un
         timeZone={timeZone}
         {...(shown.problem ? { problem: shown.problem } : {})}
         {...(shown.fixing ? { fixing: true, liveSteps: await liveStepsOf(source) } : {})}
+        attributesOnDemand={await sources.namesAttributesOnDemand(source.id)}
         {...((await sourceTypes.list()).find((type) => type.id === source.sourceTypeId)?.needsLlm
           ? { waiting: await extraction.waiting({ sourceId: source.id }) }
           : {})}
@@ -1019,6 +1021,13 @@ function shownStatus(status: 200 | 400 | 413 | undefined, problems: (string | un
     const form = await c.req.parseBody();
     await sources.setShown(source.id, field(form, "shown") === "yes");
     return c.redirect(sourceHref(source.id), 303);
+  });
+
+  // Its Source Attributes as its plugin names them now, fetched by its page once shown.
+  app.get("/admin/sources/:id/attributes", async (c) => {
+    const refreshed = await sources.refreshAttributes(c.req.param("id") as SourceId);
+    if (!refreshed) return c.body(null, 404);
+    return render(c, <SourceAttributesSection source={refreshed.source} members={await familyMembers.list()} problem={refreshed.problem} />);
   });
 
   // Whom the Items of each of its Source Attributes concern: the Family Members ticked, or the whole Family with none.

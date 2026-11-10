@@ -10,7 +10,7 @@ export function describePlugin(plugin: PluginImplementation): Description {
   return {
     ...plugin.description,
     contractVersion,
-    endpoints: { sourceAdded: plugin.sourceAdded !== undefined, sourceRemoved: plugin.sourceRemoved !== undefined },
+    endpoints: { sourceAdded: plugin.sourceAdded !== undefined, sourceRemoved: plugin.sourceRemoved !== undefined, sourceAttributes: plugin.sourceAttributes !== undefined },
   };
 }
 
