@@ -7,15 +7,50 @@ import { useTranslation } from "./i18n/translation";
 /**
  * Opens a dialog the server rendered open as a modal one, so that the page behind it is inert
  * and Escape closes it, by going back to the address in its `data-close`. Without JavaScript the
- * dialog still shows, over the page.
+ * dialog still shows, over the page. A link opening a dialog on its own (`data-opens-dialog`)
+ * shows a loading dialog with that text at once, which the dialog replaces once loaded; if it
+ * cannot be loaded, the link is followed as a plain one, opening the page with the dialog.
  */
 const modalDialogs = `
-for (const dialog of document.querySelectorAll("dialog.fam-dialog[open]")) {
+// Known in memory only, so that a dialog restored from htmx's history is opened again.
+const modals = new WeakSet();
+const openModal = (dialog) => {
+  if (modals.has(dialog)) return;
+  modals.add(dialog);
   dialog.close();
   dialog.showModal();
   dialog.addEventListener("cancel", (event) => {
     event.preventDefault();
     location.href = dialog.dataset.close;
+  });
+};
+for (const dialog of document.querySelectorAll("dialog.fam-dialog[open]")) openModal(dialog);
+document.body.addEventListener("htmx:afterSwap", (event) => {
+  for (const dialog of event.detail.target.querySelectorAll("dialog.fam-dialog[open]")) openModal(dialog);
+});
+document.body.addEventListener("htmx:beforeRequest", (event) => {
+  const link = event.detail.elt;
+  if (!(link instanceof HTMLElement) || !link.matches("[data-opens-dialog]")) return;
+  const loading = document.createElement("dialog");
+  loading.className = "fam-dialog";
+  loading.setAttribute("aria-busy", "true");
+  loading.dataset.close = location.href;
+  const spinner = document.createElement("span");
+  spinner.className = "fam-spinner";
+  spinner.setAttribute("aria-hidden", "true");
+  loading.append(spinner, " " + link.dataset.opensDialog);
+  document.getElementById("fam-dialog-slot").replaceChildren(loading);
+  loading.setAttribute("open", "");
+  openModal(loading);
+});
+// A dialog, loading or loaded on its own, stays out of the page htmx keeps for going Back.
+document.body.addEventListener("htmx:beforeHistorySave", () => {
+  document.getElementById("fam-dialog-slot")?.replaceChildren();
+});
+for (const name of ["htmx:responseError", "htmx:sendError"]) {
+  document.body.addEventListener(name, (event) => {
+    const link = event.detail.elt;
+    if (link instanceof HTMLAnchorElement && link.matches("[data-opens-dialog]")) location.href = link.href;
   });
 }
 `;
