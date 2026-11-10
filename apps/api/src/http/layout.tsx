@@ -1,6 +1,7 @@
 import { iconUrl } from "./design/icons.js";
 import type { Child } from "hono/jsx";
 import { raw } from "hono/html";
+import { lazyFragmentErrors } from "./lazy-fragment";
 import { useTranslation } from "./i18n/translation";
 
 /**
@@ -154,7 +155,7 @@ export function Layout(props: {
           ) : (
             <div class={props.narrow ? "fam-admin fam-admin--narrow" : "fam-admin"}>{props.children}</div>
           )}
-          <script>{raw(agenda ? themeSwitches : modalDialogs + copyButtons + themeSwitches)}</script>
+          <script>{raw(agenda ? themeSwitches : modalDialogs + copyButtons + themeSwitches + lazyFragmentErrors)}</script>
         </body>
       </html>
     </>

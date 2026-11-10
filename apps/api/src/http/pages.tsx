@@ -40,6 +40,7 @@ import { raw } from "hono/html";
 import { useTranslation, type Translation } from "./i18n/translation";
 import type { Catalogue } from "./i18n/en";
 import { Layout, Problem } from "./layout";
+import { FragmentError, LazyFragment } from "./lazy-fragment";
 import { Avatar, MessageItems, agendaUrl } from "./agenda-page";
 
 /** The Family Languages to choose from, the given one selected. */
@@ -1613,6 +1614,18 @@ function SourceRows(props: {
   );
 }
 
+/** The values of a Source's row its plugin offers, such as its chats' names, loaded right after the page. */
+function PendingValues(props: { source: SourceSummary; form: SourceForm | undefined }) {
+  const { t, text } = useTranslation();
+  const pending = pendingChoiceFields(props.source, rowFields(props.form));
+  if (pending.length === 0) return null;
+  return (
+    <LazyFragment href={`${sourceHref(props.source.id)}/values`}>
+      <span class="fam-row__hint">{t.loading.choices(pending.map((field) => text(field.label)).join(", "))}</span>
+    </LazyFragment>
+  );
+}
+
 /** A Source's row: what tells it apart, whom it concerns, its status, and a Fix button while it is Failing. */
 function SourceRow(props: { source: SourceSummary; form: SourceForm | undefined; members: FamilyMemberSummary[]; timeZone: string }) {
   const { source, form } = props;
@@ -1630,6 +1643,7 @@ function SourceRow(props: { source: SourceSummary; form: SourceForm | undefined;
             {source.shown ? null : <span class="fam-chip fam-chip--small">{s.hidden}</span>}
           </span>
           {meta !== "" ? <span class="fam-row__hint">{meta}</span> : null}
+          <PendingValues source={source} form={form} />
           {concerns.length > 0 ? <span class="fam-row__hint">{s.concernsList(concerns.join(", "))}</span> : null}
           {/* Its page tells when it was last read; its row only once something went wrong. */}
           {hasHealthDetails(source.health) ? (
@@ -2150,13 +2164,13 @@ function sourceLabel(
 ): { name: string; meta: string; derived: string } {
   const { t, text } = translation;
   const configKey = form?.catalogue?.configKey;
-  const fields = form?.fields.filter((field) => !field.secret && field.key !== configKey);
+  const fields = rowFields(form);
   const [first, rest] = plainValues(fields, source.plain);
   const derived = derivedName(source, configKey, form, first, text);
   // Named by an Admin, its first setting, such as its address, still tells it apart.
   const name = source.name ?? derived;
   const shownFirst = source.name !== null && first !== undefined ? [first] : [];
-  const chosen = chosenLabels(source, fields, t, text);
+  const chosen = chosenLabels(source, knownChoiceFields(source, fields), t, text);
   const interval = sourceInterval(form, source, t);
   return { name, meta: [...shownFirst, ...rest, ...chosen, ...interval].join(" · "), derived };
 }
@@ -2180,6 +2194,40 @@ function derivedName(source: SourceSummary, configKey: string | undefined, form:
 function sourceInterval(form: SourceForm | undefined, source: SourceSummary, t: Translation["t"]): string[] {
   const seconds = form?.catalogue ? null : (source.pollIntervalSeconds ?? form?.suggestedIntervalSeconds ?? null);
   return seconds !== null ? [t.sources.every(seconds / 60)] : [];
+}
+
+/**
+ * The choice fields whose labels need what the plugin offers, such as the chats chosen by id, while
+ * those values were not asked for: a Source's row loads them as a fragment instead.
+ */
+function pendingChoiceFields(source: SourceSummary, fields: SourceForm["fields"] | undefined): SourceForm["fields"] {
+  if (source.choices !== undefined) return [];
+  return (fields ?? []).filter((field) => field.choice && chosenOf(source, field.key).length > 0);
+}
+
+/** The fields whose labels can be told now, without the values a plugin offers. */
+function knownChoiceFields(source: SourceSummary, fields: SourceForm["fields"] | undefined): SourceForm["fields"] {
+  const pending = pendingChoiceFields(source, fields);
+  return (fields ?? []).filter((field) => !pending.includes(field));
+}
+
+/** The fields of a Source's form that show in its row, as `sourceLabel` takes them. */
+function rowFields(form: SourceForm | undefined): SourceForm["fields"] | undefined {
+  const configKey = form?.catalogue?.configKey;
+  return form?.fields.filter((field) => !field.secret && field.key !== configKey);
+}
+
+/**
+ * What a Source's row tells of its choices once its plugin offered their values, such as the chats
+ * it reads by name, as the fragment its row loads; why the plugin could not offer them otherwise.
+ */
+export function SourceValues(props: { source: SourceSummary; form: SourceForm | undefined }) {
+  const { source } = props;
+  const { t, text } = useTranslation();
+  const fields = (rowFields(props.form) ?? []).filter((field) => field.choice);
+  const problem = fields.map((field) => choiceProblemOf(source, field.key)).find((message) => message !== null);
+  if (problem !== undefined) return <FragmentError title={t.sources.choicesFailed} message={problem} />;
+  return <span class="fam-row__hint">{chosenLabels(source, fields, t, text).join(" · ")}</span>;
 }
 
 function chosenLabels(source: SourceSummary, fields: SourceForm["fields"] | undefined, t: Translation["t"], text: Translation["text"]): string[] {

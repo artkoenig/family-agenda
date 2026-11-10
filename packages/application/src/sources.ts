@@ -21,6 +21,7 @@ import type {
   SourceTypeRegistry,
   SourceTypeRepository,
 } from "./ports";
+import { createCache, type Cached } from "./cached";
 import { usableEntries } from "./catalogues";
 import { enabledSourceType } from "./enabled-source-type";
 import { isPollInterval } from "./poll-interval";
@@ -29,6 +30,8 @@ import { healthOf, type SourceHealth } from "./source-health";
 
 export type SourcesDeps = {
   clock: Clock;
+  /** Where slow plugin answers are kept, shared with other use cases; a cache of its own without it. */
+  cached?: Cached;
   members: FamilyMemberRepository;
   registry: SourceTypeRegistry;
   sourceTypes: SourceTypeRepository;
@@ -67,6 +70,9 @@ export type SourceSummary = {
 
 /** How long the values a plugin offers for a Source's choice fields are shown before it is asked again. */
 const choicesMaxAgeMs = 5 * 60_000;
+
+/** How long a plugin that could not offer values for a choice field is left alone before it is asked again. */
+const failedChoicesMaxAgeMs = 30_000;
 
 /** What the Admin area renders a Source's form from, for an enabled Source Type. */
 export type SourceForm = {
@@ -144,6 +150,7 @@ export type EditSourceResult =
 
 export function createSourceAccess(deps: SourcesDeps) {
   const { clock, members, registry, sourceTypes, catalogues, sources, secrets, blobs, timeZone } = deps;
+  const cached = deps.cached ?? createCache(clock);
 
   const enabled = (sourceTypeId: SourceTypeId) => enabledSourceType(sourceTypeId, { registry, sourceTypes });
 
@@ -277,32 +284,24 @@ export function createSourceAccess(deps: SourcesDeps) {
   }
 
   /**
-   * The choices plugins offered lately, by Source and configuration, so that a page showing a Source
-   * does not ask its plugin again each time, such as an IMAP plugin logging in to list folders.
+   * The values each choice field of a Source offers, as its plugin offered them lately, so that a page
+   * showing a Source does not ask its plugin again each time, such as an IMAP plugin logging in to list
+   * folders; none while its Source Type is not enabled. Its fields are asked at the same time.
    */
-  const offered = new Map<SourceId, { key: string; at: number; choices: Record<string, PluginAnswer<KnownValue[]>> }>();
-
-  /** The values each choice field of a Source offers, as its plugin offered them lately. */
   async function choicesOf(source: Source): Promise<Record<string, PluginAnswer<KnownValue[]>>> {
-    const key = JSON.stringify([source.sourceTypeId, source.configVersion, source.plain, source.secrets]);
-    const now = clock.now().getTime();
-    const last = offered.get(source.id);
-    if (last && last.key === key && now - last.at < choicesMaxAgeMs) return last.choices;
-    const choices = await askChoicesOf(source);
-    if (Object.values(choices).every((answer) => answer.ok)) offered.set(source.id, { key, at: now, choices });
-    else offered.delete(source.id);
-    return choices;
-  }
-
-  /** The values each choice field of a Source offers; none while its Source Type is not enabled. */
-  async function askChoicesOf(source: Source): Promise<Record<string, PluginAnswer<KnownValue[]>>> {
     const sourceType = await enabled(source.sourceTypeId);
     const fields = sourceType?.configuration.fields.filter((field) => field.choice) ?? [];
     if (!sourceType || fields.length === 0) return {};
-    const context = await contextOf(source);
-    const choices: Record<string, PluginAnswer<KnownValue[]>> = {};
-    for (const field of fields) choices[field.key] = await sourceType.choices(field.key, context);
-    return choices;
+    const configuration = JSON.stringify([source.id, source.sourceTypeId, source.configVersion, source.plain, source.secrets]);
+    const answers = await Promise.all(
+      fields.map(async (field) => {
+        const answer = await cached(`choices:${configuration}:${field.key}`, choicesMaxAgeMs, failedChoicesMaxAgeMs, async () =>
+          sourceType.choices(field.key, await contextOf(source)),
+        );
+        return [field.key, answer] as const;
+      }),
+    );
+    return Object.fromEntries(answers);
   }
 
   /** Declares and archives the Source Attributes the plugin of a Source names now; why asking it failed, or null. */
@@ -406,14 +405,12 @@ export function createSourceAccess(deps: SourcesDeps) {
     },
 
     /**
-     * The Sources of one Source Type, each with the values its choice fields offer, so that the
-     * Source Type's page can name what an Admin chose, such as a chat, instead of its id.
+     * The Sources of one Source Type, without asking their plugins for the values their choice
+     * fields offer: the Source Type's page loads those for each Source after it is shown.
      */
     async listOfType(sourceTypeId: string): Promise<SourceSummary[]> {
       const ofType = (await sources.list()).filter((source) => source.sourceTypeId === sourceTypeId);
-      const summaries: SourceSummary[] = [];
-      for (const source of ofType) summaries.push({ ...(await summaryOf(source)), choices: await choicesOf(source) });
-      return summaries;
+      return Promise.all(ofType.map((source) => summaryOf(source)));
     },
 
     /** A Source with the values its choice fields offer, as its own page shows them; null if there is none. */

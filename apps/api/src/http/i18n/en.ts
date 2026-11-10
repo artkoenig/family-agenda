@@ -107,6 +107,14 @@ export const en = {
       `The Identity Provider could not be reached, so nothing was saved. ${message}`,
   },
 
+  loading: {
+    default: "Loading…",
+    choices: (label: string) => `Loading ${label}…`,
+    failed: "This could not be loaded.",
+    failedMessage: "The page could not reach the server. Reload it to try again.",
+    slow: "This is taking longer than usual. Reload the page to try again.",
+  },
+
   common: {
     email: "Email",
     password: "Password",

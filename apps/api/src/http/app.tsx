@@ -2,6 +2,7 @@ import { iconUrl, icons } from "./design/icons.js";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import {
+  type LlmEndpointSummary,
   type SourceInput,
   type AddingId,
   type SourceSummary,
@@ -59,6 +60,7 @@ import {
   SourcePage,
   SourceAttributesSection,
   SourceTypePage,
+  SourceValues,
   sourceHref,
   sourceTypeHref,
   AgendasPage,
@@ -152,6 +154,7 @@ const fonts: Record<string, typeof htmx> = Object.fromEntries(
 
 export function createHttpApp(application: Application, options: HttpOptions) {
   const {
+    cached,
     admins,
     recoveryKit,
     familyMembers,
@@ -478,26 +481,18 @@ export function createHttpApp(application: Application, options: HttpOptions) {
 
   /**
    * Whether the LLM endpoint answers, as asked lately: every Admin page shows it, so a page uses the
-   * last answer and asks again in the background once it is a minute old, instead of waiting for it.
+   * answer of the last minute, and of the last few seconds when it failed, until the endpoint is saved.
    */
-  let llmHealthAsked: { at: number; health: Promise<"ok" | "failing"> } | null = null;
-  const askLlmHealth = () => {
-    const health = llmEndpoint.health().then((answer) => (answer?.ok ? "ok" as const : "failing" as const), () => "failing" as const);
-    const asked = { at: Date.now(), health };
-    llmHealthAsked = asked;
-    return asked;
-  };
-  const llmHealthNow = async (): Promise<"ok" | "failing"> => {
-    const last = llmHealthAsked;
-    if (!last) return askLlmHealth().health;
-    if (Date.now() - last.at >= 60_000) askLlmHealth();
-    return last.health;
+  let llmSaved = 0;
+  const llmHealthNow = async (endpoint: LlmEndpointSummary): Promise<"ok" | "failing"> => {
+    const answer = await cached(`llm-health:${llmSaved}:${JSON.stringify(endpoint)}`, 60_000, 15_000, () => llmEndpoint.health()).catch(() => null);
+    return answer?.ok ? "ok" : "failing";
   };
 
   /** What the settings list says about each section. */
   const settings = async (): Promise<SettingsSummary> => {
     const endpoint = await llmEndpoint.current();
-    const llmHealth = endpoint ? await llmHealthNow() : null;
+    const llmHealth = endpoint ? await llmHealthNow(endpoint) : null;
     const language = await languages.current();
     const allSources = await sources.list();
     return {
@@ -1030,6 +1025,14 @@ function shownStatus(status: 200 | 400 | 413 | undefined, problems: (string | un
     return render(c, <SourceAttributesSection source={refreshed.source} members={await familyMembers.list()} problem={refreshed.problem} />);
   });
 
+  // What a Source's row on its Source Type's page tells of its choices, such as its chats by name, loaded after the page.
+  app.get("/admin/sources/:id/values", async (c) => {
+    const source = await sources.find(c.req.param("id") as SourceId);
+    if (!source) return c.body(null, 404);
+    const form = (await sources.forms()).find((candidate) => candidate.sourceTypeId === source.sourceTypeId);
+    return render(c, <SourceValues source={source} form={form} />);
+  });
+
   // Whom the Items of each of its Source Attributes concern: the Family Members ticked, or the whole Family with none.
   app.post("/admin/sources/:id/attributes", async (c) => {
     const source = await sourceOf(c.req.param("id"));
@@ -1152,7 +1155,7 @@ function shownStatus(status: 200 | 400 | 413 | undefined, problems: (string | un
 
   app.post("/admin/llm/remove", async (c) => {
     await llmEndpoint.remove();
-    llmHealthAsked = null;
+    llmSaved++;
     return c.redirect("/admin/llm", 303);
   });
 
@@ -1172,7 +1175,7 @@ function shownStatus(status: 200 | 400 | 413 | undefined, problems: (string | un
       removeApiKey: field(form, "removeApiKey") === "yes",
       thirdPartiesAcknowledged: field(form, "thirdPartiesAcknowledged") === "yes",
     });
-    llmHealthAsked = null;
+    llmSaved++;
     if (!result.ok) {
       const page = (
         <LlmEndpointPage
