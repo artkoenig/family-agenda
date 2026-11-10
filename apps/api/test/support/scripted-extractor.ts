@@ -1,5 +1,5 @@
 import type {
-  EndpointHealth,
+  EndpointCheck,
   ExtractedEvent,
   ExtractedTask,
   ExtractionRequest,
@@ -42,9 +42,9 @@ export function extractedTask(
 export class ScriptedExtractor implements Extractor {
   readonly requests: ExtractionRequest[] = [];
   private readonly scripts: { contains: string; result: ExtractionResult; then?: ExtractionResult[] }[] = [];
-  private healthResult: EndpointHealth = { ok: true };
+  private healthResult: { ok: true } | { ok: false; message: string } = { ok: true };
   private offeredModels: string[] = [];
-  /** The endpoints asked for their models. */
+  /** The endpoints checked, each asked for its models. */
   readonly modelRequests: LlmEndpoint[] = [];
 
   /** The Events and Tasks a message containing `contains` yields. */
@@ -91,12 +91,8 @@ export class ScriptedExtractor implements Extractor {
     return Promise.resolve(result);
   }
 
-  health(): Promise<EndpointHealth> {
-    return Promise.resolve(this.healthResult);
-  }
-
-  models(endpoint: LlmEndpoint): Promise<string[]> {
+  check(endpoint: LlmEndpoint): Promise<EndpointCheck> {
     this.modelRequests.push(endpoint);
-    return Promise.resolve(this.offeredModels);
+    return Promise.resolve(this.healthResult.ok ? { ok: true, models: this.offeredModels } : this.healthResult);
   }
 }

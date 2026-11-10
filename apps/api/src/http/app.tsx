@@ -2,7 +2,7 @@ import { iconUrl, icons } from "./design/icons.js";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import {
-  type LlmEndpointSummary,
+  type EndpointCheck,
   type SourceInput,
   type AddingId,
   type SourceSummary,
@@ -50,6 +50,8 @@ import {
   AddingRow,
   LiveStepProgress,
   LlmEndpointPage,
+  LlmNavSummary,
+  LlmStatusFragment,
   ModelField,
   SingleSignOnPage,
   MessagePage,
@@ -484,21 +486,24 @@ export function createHttpApp(application: Application, options: HttpOptions) {
   });
 
   /**
-   * Whether the LLM endpoint answers, as asked lately: every Admin page shows it, so a page uses the
-   * last answer and asks again in the background once it is a minute old, or a few seconds when it
-   * failed, instead of waiting for it; anew once the endpoint is saved.
+   * Whether the saved LLM endpoint answers, with its models, as asked lately; null if none is saved.
+   * The settings list and the AI page share the one answer, which is asked again in the background
+   * once it is a minute old, or a few seconds when it failed; anew once the endpoint is saved.
    */
   let llmSaved = 0;
-  const llmHealthNow = async (endpoint: LlmEndpointSummary): Promise<"ok" | "failing"> => {
-    const asking = () => llmEndpoint.health().catch((error: unknown) => ({ ok: false as const, message: String(error) }));
-    const answer = await cached(`llm-health:${llmSaved}:${JSON.stringify(endpoint)}`, 60_000, 15_000, asking, { stale: true }).catch(() => null);
-    return answer?.ok ? "ok" : "failing";
+  const llmCheckNow = async (c: Context<Env>): Promise<EndpointCheck | null> => {
+    const endpoint = await llmEndpoint.current();
+    if (!endpoint) return null;
+    const asking = () => llmEndpoint.check().catch((error: unknown) => ({ ok: false as const, message: String(error) }));
+    const answer = await cached(`llm-check:${llmSaved}:${JSON.stringify(endpoint)}`, 60_000, 15_000, asking, { stale: true }).catch(
+      () => ({ ok: false as const, message: c.get("translation").t.llm.noAnswer }),
+    );
+    return answer ?? null;
   };
 
   /** What the settings list says about each section. */
   const settings = async (): Promise<SettingsSummary> => {
     const endpoint = await llmEndpoint.current();
-    const llmHealth = endpoint ? await llmHealthNow(endpoint) : null;
     const language = await languages.current();
     const allSources = await sources.list();
     return {
@@ -507,7 +512,6 @@ export function createHttpApp(application: Application, options: HttpOptions) {
       sources: allSources.length,
       failingSources: allSources.filter((source) => source.health.status === "failing").length,
       llm: endpoint ? { model: endpoint.model, local: endpoint.local } : null,
-      llmHealth,
       admins: (await admins.listAdmins()).length,
       singleSignOn: (await singleSignOn.current())?.enabled ?? false,
       kitSaved: await recoveryKit.isConfirmed(),
@@ -1223,8 +1227,6 @@ function shownStatus(status: 200 | 400 | 413 | undefined, problems: (string | un
         endpoint={await llmEndpoint.current()}
         languages={await languages.current()}
         waiting={await extraction.waiting()}
-        health={await llmEndpoint.health()}
-        models={await llmEndpoint.models()}
         {...(problem ? { problem } : {})}
       />
     );
@@ -1269,11 +1271,27 @@ function shownStatus(status: 200 | 400 | 413 | undefined, problems: (string | un
     return c.redirect("/admin/llm", 303);
   });
 
-  // The model field for the endpoint being entered, asked while the Admin types its URL.
-  app.post("/admin/llm/models", async (c) => {
+  // The saved endpoint's models and status, loaded after the AI page; `model` is the one to keep selected.
+  app.get("/admin/llm/status", async (c) => {
+    const endpoint = await llmEndpoint.current();
+    const check = await llmCheckNow(c);
+    if (!endpoint || !check) return c.notFound();
+    return render(c, <LlmStatusFragment shown={{ model: c.req.query("model") ?? endpoint.model }} check={check} />);
+  });
+
+  // The AI's summary in the settings list, loaded after every Admin page.
+  app.get("/admin/llm/nav-status", async (c) => {
+    const check = await llmCheckNow(c);
+    if (!check) return c.notFound();
+    return render(c, <LlmNavSummary admin={c.get("admin")} health={check.ok ? "ok" : "failing"} />);
+  });
+
+  // Tests the endpoint being entered, with the entered API key, when the Admin asks; never cached.
+  app.post("/admin/llm/test", async (c) => {
     const form = await c.req.parseBody();
-    const models = await llmEndpoint.modelsAt({ baseUrl: field(form, "baseUrl"), apiKey: field(form, "apiKey") });
-    return render(c, <ModelField shown={{ model: field(form, "model") }} models={models} />);
+    const answer = await llmEndpoint.checkAt({ baseUrl: field(form, "baseUrl"), apiKey: field(form, "apiKey") });
+    const check = "problem" in answer ? { ok: false as const, message: problemIn(c, answer.problem) } : answer;
+    return render(c, <ModelField shown={{ model: field(form, "model") }} check={check} tested />);
   });
 
   app.post("/admin/llm", async (c) => {
@@ -1293,8 +1311,6 @@ function shownStatus(status: 200 | 400 | 413 | undefined, problems: (string | un
           endpoint={await llmEndpoint.current()}
           languages={await languages.current()}
           waiting={await extraction.waiting()}
-          health={await llmEndpoint.health()}
-          models={await llmEndpoint.models()}
           entered={entered}
           problem={problemIn(c, result.problem)}
         />

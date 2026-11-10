@@ -7,7 +7,7 @@ import {
   defaultRequiredGroup,
   singleSignOnCallbackPath,
   type SingleSignOnSummary,
-  type LlmEndpointHealth,
+  type EndpointCheck,
   type LlmEndpointSummary,
   type MessageDetails,
   type MessageItemRows,
@@ -149,8 +149,6 @@ export type SettingsSummary = {
   /** How many Sources are Failing, which the whole Admin area shows a banner for. */
   failingSources: number;
   llm: { model: string; local: boolean } | null;
-  /** The LLM endpoint's connection status; null if none is configured. */
-  llmHealth: "ok" | "failing" | null;
   admins: number;
   /** Whether Admins can sign in through an Identity Provider. */
   singleSignOn: boolean;
@@ -176,7 +174,8 @@ type SectionId =
   | "sso"
   | "recovery-kit";
 
-type Summary = { text: string; tone?: "attention" };
+/** `fragment` loads a fresher summary right after the page, which does not wait for it. */
+type Summary = { text: string; tone?: "attention"; fragment?: string };
 
 type SettingsGroup = {
   name: string;
@@ -185,7 +184,7 @@ type SettingsGroup = {
 
 /** The settings list: sections in groups, each with where it is and what it says about itself. */
 function settingsGroups(translation: Translation): SettingsGroup[] {
-  const { t, list, ocrLanguageName } = translation;
+  const { t } = translation;
   const s = t.settings;
   return [
     {
@@ -227,12 +226,7 @@ function settingsGroups(translation: Translation): SettingsGroup[] {
           id: "llm",
           href: "/admin/llm",
           label: t.llm.title,
-          summary: ({ settings: { llm, llmHealth, ocr } }) => {
-            const llmText = llm ? (llmHealth === "failing" ? s.llmFailing : llm.model) : s.notSetUp;
-            const text = [llmText, ocr.enabled ? s.ocr(list(ocr.languages.map(ocrLanguageName))) : s.ocrOff].join("; ");
-            const tone = llmHealth === "failing" || ocr.missing ? ("attention" as const) : undefined;
-            return { text, ...(tone ? { tone } : {}) };
-          },
+          summary: ({ settings }) => llmSummary(translation, settings, null),
         },
       ],
     },
@@ -262,6 +256,42 @@ function settingsGroups(translation: Translation): SettingsGroup[] {
       ],
     },
   ];
+}
+
+/**
+ * What the settings list says about the AI: whether its endpoint answers, as `health` says, and the
+ * OCR languages. Without `health`, which the page does not wait for, it loads as a fragment.
+ */
+function llmSummary(translation: Translation, settings: SettingsSummary, health: "ok" | "failing" | null): Summary {
+  const failing = health === "failing";
+  const text = [llmTextOf(translation, settings.llm, failing), ocrTextOf(translation, settings.ocr)].join("; ");
+  const tone = failing || settings.ocr.missing ? { tone: "attention" as const } : {};
+  const fragment = settings.llm && health === null ? { fragment: "/admin/llm/nav-status" } : {};
+  return { text, ...tone, ...fragment };
+}
+
+function llmTextOf(translation: Translation, llm: SettingsSummary["llm"], failing: boolean): string {
+  const s = translation.t.settings;
+  if (!llm) return s.notSetUp;
+  return failing ? s.llmFailing : llm.model;
+}
+
+function ocrTextOf(translation: Translation, ocr: SettingsSummary["ocr"]): string {
+  const { t, list, ocrLanguageName } = translation;
+  return ocr.enabled ? t.settings.ocr(list(ocr.languages.map(ocrLanguageName))) : t.settings.ocrOff;
+}
+
+/** The AI's summary in the settings list once its endpoint answered, as `/admin/llm/nav-status` loads it. */
+export function LlmNavSummary(props: { admin: SignedInAdmin; health: "ok" | "failing" }) {
+  return <NavSummary summary={llmSummary(useTranslation(), props.admin.settings, props.health)} />;
+}
+
+function NavSummary(props: { summary: Summary }) {
+  const { summary } = props;
+  const text = (
+    <span class={summary.tone ? `fam-navitem__summary fam-navitem__summary--${summary.tone}` : "fam-navitem__summary"}>{summary.text}</span>
+  );
+  return summary.fragment ? <LazyFragment href={summary.fragment}>{text}</LazyFragment> : text;
 }
 
 /** A section's line icon, drawn in the text colour. */
@@ -367,9 +397,7 @@ function AdminLayout(props: {
                     <SectionIcon id={section.id} />
                     <span class="fam-navitem__text">
                       <span class="fam-navitem__label">{section.label}</span>
-                      <span class={summary.tone ? `fam-navitem__summary fam-navitem__summary--${summary.tone}` : "fam-navitem__summary"}>
-                        {summary.text}
-                      </span>
+                      <NavSummary summary={summary} />
                     </span>
                   </a>
                 );
@@ -2616,10 +2644,6 @@ export function LlmEndpointPage(props: {
   /** What the Admin entered, shown again with a problem. */
   entered?: { baseUrl: string; model: string };
   problem?: string;
-  /** The endpoint's connection health, null when no endpoint is configured. */
-  health: LlmEndpointHealth | null;
-  /** The models the endpoint offers, none if it is not set up or cannot be asked. */
-  models: string[];
 }) {
   const { endpoint } = props;
   const shown = props.entered ?? endpoint;
@@ -2627,12 +2651,12 @@ export function LlmEndpointPage(props: {
   const l = t.llm;
   return (
     <AdminLayout title={l.title} admin={props.admin} current="llm">
-      <SectionHeader title={l.title} status={<LlmHealthStatus health={props.health} />} description={l.description} />
+      {/* The status comes with the models, which `/admin/llm/status` loads after the page. */}
+      <SectionHeader title={l.title} status={<span id="llm-status"></span>} description={l.description} />
       <Problem message={props.problem} />
       <form method="post" action="/admin/llm" class="fam-sheet fam-sheet__form">
         <Group title={l.connection} level={2}>
-          <ConnectionBanner health={props.health} />
-          <ConnectionFields shown={shown} endpoint={endpoint} models={props.models} />
+          <ConnectionFields shown={shown} endpoint={endpoint} />
         </Group>
         <OptionsGroup configured={endpoint !== null} />
       </form>
@@ -2647,16 +2671,22 @@ export function LlmEndpointPage(props: {
   );
 }
 
-function LlmHealthStatus(props: { health: LlmEndpointHealth | null }) {
+/** What `/admin/llm/status` answers: the saved endpoint's models to choose from, and its status in the header. */
+export function LlmStatusFragment(props: { shown: { model: string }; check: EndpointCheck }) {
+  return (
+    <>
+      <ModelField shown={props.shown} check={props.check} />
+      <span id="llm-status" hx-swap-oob="true">
+        <LlmHealthStatus ok={props.check.ok} />
+      </span>
+    </>
+  );
+}
+
+function LlmHealthStatus(props: { ok: boolean }) {
   const { t } = useTranslation();
   const l = t.llm;
-  if (!props.health) return null;
-  const ok = props.health.ok;
-  return (
-    <span class={ok ? "fam-chip fam-chip--ok" : "fam-chip fam-chip--problem"}>
-      {ok ? l.statusOk : l.statusFailing}
-    </span>
-  );
+  return <span class={props.ok ? "fam-chip fam-chip--ok" : "fam-chip fam-chip--problem"}>{props.ok ? l.statusOk : l.statusFailing}</span>;
 }
 
 /** A problem, such as why asking a Source Type's plugin failed, where what it would have answered is shown. */
@@ -2673,68 +2703,102 @@ function ProblemBanner(props: { title: string; message: string | null }) {
   );
 }
 
-function ConnectionBanner(props: { health: LlmEndpointHealth | null }) {
+function ConnectionFields(props: { shown: { baseUrl: string; model: string } | null; endpoint: LlmEndpointSummary | null }) {
   const { t } = useTranslation();
   const l = t.llm;
-  if (!props.health || props.health.ok) return null;
-  return <ProblemBanner title={l.connectionError} message={props.health.message} />;
-}
-
-function ConnectionFields(props: {
-  shown: { baseUrl: string; model: string } | null;
-  endpoint: LlmEndpointSummary | null;
-  models: string[];
-}) {
-  const { t } = useTranslation();
-  const l = t.llm;
-  const { shown, endpoint, models } = props;
+  const { shown, endpoint } = props;
+  const model = { model: shown?.model ?? "" };
+  // The saved endpoint's models load after the page; the saved model stays meanwhile.
+  const modelField = endpoint ? (
+    <LazyFragment href={shown?.model ? `/admin/llm/status?model=${encodeURIComponent(shown.model)}` : "/admin/llm/status"} block>
+      <ModelField shown={model} check="loading" />
+    </LazyFragment>
+  ) : (
+    <ModelField shown={model} check={null} />
+  );
   return (
     <div class="fam-group__fields">
       <div class="fam-field">
         <label for="baseUrl">{l.baseUrl}</label>
-        <input
-          id="baseUrl"
-          name="baseUrl"
-          type="url"
-          required
-          value={shown?.baseUrl}
-          hx-post="/admin/llm/models"
-          hx-trigger="input changed delay:600ms"
-          hx-include="#baseUrl, #apiKey, #model"
-          hx-target="#model-field"
-          hx-swap="outerHTML"
-          hx-disabled-elt="#model"
-          hx-sync="this:replace"
-        />
+        <input id="baseUrl" name="baseUrl" type="url" required value={shown?.baseUrl} />
         <small>{l.baseUrlHint}</small>
       </div>
-      <ModelField shown={shown} models={models} />
+      {modelField}
       <ApiKeyFields endpoint={endpoint} />
+      <TestConnectionButton />
     </div>
   );
 }
 
-/** The model field; swapped for a fresh one once the models of a newly entered URL are known. */
-export function ModelField(props: { shown: { model: string } | null; models: string[] }) {
+/** Asks the entered URL with the entered API key, swapping in the model field with what it answered. */
+function TestConnectionButton() {
   const { t } = useTranslation();
-  const { shown, models } = props;
+  return (
+    <div class="fam-field">
+      <button
+        type="button"
+        class="fam-button"
+        hx-post="/admin/llm/test"
+        hx-include="#baseUrl, #apiKey, #model"
+        hx-target="#model-field"
+        hx-swap="outerHTML"
+        hx-disabled-elt="this, #model"
+        hx-indicator="#llm-testing"
+      >
+        {t.llm.testConnection}
+      </button>
+      <span id="llm-testing" class="htmx-indicator" role="status">
+        <span class="fam-spinner" aria-hidden="true"></span> {t.llm.testing}
+      </span>
+    </div>
+  );
+}
+
+/** What the model field knows of the endpoint: what it answered, that it is being asked, or not yet tested (null). */
+type ModelCheck = EndpointCheck | "loading" | null;
+
+/**
+ * The model field: a choice among the models `check` found, or text, with why there is no choice:
+ * the endpoint is not tested yet (null), is being asked, lists none, or failed. `tested` says that
+ * the Admin asked, so that it says it connected.
+ */
+export function ModelField(props: { shown: { model: string }; check: ModelCheck; tested?: boolean }) {
+  const { t } = useTranslation();
+  const { shown, check } = props;
+  const models = check !== null && check !== "loading" && check.ok ? check.models : [];
   return (
     <div class="fam-field" id="model-field">
       <label for="model">{t.llm.model}</label>
+      {check !== null && check !== "loading" && !check.ok ? <ProblemBanner title={t.llm.connectionError} message={check.message} /> : null}
       {models.length > 0 ? (
         <select id="model" name="model" required>
           {/* A model the endpoint no longer lists stays selectable, so saving does not change it. */}
-          {withChosen(models, shown?.model).map((model) => (
-            <option value={model} selected={model === shown?.model}>
+          {withChosen(models, shown.model).map((model) => (
+            <option value={model} selected={model === shown.model}>
               {model}
             </option>
           ))}
         </select>
       ) : (
-        <input id="model" name="model" required value={shown?.model} />
+        <input id="model" name="model" required value={shown.model} />
       )}
+      <ModelNote check={check} tested={props.tested === true} />
     </div>
   );
+}
+
+function ModelNote(props: { check: ModelCheck; tested: boolean }) {
+  const l = useTranslation().t.llm;
+  const note = modelNoteOf(l, props.check, props.tested);
+  return note === null ? null : <small role="status">{note}</small>;
+}
+
+function modelNoteOf(l: Catalogue["llm"], check: ModelCheck, tested: boolean): string | null {
+  if (check === null) return l.modelsAfterTest;
+  if (check === "loading") return l.loadingModels;
+  if (!check.ok) return l.modelsFailed;
+  if (check.models.length === 0) return l.noModels;
+  return tested ? l.connected(check.models.length) : null;
 }
 
 /** The models offered, with the chosen one even where the endpoint no longer lists it. */

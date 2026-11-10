@@ -23,29 +23,32 @@ describe("the LLM endpoint", () => {
     expect(await instance.app.llmEndpoint.current()).toBeNull();
   });
 
-  it("offers the models of the saved endpoint, none before it is saved", async () => {
+  it("checks the saved endpoint, telling its models; nothing before it is saved", async () => {
     extractor.offerModels("gemma3", "qwen3.5:9b");
-    expect(await instance.app.llmEndpoint.models()).toEqual([]);
+    expect(await instance.app.llmEndpoint.check()).toBeNull();
 
     await instance.app.llmEndpoint.save({ baseUrl: "http://ollama:11434/v1", model: "qwen3.5:9b", apiKey: "" });
 
-    expect(await instance.app.llmEndpoint.models()).toEqual(["gemma3", "qwen3.5:9b"]);
+    expect(await instance.app.llmEndpoint.check()).toEqual({ ok: true, models: ["gemma3", "qwen3.5:9b"] });
+    extractor.failHealth("down");
+    expect(await instance.app.llmEndpoint.check()).toEqual({ ok: false, message: "down" });
   });
 
-  it("offers the models of an endpoint being entered, before it is saved", async () => {
+  it("tests an endpoint being entered, before it is saved", async () => {
     extractor.offerModels("gemma3");
 
-    expect(await instance.app.llmEndpoint.modelsAt({ baseUrl: "http://ollama:11434/v1/", apiKey: "" })).toEqual(["gemma3"]);
-    expect(await instance.app.llmEndpoint.modelsAt({ baseUrl: "not a url", apiKey: "" })).toEqual([]);
+    expect(await instance.app.llmEndpoint.checkAt({ baseUrl: "http://ollama:11434/v1/", apiKey: "" })).toEqual({ ok: true, models: ["gemma3"] });
+    expect(extractor.modelRequests[0]?.baseUrl).toBe("http://ollama:11434/v1");
+    expect(await instance.app.llmEndpoint.checkAt({ baseUrl: "not a url", apiKey: "" })).toEqual({ ok: false, problem: "invalid-endpoint-url" });
   });
 
-  it("hands the stored API key only to the endpoint it was saved for when asking for models", async () => {
+  it("hands the stored API key only to the endpoint it was saved for when testing one", async () => {
     const saved = { baseUrl: "https://api.openai.com/v1", model: "gpt-5-mini", apiKey: "sk-secret", thirdPartiesAcknowledged: true };
     await instance.app.llmEndpoint.save(saved);
 
-    await instance.app.llmEndpoint.modelsAt({ baseUrl: "https://api.openai.com/v1", apiKey: "" });
-    await instance.app.llmEndpoint.modelsAt({ baseUrl: "https://other.example/v1", apiKey: "" });
-    await instance.app.llmEndpoint.modelsAt({ baseUrl: "https://other.example/v1", apiKey: "sk-typed" });
+    await instance.app.llmEndpoint.checkAt({ baseUrl: "https://api.openai.com/v1", apiKey: "" });
+    await instance.app.llmEndpoint.checkAt({ baseUrl: "https://other.example/v1", apiKey: "" });
+    await instance.app.llmEndpoint.checkAt({ baseUrl: "https://other.example/v1", apiKey: "sk-typed" });
 
     expect(extractor.modelRequests.map((endpoint) => endpoint.apiKey)).toEqual(["sk-secret", null, "sk-typed"]);
   });

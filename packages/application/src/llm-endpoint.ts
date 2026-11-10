@@ -1,5 +1,5 @@
 import { isLocalHost } from "@family-agenda/domain";
-import type { Clock, Extractor, LlmEndpoint, LlmEndpointRepository, SecretRef, SecretStore } from "./ports";
+import type { Clock, EndpointCheck, Extractor, LlmEndpoint, LlmEndpointRepository, SecretRef, SecretStore } from "./ports";
 
 export type LlmEndpointDeps = {
   clock: Clock;
@@ -17,9 +17,8 @@ export type LlmEndpointSummary = {
   local: boolean;
 };
 
-export type LlmEndpointHealth =
-  | { ok: true }
-  | { ok: false; message: string };
+/** What testing an endpoint being entered tells: its check, or that its URL is none. */
+export type LlmEndpointTest = EndpointCheck | { ok: false; problem: "invalid-endpoint-url" };
 
 export type LlmEndpointInput = {
   /** The base URL of an OpenAI-compatible server, such as `http://ollama:11434/v1`. */
@@ -53,30 +52,24 @@ export function createLlmEndpointAccess(deps: LlmEndpointDeps) {
       };
     },
 
-    async health(): Promise<LlmEndpointHealth | null> {
+    /** Whether the saved endpoint answers, with the models it offers to choose from; null if none is saved. */
+    async check(): Promise<EndpointCheck | null> {
       const endpoint = await llmEndpointOf({ endpoints, secrets });
-      if (!endpoint) return null;
-      return deps.extractor.health(endpoint);
-    },
-
-    /** The models the saved endpoint offers, for the Admin to choose from; none if it cannot be asked. */
-    async models(): Promise<string[]> {
-      const endpoint = await llmEndpointOf({ endpoints, secrets });
-      return endpoint ? deps.extractor.models(endpoint) : [];
+      return endpoint ? deps.extractor.check(endpoint) : null;
     },
 
     /**
-     * The models an endpoint the Admin is entering offers, before it is saved; none if the URL is
-     * not one or it cannot be asked. The stored API key goes only to the endpoint it was saved for.
+     * Tests an endpoint the Admin is entering, before it is saved: whether it answers, with its
+     * models. The stored API key goes only to the endpoint it was saved for.
      */
-    async modelsAt(input: { baseUrl: string; apiKey: string }): Promise<string[]> {
+    async checkAt(input: { baseUrl: string; apiKey: string }): Promise<LlmEndpointTest> {
       const url = endpointUrl(input.baseUrl);
-      if (!url) return [];
+      if (!url) return { ok: false, problem: "invalid-endpoint-url" };
       const baseUrl = url.href.replace(/\/+$/, ""); // eslint-disable-line sonarjs/super-linear-regex -- single-char quantifier anchored at end is O(n)
       const typed = input.apiKey.trim();
       const saved = await llmEndpointOf({ endpoints, secrets });
       const apiKey = typed !== "" ? typed : saved?.baseUrl === baseUrl ? saved.apiKey : null;
-      return deps.extractor.models({ baseUrl, model: "", apiKey });
+      return deps.extractor.check({ baseUrl, model: "", apiKey });
     },
 
     /**
