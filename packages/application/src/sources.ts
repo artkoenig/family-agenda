@@ -21,6 +21,7 @@ import type {
   SourceTypeRegistry,
   SourceTypeRepository,
 } from "./ports";
+import { createCache, type Cached } from "./cached";
 import { usableEntries } from "./catalogues";
 import { enabledSourceType } from "./enabled-source-type";
 import { isPollInterval } from "./poll-interval";
@@ -29,6 +30,8 @@ import { healthOf, type SourceHealth } from "./source-health";
 
 export type SourcesDeps = {
   clock: Clock;
+  /** Where slow plugin answers are kept, shared with other use cases; a cache of its own without it. */
+  cached?: Cached;
   members: FamilyMemberRepository;
   registry: SourceTypeRegistry;
   sourceTypes: SourceTypeRepository;
@@ -67,6 +70,9 @@ export type SourceSummary = {
 
 /** How long the values a plugin offers for a Source's choice fields are shown before it is asked again. */
 const choicesMaxAgeMs = 5 * 60_000;
+
+/** How long a plugin that could not offer values for a choice field is left alone before it is asked again. */
+const failedChoicesMaxAgeMs = 30_000;
 
 /** What the Admin area renders a Source's form from, for an enabled Source Type. */
 export type SourceForm = {
@@ -144,6 +150,7 @@ export type EditSourceResult =
 
 export function createSourceAccess(deps: SourcesDeps) {
   const { clock, members, registry, sourceTypes, catalogues, sources, secrets, blobs, timeZone } = deps;
+  const cached = deps.cached ?? createCache(clock);
 
   const enabled = (sourceTypeId: SourceTypeId) => enabledSourceType(sourceTypeId, { registry, sourceTypes });
 
@@ -277,31 +284,28 @@ export function createSourceAccess(deps: SourcesDeps) {
   }
 
   /**
-   * The choices plugins offered lately, by Source and configuration, so that a page showing a Source
-   * does not ask its plugin again each time, such as an IMAP plugin logging in to list folders.
+   * The values each choice field of a Source offers, as its plugin offered them lately, so that a page
+   * showing a Source does not ask its plugin again each time, such as an IMAP plugin logging in to list
+   * folders; none while its Source Type is not enabled.
    */
-  const offered = new Map<SourceId, { key: string; at: number; choices: Record<string, PluginAnswer<KnownValue[]>> }>();
-
-  /** The values each choice field of a Source offers, as its plugin offered them lately. */
   async function choicesOf(source: Source): Promise<Record<string, PluginAnswer<KnownValue[]>>> {
-    const key = JSON.stringify([source.sourceTypeId, source.configVersion, source.plain, source.secrets]);
-    const now = clock.now().getTime();
-    const last = offered.get(source.id);
-    if (last && last.key === key && now - last.at < choicesMaxAgeMs) return last.choices;
-    const choices = await askChoicesOf(source);
-    if (Object.values(choices).every((answer) => answer.ok)) offered.set(source.id, { key, at: now, choices });
-    else offered.delete(source.id);
-    return choices;
-  }
-
-  /** The values each choice field of a Source offers; none while its Source Type is not enabled. */
-  async function askChoicesOf(source: Source): Promise<Record<string, PluginAnswer<KnownValue[]>>> {
     const sourceType = await enabled(source.sourceTypeId);
     const fields = sourceType?.configuration.fields.filter((field) => field.choice) ?? [];
     if (!sourceType || fields.length === 0) return {};
-    const context = await contextOf(source);
+    const configuration = JSON.stringify([source.id, source.sourceTypeId, source.configVersion, source.plain, source.secrets]);
+    // Built once, and only if a field's values are not kept: it reads the Source's secrets.
+    let context: Promise<SourceRunContext> | undefined;
+    const contextOnce = () => {
+      context ??= contextOf(source);
+      return context;
+    };
     const choices: Record<string, PluginAnswer<KnownValue[]>> = {};
-    for (const field of fields) choices[field.key] = await sourceType.choices(field.key, context);
+    // One after another, so that a plugin such as an IMAP one logs in once at a time.
+    for (const field of fields) {
+      choices[field.key] = await cached(`choices:${configuration}:${field.key}`, choicesMaxAgeMs, failedChoicesMaxAgeMs, async () =>
+        sourceType.choices(field.key, await contextOnce()),
+      );
+    }
     return choices;
   }
 
@@ -397,6 +401,27 @@ export function createSourceAccess(deps: SourcesDeps) {
     }
   }
 
+  /** The form of an enabled Source Type, for adding and editing its Sources. */
+  async function formOf(id: SourceTypeId): Promise<SourceForm | undefined> {
+    const type = registry.installed().find((candidate) => candidate.id === id);
+    const sourceType = type && (await enabled(type.id));
+    if (!type || !sourceType) return undefined;
+    const { ingestion, catalogue } = sourceType;
+    return {
+      sourceTypeId: type.id,
+      displayName: type.displayName,
+      fields: sourceType.configuration.fields.filter((field) => !field.setByPlugin),
+      catalogue: catalogue
+        ? {
+            configKey: catalogue.configKey,
+            entries: (await usableEntries(type.id, sourceType, catalogues)).map(({ id: entry, displayName }) => ({ id: entry, displayName })),
+          }
+        : null,
+      setupSteps: sourceType.setupSteps,
+      suggestedIntervalSeconds: ingestion.mode === "polling" ? ingestion.suggestedIntervalSeconds : null,
+    };
+  }
+
   return {
     async list(): Promise<SourceSummary[]> {
       const all = await sources.list();
@@ -406,14 +431,12 @@ export function createSourceAccess(deps: SourcesDeps) {
     },
 
     /**
-     * The Sources of one Source Type, each with the values its choice fields offer, so that the
-     * Source Type's page can name what an Admin chose, such as a chat, instead of its id.
+     * The Sources of one Source Type, without asking their plugins for the values their choice
+     * fields offer: the Source Type's page loads those for each Source after it is shown.
      */
     async listOfType(sourceTypeId: string): Promise<SourceSummary[]> {
       const ofType = (await sources.list()).filter((source) => source.sourceTypeId === sourceTypeId);
-      const summaries: SourceSummary[] = [];
-      for (const source of ofType) summaries.push({ ...(await summaryOf(source)), choices: await choicesOf(source) });
-      return summaries;
+      return Promise.all(ofType.map((source) => summaryOf(source)));
     },
 
     /** A Source with the values its choice fields offer, as its own page shows them; null if there is none. */
@@ -437,25 +460,15 @@ export function createSourceAccess(deps: SourcesDeps) {
     async forms(): Promise<SourceForm[]> {
       const forms: SourceForm[] = [];
       for (const type of registry.installed()) {
-        const sourceType = await enabled(type.id);
-        if (!sourceType) continue;
-        const { ingestion } = sourceType;
-        const { catalogue } = sourceType;
-        forms.push({
-          sourceTypeId: type.id,
-          displayName: type.displayName,
-          fields: sourceType.configuration.fields.filter((field) => !field.setByPlugin),
-          catalogue: catalogue
-            ? {
-                configKey: catalogue.configKey,
-                entries: (await usableEntries(type.id, sourceType, catalogues)).map(({ id, displayName }) => ({ id, displayName })),
-              }
-            : null,
-          setupSteps: sourceType.setupSteps,
-          suggestedIntervalSeconds: ingestion.mode === "polling" ? ingestion.suggestedIntervalSeconds : null,
-        });
+        const form = await formOf(type.id);
+        if (form) forms.push(form);
       }
       return forms.sort((a, b) => textIn(a.displayName, "en").localeCompare(textIn(b.displayName, "en")));
+    },
+
+    /** The form of one enabled Source Type; undefined for one not installed or not enabled. */
+    formOf(sourceTypeId: string): Promise<SourceForm | undefined> {
+      return formOf(sourceTypeId as SourceTypeId);
     },
 
     /** Adds a Source of an enabled Source Type, configured by the fields its plugin declares. */

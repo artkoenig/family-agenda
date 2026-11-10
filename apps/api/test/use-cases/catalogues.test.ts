@@ -201,13 +201,19 @@ describe("a Source Type's catalogue and the Sources that use it", () => {
     expect(testPluginControls.choicesAsked("bridged")).toBe(asked + 2);
   });
 
-  it("lists the Sources of a Source Type with the values their choice fields offer, for the labels on the Source Type's page", async () => {
+  it("lists the Sources of a Source Type without asking their plugins, whose values the page loads after it", async () => {
     await addWhatsApp();
-    testPluginControls.knowValues("bridged", [{ value: "!class:local", label: "Klasse 5b" }]);
+    const asked = testPluginControls.choicesAsked("bridged");
 
     const [source] = await instance.app.sources.listOfType("bridged");
-    expect(source?.choices).toEqual({ chats: { ok: true, value: [{ value: "!class:local", label: "Klasse 5b" }] } });
+    expect(source?.choices).toBeUndefined();
+    expect(testPluginControls.choicesAsked("bridged")).toBe(asked);
     expect(await instance.app.sources.listOfType("other")).toEqual([]);
+  });
+
+  it("gives the form of one Source Type, none for one not installed", async () => {
+    expect((await instance.app.sources.formOf("bridged"))?.fields.map((field) => field.key)).toContain("chats");
+    expect(await instance.app.sources.formOf("other")).toBeUndefined();
   });
 
   it("offers a choice field's values per Source and stores what was chosen as a list", async () => {

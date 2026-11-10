@@ -45,6 +45,7 @@ import {
   createRecoveryKitAccess,
   createRetention,
   createSecretSweep,
+  createCache,
   createSourceAccess,
   createSourceHealth,
   createSourcePolling,
@@ -53,6 +54,7 @@ import {
   createAgendaAccess,
   signInLimits,
   type AdminAccess,
+  type Cached,
   type CatalogueAccess,
   type EgressHosts,
   type BlobStore,
@@ -121,6 +123,8 @@ export type ApplicationConfig = DatabaseConfig & {
 export type Application = {
   /** The IANA time zone the Family lives in. */
   timeZone: string;
+  /** Keeps slow plugin and LLM answers briefly, failures shorter. */
+  cached: Cached;
   admins: AdminAccess;
   secrets: SecretStore;
   /** Removes the secrets nothing refers to any more; the worker does when it starts. */
@@ -261,8 +265,11 @@ export async function bootApplication(config: ApplicationConfig): Promise<Applic
     sourceTypes: sourceTypeRepository,
     catalogues: catalogueRepository,
   });
+  // Slow plugin and LLM answers, kept briefly for all use cases and pages.
+  const cached = createCache(clock);
   const sources = createSourceAccess({
     clock,
+    cached,
     timeZone,
     members,
     registry,
@@ -329,6 +336,7 @@ export async function bootApplication(config: ApplicationConfig): Promise<Applic
 
   return {
     timeZone,
+    cached,
     admins,
     secrets,
     secretSweep,

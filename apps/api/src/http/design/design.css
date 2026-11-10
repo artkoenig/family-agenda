@@ -759,3 +759,11 @@ html[data-theme-mode="dark"] .fam-theme__icon--dark { display: block; }
   align-items: center;
   gap: 8px;
 }
+
+/* A fragment loaded after its page: its placeholder, then its content, or why there is none. */
+.fam-lazy {
+  display: block;
+}
+.fam-lazy--failed {
+  color: var(--danger);
+}
