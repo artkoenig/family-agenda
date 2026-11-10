@@ -58,6 +58,7 @@ import {
   SignInPage,
   SourcesPage,
   SourcePage,
+  ChoiceFieldFragment,
   AddSourceDialog,
   FixDialog,
   SourceAttributesSection,
@@ -1031,8 +1032,8 @@ function shownStatus(status: 200 | 400 | 413 | undefined, problems: (string | un
 
   /** What a Source's page and its Fix dialog show of it: its form, the Members, and its live setup steps when fixing. */
   const sourceShown = async (listed: SourceSummary, fixing: boolean) => {
-    // Its own page is where the values its choice fields offer are asked for.
-    const source = (await sources.find(listed.id)) ?? listed;
+    // The values its choice fields offer load after it, each on its own.
+    const source = listed;
     const [forms, members, liveSteps] = await Promise.all([sources.forms(), familyMembers.list(), fixing ? liveStepsOf(source) : Promise.resolve([])]);
     return { source, form: forms.find((form) => form.sourceTypeId === source.sourceTypeId), members, liveSteps };
   };
@@ -1128,6 +1129,16 @@ function shownStatus(status: 200 | 400 | 413 | undefined, problems: (string | un
   });
 
   // What a Source's row on its Source Type's page tells of its choices, such as its chats by name, loaded after the page.
+  // One choice field of a Source's form with the values its plugin offers, loaded after the form.
+  app.get("/admin/sources/:id/choices/:field", async (c) => {
+    const key = c.req.param("field");
+    const found = await sources.choiceOf(c.req.param("id") as SourceId, key);
+    const field = found && (await sources.formOf(found.source.sourceTypeId))?.fields.find((candidate) => candidate.key === key);
+    if (!found || !field) return c.body(null, 404);
+    const source = { ...found.source, choices: { [key]: found.answer } };
+    return render(c, <ChoiceFieldFragment field={field} id={c.req.query("id") ?? `${source.id}-${key}`} source={source} />);
+  });
+
   app.get("/admin/sources/:id/values", async (c) => {
     const source = await sources.find(c.req.param("id") as SourceId);
     if (!source) return c.body(null, 404);

@@ -2523,6 +2523,34 @@ function optionsOf(source: SourceSummary, key: string, chosen: string[]): { valu
  * checkbox each, the chosen ones ticked, also those it no longer offers. A Source being added has
  * none to offer yet.
  */
+/**
+ * A choice field while its plugin is asked for its values: disabled, with a spinner, and its stored
+ * selection sent as it is if the form is saved meanwhile.
+ */
+function ChoiceLoading(props: { field: SourceForm["fields"][number]; id: string; source: SourceSummary; chosen: string[]; label: string }) {
+  const { field, chosen } = props;
+  const { t, text } = useTranslation();
+  return (
+    <LazyFragment href={`${sourceHref(props.source.id)}/choices/${encodeURIComponent(field.key)}?id=${encodeURIComponent(props.id)}`} block>
+      <input type="hidden" name={`choice.${field.key}`} value="" />
+      {chosen.map((value) => (
+        <input type="hidden" name={`choice.${field.key}`} value={value} />
+      ))}
+      <fieldset class="fam-field" disabled aria-busy="true">
+        <legend>{props.label}</legend>
+        <small>
+          <span class="fam-spinner" aria-hidden="true"></span> {t.loading.choices(text(field.label))}
+        </small>
+      </fieldset>
+    </LazyFragment>
+  );
+}
+
+/** One choice field of a Source with the values its plugin offered, as the fragment its form loads. */
+export function ChoiceFieldFragment(props: { field: SourceForm["fields"][number]; id: string; source: SourceSummary }) {
+  return <ChoiceField {...props} />;
+}
+
 function ChoiceField(props: { field: SourceForm["fields"][number]; id: string; source: SourceSummary | undefined }) {
   const { field, source } = props;
   const { t, text } = useTranslation();
@@ -2536,6 +2564,8 @@ function ChoiceField(props: { field: SourceForm["fields"][number]; id: string; s
     );
   }
   const chosen = chosenOf(source, field.key);
+  // Its values were not asked for with the page: they load on their own, its selection kept meanwhile.
+  if (source.choices?.[field.key] === undefined) return <ChoiceLoading field={field} id={props.id} source={source} chosen={chosen} label={label} />;
   const options = optionsOf(source, field.key, chosen);
   const problem = choiceProblemOf(source, field.key);
   return (

@@ -65,7 +65,8 @@ describe("The Source wizard for a Source Type whose plugin runs in a container",
     expect(added.status).toBe(303);
     const [source] = await instance.app.sources.list();
 
-    const own = await (await instance.get(`/admin/sources/${source!.id}`, { cookie })).text();
+    // Its choice field loads after its page.
+    const own = await (await instance.get(`/admin/sources/${source!.id}/choices/classes`, { cookie })).text();
     expect(own).toMatch(/<input type="checkbox" name="choice.classes" value="3b"\/?> Class 3b/);
 
     const body = new FormData();
@@ -81,7 +82,8 @@ describe("The Source wizard for a Source Type whose plugin runs in a container",
     const [source] = await instance.app.sources.list();
     failing = true;
 
-    const own = await (await instance.get(`/admin/sources/${source!.id}`, { cookie })).text();
+    // Its choice field loads after its page.
+    const own = await (await instance.get(`/admin/sources/${source!.id}/choices/classes`, { cookie })).text();
     expect(own).toContain("The plugin could not offer anything to choose from.");
     expect(own).toContain("The account is signed out.");
   });

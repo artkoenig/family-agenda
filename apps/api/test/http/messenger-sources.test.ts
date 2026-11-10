@@ -243,7 +243,8 @@ describe("Sources of a Source Type with a catalogue and a live setup step", () =
       { value: "!class:local", label: "Klasse 5b" },
       { value: "!club:local", label: "Fußballverein" },
     ]);
-    const own = await (await instance.get(`/admin/sources/${added.id}`, { cookie })).text();
+    // Its choice field loads after its page.
+    const own = await (await instance.get(`/admin/sources/${added.id}/choices/chats`, { cookie })).text();
     expect(own).toMatch(/<input type="checkbox" name="choice.chats" value="!class:local"\/?> Klasse 5b/);
 
     const body = new FormData();
@@ -267,7 +268,8 @@ describe("Sources of a Source Type with a catalogue and a live setup step", () =
     // Past the entries kept from adding the Source.
     instance.clock.advance(10_000);
     try {
-      const own = await (await instance.get(`/admin/sources/${added.id}`, { cookie })).text();
+      // Its choice field loads after its page.
+    const own = await (await instance.get(`/admin/sources/${added.id}/choices/chats`, { cookie })).text();
       expect(own).toContain("The plugin could not offer anything to choose from.");
       expect(own).toContain("The bridge is restarting.");
       expect(own).not.toContain("Nothing to choose from yet.");
