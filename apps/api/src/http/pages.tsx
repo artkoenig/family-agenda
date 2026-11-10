@@ -2201,7 +2201,11 @@ function sourceInterval(form: SourceForm | undefined, source: SourceSummary, t: 
  * those values were not asked for: a Source's row loads them as a fragment instead.
  */
 function pendingChoiceFields(source: SourceSummary, fields: SourceForm["fields"] | undefined): SourceForm["fields"] {
-  if (source.choices !== undefined) return [];
+  return source.choices !== undefined ? [] : choiceFieldsWithValues(source, fields);
+}
+
+/** The choice fields with values chosen, whose labels need what the plugin offers. */
+function choiceFieldsWithValues(source: SourceSummary, fields: SourceForm["fields"] | undefined): SourceForm["fields"] {
   return (fields ?? []).filter((field) => field.choice && chosenOf(source, field.key).length > 0);
 }
 
@@ -2224,10 +2228,18 @@ function rowFields(form: SourceForm | undefined): SourceForm["fields"] | undefin
 export function SourceValues(props: { source: SourceSummary; form: SourceForm | undefined }) {
   const { source } = props;
   const { t, text } = useTranslation();
-  const fields = (rowFields(props.form) ?? []).filter((field) => field.choice);
-  const problem = fields.map((field) => choiceProblemOf(source, field.key)).find((message) => message !== null);
-  if (problem !== undefined) return <FragmentError title={t.sources.choicesFailed} message={problem} />;
-  return <span class="fam-row__hint">{chosenLabels(source, fields, t, text).join(" · ")}</span>;
+  const fields = choiceFieldsWithValues(source, rowFields(props.form));
+  const offered = fields.filter((field) => choiceProblemOf(source, field.key) === null);
+  const labels = chosenLabels(source, offered, t, text);
+  return (
+    <>
+      {labels.length > 0 ? <span class="fam-row__hint">{labels.join(" · ")}</span> : null}
+      {fields.map((field) => {
+        const problem = choiceProblemOf(source, field.key);
+        return problem !== null ? <FragmentError title={`${text(field.label)}: ${t.sources.choicesFailed}`} message={problem} /> : null;
+      })}
+    </>
+  );
 }
 
 function chosenLabels(source: SourceSummary, fields: SourceForm["fields"] | undefined, t: Translation["t"], text: Translation["text"]): string[] {

@@ -97,6 +97,7 @@ export const de: Catalogue = {
     choices: (label: string) => `${label} werden geladen …`,
     failed: "Das konnte nicht geladen werden.",
     failedMessage: "Die Seite hat den Server nicht erreicht. Lade sie neu, um es noch einmal zu versuchen.",
+    gone: "Was hier stand, gibt es nicht mehr. Lade die Seite neu.",
     slow: "Das dauert länger als üblich. Lade die Seite neu, um es noch einmal zu versuchen.",
   },
 

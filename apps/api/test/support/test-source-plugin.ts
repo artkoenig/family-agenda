@@ -79,6 +79,8 @@ const setupProgress = new Map<string, SetupProgress>();
 const addingFails = new Set<string>();
 const addingHeld = new Map<string, Promise<void>>();
 const askingFails = new Map<string, string>();
+/** Choice fields whose values the plugin cannot offer, by `<sourceTypeId>:<field>`. */
+const choiceFieldFails = new Map<string, string>();
 const removed = new Map<string, RunContext[]>();
 const named = new Map<string, { declared: SourceAttributeDeclaration[]; archived: string[] }>();
 const namingAsked = new Map<string, number>();
@@ -118,6 +120,11 @@ export const testPluginControls = {
   failAsking(sourceTypeId: string, message: string | null): void {
     if (message === null) askingFails.delete(sourceTypeId);
     else askingFails.set(sourceTypeId, message);
+  },
+  /** Makes asking for one choice field's values fail with this message; null makes it answer again. */
+  failChoiceField(sourceTypeId: string, field: string, message: string | null): void {
+    if (message === null) choiceFieldFails.delete(`${sourceTypeId}:${field}`);
+    else choiceFieldFails.set(`${sourceTypeId}:${field}`, message);
   },
   /** Makes preparing the next Source being added fail. */
   failAdding(sourceTypeId: string): void {
@@ -244,8 +251,10 @@ export function testSourcePlugin(plugin: TestPluginPackage): PluginImplementatio
     sourceRemoved: (context) => {
       removed.set(sourceTypeId, [...(removed.get(sourceTypeId) ?? []), contextOf(context)]);
     },
-    fieldChoices: () => {
+    fieldChoices: ({ field }) => {
       choicesAsked.set(sourceTypeId, (choicesAsked.get(sourceTypeId) ?? 0) + 1);
+      const fieldFailure = choiceFieldFails.get(`${sourceTypeId}:${field}`);
+      if (fieldFailure !== undefined) throw new PluginError("temporary", fieldFailure);
       return { choices: askedOf(sourceTypeId, knownValues.get(sourceTypeId) ?? []) };
     },
     ...(plugin.namesAttributes

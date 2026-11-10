@@ -286,22 +286,27 @@ export function createSourceAccess(deps: SourcesDeps) {
   /**
    * The values each choice field of a Source offers, as its plugin offered them lately, so that a page
    * showing a Source does not ask its plugin again each time, such as an IMAP plugin logging in to list
-   * folders; none while its Source Type is not enabled. Its fields are asked at the same time.
+   * folders; none while its Source Type is not enabled.
    */
   async function choicesOf(source: Source): Promise<Record<string, PluginAnswer<KnownValue[]>>> {
     const sourceType = await enabled(source.sourceTypeId);
     const fields = sourceType?.configuration.fields.filter((field) => field.choice) ?? [];
     if (!sourceType || fields.length === 0) return {};
     const configuration = JSON.stringify([source.id, source.sourceTypeId, source.configVersion, source.plain, source.secrets]);
-    const answers = await Promise.all(
-      fields.map(async (field) => {
-        const answer = await cached(`choices:${configuration}:${field.key}`, choicesMaxAgeMs, failedChoicesMaxAgeMs, async () =>
-          sourceType.choices(field.key, await contextOf(source)),
-        );
-        return [field.key, answer] as const;
-      }),
-    );
-    return Object.fromEntries(answers);
+    // Built once, and only if a field's values are not kept: it reads the Source's secrets.
+    let context: Promise<SourceRunContext> | undefined;
+    const contextOnce = () => {
+      context ??= contextOf(source);
+      return context;
+    };
+    const choices: Record<string, PluginAnswer<KnownValue[]>> = {};
+    // One after another, so that a plugin such as an IMAP one logs in once at a time.
+    for (const field of fields) {
+      choices[field.key] = await cached(`choices:${configuration}:${field.key}`, choicesMaxAgeMs, failedChoicesMaxAgeMs, async () =>
+        sourceType.choices(field.key, await contextOnce()),
+      );
+    }
+    return choices;
   }
 
   /** Declares and archives the Source Attributes the plugin of a Source names now; why asking it failed, or null. */
@@ -396,6 +401,27 @@ export function createSourceAccess(deps: SourcesDeps) {
     }
   }
 
+  /** The form of an enabled Source Type, for adding and editing its Sources. */
+  async function formOf(id: SourceTypeId): Promise<SourceForm | undefined> {
+    const type = registry.installed().find((candidate) => candidate.id === id);
+    const sourceType = type && (await enabled(type.id));
+    if (!type || !sourceType) return undefined;
+    const { ingestion, catalogue } = sourceType;
+    return {
+      sourceTypeId: type.id,
+      displayName: type.displayName,
+      fields: sourceType.configuration.fields.filter((field) => !field.setByPlugin),
+      catalogue: catalogue
+        ? {
+            configKey: catalogue.configKey,
+            entries: (await usableEntries(type.id, sourceType, catalogues)).map(({ id: entry, displayName }) => ({ id: entry, displayName })),
+          }
+        : null,
+      setupSteps: sourceType.setupSteps,
+      suggestedIntervalSeconds: ingestion.mode === "polling" ? ingestion.suggestedIntervalSeconds : null,
+    };
+  }
+
   return {
     async list(): Promise<SourceSummary[]> {
       const all = await sources.list();
@@ -434,25 +460,15 @@ export function createSourceAccess(deps: SourcesDeps) {
     async forms(): Promise<SourceForm[]> {
       const forms: SourceForm[] = [];
       for (const type of registry.installed()) {
-        const sourceType = await enabled(type.id);
-        if (!sourceType) continue;
-        const { ingestion } = sourceType;
-        const { catalogue } = sourceType;
-        forms.push({
-          sourceTypeId: type.id,
-          displayName: type.displayName,
-          fields: sourceType.configuration.fields.filter((field) => !field.setByPlugin),
-          catalogue: catalogue
-            ? {
-                configKey: catalogue.configKey,
-                entries: (await usableEntries(type.id, sourceType, catalogues)).map(({ id, displayName }) => ({ id, displayName })),
-              }
-            : null,
-          setupSteps: sourceType.setupSteps,
-          suggestedIntervalSeconds: ingestion.mode === "polling" ? ingestion.suggestedIntervalSeconds : null,
-        });
+        const form = await formOf(type.id);
+        if (form) forms.push(form);
       }
       return forms.sort((a, b) => textIn(a.displayName, "en").localeCompare(textIn(b.displayName, "en")));
+    },
+
+    /** The form of one enabled Source Type; undefined for one not installed or not enabled. */
+    formOf(sourceTypeId: string): Promise<SourceForm | undefined> {
+      return formOf(sourceTypeId as SourceTypeId);
     },
 
     /** Adds a Source of an enabled Source Type, configured by the fields its plugin declares. */

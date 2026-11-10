@@ -24,6 +24,7 @@ export function LazyFragment(props: { href: string; children?: Child; delaySecon
       aria-live="polite"
       data-failed={t.loading.failed}
       data-failed-message={t.loading.failedMessage}
+      data-gone={t.loading.gone}
     >
       {props.children ?? (
         <>
@@ -69,7 +70,8 @@ function SlowFragment() {
 
 /**
  * Turns a fragment whose request failed, or could not be sent, into an error in its place, with the
- * words the fragment carries, so that its spinner does not turn forever.
+ * words the fragment carries, so that its spinner does not turn forever: that what it shows is gone
+ * for a 4xx answer, that the server could not be reached otherwise.
  */
 export const lazyFragmentErrors = `
 for (const name of ["htmx:responseError", "htmx:sendError"]) {
@@ -81,7 +83,10 @@ for (const name of ["htmx:responseError", "htmx:sendError"]) {
     failed.setAttribute("role", "alert");
     const title = document.createElement("strong");
     title.textContent = pending.dataset.failed || "";
-    failed.append(title, " " + (pending.dataset.failedMessage || ""));
+    // A 4xx answer, such as 404 for a Source removed meanwhile, is not a connection problem.
+    const status = event.detail.xhr ? event.detail.xhr.status : 0;
+    const message = status >= 400 && status < 500 ? pending.dataset.gone : pending.dataset.failedMessage;
+    failed.append(title, " " + (message || ""));
     pending.replaceWith(failed);
   });
 }

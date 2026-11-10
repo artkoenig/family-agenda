@@ -481,11 +481,13 @@ export function createHttpApp(application: Application, options: HttpOptions) {
 
   /**
    * Whether the LLM endpoint answers, as asked lately: every Admin page shows it, so a page uses the
-   * answer of the last minute, and of the last few seconds when it failed, until the endpoint is saved.
+   * last answer and asks again in the background once it is a minute old, or a few seconds when it
+   * failed, instead of waiting for it; anew once the endpoint is saved.
    */
   let llmSaved = 0;
   const llmHealthNow = async (endpoint: LlmEndpointSummary): Promise<"ok" | "failing"> => {
-    const answer = await cached(`llm-health:${llmSaved}:${JSON.stringify(endpoint)}`, 60_000, 15_000, () => llmEndpoint.health()).catch(() => null);
+    const asking = () => llmEndpoint.health().catch((error: unknown) => ({ ok: false as const, message: String(error) }));
+    const answer = await cached(`llm-health:${llmSaved}:${JSON.stringify(endpoint)}`, 60_000, 15_000, asking, { stale: true }).catch(() => null);
     return answer?.ok ? "ok" : "failing";
   };
 
@@ -1029,7 +1031,7 @@ function shownStatus(status: 200 | 400 | 413 | undefined, problems: (string | un
   app.get("/admin/sources/:id/values", async (c) => {
     const source = await sources.find(c.req.param("id") as SourceId);
     if (!source) return c.body(null, 404);
-    const form = (await sources.forms()).find((candidate) => candidate.sourceTypeId === source.sourceTypeId);
+    const form = await sources.formOf(source.sourceTypeId);
     return render(c, <SourceValues source={source} form={form} />);
   });
 

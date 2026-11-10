@@ -112,6 +112,7 @@ export const en = {
     choices: (label: string) => `Loading ${label}…`,
     failed: "This could not be loaded.",
     failedMessage: "The page could not reach the server. Reload it to try again.",
+    gone: "What this showed no longer exists. Reload the page.",
     slow: "This is taking longer than usual. Reload the page to try again.",
   },
 

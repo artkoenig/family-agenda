@@ -211,6 +211,11 @@ describe("a Source Type's catalogue and the Sources that use it", () => {
     expect(await instance.app.sources.listOfType("other")).toEqual([]);
   });
 
+  it("gives the form of one Source Type, none for one not installed", async () => {
+    expect((await instance.app.sources.formOf("bridged"))?.fields.map((field) => field.key)).toContain("chats");
+    expect(await instance.app.sources.formOf("other")).toBeUndefined();
+  });
+
   it("offers a choice field's values per Source and stores what was chosen as a list", async () => {
     const { id } = await addWhatsApp();
     testPluginControls.knowValues("bridged", [{ value: "!class:local", label: "Klasse 5b" }]);
