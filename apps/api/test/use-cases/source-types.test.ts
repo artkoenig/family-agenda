@@ -146,7 +146,7 @@ describe("Sources", () => {
         pollIntervalSeconds: null,
         shown: true,
         name: null,
-        health: { status: "ok", problem: null, lastSuccessAt: null, invalidRecords: [], unknownAttributes: [] },
+        health: { status: "ok", problem: null, lastSuccessAt: null, invalidRecords: [], unknownAttributes: [], awaitingRead: true },
         attributes: [],
       },
     ]);

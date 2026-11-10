@@ -65,6 +65,7 @@ import {
   AddSourceDialog,
   FixDialog,
   SourceAttributesSection,
+  SourceHealthFragment,
   SourceTypeCatalogue,
   SourceTypePage,
   SourceValues,
@@ -1124,6 +1125,25 @@ function shownStatus(status: 200 | 400 | 413 | undefined, problems: (string | un
   });
 
   // Its Source Attributes as its plugin names them now, fetched by its page once shown.
+  // A Source's health line, asked for again with backoff while it awaits a read, so that its page need not reload.
+  app.get("/admin/sources/:id/health", async (c) => {
+    const source = await sourceOf(c.req.param("id"));
+    if (!source) return c.body(null, 404);
+    const [form, members] = await Promise.all([sources.formOf(source.sourceTypeId), familyMembers.list()]);
+    const waited = Number(c.req.query("waited"));
+    return render(
+      c,
+      <SourceHealthFragment
+        source={source}
+        form={form}
+        members={members}
+        timeZone={timeZone}
+        waitedSeconds={Number.isFinite(waited) && waited > 0 ? waited : 0}
+        attributesPending={c.req.query("attributes") === "pending"}
+      />,
+    );
+  });
+
   app.get("/admin/sources/:id/attributes", async (c) => {
     const refreshed = await sources.refreshAttributes(c.req.param("id") as SourceId);
     if (!refreshed) return c.body(null, 404);

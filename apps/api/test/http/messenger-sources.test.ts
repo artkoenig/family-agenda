@@ -296,7 +296,8 @@ describe("Sources of a Source Type with a catalogue and a live setup step", () =
     await instance.request(`/admin/sources/${added.id}`, { body, cookie });
     const waiting = await (await instance.get(`/admin/sources/${added.id}`, { cookie })).text();
     expect(waiting).toContain("Reading the Source for the first time");
-    expect(waiting).toContain(`hx-get="/admin/sources/${added.id}"`);
+    expect(waiting, "its health line is asked for, not the whole page").toContain(`hx-get="/admin/sources/${added.id}/health?attributes=pending`);
+    expect(waiting).not.toContain(`hx-get="/admin/sources/${added.id}"`);
 
     testPluginControls.declare("bridged", [{ externalId: "!class:local", name: "Klasse 5b" }]);
     await instance.app.polling.pollDue();
