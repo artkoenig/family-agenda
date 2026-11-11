@@ -14,7 +14,7 @@ import type {
   StoredMessage,
 } from "@family-agenda/application";
 import type { BlobRef, Event, FamilyMemberId, ItemId, StatedTask, LocalDate, RawMessageId, SourceId, SourceTypeId, TimeSpan, TimetableChangeKind } from "@family-agenda/domain";
-import { and, asc, eq, gte, inArray, isNotNull, isNull, lt, lte, or, sql, type SQL, type SQLWrapper } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, isNotNull, isNull, lt, lte, ne, or, sql, type SQL, type SQLWrapper } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { uuidPattern } from "../uuid";
 import type { Database } from "./database";
@@ -47,38 +47,36 @@ type KnownAttributes = Map<string, { id: string; archived: boolean }>;
 /** A message, with its text, waiting for its one successful extraction. */
 const pendingMessage = and(isNull(sourceRecords.processedAt), isNotNull(sourceRecords.body), isNull(sourceRecords.withdrawnAt));
 
-/** The Source Records that are the same message as this one, itself among them (ADR-0005). */
-const copiesOf = (recordId: SQLWrapper) => sql`(SELECT source_record_copies(${recordId}))`;
+/** A copy of a message (ADR-0005), in another Source of its Source Type. */
+const copy = alias(sourceRecords, "copy");
+const copySource = alias(sources, "copy_source");
+
+/** Whether the copy has the Items of its message, or will once it is read. */
+const copyTakesItems = sql<boolean>`(${copy.processedAt} IS NULL OR EXISTS (SELECT 1 FROM item WHERE item.record_id = ${copy.id}))`;
 
 /**
- * Whether another copy of the message, which waits to be read too, comes before this one: of the
- * copies that wait, only the first is read.
+ * The messages with one of the external ids in the other Sources of the Source's Source Type, and
+ * whether each has the Items.
  */
-const waitsBehindCopy = sql`EXISTS (
-  SELECT 1 FROM source_record AS earlier
-  WHERE earlier.id IN ${copiesOf(sourceRecords.id)}
-    AND earlier.processed_at IS NULL AND earlier.body IS NOT NULL AND earlier.withdrawn_at IS NULL
-    AND (earlier.created_at, earlier.id) < (${sourceRecords.createdAt}, ${sourceRecords.id})
-)`;
+const copiesElsewhere = (tx: Transaction, sourceId: string, externalIds: string[], where?: SQL) =>
+  tx
+    .select({ id: copy.id, takesItems: copyTakesItems })
+    .from(sources)
+    .innerJoin(copySource, and(eq(copySource.sourceTypeId, sources.sourceTypeId), ne(copySource.id, sources.id)))
+    .innerJoin(copy, and(eq(copy.sourceId, copySource.id), inArray(copy.externalId, externalIds)))
+    .where(and(eq(sources.id, sourceId), isNull(copy.stated), where));
 
-/** A message to read now: one that waits, and is the first of its copies that do. */
-const messageToRead = and(pendingMessage, sql`NOT ${waitsBehindCopy}`);
+/** A copy whose message counts as delivered: one withdrawn, or back after it was, is no longer read and has no Items. */
+const copyDelivered = and(isNull(copy.withdrawnAt), or(isNotNull(copy.processedAt), isNotNull(copy.body)));
 
-/** Whether another copy of the message has been read, and its Source still has it. */
-const readAsCopy = (recordId: SQLWrapper) => sql`EXISTS (
-  SELECT 1 FROM source_record AS read
-  WHERE read.id IN ${copiesOf(recordId)} AND read.id <> ${recordId}
-    AND read.processed_at IS NOT NULL AND read.withdrawn_at IS NULL
-)`;
-
-/** Whether the message of the Source Record has an Item, on whichever of its copies. */
-const hasItem = sql`EXISTS (SELECT 1 FROM item WHERE item.record_id IN ${copiesOf(sourceRecords.id)})`;
+/** The Source Attributes of a Source. */
+const attributesOf = (tx: Transaction, sourceId: string) =>
+  tx.select({ id: sourceAttributes.id }).from(sourceAttributes).where(eq(sourceAttributes.sourceId, sourceId));
 
 /**
- * Whether the message of the Source Record has an Item, on whichever of its copies, that still
- * needs its content at `now`: an Event or Lesson that has not ended, or a Task not done whose
- * Deadline has not passed (one without a Deadline until it is done). Days are read as widely as
- * for `windowTo`.
+ * Whether a message's Source Record has an Item that still needs its content at `now`: an Event or
+ * Lesson that has not ended, or a Task not done whose Deadline has not passed (one without a
+ * Deadline until it is done). Days are read as widely as for `windowTo`.
  */
 const neededAt = (instant: Date) => {
   const now = sql`${instant.toISOString()}::timestamptz`;
@@ -87,7 +85,7 @@ const neededAt = (instant: Date) => {
   LEFT JOIN event ON event.item_id = item.id
   LEFT JOIN lesson ON lesson.item_id = item.id
   LEFT JOIN task ON task.item_id = item.id
-  WHERE item.record_id IN ${copiesOf(sourceRecords.id)}
+  WHERE item.record_id = ${sourceRecords.id}
     AND coalesce(
       event.ends_at >= ${now},
       (((event.last_day + 1)::timestamp AT TIME ZONE 'UTC' + interval '1 day') >= ${now}),
@@ -111,19 +109,16 @@ const windowTo = sql<Date | null>`coalesce(${events.endsAt}, ${dayTo(events.last
 /** When a Source Record arrived: when its Source received it, or, for a stated Item, when it was first recorded. */
 const arrivedAt = sql<Date>`coalesce(${sourceRecords.occurredAt}, ${sourceRecords.createdAt})`.mapWith(sourceRecords.occurredAt);
 
-/** Whether a copy of the Item's message is in a Source that is shown, and that Source still has it. */
-const shownInCopy = sql`EXISTS (
-  SELECT 1 FROM source_record AS copy
-  JOIN source AS copy_source ON copy_source.id = copy.source_id
-  WHERE copy.id IN ${copiesOf(items.recordId)} AND copy.withdrawn_at IS NULL AND copy_source.shown
-)`;
-
-/** What a read of Items selects: the Item, when its Source Record arrived, and its detail row. */
+/** What a read of Items selects: the Item, its Source Record and Source, and its detail row. */
 const columns = {
   id: items.id,
   kind: items.kind,
   recordId: items.recordId,
   occurredAt: arrivedAt,
+  link: sourceRecords.link,
+  isMessage: sql<boolean>`(${sourceRecords.body} IS NOT NULL)`,
+  sourceTypeId: sources.sourceTypeId,
+  sourceName: sources.name,
   event: events,
   task: tasks,
   lesson: lessons,
@@ -187,9 +182,9 @@ export class PostgresItemRepository implements ItemRepository {
   }
 
   /**
-   * Marks the Source Records the Source deleted as withdrawn, which hands their Items to another
-   * copy of their message or deletes them, and removes their messages' text and attachments.
-   * Returns the files of the removed attachments.
+   * Marks the Source Records the Source deleted as withdrawn, which deletes their Items, and
+   * removes their messages' text and attachments. A message's copies in other Sources lose the
+   * Source Attributes it gave them. Returns the files of the removed attachments.
    */
   private async withdraw(tx: Transaction, run: SourceRun, externalIds: string[]): Promise<BlobRef[]> {
     if (externalIds.length === 0) return [];
@@ -209,6 +204,17 @@ export class PostgresItemRepository implements ItemRepository {
       )
       .returning({ id: sourceRecords.id });
     if (withdrawn.length === 0) return [];
+    await tx
+      .delete(sourceRecordAttributes)
+      .where(
+        and(
+          inArray(
+            sourceRecordAttributes.recordId,
+            (await copiesElsewhere(tx, run.sourceId, externalIds)).map((other) => other.id),
+          ),
+          inArray(sourceRecordAttributes.attributeId, attributesOf(tx, run.sourceId)),
+        ),
+      );
     const attachments = await tx
       .delete(sourceRecordAttachments)
       .where(inArray(sourceRecordAttachments.recordId, withdrawn.map((row) => row.id)))
@@ -236,7 +242,7 @@ export class PostgresItemRepository implements ItemRepository {
       const deleted = await tx
         .delete(sourceRecords)
         .where(
-          and(isNull(sourceRecords.stated), lt(sourceRecords.occurredAt, retainedSince), sql`NOT ${hasItem}`),
+          and(isNull(sourceRecords.stated), lt(sourceRecords.occurredAt, retainedSince), sql`NOT EXISTS (SELECT 1 FROM item WHERE item.record_id = ${sourceRecords.id})`),
         )
         .returning({ id: sourceRecords.id });
       return { files: files.map((row) => row.blob as BlobRef), purged: purged.length, deleted: deleted.length };
@@ -247,7 +253,7 @@ export class PostgresItemRepository implements ItemRepository {
     const rows = await this.db
       .select({ id: sourceRecords.id, sourceId: sourceRecords.sourceId, sentAt: arrivedAt, body: sourceRecords.body })
       .from(sourceRecords)
-      .where(messageToRead)
+      .where(pendingMessage)
       .orderBy(asc(sourceRecords.createdAt), asc(sourceRecords.occurredAt))
       .limit(limit);
     const attachments =
@@ -276,7 +282,7 @@ export class PostgresItemRepository implements ItemRepository {
     const [row] = await this.db
       .select({ count: sql<number>`count(*)::int` })
       .from(sourceRecords)
-      .where(and(messageToRead, scope.sourceId ? eq(sourceRecords.sourceId, scope.sourceId) : undefined));
+      .where(and(pendingMessage, scope.sourceId ? eq(sourceRecords.sourceId, scope.sourceId) : undefined));
     return row?.count ?? 0;
   }
 
@@ -287,14 +293,8 @@ export class PostgresItemRepository implements ItemRepository {
         .update(sourceRecords)
         .set({ processedAt: extraction.at })
         .where(and(eq(sourceRecords.id, extraction.messageId), pendingMessage))
-        // Read in a copy already, should that one have been recorded while this one was read.
-        .returning({ recordId: sourceRecords.id, hasItsItems: sql<boolean>`${readAsCopy(sourceRecords.id)}` });
-      if (!message || message.hasItsItems) return;
-      // Its copies that wait are read with it.
-      await tx
-        .update(sourceRecords)
-        .set({ processedAt: extraction.at })
-        .where(and(pendingMessage, sql`${sourceRecords.id} IN ${copiesOf(sql`${extraction.messageId}::uuid`)}`));
+        .returning({ recordId: sourceRecords.id });
+      if (!message) return;
       for (const { position, problem } of extraction.attachmentProblems) {
         await tx
           .update(sourceRecordAttachments)
@@ -343,7 +343,7 @@ export class PostgresItemRepository implements ItemRepository {
 
   async itemsOfMessage(id: RawMessageId): Promise<ProjectedItem[]> {
     if (!uuidPattern.test(id)) return [];
-    return this.projected(sql`${items.recordId} IN ${copiesOf(sql`${id}::uuid`)}`, false);
+    return this.projected(eq(items.recordId, id), false);
   }
 
   async overlapping(from: Date, to: Date | null): Promise<ProjectedItem[]> {
@@ -377,30 +377,25 @@ export class PostgresItemRepository implements ItemRepository {
   /** The Items that match, in the order of their time; those of a hidden Source left out if `shownOnly`. */
   private query(where: SQL | undefined, shownOnly: boolean) {
     return selectItems(this.db)
-      // Items of a hidden Source stay recorded, but leave the timeline and the feeds, unless a shown one has a copy of their message.
-      .where(and(where, shownOnly ? or(eq(sources.shown, true), shownInCopy) : undefined))
+      // Items of a hidden Source stay recorded, but leave the timeline and the feeds.
+      .where(and(where, shownOnly ? eq(sources.shown, true) : undefined))
       .orderBy(sql`${windowFrom} ASC NULLS LAST`, asc(items.createdAt));
   }
 
-  /**
-   * The Items that match, with the links and messages of every copy of their Source Record,
-   * leaving out those of a hidden Source.
-   */
+  /** The Items that match, with the link of their Source Record, leaving out those of a hidden Source. */
   private async projected(where: SQL | undefined, shownOnly = true): Promise<ProjectedItem[]> {
     const rows = await this.query(where, shownOnly);
-    const recordIds = rows.map((row) => row.recordId);
-    const assignments = await assignmentsOf(this.db, recordIds);
-    const copies = await copiesWithSource(this.db, recordIds, shownOnly);
+    const assignments = await assignmentsOf(this.db, rows.map((row) => row.recordId));
     return rows.flatMap((row) => {
       const details = detailsOf(row);
       if (!details) return [];
-      const delivered = copies.get(row.recordId) ?? [];
+      const source = { sourceTypeId: row.sourceTypeId as SourceTypeId, sourceName: row.sourceName };
       return [
         {
           ...details,
           id: row.id as ItemId,
-          links: delivered.flatMap(({ link, source }) => (link ? [{ url: link, ...source }] : [])),
-          messages: delivered.flatMap(({ id, isMessage, sentAt, source }) => (isMessage ? [{ id, ...source, sentAt }] : [])),
+          links: row.link ? [{ url: row.link, ...source }] : [],
+          messages: row.isMessage ? [{ id: row.recordId as RawMessageId, ...source, sentAt: row.occurredAt }] : [],
           assignments: assignments.get(row.recordId) ?? [],
         },
       ];
@@ -441,6 +436,10 @@ function lessonDetails(row: typeof lessons.$inferSelect): ItemDetails {
 /**
  * Records a message, unless it was recorded before, as a message is read once. Returns whether it
  * was, so that the caller removes the attachments it stored for it again.
+ *
+ * A message another Source of the Source Type has a copy of is not read either: it counts as read
+ * at once, and gives its Source Attributes to the copy that has the Items, or waits to be read,
+ * so that they concern those of this copy too.
  */
 async function recordMessage(tx: Transaction, run: SourceRun, origin: RunOrigin, message: StoredMessage, attributeIds: string[]): Promise<boolean> {
   const [row] = await tx
@@ -463,13 +462,11 @@ async function recordMessage(tx: Transaction, run: SourceRun, origin: RunOrigin,
     // A row the insert wrote has no previous version, so its xmax is 0.
     .returning({ id: sourceRecords.id, inserted: sql<boolean>`(xmax = 0)` });
   if (!row) throw new Error("recording a Source Record returned no row");
-  await replaceAttributes(tx, row.id, attributeIds);
+  await replaceAttributes(tx, run.sourceId, row.id, attributeIds);
+  const copies = await copiesElsewhere(tx, run.sourceId, [origin.externalId], copyDelivered);
+  for (const other of copies.filter((found) => found.takesItems)) await replaceAttributes(tx, run.sourceId, other.id, attributeIds);
   if (!row.inserted) return true;
-  // A copy of a message read already is not read again: it has its Items.
-  await tx
-    .update(sourceRecords)
-    .set({ processedAt: run.at })
-    .where(and(eq(sourceRecords.id, row.id), readAsCopy(sourceRecords.id)));
+  if (copies.length > 0) await tx.update(sourceRecords).set({ processedAt: run.at }).where(eq(sourceRecords.id, row.id));
   if (message.attachments.length > 0) {
     await tx.insert(sourceRecordAttachments).values(
       message.attachments.map((attachment, position) => ({
@@ -512,7 +509,7 @@ async function recordStated(
     })
     .returning({ id: sourceRecords.id });
   if (!row) throw new Error("recording a Source Record returned no row");
-  await replaceAttributes(tx, row.id, attributeIds);
+  await replaceAttributes(tx, run.sourceId, row.id, attributeIds);
   const [current] = await tx.select({ id: items.id, kind: items.kind }).from(items).where(eq(items.recordId, row.id)).limit(1);
   const result = read(stated);
   const problems = result.ok ? await writeStated(tx, row.id, current ?? null, result.item, run.at) : result.problems;
@@ -548,7 +545,7 @@ async function keptUnchanged(
     .where(where);
   if (!known?.unchanged) return false;
   if (!known.sameOrigin) await tx.update(sourceRecords).set({ link: origin.link }).where(where);
-  await replaceAttributes(tx, known.id, attributeIds);
+  await replaceAttributes(tx, run.sourceId, known.id, attributeIds);
   return true;
 }
 
@@ -628,36 +625,32 @@ function resolved(known: KnownAttributes, named: string[], refused: Set<string>)
   return unknown.length > 0 ? null : named.flatMap((externalId) => known.get(externalId)?.id ?? []);
 }
 
-/** Gives a Source Record these Source Attributes, and no others, leaving its rows as they are if they already are. */
-async function replaceAttributes(tx: Transaction, recordId: string, attributeIds: string[]): Promise<void> {
-  const current = await tx
-    .select({ id: sourceRecordAttributes.attributeId })
-    .from(sourceRecordAttributes)
-    .where(eq(sourceRecordAttributes.recordId, recordId));
+/**
+ * Gives a Source Record these Source Attributes of the Source, and no others of it, leaving its
+ * rows as they are if they already are. Those a copy in another Source gave it stay.
+ */
+async function replaceAttributes(tx: Transaction, sourceId: string, recordId: string, attributeIds: string[]): Promise<void> {
+  const ofSource = and(eq(sourceRecordAttributes.recordId, recordId), inArray(sourceRecordAttributes.attributeId, attributesOf(tx, sourceId)));
+  const current = await tx.select({ id: sourceRecordAttributes.attributeId }).from(sourceRecordAttributes).where(ofSource);
   const wanted = new Set(attributeIds);
   if (current.length === wanted.size && current.every((row) => wanted.has(row.id))) return;
-  await tx.delete(sourceRecordAttributes).where(eq(sourceRecordAttributes.recordId, recordId));
+  await tx.delete(sourceRecordAttributes).where(ofSource);
   await tx.insert(sourceRecordAttributes).values([...wanted].map((attributeId) => ({ recordId, attributeId })));
 }
 
 /**
  * For each Source Record, the Family Members assigned to each of its Source Attributes, in the
- * Family's order; archived Source Attributes count, as archiving never unassigns Items. Those of
- * the other copies of its message count as its own, unless their Source no longer has them.
+ * Family's order; archived Source Attributes count, as archiving never unassigns Items.
  */
 async function assignmentsOf(db: Database | Transaction, recordIds: string[]): Promise<Map<string, FamilyMemberId[][]>> {
   const assignments = new Map<string, FamilyMemberId[][]>();
   if (recordIds.length === 0) return assignments;
-  const ofCopy = sql`${sourceRecordAttributes.recordId} IN (
-    SELECT copy.id FROM source_record AS copy WHERE copy.id IN ${copiesOf(sourceRecords.id)} AND copy.withdrawn_at IS NULL
-  )`;
   const rows = await db
-    .select({ recordId: sourceRecords.id, attributeId: sourceRecordAttributes.attributeId, familyMemberId: sourceAttributeMembers.familyMemberId })
-    .from(sourceRecords)
-    .innerJoin(sourceRecordAttributes, ofCopy)
+    .select({ recordId: sourceRecordAttributes.recordId, attributeId: sourceRecordAttributes.attributeId, familyMemberId: sourceAttributeMembers.familyMemberId })
+    .from(sourceRecordAttributes)
     .leftJoin(sourceAttributeMembers, eq(sourceAttributeMembers.attributeId, sourceRecordAttributes.attributeId))
     .leftJoin(familyMembers, eq(familyMembers.id, sourceAttributeMembers.familyMemberId))
-    .where(inArray(sourceRecords.id, [...new Set(recordIds)]))
+    .where(inArray(sourceRecordAttributes.recordId, [...new Set(recordIds)]))
     .orderBy(asc(familyMembers.position));
   const byAttribute = new Map<string, { recordId: string; members: FamilyMemberId[] }>();
   for (const row of rows) {
@@ -671,49 +664,6 @@ async function assignmentsOf(db: Database | Transaction, recordIds: string[]): P
     if (row.familyMemberId) entry.members.push(row.familyMemberId as FamilyMemberId);
   }
   return assignments;
-}
-
-/**
- * What an Item names of where it came from: its Source Record, or each copy of its message, with
- * where it can be looked at and the Source that has it.
- */
-type Delivered = {
-  id: RawMessageId;
-  link: string | null;
-  /** Whether it is a message that still has its text. */
-  isMessage: boolean;
-  sentAt: Date;
-  source: { sourceTypeId: SourceTypeId; sourceName: string | null };
-};
-
-/**
- * For each Source Record, the copies of its message that their Sources still have, itself among
- * them, in the order they arrived; only those of a shown Source if `shownOnly`.
- */
-async function copiesWithSource(db: Database, recordIds: string[], shownOnly: boolean): Promise<Map<string, Delivered[]>> {
-  const copies = new Map<string, Delivered[]>();
-  if (recordIds.length === 0) return copies;
-  const copy = alias(sourceRecords, "copy");
-  const rows = await db
-    .select({
-      recordId: sourceRecords.id,
-      id: copy.id,
-      link: copy.link,
-      isMessage: sql<boolean>`(${copy.body} IS NOT NULL)`,
-      sentAt: sql<Date>`coalesce(${copy.occurredAt}, ${copy.createdAt})`.mapWith(copy.createdAt),
-      sourceTypeId: sources.sourceTypeId,
-      sourceName: sources.name,
-    })
-    .from(sourceRecords)
-    .innerJoin(copy, sql`${copy.id} IN ${copiesOf(sourceRecords.id)}`)
-    .innerJoin(sources, eq(sources.id, copy.sourceId))
-    .where(and(inArray(sourceRecords.id, [...new Set(recordIds)]), isNull(copy.withdrawnAt), shownOnly ? eq(sources.shown, true) : undefined))
-    .orderBy(asc(copy.createdAt), asc(copy.id));
-  for (const { recordId, id, sourceTypeId, sourceName, ...rest } of rows) {
-    const source = { sourceTypeId: sourceTypeId as SourceTypeId, sourceName };
-    copies.set(recordId, [...(copies.get(recordId) ?? []), { id: id as RawMessageId, ...rest, source }]);
-  }
-  return copies;
 }
 
 /** Items with their Source Record, Source and detail row. */

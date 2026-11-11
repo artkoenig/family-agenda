@@ -57,14 +57,12 @@ Where the first drafts of the schema document and the code differed, the impleme
 
 ### Copies of a message
 
-A mail to a mailing list arrives in the mailbox of every Family Member on the list. Each mailbox is a Source, so the mail became one Source Record per mailbox, each was read, and its Items appeared once per mailbox. Messages with the same external id in Sources of the same Source Type are now Copies of one message.
+A mail to a mailing list arrives in the mailbox of every Family Member on the list. Each mailbox is a Source, so the mail became one Source Record per mailbox, each was read, and its Items appeared once per mailbox. Messages with the same external id in Sources of the same Source Type are now Copies of one message, and only the first is read.
 
 - **What makes two Source Records Copies.** Both are messages, their Sources have the same Source Type, and their external ids are equal as strings. Stated Source Records are never Copies, and nothing is compared across Source Types. A plugin therefore gives a message the same external id in every Source of its Source Type that receives it, and different messages different ones; the IMAP plugin uses the `Message-ID` header. Within one Source this was always so.
-- **Each Copy stays a Source Record** of its own Source, with its own Source Attributes, content and retention. The Admin area shows it with its Source.
-- **A message is still read once.** Of the Copies that wait, only the first is read, and the others are marked as read with it. A Copy that arrives when another one was read, and is not Withdrawn, is marked as read at once. So a later Copy does not bring back an Item an Admin deleted. A Copy that arrives when every earlier one is Withdrawn, or came back after it was, is a new message and is read.
-- **An Item still has exactly one Source Record**, one of the Copies. Whom it concerns is the union over the Source Attributes of all Copies that are not Withdrawn, the whole Family if one of them is assigned to no one. It names every such Copy as its message and link, and it is shown while the Source of one of them is shown.
-- **Items outlive a Copy.** When the Copy they belong to is Withdrawn, or its Source is removed, they pass to another Copy that is not Withdrawn, one that still has its content first. They are deleted with the last Copy.
-- **Retention counts the Items for every Copy.** The content of a Copy is kept as long as an Item on any Copy needs it, and its row as long as any Copy has an Item.
+- **Only the first Copy is read.** A message arriving when another Source has a Copy that is read, or waits to be, is recorded as its own Source Record and marked as read at once. It writes no Items, so it does not bring back an Item an Admin deleted either. A Copy that is Withdrawn, or came back after it was, does not count: a message arriving then is read.
+- **A later Copy gives its Source Attributes to the first.** They are added to the Source Record that has the Items (`source_record_attribute`, which may name Source Attributes of another Source for this), so whom the Items concern is computed as for any Item, and they concern everyone either Copy concerns. They follow the later Copy when it moves to other Source Attributes, and are taken back when it is Withdrawn or its Source is removed.
+- **The Items stay with the first Copy.** Everything else is as for any message: they name that Source Record and its Source alone, are shown or hidden with that Source, and are deleted when it is Withdrawn or its Source is removed, even if another Source still has a Copy, which is not read in its place.
 
 This does not merge Items of different messages, which stays rejected below: a forwarded mail has another external id and is read on its own. A plugin whose external ids are not the same message across its Sources, such as a position in a mailbox for a mail without `Message-ID`, can make two different messages look like Copies, and the second is then not read; such ids have to differ per Source.
 
@@ -75,6 +73,7 @@ This does not merge Items of different messages, which stays rejected below: a f
 - Whole-Family Items no longer appear on an Agenda for chosen Family Members. A Family that wants them there assigns the Source Attribute to those members.
 - A message's content is gone after the retention period. A message whose extraction failed can no longer be retried after that.
 - Renaming a Gmail label loses its assignment until an Admin reassigns it.
+- The Items of a message in several mailboxes go when the mailbox it was read from deletes it, though another still has it.
 
 ## Considered Options
 

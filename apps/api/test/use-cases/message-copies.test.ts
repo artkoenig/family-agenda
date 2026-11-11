@@ -11,11 +11,11 @@ import { openTimeline } from "../support/timeline";
 const minutes = 60 * 1000;
 
 /** The mail of the school's mailing list, as each mailbox on the list receives it. */
-const mail = (id = "<wandertag@schule.example.org>"): Origin => ({
-  externalId: id,
+const mail = (folder = "INBOX"): Origin => ({
+  externalId: "<wandertag@schule.example.org>",
   occurredAt: new Date("2026-09-14T06:12:00Z"),
   sender: "Frau Berger",
-  attributes: ["INBOX"],
+  attributes: [folder],
   content: { kind: "raw-message", text: "Am Freitag, 18.09., ist der Wandertag der 5b.", attachments: [] },
 });
 
@@ -66,11 +66,11 @@ describe("A message that several Sources of one Source Type deliver", () => {
     return result.id;
   };
 
-  /** Assigns the inbox of a mailbox to the Family Members. */
-  const assignInbox = async (source: SourceId, members: FamilyMemberId[]) => {
+  /** Assigns a folder of a mailbox, its inbox unless another is named, to the Family Members. */
+  const assignInbox = async (source: SourceId, members: FamilyMemberId[], folder = "INBOX") => {
     const listed = (await instance.app.sources.list()).find((candidate) => candidate.id === source);
-    const inbox = listed?.attributes.find((attribute) => attribute.name === "INBOX");
-    if (!inbox) throw new Error("the mailbox has no inbox yet");
+    const inbox = listed?.attributes.find((attribute) => attribute.name === folder);
+    if (!inbox) throw new Error(`the mailbox has no ${folder} yet`);
     const result = await instance.app.sources.assignAttribute(inbox.id, members);
     if (!result.ok) throw new Error(`assigning failed: ${result.problem}`);
   };
@@ -174,6 +174,7 @@ describe("A message that several Sources of one Source Type deliver", () => {
   });
 
   describe("when Mia's mailbox delivered it first and Leo's later", () => {
+    const withdrawn = [mail().externalId];
     beforeEach(async () => {
       testPluginControls.emitFor("mail", mias, [mail()]);
       await run();
@@ -183,68 +184,43 @@ describe("A message that several Sources of one Source Type deliver", () => {
       await assignInbox(leosMailbox, [leo]);
     });
 
-    it("keeps its Items while one copy remains, and deletes them with the last", async () => {
-      testPluginControls.emitFor("mail", mias, [], [mail().externalId]);
-      await run();
-      expect(await concerning(), "the copy that was read is gone").toEqual(["Wandertag 5b: Leo"]);
-
-      testPluginControls.emitFor("mail", leos, [], [mail().externalId]);
-      await run();
-      expect(await concerning()).toEqual([]);
-    });
-
-    it("keeps its Items when the copy that was not read is withdrawn", async () => {
-      testPluginControls.emitFor("mail", leos, [], [mail().externalId]);
+    it("no longer concerns those of a copy that is withdrawn", async () => {
+      testPluginControls.emitFor("mail", leos, [], withdrawn);
       await run();
 
       expect(await concerning()).toEqual(["Wandertag 5b: Mia"]);
     });
 
-    it("keeps its Items when the Source of the copy that was read is removed", async () => {
-      await instance.app.sources.remove(miasMailbox);
+    it("loses its Items with the copy that was read, though another remains", async () => {
+      testPluginControls.emitFor("mail", mias, [], withdrawn);
+      await run();
 
-      expect(await concerning()).toEqual(["Wandertag 5b: Leo"]);
+      expect(await concerning()).toEqual([]);
+      expect(extractor.requests, "the copy that remains is not read in its place").toHaveLength(1);
     });
 
-    it("names each copy as a message of its Items, and shows the Items with each copy", async () => {
-      const [item] = (await rows()).items;
-      expect(item?.messages).toHaveLength(2);
+    it("follows a copy that was not read to another folder", async () => {
+      testPluginControls.emitFor("mail", leos, [mail("Schule")]);
+      await run();
+      expect(await concerning(), "the new folder is assigned to no one").toEqual(["Wandertag 5b: Family"]);
 
-      for (const message of item!.messages) {
-        const opened = await instance.app.messages.open(message.id);
-        expect(opened?.items.map((written) => written.id)).toEqual([item!.itemId]);
-      }
+      await assignInbox(leosMailbox, [leo], "Schule");
+      expect(await concerning()).toEqual(["Wandertag 5b: Mia, Leo"]);
     });
 
-    it("shows its Items while the Source of one copy is shown", async () => {
-      await instance.app.sources.setShown(miasMailbox, false);
-      const [item] = (await rows()).items;
-      expect(item?.title).toBe("Wandertag 5b");
-      expect(item?.messages, "only the copy of the Source that is shown").toHaveLength(1);
+    it("keeps concerning those of the other copy when the one that was read moves to another folder", async () => {
+      testPluginControls.emitFor("mail", mias, [mail("Schule")]);
+      await run();
+      await assignInbox(miasMailbox, [mia], "Schule");
 
-      await instance.app.sources.setShown(leosMailbox, false);
-      expect(await titles()).toEqual([]);
+      expect(await concerning()).toEqual(["Wandertag 5b: Mia, Leo"]);
     });
-  });
 
-  it("keeps the content and the row of every copy for as long as the Items need the message", async () => {
-    const days = 24 * 60 * minutes;
-    testPluginControls.emitFor("mail", mias, [mail()]);
-    await run();
-    testPluginControls.emitFor("mail", leos, [mail()]);
-    await run();
-    const [item] = (await rows()).items;
+    it("no longer concerns those of a copy whose Source is removed", async () => {
+      await instance.app.sources.remove(leosMailbox);
 
-    expect(await instance.app.retention.purge(), "the Wandertag is still to come").toEqual({ purged: 0, deleted: 0 });
-
-    instance.clock.advance(6 * days);
-    expect(await instance.app.retention.purge(), "the Wandertag is over").toEqual({ purged: 2, deleted: 0 });
-
-    instance.clock.advance(180 * days);
-    expect(await instance.app.retention.purge(), "the Item still points to the message").toEqual({ purged: 0, deleted: 0 });
-
-    await instance.app.messages.deleteItem(item!.itemId);
-    expect(await instance.app.retention.purge()).toEqual({ purged: 0, deleted: 2 });
+      expect(await concerning()).toEqual(["Wandertag 5b: Mia"]);
+    });
   });
 
   it("reads a copy that arrives when every earlier copy is withdrawn", async () => {
@@ -276,7 +252,7 @@ describe("A message that several Sources of one Source Type deliver", () => {
     expect(await titles()).toEqual(["Wandertag 5b"]);
   });
 
-  it("reads the message once when the extraction of its copies failed before", async () => {
+  it("reads the message once when its extraction failed before", async () => {
     extractor.fail("unreachable");
     testPluginControls.emitFor("mail", mias, [mail()]);
     testPluginControls.emitFor("mail", leos, [mail()]);

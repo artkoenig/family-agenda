@@ -596,22 +596,22 @@ export type ItemDetails =
 
 export type ProjectedItem = ItemDetails & {
   id: ItemId;
-  /** Where its Source Record, and each other copy of its message, can be looked at, with the Source Type and name of its Source. */
+  /** Where its Source Record can be looked at, with the Source Type and name of its Source. */
   links: { url: string; sourceTypeId: SourceTypeId; sourceName: string | null }[];
-  /** The message it was extracted from, if any, as each Source that has a copy of it delivered it, with the Source Type and name of that Source. */
+  /** The message it was extracted from, if any, with the Source Type and name of its Source. */
   messages: { id: RawMessageId; sourceTypeId: SourceTypeId; sourceName: string | null; sentAt: Date }[];
   /**
-   * The Family Members assigned to each Source Attribute of its Source Record and of the other
-   * copies of its message, in the Family's order; an empty list for one assigned to no one. They
-   * decide whom it concerns.
+   * The Family Members assigned to each Source Attribute of its Source Record, in the Family's
+   * order; an empty list for one assigned to no one. They decide whom it concerns. Those a copy of
+   * its message in another Source gave the Source Record are among them.
    */
   assignments: FamilyMemberId[][];
 };
 
 /**
  * Items, each written from its one Source Record (ADR-0005). Messages with the same external id
- * in Sources of one Source Type are copies of one message: it is read once, its Items pass to
- * another copy when theirs is withdrawn or its Source removed, and go with the last one.
+ * in Sources of one Source Type are copies of one message: only the first is read, and its Items
+ * concern those of every copy.
  */
 export interface ItemRepository {
   /**
@@ -619,8 +619,8 @@ export interface ItemRepository {
    * timetable entry, and the Source's sync cursor. An entry whose stated Item is unchanged is not
    * written at all; a changed one overwrites its Item, read with `read`, and one that is invalid,
    * by `read` or by a check of the schema, writes none and is kept among the Source's invalid
-   * records. A withdrawn Source Record's Items pass to another copy of its message, or are deleted
-   * if there is none, and its message's text and attachments are removed. Arriving again, it is no longer withdrawn: an entry writes its Item as new, but a
+   * records. A withdrawn Source Record's Items are deleted and its message's text and attachments
+   * removed. Arriving again, it is no longer withdrawn: an entry writes its Item as new, but a
    * message is not recorded or read again. Returns the external ids of messages recorded before or
    * withdrawn, whose new attachments the caller removes, the attachments of the withdrawn
    * messages, for the caller to remove, and the entries whose Item was invalid.
@@ -629,28 +629,29 @@ export interface ItemRepository {
    * it is not recorded, and the ids are returned and kept among the Source's unknown attributes
    * until a run refuses nothing or a declare covers them. One recorded again with another list of
    * Source Attributes moves to it without being read again; one with an empty list is withdrawn.
+   *
+   * A message another Source of the Source Type has a copy of, read or waiting to be, is recorded
+   * as read, and its Source Attributes are added to that copy for as long as its Source has it.
    */
   recordRun(run: SourceRun, read: ReadStated): Promise<RunRecorded>;
   /**
    * Deletes the text and attachments of messages nothing needs any more, or that arrived before
    * `retainedSince`, leaving a tombstone, and deletes the rows of those older than that without
-   * an Item. The Items of a message count for each of its copies. A message not extracted yet is
-   * kept until it is older than `retainedSince`. Returns the files of the removed attachments, for
-   * the caller to remove.
+   * an Item. A message not extracted yet is kept until it is older than `retainedSince`. Returns
+   * the files of the removed attachments, for the caller to remove.
    */
   purgeMessages(now: Date, retainedSince: Date): Promise<{ files: BlobRef[]; purged: number; deleted: number }>;
-  /** Raw messages not yet extracted successfully, oldest first; of the copies of one message, only the first. */
+  /** Raw messages not yet extracted successfully, oldest first. */
   pendingMessages(limit: number): Promise<PendingMessage[]>;
-  /** How many raw messages, of one Source or of all, wait for extraction, as `pendingMessages` gives them. */
+  /** How many raw messages, of one Source or of all, wait for extraction. */
   pendingMessageCount(scope: { sourceId?: SourceId }): Promise<number>;
   /**
    * Records a message's one extraction in one transaction: its Items, and the message as
-   * extracted, so that it is never read again, along with its copies that wait. A message
-   * extracted already is left as it is, and one a copy of which was writes no Items.
+   * extracted, so that it is never read again. A message extracted already is left as it is.
    */
   recordExtraction(extraction: Extraction): Promise<void>;
   findMessage(id: RawMessageId): Promise<RawMessage | null>;
-  /** The Items written from a message, whichever of its copies this is, in the order they were, also those of a hidden Source. */
+  /** The Items written from a message, in the order they were, also those of a hidden Source. */
   itemsOfMessage(id: RawMessageId): Promise<ProjectedItem[]>;
   /**
    * The Family's Items that may touch the given time, with the link of their Source Record; a
