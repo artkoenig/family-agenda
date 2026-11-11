@@ -61,6 +61,9 @@ const waitsBehindCopy = sql`EXISTS (
     AND (earlier.created_at, earlier.id) < (${sourceRecords.createdAt}, ${sourceRecords.id})
 )`;
 
+/** A message to read now: one that waits, and is the first of its copies that do. */
+const messageToRead = and(pendingMessage, sql`NOT ${waitsBehindCopy}`);
+
 /** Whether another copy of the message has been read, and its Source still has it. */
 const readAsCopy = (recordId: SQLWrapper) => sql`EXISTS (
   SELECT 1 FROM source_record AS read
@@ -184,14 +187,23 @@ export class PostgresItemRepository implements ItemRepository {
   }
 
   /**
-   * Marks the Source Records the Source deleted as withdrawn, which deletes their Items, and
-   * removes their messages' text and attachments. Returns the files of the removed attachments.
+   * Marks the Source Records the Source deleted as withdrawn, which hands their Items to another
+   * copy of their message or deletes them, and removes their messages' text and attachments.
+   * Returns the files of the removed attachments.
    */
   private async withdraw(tx: Transaction, run: SourceRun, externalIds: string[]): Promise<BlobRef[]> {
     if (externalIds.length === 0) return [];
     const withdrawn = await tx
       .update(sourceRecords)
-      .set({ withdrawnAt: run.at, purgedAt: sql`(CASE WHEN ${sourceRecords.stated} IS NULL THEN ${run.at.toISOString()}::timestamptz END)`, sender: null, subject: null, body: null })
+      .set({
+        withdrawnAt: run.at,
+        purgedAt: sql`(CASE WHEN ${sourceRecords.stated} IS NULL THEN ${run.at.toISOString()}::timestamptz END)`,
+        // A message that comes back has no Items and no text to read: a copy arriving later is read in its place.
+        processedAt: sql`(CASE WHEN ${sourceRecords.stated} IS NOT NULL THEN ${sourceRecords.processedAt} END)`,
+        sender: null,
+        subject: null,
+        body: null,
+      })
       .where(
         and(eq(sourceRecords.sourceId, run.sourceId), inArray(sourceRecords.externalId, externalIds), isNull(sourceRecords.withdrawnAt)),
       )
@@ -235,7 +247,7 @@ export class PostgresItemRepository implements ItemRepository {
     const rows = await this.db
       .select({ id: sourceRecords.id, sourceId: sourceRecords.sourceId, sentAt: arrivedAt, body: sourceRecords.body })
       .from(sourceRecords)
-      .where(and(pendingMessage, sql`NOT ${waitsBehindCopy}`))
+      .where(messageToRead)
       .orderBy(asc(sourceRecords.createdAt), asc(sourceRecords.occurredAt))
       .limit(limit);
     const attachments =
@@ -264,20 +276,20 @@ export class PostgresItemRepository implements ItemRepository {
     const [row] = await this.db
       .select({ count: sql<number>`count(*)::int` })
       .from(sourceRecords)
-      .where(and(pendingMessage, scope.sourceId ? eq(sourceRecords.sourceId, scope.sourceId) : undefined));
+      .where(and(messageToRead, scope.sourceId ? eq(sourceRecords.sourceId, scope.sourceId) : undefined));
     return row?.count ?? 0;
   }
 
   async recordExtraction(extraction: Extraction): Promise<void> {
     await this.db.transaction(async (tx) => {
-      // Only the first successful extraction counts, should two runs overlap.
+      // Only the first successful extraction counts, should two runs overlap, and none of a message withdrawn meanwhile.
       const [message] = await tx
         .update(sourceRecords)
         .set({ processedAt: extraction.at })
-        .where(and(eq(sourceRecords.id, extraction.messageId), isNull(sourceRecords.processedAt)))
+        .where(and(eq(sourceRecords.id, extraction.messageId), pendingMessage))
         // Read in a copy already, should that one have been recorded while this one was read.
-        .returning({ recordId: sourceRecords.id, readAsCopy: sql<boolean>`${readAsCopy(sourceRecords.id)}` });
-      if (!message || message.readAsCopy) return;
+        .returning({ recordId: sourceRecords.id, hasItsItems: sql<boolean>`${readAsCopy(sourceRecords.id)}` });
+      if (!message || message.hasItsItems) return;
       // Its copies that wait are read with it.
       await tx
         .update(sourceRecords)
@@ -382,13 +394,13 @@ export class PostgresItemRepository implements ItemRepository {
     return rows.flatMap((row) => {
       const details = detailsOf(row);
       if (!details) return [];
-      const origins = copies.get(row.recordId) ?? [];
+      const delivered = copies.get(row.recordId) ?? [];
       return [
         {
           ...details,
           id: row.id as ItemId,
-          links: origins.flatMap(({ link, source }) => (link ? [{ url: link, ...source }] : [])),
-          messages: origins.flatMap(({ id, isMessage, sentAt, source }) => (isMessage ? [{ id, ...source, sentAt }] : [])),
+          links: delivered.flatMap(({ link, source }) => (link ? [{ url: link, ...source }] : [])),
+          messages: delivered.flatMap(({ id, isMessage, sentAt, source }) => (isMessage ? [{ id, ...source, sentAt }] : [])),
           assignments: assignments.get(row.recordId) ?? [],
         },
       ];
@@ -661,8 +673,11 @@ async function assignmentsOf(db: Database | Transaction, recordIds: string[]): P
   return assignments;
 }
 
-/** A copy of a message as an Item names it: where it can be looked at, and the Source that has it. */
-type Copy = {
+/**
+ * What an Item names of where it came from: its Source Record, or each copy of its message, with
+ * where it can be looked at and the Source that has it.
+ */
+type Delivered = {
   id: RawMessageId;
   link: string | null;
   /** Whether it is a message that still has its text. */
@@ -675,8 +690,8 @@ type Copy = {
  * For each Source Record, the copies of its message that their Sources still have, itself among
  * them, in the order they arrived; only those of a shown Source if `shownOnly`.
  */
-async function copiesWithSource(db: Database, recordIds: string[], shownOnly: boolean): Promise<Map<string, Copy[]>> {
-  const copies = new Map<string, Copy[]>();
+async function copiesWithSource(db: Database, recordIds: string[], shownOnly: boolean): Promise<Map<string, Delivered[]>> {
+  const copies = new Map<string, Delivered[]>();
   if (recordIds.length === 0) return copies;
   const copy = alias(sourceRecords, "copy");
   const rows = await db

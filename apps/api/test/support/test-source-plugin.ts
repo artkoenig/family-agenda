@@ -207,7 +207,7 @@ const defaultConfiguration: TestConfiguration = {
   ],
 };
 
-/** What is pending for the one Source of a Source Type with this `url`. */
+/** The key of what is pending for the one Source of a Source Type with this `url`. */
 const ofSource = (sourceTypeId: string, url: string) => `${sourceTypeId} at ${url}`;
 
 const contextOf = (context: ContractRunContext): RunContext => ({ ...context, now: new Date(context.now) });

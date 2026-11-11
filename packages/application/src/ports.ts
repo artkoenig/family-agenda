@@ -619,8 +619,8 @@ export interface ItemRepository {
    * timetable entry, and the Source's sync cursor. An entry whose stated Item is unchanged is not
    * written at all; a changed one overwrites its Item, read with `read`, and one that is invalid,
    * by `read` or by a check of the schema, writes none and is kept among the Source's invalid
-   * records. A withdrawn Source Record's Items are deleted and its message's text and attachments
-   * removed. Arriving again, it is no longer withdrawn: an entry writes its Item as new, but a
+   * records. A withdrawn Source Record's Items pass to another copy of its message, or are deleted
+   * if there is none, and its message's text and attachments are removed. Arriving again, it is no longer withdrawn: an entry writes its Item as new, but a
    * message is not recorded or read again. Returns the external ids of messages recorded before or
    * withdrawn, whose new attachments the caller removes, the attachments of the withdrawn
    * messages, for the caller to remove, and the entries whose Item was invalid.
@@ -641,7 +641,7 @@ export interface ItemRepository {
   purgeMessages(now: Date, retainedSince: Date): Promise<{ files: BlobRef[]; purged: number; deleted: number }>;
   /** Raw messages not yet extracted successfully, oldest first; of the copies of one message, only the first. */
   pendingMessages(limit: number): Promise<PendingMessage[]>;
-  /** How many raw messages, of one Source or of all, wait for extraction. */
+  /** How many raw messages, of one Source or of all, wait for extraction, as `pendingMessages` gives them. */
   pendingMessageCount(scope: { sourceId?: SourceId }): Promise<number>;
   /**
    * Records a message's one extraction in one transaction: its Items, and the message as

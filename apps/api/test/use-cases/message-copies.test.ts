@@ -41,8 +41,8 @@ describe("A message that several Sources of one Source Type deliver", () => {
     await instance.restart();
     await instance.app.sourceTypes.enable("mail");
     await instance.app.sourceTypes.enable("chat");
-    miasMailbox = await mailbox("mail", mias);
-    leosMailbox = await mailbox("mail", leos);
+    miasMailbox = await source("mail", mias);
+    leosMailbox = await source("mail", leos);
     mia = await member("Mia");
     leo = await member("Leo");
     await instance.app.llmEndpoint.save({ baseUrl: "http://ollama:11434/v1", model: "qwen3.5:9b", apiKey: "" });
@@ -54,7 +54,7 @@ describe("A message that several Sources of one Source Type deliver", () => {
     await instance.close();
   });
 
-  const mailbox = async (sourceTypeId: string, url: string): Promise<SourceId> => {
+  const source = async (sourceTypeId: string, url: string): Promise<SourceId> => {
     const added = await instance.app.sources.add({ sourceTypeId, plain: { url }, secrets: {} });
     if (!added.ok) throw new Error(`adding failed: ${added.problem}`);
     return added.id;
@@ -130,7 +130,7 @@ describe("A message that several Sources of one Source Type deliver", () => {
   });
 
   it("reads a message with the same external id in a Source of another Source Type on its own", async () => {
-    await mailbox("chat", "chat.example.org");
+    await source("chat", "chat.example.org");
     testPluginControls.emitFor("mail", mias, [mail()]);
     testPluginControls.emit("chat", [mail()]);
     await run();
@@ -259,5 +259,36 @@ describe("A message that several Sources of one Source Type deliver", () => {
 
     expect(await titles()).toEqual(["Wandertag 5b"]);
     expect(extractor.requests).toHaveLength(2);
+  });
+
+  it("reads a copy that arrives after the one that was read was withdrawn and came back without its content", async () => {
+    testPluginControls.emitFor("mail", mias, [mail()]);
+    await run();
+    testPluginControls.emitFor("mail", mias, [], [mail().externalId]);
+    await run();
+    testPluginControls.emitFor("mail", mias, [mail()]);
+    await run();
+    expect(await titles(), "a message is not read again in its Source").toEqual([]);
+
+    testPluginControls.emitFor("mail", leos, [mail()]);
+    await run();
+
+    expect(await titles()).toEqual(["Wandertag 5b"]);
+  });
+
+  it("reads the message once when the extraction of its copies failed before", async () => {
+    extractor.fail("unreachable");
+    testPluginControls.emitFor("mail", mias, [mail()]);
+    testPluginControls.emitFor("mail", leos, [mail()]);
+    await run();
+    expect(await titles()).toEqual([]);
+    expect(extractor.requests, "only one copy was tried").toHaveLength(1);
+
+    extractor.recover();
+    await run();
+
+    expect(await titles()).toEqual(["Wandertag 5b"]);
+    expect(extractor.requests).toHaveLength(2);
+    expect(await instance.app.extraction.waiting()).toBe(0);
   });
 });
