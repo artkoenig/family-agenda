@@ -8,6 +8,10 @@ A plugin is a container that answers the plugin contract over HTTP (ADR-0001). T
 
 `tools/demo-source` is a plugin built with it (`src/plugin.ts`, `src/main.ts`, `Dockerfile`, `test/plugin.test.ts`).
 
+## External ids of messages
+
+A Source Record's `externalId` is what it is known by within its Source. For a message it means more: the core takes messages with the same `externalId` in Sources of one Source Type for Copies of one message (ADR-0005), reads only the first, and lets its Items concern everyone any Copy concerns. So give a message the same `externalId` in every Source of your Source Type that receives it, such as a mail's `Message-ID` in each mailbox of a mailing list, and never give it to another message. An id that only says where a message is, such as a position in a mailbox, has to differ per Source, for example by carrying the account. This does not apply to stated Source Records, such as calendar entries.
+
 ## Consuming it from another repository
 
 Neither the kit nor the contract is published to a registry. Add both as git dependencies, pinned to a release tag, each from its directory of this repository (pnpm's `path:` selector):

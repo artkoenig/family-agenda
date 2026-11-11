@@ -178,6 +178,12 @@ export const statedItemSchema = z
 
 export const sourceRecordSchema = z
   .object({
+    /**
+     * What it is known by within its Source. A message has the same one in every Source of the
+     * Source Type that receives it, such as a mail's Message-ID in each mailbox of a mailing list,
+     * and no other message of the Source Type has it: the core takes these for Copies of one
+     * message and reads it only once (ADR-0005).
+     */
     externalId: z.string().min(1),
     occurredAt: isoInstant.optional(),
     /** External ids of declared Source Attributes. */

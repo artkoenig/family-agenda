@@ -59,6 +59,7 @@ import {
   signInFailures,
   sourceAttributeMembers,
   sourceAttributes,
+  sourceRecordAttributes,
   sourceRecordAttachments,
   sourceRecords,
   sourceRuns,
@@ -606,6 +607,10 @@ export class PostgresSourceRepository implements SourceRepository {
         .select({ blob: sourceRecordAttachments.blob })
         .from(sourceRecordAttachments)
         .where(inArray(sourceRecordAttachments.recordId, recordsOfSource));
+      // The Copies in other Sources of its messages lose the Source Attributes it gave them (ADR-0005).
+      await tx
+        .delete(sourceRecordAttributes)
+        .where(inArray(sourceRecordAttributes.attributeId, tx.select({ id: sourceAttributes.id }).from(sourceAttributes).where(eq(sourceAttributes.sourceId, id))));
       // Removes its Source Records with their attachments and Items, by cascade.
       await tx.delete(sources).where(eq(sources.id, id));
       return attachments.map((row) => row.blob as BlobRef);
