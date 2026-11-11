@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseName, initialOf, maximumNameLength, parseColour, nextColour } from "../src/family-member";
+import { parseName, initialOf, maximumNameLength, parseColour, nextColour, parseAvatar, memberAvatars } from "../src/family-member";
 
 describe("parseName", () => {
   it("returns the trimmed name", () => {
@@ -82,5 +82,21 @@ describe("nextColour", () => {
 
   it("takes the lowest colour when all are used as often", () => {
     expect(nextColour([8, 7, 6, 5, 4, 3, 2, 1])).toBe(1);
+  });
+});
+
+describe("parseAvatar", () => {
+  it("accepts every known animal", () => {
+    for (const avatar of memberAvatars) expect(parseAvatar(` ${avatar} `)).toEqual({ ok: true, avatar });
+  });
+
+  it("takes an empty field as no animal", () => {
+    expect(parseAvatar("")).toEqual({ ok: true, avatar: null });
+    expect(parseAvatar("  ")).toEqual({ ok: true, avatar: null });
+  });
+
+  it("refuses an unknown animal", () => {
+    expect(parseAvatar("dragon")).toEqual({ ok: false });
+    expect(parseAvatar("../fox")).toEqual({ ok: false });
   });
 });

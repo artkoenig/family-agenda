@@ -90,6 +90,29 @@
 .fam-swatch input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
 .fam-swatch:has(input:checked) { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--ink); }
 .fam-swatch:has(input:focus-visible) { outline: 2px solid var(--focus); outline-offset: 4px; }
+.fam-swatch--animal { display: grid; place-items: center; width: 44px; height: 44px; background: var(--surface-sunken); }
+.fam-swatch--animal img { width: 30px; height: 30px; }
+.fam-swatch__initial { font-weight: 700; color: var(--ink-muted); }
+/* An animal on the member colour, in place of the initial. */
+.fam-avatar__animal { width: 66%; height: 66%; object-fit: contain; }
+/* A Family Member's colour and animal, with a preview that follows the choice (the animals: avatars.css). */
+.fam-looks { display: grid; gap: var(--space-4); }
+.fam-looks__head { display: flex; align-items: center; gap: var(--space-4); }
+.fam-looks__preview {
+  width: 88px; height: 88px; font-size: 38px;
+  background-repeat: no-repeat; background-position: center; background-size: 62%;
+  transition: background-color .2s;
+}
+.fam-looks:has(input[name="colour"][value="1"]:checked) .fam-looks__preview { background-color: var(--member-1); }
+.fam-looks:has(input[name="colour"][value="2"]:checked) .fam-looks__preview { background-color: var(--member-2); }
+.fam-looks:has(input[name="colour"][value="3"]:checked) .fam-looks__preview { background-color: var(--member-3); }
+.fam-looks:has(input[name="colour"][value="4"]:checked) .fam-looks__preview { background-color: var(--member-4); }
+.fam-looks:has(input[name="colour"][value="5"]:checked) .fam-looks__preview { background-color: var(--member-5); }
+.fam-looks:has(input[name="colour"][value="6"]:checked) .fam-looks__preview { background-color: var(--member-6); }
+.fam-looks:has(input[name="colour"][value="7"]:checked) .fam-looks__preview { background-color: var(--member-7); }
+.fam-looks:has(input[name="colour"][value="8"]:checked) .fam-looks__preview { background-color: var(--member-8); }
+.fam-looks:has(input[name="avatar"]:not([value=""]):checked) .fam-looks__initial { visibility: hidden; }
+@media (prefers-reduced-motion: reduce) { .fam-looks__preview { transition: none; } }
 /* "All": the whole Family as three member dots in a well. */
 .fam-avatar--all {
   background:

@@ -1,0 +1,2 @@
+ALTER TABLE "family_member" ADD COLUMN "avatar" text;--> statement-breakpoint
+ALTER TABLE "family_member" ADD CONSTRAINT "family_member_avatar_known" CHECK ("family_member"."avatar" IN ('bear', 'polar-bear', 'panda', 'koala', 'fox', 'wolf', 'raccoon', 'hedgehog', 'rabbit-face', 'mouse-face', 'hamster', 'cat-face', 'dog-face', 'tiger-face', 'lion', 'monkey-face', 'cow-face', 'pig-face', 'unicorn', 'owl', 'penguin', 'front-facing-baby-chick', 'frog', 'octopus'));

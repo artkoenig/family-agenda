@@ -113,9 +113,14 @@ CREATE TABLE family_member (
   photo_blob          TEXT,                  -- BlobStore reference
   photo_content_type  TEXT,
   colour              INTEGER NOT NULL,      -- the avatar colour, 1 to 8 (--member-1 to --member-8)
+  avatar              TEXT,                  -- the animal shown on the colour instead of the initial
   created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
   CONSTRAINT family_member_colour_known
     CHECK (colour BETWEEN 1 AND 8),
+  CONSTRAINT family_member_avatar_known
+    CHECK (avatar IN ('bear', 'polar-bear', 'panda', 'koala', 'fox', 'wolf', 'raccoon', 'hedgehog',
+      'rabbit-face', 'mouse-face', 'hamster', 'cat-face', 'dog-face', 'tiger-face', 'lion', 'monkey-face',
+      'cow-face', 'pig-face', 'unicorn', 'owl', 'penguin', 'front-facing-baby-chick', 'frog', 'octopus')),
   CONSTRAINT family_member_photo_complete
     CHECK ((photo_blob IS NULL) = (photo_content_type IS NULL)),
   CONSTRAINT family_member_photo_content_type_known

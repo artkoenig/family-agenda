@@ -7,6 +7,7 @@ import {
   photoTypes,
   type FamilyLanguage,
   type AgendaLayout,
+  type MemberAvatar,
 } from "@family-agenda/domain";
 import type { Child } from "hono/jsx";
 import { plurals } from "./plurals";
@@ -56,6 +57,7 @@ export const en = {
     "kit-not-saved": "Confirm that you have saved the Recovery Kit.",
     "invalid-name": `Enter a name of at most ${maximumNameLength} characters.`,
     "invalid-colour": "Choose one of the colours.",
+    "invalid-avatar": "Choose one of the animals, or the initial.",
     "invalid-photo": `The photo must be one of ${photoFormats}.`,
     "photo-too-large": `The photo must be at most ${maximumPhotoBytes / 1024 / 1024} MB.`,
     "unknown-member": "This Family Member does not exist.",
@@ -203,7 +205,7 @@ export const en = {
 
   members: {
     title: "Family Members",
-    description: "Whom Items can concern. Each keeps an avatar colour; a photo replaces the initial.",
+    description: "Whom Items can concern. Each keeps an avatar colour, with their initial or an animal on it; a photo goes before both.",
     add: "Add Family Member",
     eyebrow: "Family",
     dialogTitle: "Add a Family Member",
@@ -214,7 +216,18 @@ export const en = {
     none: "No Family Members yet.",
     withPhoto: "With a photo",
     withInitial: "Shows the initial",
+    withAnimal: (animal: string) => `Shows the ${animal.toLowerCase()}`,
+    looksHint: "How they appear in the Agendas. A photo, if they have one, goes before the animal.",
     colour: "Colour",
+    avatar: "Animal",
+    noAnimal: "The initial, no animal",
+    animals: {
+      bear: "Bear", "polar-bear": "Polar bear", panda: "Panda", koala: "Koala", fox: "Fox", wolf: "Wolf",
+      raccoon: "Raccoon", hedgehog: "Hedgehog", "rabbit-face": "Rabbit", "mouse-face": "Mouse", hamster: "Hamster",
+      "cat-face": "Cat", "dog-face": "Dog", "tiger-face": "Tiger", lion: "Lion", "monkey-face": "Monkey",
+      "cow-face": "Cow", "pig-face": "Pig", unicorn: "Unicorn", owl: "Owl", penguin: "Penguin",
+      "front-facing-baby-chick": "Chick", frog: "Frog", octopus: "Octopus",
+    } satisfies Record<MemberAvatar, string>,
     /** The name of a colour choice for screen readers. */
     colourNumber: (n: number) => `Colour ${n}`,
     replacePhoto: "Replace photo",

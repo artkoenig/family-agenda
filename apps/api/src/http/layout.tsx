@@ -182,6 +182,7 @@ export function Layout(props: {
           <title>{props.title} · Family Agenda</title>
           <link rel="stylesheet" href="/static/tokens.css" />
           <link rel="stylesheet" href="/static/design.css" />
+          <link rel="stylesheet" href="/static/avatars.css" />
           <script src="/static/htmx.min.js" defer></script>
         </head>
         <body class={agenda ? "fam-page fam-agenda" : "fam-page"}>

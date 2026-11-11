@@ -31,6 +31,7 @@ import type {
   FamilyLanguages,
   FamilyMember,
   FamilyMemberId,
+  MemberAvatar,
   MemberColour,
   OcrLanguage,
   PhotoType,
@@ -267,7 +268,7 @@ export class PostgresFamilyMemberRepository implements FamilyMemberRepository {
   async update(member: FamilyMember): Promise<void> {
     await this.db
       .update(familyMembers)
-      .set({ name: member.name, colour: member.colour, ...photoColumns(member) })
+      .set({ name: member.name, colour: member.colour, avatar: member.avatar, ...photoColumns(member) })
       .where(eq(familyMembers.id, member.id));
   }
 
@@ -309,6 +310,7 @@ function toFamilyMember(row: typeof familyMembers.$inferSelect): FamilyMember {
         ? { blob: row.photoBlob as BlobRef, contentType: row.photoContentType as PhotoType }
         : null,
     colour: row.colour as MemberColour,
+    avatar: row.avatar as MemberAvatar | null,
     createdAt: row.createdAt,
   };
 }
