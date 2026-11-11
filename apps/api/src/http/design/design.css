@@ -76,7 +76,7 @@
   font-weight: 700; font-size: 20px; line-height: 1;
 }
 .fam-avatar img { width: 100%; height: 100%; object-fit: cover; }
-.fam-avatar--sm { width: var(--avatar-sm); height: var(--avatar-sm); font-size: 14px; }
+.fam-avatar--sm { width: var(--avatar-sm); height: var(--avatar-sm); font-size: 18px; }
 .fam-avatar--m1 { background: var(--member-1); } .fam-avatar--m2 { background: var(--member-2); }
 .fam-avatar--m3 { background: var(--member-3); } .fam-avatar--m4 { background: var(--member-4); }
 .fam-avatar--m5 { background: var(--member-5); } .fam-avatar--m6 { background: var(--member-6); }
@@ -90,17 +90,18 @@
 .fam-swatch input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
 .fam-swatch:has(input:checked) { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--ink); }
 .fam-swatch:has(input:focus-visible) { outline: 2px solid var(--focus); outline-offset: 4px; }
-.fam-swatch--animal { display: grid; place-items: center; width: 44px; height: 44px; background: var(--surface-sunken); }
-.fam-swatch--animal img { width: 30px; height: 30px; }
+.fam-swatch--animal { display: grid; place-items: center; width: var(--avatar-sm); height: var(--avatar-sm); background: var(--surface-sunken); }
+.fam-swatch--animal img { width: 68%; height: 68%; }
 .fam-swatch__initial { font-weight: 700; color: var(--ink-muted); }
 /* An animal on the member colour, in place of the initial. */
-.fam-avatar__animal { width: 66%; height: 66%; object-fit: contain; }
+/* As in the choice of animals (68% of the circle); more specific than `.fam-avatar img`, which fills the circle with a photo. */
+.fam-avatar .fam-avatar__animal { width: 68%; height: 68%; object-fit: contain; }
 /* A Family Member's colour and animal, with a preview that follows the choice (the animals: avatars.css). */
 .fam-looks { display: grid; gap: var(--space-4); }
 .fam-looks__head { display: flex; align-items: center; gap: var(--space-4); }
 .fam-looks__preview {
   width: 88px; height: 88px; font-size: 38px;
-  background-repeat: no-repeat; background-position: center; background-size: 62%;
+  background-repeat: no-repeat; background-position: center; background-size: 68%;
   transition: background-color .2s;
 }
 .fam-looks:has(input[name="colour"][value="1"]:checked) .fam-looks__preview { background-color: var(--member-1); }
@@ -179,7 +180,7 @@
   grid-area: filter; display: flex; justify-content: center; align-items: center; gap: var(--space-2);
   margin: var(--space-2) 0 0; font-size: 16px; line-height: 24px; font-weight: 700;
 }
-.fam-bar__member .fam-avatar { width: 32px; height: 32px; font-size: 14px; }
+.fam-bar__member .fam-avatar { width: var(--bar-control); height: var(--bar-control); font-size: 20px; }
 
 /* Folded bar: the avatars of those shown stand in for the filter. */
 .fam-bar__summary {
@@ -187,13 +188,13 @@
   color: var(--ink-muted); font: inherit; cursor: pointer; position: relative;
 }
 .fam-bar__summary::after { content: ""; position: absolute; inset: -8px -6px; }
-.fam-bar__summary .fam-avatar { width: 28px; height: 28px; font-size: 13px; }
+.fam-bar__summary .fam-avatar { width: var(--bar-control); height: var(--bar-control); font-size: 20px; }
 .fam-bar__chevron { width: 16px; font-size: 12px; text-align: center; transition: transform .15s; }
 .fam-bar__summary[aria-expanded="true"] .fam-bar__chevron { transform: rotate(180deg); }
 
 /* The Theme switch: one button that steps through the device's, light and dark; it shows what it is now. */
 .fam-theme {
-  grid-area: theme; display: none; place-items: center; width: 32px; height: 32px; padding: 0; position: relative;
+  grid-area: theme; display: none; place-items: center; width: var(--bar-control); height: var(--bar-control); padding: 0; position: relative;
   border: 1px solid var(--line-strong); border-radius: var(--radius-full); background: var(--surface-raised);
   color: var(--ink); cursor: pointer;
 }
@@ -201,7 +202,7 @@
 .fam-theme:hover { background: var(--hearth-tint); }
 /* Without the script the button would do nothing. */
 html[data-scripted] .fam-theme { display: grid; }
-.fam-theme__icon { display: none; }
+.fam-theme__icon { display: none; width: 22px; height: 22px; }
 html:not([data-theme-mode="light"], [data-theme-mode="dark"]) .fam-theme__icon--system,
 html[data-theme-mode="light"] .fam-theme__icon--light,
 html[data-theme-mode="dark"] .fam-theme__icon--dark { display: block; }
@@ -212,21 +213,18 @@ html[data-theme-mode="dark"] .fam-theme__icon--dark { display: block; }
   .fam-scrolled .fam-bar__summary { display: flex; }
   .fam-scrolled .fam-bar__title { display: none; }
   .fam-scrolled .fam-bar__member { grid-area: summary; margin: 0; }
-  .fam-scrolled .fam-bar__member .fam-avatar { width: 28px; height: 28px; font-size: 13px; }
   .fam-scrolled .fam-bar__member-name { display: none; }
   /* Folded, the filter is a button of avatars, and the room that leaves goes to the hint as an icon, as small as they are. */
   .fam-scrolled .fam-bar__inner {
     grid-template-columns: 1fr auto auto auto;
     grid-template-areas: "clock notes summary theme" "filter filter filter filter";
   }
-  .fam-scrolled .fam-theme { width: 28px; height: 28px; }
-  .fam-scrolled .fam-theme__icon { width: 16px; height: 16px; }
   .fam-scrolled .fam-out-of-date {
-    display: grid; place-items: center; justify-self: end; width: 28px; height: 28px; margin: 0; border-radius: var(--radius-full);
+    display: grid; place-items: center; justify-self: end; width: var(--bar-control); height: var(--bar-control); margin: 0; border-radius: var(--radius-full);
     border: 1px solid var(--honey); background: var(--honey-tint); color: var(--honey); cursor: pointer;
   }
   .fam-scrolled .fam-out-of-date::before {
-    content: ""; width: 16px; height: 16px; background: currentColor;
+    content: ""; width: 22px; height: 22px; background: currentColor;
     -webkit-mask: var(--icon-alert) center / contain no-repeat; mask: var(--icon-alert) center / contain no-repeat;
   }
   /* What it says is read out, and shown when it is tapped or hovered. */
@@ -437,32 +435,34 @@ html[data-theme-mode="dark"] .fam-theme__icon--dark { display: block; }
   margin: -4px; padding: 4px;
 }
 .fam-pillswitch {
-  --sw-h: 36px; --sw-k: 28px; --sw-pad: 3px;
+  /* The pill's height, its knob, the room around the knob, and the room on either side of the name (the 1 px is the border). */
+  --sw-h: var(--bar-control); --sw-k: var(--avatar-sm); --sw-pad: 2px; --sw-gap: 12px;
   position: relative; display: flex; flex: none; align-items: center; height: var(--sw-h); padding: 0 0 0 calc(var(--sw-h) - 2px);
   border: 1px solid var(--line); border-radius: var(--radius-full); color: var(--ink-muted);
   font-size: 14px; line-height: 20px; font-weight: 600; text-decoration: none; cursor: pointer;
   transition: padding .25s ease, background-color .2s, border-color .2s, transform .1s;
 }
-/* A pill is 36 px high; its touch target is still 44 px. */
+/* A pill is as high as the other controls of a bar, around an avatar of 40 px. */
 .fam-pillswitch::after { content: ""; position: absolute; inset: -4px -2px; }
 .fam-pillswitch input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
 .fam-pillswitch .fam-avatar {
   position: absolute; top: calc((var(--sw-h) - 2px - var(--sw-k)) / 2); left: var(--sw-pad);
-  width: var(--sw-k); height: var(--sw-k); font-size: 13px; opacity: .55; transition: left .25s ease, opacity .2s;
+  width: var(--sw-k); height: var(--sw-k); font-size: 18px; opacity: .55; transition: left .25s ease, opacity .2s;
 }
 .fam-pillswitch__name {
   display: inline-block; max-width: 0; overflow: hidden; white-space: nowrap; opacity: 0;
-  transition: max-width .25s ease, opacity .2s ease;
+  transition: max-width .25s ease, opacity .2s ease, padding .25s ease;
 }
-.fam-pillswitch:is(:hover, :focus-visible, [aria-current], :has(input:checked, input:focus-visible)) { padding-right: 12px; }
-.fam-pillswitch:is(:hover, :focus-visible, [aria-current], :has(input:checked, input:focus-visible)) .fam-pillswitch__name { max-width: 14em; opacity: 1; }
+.fam-pillswitch:is(:hover, :focus-visible, [aria-current], :has(input:checked, input:focus-visible)) { padding-right: calc(var(--sw-gap) - 1px); }
+.fam-pillswitch:is(:hover, :focus-visible, [aria-current], :has(input:checked, input:focus-visible)) .fam-pillswitch__name { max-width: 14em; opacity: 1; padding-left: calc(var(--sw-gap) - var(--sw-pad)); }
 .fam-pillswitch:hover { background: var(--hearth-tint); }
 .fam-pillswitch:hover .fam-avatar { opacity: 1; }
 /* On: the name moves left, the knob right. The two paddings swap, so that the pill keeps its width. */
 .fam-pillswitch:is([aria-current], :has(input:checked)) {
-  padding-left: 12px; padding-right: calc(var(--sw-k) + 2 * var(--sw-pad));
+  padding-left: calc(var(--sw-gap) - 1px); padding-right: calc(var(--sw-k) + 2 * var(--sw-pad));
   color: var(--ink); border-color: var(--ink); background: var(--surface-raised);
 }
+.fam-pillswitch:is([aria-current], :has(input:checked)) .fam-pillswitch__name { padding-left: 0; padding-right: calc(var(--sw-gap) - var(--sw-pad)); }
 .fam-pillswitch:is([aria-current], :has(input:checked)) .fam-avatar { left: calc(100% - var(--sw-pad) - var(--sw-k)); opacity: 1; }
 .fam-pillswitch:active { transform: scale(.95); }
 .fam-pillswitch:is(:focus-visible, :has(input:focus-visible)) { outline: 2px solid var(--focus); outline-offset: 2px; }
@@ -749,21 +749,19 @@ html[data-theme-mode="dark"] .fam-theme__icon--dark { display: block; }
     column-gap: var(--space-5); grid-template-columns: 1fr auto 1fr;
     grid-template-areas: "clock title theme" ". notes ." "filter filter filter";
   }
-  .fam-agenda .fam-theme { justify-self: end; width: 44px; height: 44px; }
-  .fam-agenda .fam-theme__icon { width: 22px; height: 22px; }
+  .fam-agenda .fam-theme { justify-self: end; }
   .fam-agenda .fam-clock { gap: 12px; font-size: 40px; line-height: 44px; }
   .fam-agenda .fam-clock__date { font-size: 18px; line-height: 24px; }
   .fam-agenda .fam-bar__title { margin: 0; font-size: 26px; line-height: 32px; }
   /* Without a title, the one Family Member takes its place in the middle of the row. */
   .fam-agenda .fam-bar__inner:not(:has(.fam-bar__title)) > .fam-bar__member { grid-area: title; margin: 0; font-size: 26px; line-height: 32px; }
-  .fam-agenda .fam-bar__inner:not(:has(.fam-bar__title)) > .fam-bar__member .fam-avatar { width: 44px; height: 44px; font-size: 20px; }
+  .fam-agenda .fam-bar__inner:not(:has(.fam-bar__title)) > .fam-bar__member .fam-avatar { width: 56px; height: 56px; font-size: 24px; }
   .fam-agenda .fam-out-of-date { margin: 0; }
   .fam-agenda .fam-bar__inner > .fam-filter { margin: calc(var(--space-2) - 4px) 0 -4px; padding: 4px; -webkit-mask-image: none; mask-image: none; }
   /* Centred while it fits, scrolling from its start when it does not. */
   .fam-agenda .fam-filter > :first-child { margin-left: auto; }
   .fam-agenda .fam-filter > :last-child { margin-right: auto; }
-  .fam-agenda .fam-filter .fam-pillswitch { --sw-h: 32px; --sw-k: 26px; --sw-pad: 2px; }
-  .fam-agenda .fam-filter .fam-pillswitch .fam-avatar { font-size: 12px; }
+  .fam-agenda .fam-filter .fam-pillswitch .fam-avatar { font-size: 18px; }
   .fam-agenda .fam-filter .fam-pillswitch[aria-current] { box-shadow: 0 0 0 1px var(--ink); }
   .fam-agenda .fam-bar__summary { display: none; }
 }
