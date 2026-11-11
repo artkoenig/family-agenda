@@ -31,8 +31,8 @@ describe("the demo plugin", () => {
     const later = await tasksOn(new Date("2026-10-05T07:00:00Z"));
 
     expect(monday).toEqual([
-      { id: "task-class-trip-form", kind: "task", title: "Sign the class trip form", deadline: "2026-09-15", bring: [] },
-      { id: "task-swimming-kit", kind: "task", title: "Bring the swimming kit", deadline: "2026-09-17", bring: ["Swimsuit", "Towel", "Goggles"] },
+      { id: "task-class-trip-form", kind: "task", title: "Sign the class trip form", deadline: "2026-09-15", description: "Return it to the class teacher." },
+      { id: "task-swimming-kit", kind: "task", title: "Bring the swimming kit", deadline: "2026-09-17", description: "- Swimsuit\n- Towel\n- Goggles" },
     ]);
     expect(later.map((task) => [task.id, task.deadline])).toEqual([["task-class-trip-form", "2026-10-06"], ["task-swimming-kit", "2026-10-08"]]);
   });

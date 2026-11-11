@@ -103,7 +103,7 @@ The Lessons of a Family Member on one date, shown together as one entry; not an 
 _Avoid_: School row, school entry
 
 **Task**:
-Something a Family Member or parent must do or bring, optionally with a Deadline; a packing list is one Task with things to bring.
+Something a Family Member or parent must do or bring, optionally with a Deadline and a description of what else to know; a packing list is one Task whose description lists the things to bring.
 _Avoid_: Todo, action item, packing list (as a separate type)
 
 **Deadline**:

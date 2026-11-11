@@ -12,7 +12,7 @@ const minutes = 60 * 1000;
 const swimming = (stated: Partial<StatedTask> = {}): Origin => ({
   externalId: "swimming",
   attributes: ["main"],
-  content: { kind: "stated", stated: { kind: "task", title: "Bring a swimsuit", deadline: "2026-09-18", bring: ["Swimsuit", "Towel"], ...stated } },
+  content: { kind: "stated", stated: { kind: "task", title: "Bring a swimsuit", deadline: "2026-09-18", description: "- Swimsuit\n- Towel", ...stated } },
 });
 
 describe("Tasks a Source states", () => {
@@ -47,10 +47,10 @@ describe("Tasks a Source states", () => {
     return [...(page?.pinned ?? []), ...(page?.days ?? []).flatMap((day) => day.tasks)];
   };
 
-  it("shows a stated Task with its Deadline and the things to bring, as one a message stated", async () => {
+  it("shows a stated Task with its Deadline and description, as one a message stated", async () => {
     await arrive(swimming());
 
-    expect(await shown()).toMatchObject([{ title: "Bring a swimsuit", deadline: "2026-09-18", bring: ["Swimsuit", "Towel"], status: "upcoming", cancelled: false }]);
+    expect(await shown()).toMatchObject([{ title: "Bring a swimsuit", deadline: "2026-09-18", description: "- Swimsuit\n- Towel", status: "upcoming", cancelled: false }]);
   });
 
   it("changes the Task when the Source states it differently, and leaves it ticked done if it was", async () => {
@@ -58,10 +58,10 @@ describe("Tasks a Source states", () => {
     const [before] = await shown();
     await instance.app.tasks.tickFromAgenda(agenda, before!.itemId, { done: true, access: openAgendaAccess });
 
-    await arrive(swimming({ title: "Bring a swimsuit and goggles", deadline: "2026-09-19", bring: ["Swimsuit", "Goggles"] }));
+    await arrive(swimming({ title: "Bring a swimsuit and goggles", deadline: "2026-09-19", description: "- Swimsuit\n- Goggles" }));
 
     expect(await shown()).toMatchObject([
-      { itemId: before!.itemId, title: "Bring a swimsuit and goggles", deadline: "2026-09-19", bring: ["Swimsuit", "Goggles"], status: "done" },
+      { itemId: before!.itemId, title: "Bring a swimsuit and goggles", deadline: "2026-09-19", description: "- Swimsuit\n- Goggles", status: "done" },
     ]);
   });
 

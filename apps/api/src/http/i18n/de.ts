@@ -477,7 +477,6 @@ export const de: Catalogue = {
     overdue: "Überfällig",
     overdueBy: (date) => `Überfällig · bis ${date}`,
     done: "Erledigt",
-    bring: "Mitbringen",
     markDone: (title) => `„${title}“ als erledigt markieren`,
     markNotDone: (title) => `„${title}“ als nicht erledigt markieren`,
     taskList: {

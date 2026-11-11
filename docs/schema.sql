@@ -23,15 +23,6 @@
 -- hour.
 
 -- ---------------------------------------------------------------------------------------------
--- Helpers
--- ---------------------------------------------------------------------------------------------
-
--- Whether every text of an array is at most max_length characters long (for CHECKs on arrays).
-CREATE FUNCTION texts_within(texts TEXT[], max_length INT) RETURNS BOOLEAN
-  LANGUAGE sql IMMUTABLE STRICT
-  AS $$ SELECT coalesce(bool_and(char_length(t) <= max_length), true) FROM unnest(texts) AS t $$;
-
--- ---------------------------------------------------------------------------------------------
 -- The Family and the Instance
 -- ---------------------------------------------------------------------------------------------
 
@@ -248,7 +239,7 @@ CREATE INDEX source_attribute_member_family_member_id_idx
 -- sender/subject/body, occurred_at NULL. The core writes its one Item from it without the LLM,
 -- in the same transaction that sets processed_at. Every run emits the full state; a Source Record
 -- whose stated equals the stored one (compared as jsonb) is skipped without a write, a changed one
--- overwrites its Item in place, a Task only in title, deadline and bring: whether it is done is the
+-- overwrites its Item in place, a Task only in title, deadline and description: whether it is done is the
 -- Family's, and stating it again never changes that. One that fails a check writes no Item and deletes
 -- the earlier one.
 --
@@ -384,22 +375,22 @@ CREATE INDEX event_first_day_idx ON event (first_day, last_day);
 
 -- Something to do or bring. A message produces Tasks, and a Source can state them; its arrival is its
 -- Source Record's occurred_at, or its created_at when a Source states it. deadline is the month's last day when a message names only a month.
--- bring is ticked with the Task, never entry by entry. A cancelled Task stays pinned, struck
+-- description says what else the Family needs to know, such as the things to bring, a "- " line per
+-- entry of a list; it is ticked with the Task, never entry by entry. A cancelled Task stays pinned, struck
 -- through, until ticked. done_at serves "done in the last 30 days".
 CREATE TABLE task (
-  item_id    UUID PRIMARY KEY,
-  kind       TEXT NOT NULL DEFAULT 'task',
-  title      TEXT NOT NULL,
-  deadline   DATE,
-  bring      TEXT[] NOT NULL DEFAULT '{}',
-  cancelled  BOOLEAN NOT NULL DEFAULT false,
-  status     TEXT NOT NULL DEFAULT 'open',
-  done_at    TIMESTAMPTZ,
+  item_id     UUID PRIMARY KEY,
+  kind        TEXT NOT NULL DEFAULT 'task',
+  title       TEXT NOT NULL,
+  deadline    DATE,
+  description TEXT,
+  cancelled   BOOLEAN NOT NULL DEFAULT false,
+  status      TEXT NOT NULL DEFAULT 'open',
+  done_at     TIMESTAMPTZ,
   FOREIGN KEY (item_id, kind) REFERENCES item(id, kind) ON DELETE CASCADE,
   CONSTRAINT task_kind CHECK (kind = 'task'),
   CONSTRAINT task_title_length CHECK (char_length(title) <= 500),
-  CONSTRAINT task_bring_count CHECK (cardinality(bring) <= 50),
-  CONSTRAINT task_bring_length CHECK (texts_within(bring, 500)),
+  CONSTRAINT task_description_length CHECK (char_length(description) <= 2000),
   CONSTRAINT task_status_known CHECK (status IN ('open', 'done')),
   CONSTRAINT task_done_at_when_done CHECK ((status = 'done') = (done_at IS NOT NULL))
 );

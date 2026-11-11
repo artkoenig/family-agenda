@@ -374,8 +374,8 @@ function eventDetails(row: typeof events.$inferSelect): ItemDetails {
 
 /** A Task arrived when its Source Record did. */
 function taskDetails(row: typeof tasks.$inferSelect, arrivedAt: Date): ItemDetails {
-  const { title, deadline, bring, cancelled, doneAt } = row;
-  return { kind: "task", task: { title, deadline: deadline as LocalDate | null, bring, cancelled, doneAt, arrivedAt } };
+  const { title, deadline, description, cancelled, doneAt } = row;
+  return { kind: "task", task: { title, deadline: deadline as LocalDate | null, description, cancelled, doneAt, arrivedAt } };
 }
 
 /** A Lesson from its row, with its Timetable Change if it has one; a cancellation cancels it. */
@@ -643,8 +643,8 @@ async function insertItem(tx: Transaction, recordId: string, item: StatedItem | 
 async function updateDetail(tx: Transaction, id: string, item: StatedItem): Promise<void> {
   if (item.kind === "event") await tx.update(events).set(eventColumns(item.event)).where(eq(events.itemId, id));
   else if (item.kind === "task") {
-    const { title, deadline, bring } = taskColumns(item.task);
-    await tx.update(tasks).set({ title, deadline, bring }).where(eq(tasks.itemId, id));
+    const { title, deadline, description } = taskColumns(item.task);
+    await tx.update(tasks).set({ title, deadline, description }).where(eq(tasks.itemId, id));
   } else await tx.update(lessons).set(lessonColumns(item)).where(eq(lessons.itemId, id));
 }
 
@@ -664,7 +664,7 @@ function eventColumns(event: Event) {
 
 /** What a message states about a Task, as columns. */
 function taskColumns(task: StatedTask) {
-  return { title: task.title, deadline: task.deadline, bring: task.bring, cancelled: task.cancelled };
+  return { title: task.title, deadline: task.deadline, description: task.description, cancelled: task.cancelled };
 }
 
 const asPlanned = { change: null, previousRoom: null, previousTeacher: null, note: null };

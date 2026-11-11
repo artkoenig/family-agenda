@@ -37,8 +37,8 @@ function originsFor(days: Day[]): Origin[] {
 function tasksAhead(days: Day[]): Origin[] {
   const [, tomorrow, , inThreeDays] = days as [Day, Day, Day, Day];
   return [
-    origin("task-class-trip-form", "family", { kind: "task", title: "Sign the class trip form", deadline: tomorrow.date, bring: [] }),
-    origin("task-swimming-kit", "school-emma", { kind: "task", title: "Bring the swimming kit", deadline: inThreeDays.date, bring: ["Swimsuit", "Towel", "Goggles"] }),
+    origin("task-class-trip-form", "family", { kind: "task", title: "Sign the class trip form", deadline: tomorrow.date, description: "Return it to the class teacher." }),
+    origin("task-swimming-kit", "school-emma", { kind: "task", title: "Bring the swimming kit", deadline: inThreeDays.date, description: "- Swimsuit\n- Towel\n- Goggles" }),
   ];
 }
 

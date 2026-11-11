@@ -153,7 +153,8 @@ export type TimelineTask = {
   itemId: ItemId;
   title: string;
   deadline: LocalDate | null;
-  bring: string[];
+  /** What else to know, a `- ` line per entry of a list; null if nothing. */
+  description: string | null;
   status: TaskStatus;
   /** Struck through, wherever it shows. */
   cancelled: boolean;
@@ -259,7 +260,7 @@ export type FeedTask = {
   itemId: ItemId;
   title: string;
   deadline: LocalDate;
-  bring: string[];
+  description: string | null;
   overdue: boolean;
   cancelled: boolean;
 };
@@ -355,8 +356,8 @@ export function createAgendaAccess(deps: AgendasDeps) {
 
   function taskRow(found: Around["tasks"][number], today: LocalDate): TimelineTask {
     const { id, task, links, messages, concerns } = found;
-    const { title, deadline, bring, cancelled } = task;
-    return { itemId: id, title, deadline, bring, status: taskStatus(task, today), cancelled, links, messages, concerns };
+    const { title, deadline, description, cancelled } = task;
+    return { itemId: id, title, deadline, description, status: taskStatus(task, today), cancelled, links, messages, concerns };
   }
 
   /** The Lesson on the Family's clocks. */
@@ -697,9 +698,9 @@ export function createAgendaAccess(deps: AgendasDeps) {
       );
       const today = addDays(firstDay, feedDaysBack);
       const tasks = around.tasks.flatMap(({ id: itemId, task }) => {
-        const { title, deadline, bring, cancelled } = task;
+        const { title, deadline, description, cancelled } = task;
         if (deadline === null || deadline < firstDay || task.doneAt) return [];
-        return [{ itemId, title, deadline, bring, overdue: taskStatus(task, today) === "overdue", cancelled }];
+        return [{ itemId, title, deadline, description, overdue: taskStatus(task, today) === "overdue", cancelled }];
       });
       const sortedTasks = tasks.toSorted((a, b) => a.deadline.localeCompare(b.deadline) || a.title.localeCompare(b.title));
       const { language } = await families.languages();

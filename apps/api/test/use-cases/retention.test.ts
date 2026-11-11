@@ -34,7 +34,7 @@ describe("Retention: purging the content of messages", () => {
     const extractor = new ScriptedExtractor();
     extractor.script("Wandertag", [extracted({ title: "Wandertag", date: { day: 18, month: 9, weekday: "friday" }, evidence: "Freitag, 18.09., ist der Wandertag" })]);
     extractor.script("Mappe", [], [extractedTask({ title: "Mappe abgeben", deadline: { day: 25, month: 9 }, evidence: "Mappe bis 25.09." })]);
-    extractor.script("Turnbeutel", [], [extractedTask({ title: "Turnbeutel mitbringen", bring: ["Turnbeutel"], evidence: "Turnbeutel" })]);
+    extractor.script("Turnbeutel", [], [extractedTask({ title: "Turnbeutel mitbringen", description: "- Turnbeutel", evidence: "Turnbeutel" })]);
     blobs = new InMemoryBlobStore();
     instance = await bootForTest({ extractor, blobStore: blobs });
     await instance.installPlugin({ sourceTypeId: "chat", needsLlm: true });

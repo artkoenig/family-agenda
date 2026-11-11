@@ -345,14 +345,14 @@ describe("A plugin container bound to another Source Type", () => {
 
 describe("The description of a plugin container", () => {
   const binding = { sourceTypeId: "school-portal" as SourceTypeId, url: "http://plugin" };
-  const description = { ...fakePlugin({ runs: [], poll: () => Promise.resolve({}) }).description, contractVersion: "1.0", endpoints: { sourceAdded: false, sourceRemoved: false } };
+  const description = { ...fakePlugin({ runs: [], poll: () => Promise.resolve({}) }).description, contractVersion: "2.0", endpoints: { sourceAdded: false, sourceRemoved: false } };
 
   it("is loadable for the bound Source Type and the core's contract", () => {
     expect(descriptionProblem(binding, description)).toBeNull();
   });
 
   it("is refused for a plugin contract the core does not implement", () => {
-    expect(descriptionProblem(binding, { ...description, contractVersion: "2.0" })).toBe(`built for plugin contract 2.0, but the core implements ${contractVersion}`);
+    expect(descriptionProblem(binding, { ...description, contractVersion: "1.3" })).toBe(`built for plugin contract 1.3, but the core implements ${contractVersion}`);
   });
 });
 

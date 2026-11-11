@@ -305,6 +305,9 @@ html[data-theme-mode="dark"] .fam-theme__icon--dark { display: block; }
 .fam-item__text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .fam-item__title { font-weight: 600; }
 .fam-item__meta { color: var(--ink-muted); font-size: 14px; line-height: 20px; }
+/* A Task's description: its lines as paragraphs, its `- ` lines as a list. */
+.fam-task__description > :is(p, ul) { margin: 0; }
+.fam-task__description > ul { padding-left: 1.25em; }
 .fam-item--earlier .fam-item__title, .fam-item--cancelled .fam-item__title { color: var(--ink-muted); font-weight: 400; }
 /* What is running: the dot and "Now" above its time, its text in the accent colour; a school day shows its Lesson instead once open. */
 .fam-running {

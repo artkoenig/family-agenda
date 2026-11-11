@@ -252,7 +252,8 @@ function taskItemOf(extracted: ExtractedTask, reading: Reading): Outcome {
   const { title } = extracted;
   const deadline = taskDeadline(extracted, reading);
   if ("problem" in deadline) return { title, problem: deadline.problem };
-  const fields = { title, deadline: deadline.deadline, bring: extracted.bring };
+  const fields = { title, deadline: deadline.deadline, // A model may answer an empty text for no description.
+  description: extracted.description?.trim() || null };
   const task = problemsWithTaskFields(fields).length === 0 ? taskOf({ fields, cancelled: false }) : null;
   return task ? { kind: "task", task } : { title, problem: "invalid-fields" };
 }

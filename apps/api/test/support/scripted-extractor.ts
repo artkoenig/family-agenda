@@ -31,7 +31,7 @@ export function extractedTask(
   task: Partial<Omit<ExtractedTask, "deadline">> & Pick<ExtractedTask, "evidence"> & { deadline?: Partial<DateMention> },
 ): ExtractedTask {
   const { deadline, ...rest } = task;
-  return { title: null, bring: [], ...rest, deadline: { ...noDate, ...deadline } };
+  return { title: null, description: null, ...rest, deadline: { ...noDate, ...deadline } };
 }
 
 /**

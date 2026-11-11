@@ -75,12 +75,13 @@ describe("reading the Item a calendar or timetable entry states", () => {
     expect(readStated(stated)).toEqual({ ok: false, problems });
   });
 
-  it("reads a Task with or without a Deadline and things to bring, never cancelled", () => {
-    expect(readStated({ kind: "task", title: "Bring milk", deadline: "2026-09-18", bring: ["Milk"] })).toEqual({
+  it("reads a Task with or without a Deadline and description, never cancelled", () => {
+    expect(readStated({ kind: "task", title: "Bring milk", deadline: "2026-09-18", description: "- Milk" })).toEqual({
       ok: true,
-      item: { kind: "task", task: { title: "Bring milk", deadline: "2026-09-18", bring: ["Milk"], cancelled: false } },
+      item: { kind: "task", task: { title: "Bring milk", deadline: "2026-09-18", description: "- Milk", cancelled: false } },
     });
-    expect(readStated({ kind: "task", title: "Bring milk" })).toMatchObject({ ok: true, item: { task: { deadline: null, bring: [] } } });
+    expect(readStated({ kind: "task", title: "Bring milk" })).toMatchObject({ ok: true, item: { task: { deadline: null, description: null } } });
+    expect(readStated({ kind: "task", title: "Bring milk", bring: ["Milk"] })).toEqual({ ok: false, problems: ["bring is not a field of a Task"] });
   });
 
   it("reads an Event without a place or cancellation as neither", () => {

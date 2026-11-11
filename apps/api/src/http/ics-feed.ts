@@ -82,13 +82,13 @@ function schoolDayVevent(day: FeedSchoolDay, stamp: string, agendaLink: string, 
 
 /**
  * A Task as an all-day entry on its Deadline day, not a VTODO, which subscribed calendars ignore
- * (decisions in #20). Its details say when it is due and what to bring.
+ * (decisions in #20). Its details say when it is due and what else to know, as its description says it.
  */
 function taskVevent(task: FeedTask, stamp: string, agendaLink: string, { t, locale }: Translation): string[] {
   const deadline = dateLabel(task.deadline, locale);
   const details = [
     task.overdue ? t.agenda.overdueBy(deadline) : t.agenda.by(deadline),
-    task.bring.length > 0 ? `${t.agenda.bring}: ${task.bring.join(", ")}` : null,
+    task.description,
     task.cancelled ? t.agenda.cancelled : null,
   ].filter(Boolean);
   return [

@@ -4,8 +4,8 @@ import {
   instantOfTask,
   isOutstanding,
   isPinned,
+  maximumTaskDescriptionLength,
   maximumTaskTextLength,
-  maximumThingsToBring,
   problemsWithTaskFields,
   taskOf,
   taskStatus,
@@ -20,7 +20,7 @@ const at = (iso: string) => new Date(iso);
 const task = (overrides: Partial<Task> = {}): Task => ({
   title: "Bring milk",
   deadline: null,
-  bring: ["milk"],
+  description: "- milk",
   doneAt: null,
   arrivedAt: at("2026-09-10T10:00:00Z"),
   cancelled: false,
@@ -34,7 +34,7 @@ describe("a Task's fields", () => {
   it.each([
     {
       case: "fields with all fields",
-      fields: { title: "Bring milk", deadline: "2026-09-15", bring: ["milk", "juice"] },
+      fields: { title: "Bring milk", deadline: "2026-09-15", description: "- milk\n- juice" },
       problems: [],
     },
     {
@@ -85,40 +85,34 @@ describe("a Task's fields", () => {
       problems: [],
     },
     {
-      case: "a bring that is not an array",
+      case: "a description of null is fine",
       partial: true,
-      fields: { bring: "milk" },
-      problems: [`bring is not a list of at most ${maximumThingsToBring} non-empty texts`],
-    },
-    {
-      case: "a bring with more than the maximum",
-      partial: true,
-      fields: { bring: Array.from({ length: maximumThingsToBring + 1 }, (_, i) => `item ${i}`) },
-      problems: [`bring is not a list of at most ${maximumThingsToBring} non-empty texts`],
-    },
-    {
-      case: "a bring at the maximum is fine",
-      partial: true,
-      fields: { bring: Array.from({ length: maximumThingsToBring }, (_, i) => `item ${i}`) },
+      fields: { description: null },
       problems: [],
     },
     {
-      case: "a bring with an empty string",
+      case: "a description that is not a string",
       partial: true,
-      fields: { bring: ["milk", ""] },
-      problems: [`bring is not a list of at most ${maximumThingsToBring} non-empty texts`],
+      fields: { description: ["milk"] },
+      problems: [`description is not a non-empty text of at most ${maximumTaskDescriptionLength} characters or null`],
     },
     {
-      case: "a bring with a non-string",
+      case: "an empty description",
       partial: true,
-      fields: { bring: ["milk", 42] },
-      problems: [`bring is not a list of at most ${maximumThingsToBring} non-empty texts`],
+      fields: { description: "  " },
+      problems: [`description is not a non-empty text of at most ${maximumTaskDescriptionLength} characters or null`],
     },
     {
-      case: "a bring with a too-long text",
+      case: "a description at the maximum length is fine",
       partial: true,
-      fields: { bring: ["milk", "x".repeat(maximumTaskTextLength + 1)] },
-      problems: [`bring is not a list of at most ${maximumThingsToBring} non-empty texts`],
+      fields: { description: "x".repeat(maximumTaskDescriptionLength) },
+      problems: [],
+    },
+    {
+      case: "a description that is too long",
+      partial: true,
+      fields: { description: "x".repeat(maximumTaskDescriptionLength + 1) },
+      problems: [`description is not a non-empty text of at most ${maximumTaskDescriptionLength} characters or null`],
     },
     {
       case: "an unknown field",
@@ -128,7 +122,7 @@ describe("a Task's fields", () => {
     },
     {
       case: "multiple problems",
-      fields: { deadline: "bad", bring: [], colour: "red" },
+      fields: { deadline: "bad", description: null, colour: "red" },
       problems: ["title is missing", "deadline is not a date or null", "colour is not a field of a Task"],
     },
   ])("$case", ({ partial, fields, problems }) => {
@@ -145,8 +139,8 @@ describe("taskOf", () => {
   });
 
   it("returns the Task its fields describe", () => {
-    const result = taskOf(folded({ title: "Bring milk", deadline: "2026-09-15", bring: ["milk", "juice"] }));
-    expect(result).toEqual({ title: "Bring milk", deadline: day("2026-09-15"), bring: ["milk", "juice"], cancelled: false });
+    const result = taskOf(folded({ title: "Bring milk", deadline: "2026-09-15", description: " - milk\n- juice\n" }));
+    expect(result).toEqual({ title: "Bring milk", deadline: day("2026-09-15"), description: "- milk\n- juice", cancelled: false });
   });
 
   it("returns null when there is no folded Item", () => {
@@ -161,12 +155,12 @@ describe("taskOf", () => {
     expect(taskOf(folded({ title: "  " }))).toBeNull();
   });
 
-  it("parses a null deadline and missing bring", () => {
+  it("parses a null deadline and a missing description", () => {
     const result = taskOf(folded({ title: "Bring milk" }));
     expect(result).toEqual({
       title: "Bring milk",
       deadline: null,
-      bring: [],
+      description: null,
       cancelled: false,
     });
   });
