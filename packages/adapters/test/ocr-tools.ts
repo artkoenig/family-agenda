@@ -47,7 +47,8 @@ function installedRequirements(): Set<OcrRequirement> {
 
 /**
  * Skips the test when a tool it needs is missing, saying which one and how to install it. With
- * `REQUIRE_OCR=true`, as CI sets it, the test fails instead, so OCR is never silently untested.
+ * `REQUIRE_OCR=true`, as the run inside the image sets it, the test fails instead, so OCR is never
+ * silently untested.
  */
 export function requireOcrTools(context: TestContext, ...needs: OcrRequirement[]): void {
   const missing = needs.filter((need) => !installedRequirements().has(need));

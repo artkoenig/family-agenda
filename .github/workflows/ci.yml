@@ -43,19 +43,16 @@ jobs:
     env:
       # The use cases run against an in-process Postgres; only creating Synapse's database needs a server.
       TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
-      # The PDF tests skip where poppler or Tesseract is missing; here a missing tool fails them.
-      REQUIRE_OCR: "true"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Install poppler and Tesseract, which turn PDF attachments into text
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends poppler-utils tesseract-ocr tesseract-ocr-deu tesseract-ocr-eng
       - uses: ./.github/actions/setup
       - run: pnpm crap
 
   containers:
     # The core with the demo Source as a plugin container, wired by the generator from
     # .github/container-ci/plugins.yml (ADR-0001): the core reaches the plugin's /description, and
-    # the plugin reaches its declared egress host through its proxy and nothing else.
+    # the plugin reaches its declared egress host through its proxy and nothing else. The image
+    # also runs the tests of the command-line tools it ships, which `pnpm check` leaves out.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -63,6 +60,8 @@ jobs:
       - run: echo "COMPOSE_FILE=compose.yaml:compose.dev.yaml" >> "$GITHUB_ENV"
       - run: docker build -f tools/demo-source/Dockerfile -t family-agenda-demo-source:ci .
       - run: docker compose build api
+      - name: poppler and Tesseract in the image turn PDF attachments into text
+        run: .github/container-ci/image-tests.sh family-agenda:local
       - name: Generate compose.plugins.yaml
         # The generated file names the egress tokens as ${...} only; their values stay in .env.
         run: |

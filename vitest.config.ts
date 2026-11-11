@@ -10,7 +10,8 @@ export default defineConfig({
         test: {
           name: "packages",
           include: ["{packages,apps,tools}/*/test/**/*.test.{ts,tsx}"],
-          exclude: ["apps/api/test/**", "tools/preview/test/seed.test.ts"],
+          // The *.image.test.ts files need the tools the image ships, and run inside it: vitest.image.config.ts.
+          exclude: ["apps/api/test/**", "tools/preview/test/seed.test.ts", "**/*.image.test.{ts,tsx}"],
         },
       },
       {
