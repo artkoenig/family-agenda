@@ -119,6 +119,9 @@ jobs:
           done
           docker run --rm --entrypoint sh "$IMAGE:smoke" -c 'command -v pdftotext pdftoppm'
 
+      - name: Read the PDF fixtures with the tools the image ships
+        run: .github/container-ci/image-tests.sh "$IMAGE:smoke"
+
       # compose.yaml takes its image from FAMILY_AGENDA_VERSION, so the tag above stands in for a
       # release. mdns needs the host network and multicast, which a runner does not offer: the
       # services under test are the ones that hold the app.
