@@ -6,7 +6,7 @@ export type SeededTask = {
   sentAt: string;
   title: string;
   deadline?: string;
-  bring?: string[];
+  description?: string;
   cancelled?: boolean;
 };
 
@@ -18,7 +18,6 @@ const literal = (text: string) => `'${text.replaceAll("'", "''")}'`;
  */
 export async function seedTasks(query: (sql: string) => Promise<unknown>, ...tasks: SeededTask[]): Promise<void> {
   for (const task of tasks) {
-    const bring = `ARRAY[${(task.bring ?? []).map(literal).join(", ")}]::text[]`;
     await query(`
       WITH record AS (
         INSERT INTO source_record (source_id, external_id, occurred_at, body, processed_at, created_at)
@@ -27,8 +26,8 @@ export async function seedTasks(query: (sql: string) => Promise<unknown>, ...tas
       ), written AS (
         INSERT INTO item (kind, record_id, created_at) SELECT 'task', id, ${literal(task.sentAt)} FROM record RETURNING id
       )
-      INSERT INTO task (item_id, title, deadline, bring, cancelled)
-      SELECT id, ${literal(task.title)}, ${task.deadline ? literal(task.deadline) : "NULL"}, ${bring}, ${task.cancelled === true} FROM written
+      INSERT INTO task (item_id, title, deadline, description, cancelled)
+      SELECT id, ${literal(task.title)}, ${task.deadline ? literal(task.deadline) : "NULL"}, ${task.description ? literal(task.description) : "NULL"}, ${task.cancelled === true} FROM written
     `);
   }
 }

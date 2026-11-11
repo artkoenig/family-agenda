@@ -747,14 +747,15 @@ export type ExtractedEvent = {
 
 /**
  * A Task a message states, as the model reads it: something to do or bring, a packing list being
- * one Task with its things to bring. Code resolves its Deadline and checks it.
+ * one Task with its things to bring as a list in its description. Code resolves its Deadline and
+ * checks it.
  */
 export type ExtractedTask = {
   title: string | null;
   /** The Deadline as the message words it; every part null if it states none. */
   deadline: DateMention;
-  /** The things to bring; none if it states none. */
-  bring: string[];
+  /** What else to know, such as the things to bring, a `- ` line per entry of a list; null if nothing. */
+  description: string | null;
   /** The words of the message that state it, quoted verbatim. */
   evidence: string;
 };

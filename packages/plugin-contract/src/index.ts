@@ -9,7 +9,7 @@ import { z } from "zod";
  * `major.minor`. A minor change is additive only, such as an optional field or an optional new
  * endpoint; anything else is a new major. CI compares `openapi.json` with the last release.
  */
-export const contractVersion = "1.3";
+export const contractVersion = "2.0";
 
 export type ContractVersion = { major: number; minor: number };
 
@@ -147,7 +147,7 @@ export const descriptionSchema = z
   .meta({ id: "Description" });
 
 /** The longest text an Item of each kind keeps; a longer one is refused. */
-export const statedTextLimits = { event: 500, lesson: 200, task: 500 } as const;
+export const statedTextLimits = { event: 500, lesson: 200, task: 500, taskDescription: 2000 } as const;
 const text = (limit: number) => z.string().max(limit);
 
 const span = z.object({ allDay: z.literal(false), start: isoInstant, end: isoInstant });
@@ -172,7 +172,13 @@ export const statedItemSchema = z
       previousTeacher: text(statedTextLimits.lesson).nullable(),
       note: text(statedTextLimits.lesson).nullable(),
     }),
-    z.object({ kind: z.literal("task"), title: text(statedTextLimits.task), deadline: isoDay.nullable(), bring: z.array(text(statedTextLimits.task)).max(50) }),
+    z.object({
+      kind: z.literal("task"),
+      title: text(statedTextLimits.task),
+      deadline: isoDay.nullable(),
+      /** What else the Family needs to know, such as the things to bring; a line starting with `- ` is an entry of a list. */
+      description: text(statedTextLimits.taskDescription).nullable(),
+    }),
   ])
   .meta({ id: "StatedItem" });
 

@@ -496,7 +496,6 @@ export const en = {
     overdue: "Overdue",
     overdueBy: (date: string) => `Overdue · by ${date}`,
     done: "Done",
-    bring: "Bring",
     markDone: (title: string) => `Mark “${title}” done`,
     markNotDone: (title: string) => `Mark “${title}” not done`,
     taskList: {

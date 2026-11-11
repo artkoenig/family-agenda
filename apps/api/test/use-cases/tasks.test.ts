@@ -17,7 +17,7 @@ const days = 24 * 60 * minutes;
 /** A Task a message sent at `sentAt` stated. */
 const task = (key: string, sentAt: string, fields: Omit<SeededTask, "key" | "sentAt">): SeededTask => ({ key, sentAt, ...fields });
 
-const sportsKit = task("kit", "2026-09-10T10:00:00Z", { title: "Bring sports kit", deadline: "2026-09-16", bring: ["Trainers", "Towel"] });
+const sportsKit = task("kit", "2026-09-10T10:00:00Z", { title: "Bring sports kit", deadline: "2026-09-16", description: "- Trainers\n- Towel" });
 
 describe("Tasks", () => {
   let instance: TestInstance;
@@ -231,7 +231,7 @@ describe("Tasks", () => {
         start: "2026-09-16",
         end: "2026-09-17",
         status: null,
-        description: `By Wed 16 Sept\nBring: Trainers, Towel\n\nhttp://agenda.local/agendas/${agenda}`,
+        description: `By Wed 16 Sept\n- Trainers\n- Towel\n\nhttp://agenda.local/agendas/${agenda}`,
       },
     ]);
 
@@ -272,7 +272,7 @@ const packingList =
 const tripPacking = extractedTask({
   title: "Sachen für den Ausflug",
   deadline: { day: 18, month: 9, weekday: "friday" },
-  bring: ["Regenjacke", "Brotdose", "Trinkflasche"],
+  description: "- Regenjacke\n- Brotdose\n- Trinkflasche",
   evidence: "für den Ausflug am Freitag, 18.09., bitte mitgeben: Regenjacke, Brotdose und Trinkflasche",
 });
 
@@ -306,15 +306,15 @@ describe("Tasks extracted from mail", () => {
     return instance.app.extraction.extractPending();
   };
 
-  /** Every Task the Agenda shows, pinned or on a day, with its Deadline and things to bring. */
+  /** Every Task the Agenda shows, pinned or on a day, with its Deadline and description. */
   const tasks = async () => {
     const page = await openTimeline(instance.app, agenda, { access: openAgendaAccess });
     return [...(page?.pinned ?? []), ...(page?.days ?? []).flatMap((day) => day.tasks)].map(
-      ({ title, deadline, bring, status, cancelled, messages }) => ({ title, deadline, bring, status, cancelled, messages: messages.length }),
+      ({ title, deadline, description, status, cancelled, messages }) => ({ title, deadline, description, status, cancelled, messages: messages.length }),
     );
   };
 
-  it("turns a packing list into one Task with its things to bring", async () => {
+  it("turns a packing list into one Task with its things to bring as a list in its description", async () => {
     extractor.script("Ausflug", [], [tripPacking]);
 
     await arrive(mail("m1", "2026-09-14T06:12:00Z", packingList));
@@ -323,7 +323,7 @@ describe("Tasks extracted from mail", () => {
       {
         title: "Sachen für den Ausflug",
         deadline: "2026-09-18",
-        bring: ["Regenjacke", "Brotdose", "Trinkflasche"],
+        description: "- Regenjacke\n- Brotdose\n- Trinkflasche",
         status: "upcoming",
         cancelled: false,
         messages: 1,
@@ -331,14 +331,14 @@ describe("Tasks extracted from mail", () => {
     ]);
   });
 
-  it("turns something to do without a date into a Task pinned at once", async () => {
+  it("turns something to do without a date into a Task pinned at once, without the empty description a model may answer", async () => {
     extractor.script("Formular", [], [
-      extractedTask({ title: "Formular unterschreiben", evidence: "bitte das Formular unterschrieben zurückgeben" }),
+      extractedTask({ title: "Formular unterschreiben", description: " ", evidence: "bitte das Formular unterschrieben zurückgeben" }),
     ]);
 
     await arrive(mail("m1", "2026-09-14T06:12:00Z", "Liebe Eltern, bitte das Formular unterschrieben zurückgeben."));
 
-    expect(await tasks()).toMatchObject([{ title: "Formular unterschreiben", deadline: null, status: "due" }]);
+    expect(await tasks()).toMatchObject([{ title: "Formular unterschreiben", deadline: null, description: null, status: "due" }]);
   });
 
   it("takes a month alone for a Deadline on its last day", async () => {
@@ -369,7 +369,7 @@ describe("Tasks extracted from mail", () => {
   });
 
   it("does not write a Task whose fields a Task cannot have", async () => {
-    extractor.script("Ausflug", [], [{ ...tripPacking, bring: ["Regenjacke", ""] }]);
+    extractor.script("Ausflug", [], [{ ...tripPacking, description: "x".repeat(2001) }]);
 
     const report = await arrive(mail("m1", "2026-09-14T06:12:00Z", packingList));
 

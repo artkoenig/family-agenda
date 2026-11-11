@@ -65,11 +65,11 @@ export const extractionSchema = {
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["title", "deadline", "bring", "evidence"],
+        required: ["title", "deadline", "description", "evidence"],
         properties: {
           title: nullable("string"),
           deadline: dateMentionSchema,
-          bring: { type: "array", items: { type: "string" } },
+          description: nullable("string"),
           evidence: { type: "string" },
         },
       },
@@ -84,7 +84,8 @@ const instructions = `You read messages a family receives, such as school mails,
 
 Rules:
 - List every such event and task, each once, also when a long newsletter mentions it in passing. List nothing for a message that names no date and nothing to do; then "events" and "tasks" are empty.
-- A list of things to bring for one occasion is one task, with the things in "bring", each as written. "bring" is empty for a task that is not about bringing things.
+- A list of things to bring for one occasion is one task.
+- A task's "description" is what else the family needs to know to do it, in the language of the message, such as how much to pay and how, or the things to bring; null if the title says it all. Write a list, such as the things to bring, as one line per entry starting with "- ", each entry as written.
 - Do not list changes to single lessons, such as a cancelled or substituted lesson. A whole day without school is an event.
 - The message may be followed by the text of its attachments, each after a line "Attachment <file name>:". Read them as part of the message.
 - "evidence" is the shortest passage of the message that states the event or task and its date, copied character for character. Never rephrase, translate or shorten words inside it.
@@ -279,26 +280,21 @@ function tasksOf(output: unknown): ExtractedTask[] | null {
 }
 
 function taskOf(raw: unknown): ExtractedTask | null {
-  if (!isObject(raw) || !isObject(raw.deadline) || !Array.isArray(raw.bring)) return null;
+  if (!isObject(raw) || !isObject(raw.deadline)) return null;
   const deadline = dateOf(raw.deadline);
-  const bring: unknown[] = raw.bring;
-  if (!validTaskFields(deadline, raw, bring)) return null;
+  if (!validTaskFields(deadline, raw)) return null;
   return {
     title: raw.title as string | null,
     deadline: deadline as DateMention,
-    bring: bring as string[],
+    description: raw.description as string | null,
     evidence: raw.evidence as string,
   };
 }
 
-function validTaskFields(
-  deadline: DateMention | null,
-  raw: Record<string, unknown>,
-  bring: unknown[],
-): boolean {
+function validTaskFields(deadline: DateMention | null, raw: Record<string, unknown>): boolean {
   if (deadline === null) return false;
   if (typeof raw.evidence !== "string") return false;
-  return isTextOrNull(raw.title) && bring.every((thing) => typeof thing === "string");
+  return isTextOrNull(raw.title) && isTextOrNull(raw.description);
 }
 
 function wholeOf(value: unknown): number | null | undefined {

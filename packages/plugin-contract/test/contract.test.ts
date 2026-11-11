@@ -66,7 +66,7 @@ describe("the schemas", () => {
         {
           externalId: "uid-1",
           attributes: ["main"],
-          content: { kind: "stated", stated: { kind: "task", title: "Bring paint", deadline: null, bring: [] } },
+          content: { kind: "stated", stated: { kind: "task", title: "Bring paint", deadline: null, description: "- Brushes\n- Apron" } },
         },
         {
           externalId: "mail-1",
@@ -82,12 +82,14 @@ describe("the schemas", () => {
     expect(pollResponseSchema.parse(answer)).toEqual(answer);
   });
 
-  it("refuse a poll without a time zone, a Source Record with an unknown kind of content, and a Task title over its limit", () => {
+  it("refuse a poll without a time zone, a Source Record with an unknown kind of content, and and a Task title or description over its limit", () => {
     expect(pollRequestSchema.safeParse({ ...context, timeZone: undefined }).success).toBe(false);
     const origin = { externalId: "x", attributes: [], content: { kind: "video" } };
     expect(pollResponseSchema.safeParse({ sourceRecords: [origin], syncCursor: null }).success).toBe(false);
-    const long = { externalId: "x", attributes: [], content: { kind: "stated", stated: { kind: "task", title: "x".repeat(501), deadline: null, bring: [] } } };
-    expect(pollResponseSchema.safeParse({ sourceRecords: [long], syncCursor: null }).success).toBe(false);
+    const stating = (task: { title: string; description: string | null }) => ({ externalId: "x", attributes: [], content: { kind: "stated", stated: { kind: "task", deadline: null, ...task } } });
+    expect(pollResponseSchema.safeParse({ sourceRecords: [stating({ title: "x".repeat(501), description: null })], syncCursor: null }).success).toBe(false);
+    expect(pollResponseSchema.safeParse({ sourceRecords: [stating({ title: "Pack", description: "x".repeat(2001) })], syncCursor: null }).success).toBe(false);
+    expect(pollResponseSchema.safeParse({ sourceRecords: [stating({ title: "Pack", description: "x".repeat(2000) })], syncCursor: null }).success).toBe(true);
   });
 
   it("describe a plugin by its Source Type id, kind and contract version", () => {

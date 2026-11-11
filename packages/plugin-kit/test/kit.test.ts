@@ -14,7 +14,7 @@ const record = (externalId: string, attributes: string[], kind: "stated" | "raw-
   attributes,
   content:
     kind === "stated"
-      ? { kind, stated: { kind: "task" as const, title: "Pack", deadline: null, bring: [] } }
+      ? { kind, stated: { kind: "task" as const, title: "Pack", deadline: null, description: null } }
       : { kind, text: "Hello", attachments: [] },
 });
 

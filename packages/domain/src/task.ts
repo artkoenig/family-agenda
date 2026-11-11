@@ -9,8 +9,12 @@ import type { ItemFields } from "./item";
 export type Task = {
   title: string;
   deadline: LocalDate | null;
-  /** The things to bring, as on a packing list; they are ticked with the Task, never one by one. */
-  bring: string[];
+  /**
+   * What else the Family needs to know to do it, such as the things to bring, as written; null if
+   * nothing. A line starting with `- ` is an entry of a list, such as a packing list, and is ticked
+   * with the Task, never on its own.
+   */
+  description: string | null;
   /** When it was ticked done; null while it is not. */
   doneAt: Date | null;
   /** When it was first stated, such as when the message that names it was sent; null if unknown. */
@@ -26,15 +30,15 @@ export type TaskStatus = "upcoming" | "due" | "overdue" | "done";
 
 export const maximumTaskTextLength = 500;
 
-/** At most how many things to bring a Task lists. */
-export const maximumThingsToBring = 50;
+/** At most how long a Task's description is. */
+export const maximumTaskDescriptionLength = 2000;
 
 /**
  * The fields of a Task, as a Source or extraction states them in JSON: `title` (text), `deadline`
- * (`YYYY-MM-DD` or null) and `bring` (a list of texts). Whether it is done is only ever set by
+ * (`YYYY-MM-DD` or null) and `description` (text or null). Whether it is done is only ever set by
  * ticking it.
  */
-const taskFields = ["title", "deadline", "bring"] as const;
+const taskFields = ["title", "deadline", "description"] as const;
 
 /** Why the fields describe no Task; none if they do. */
 export function problemsWithTaskFields(fields: Record<string, unknown>): string[] {
@@ -48,13 +52,16 @@ function missingProblems(fields: Record<string, unknown>): string[] {
 function fieldProblems(fields: Record<string, unknown>): string[] {
   const problems: string[] = [];
   if ("title" in fields && parseText(fields.title) === null) problems.push("title is not a non-empty text");
-  if ("deadline" in fields && fields.deadline !== null && parseDeadline(fields.deadline) === null) {
-    problems.push("deadline is not a date or null");
-  }
-  if ("bring" in fields && parseBring(fields.bring) === null) {
-    problems.push(`bring is not a list of at most ${maximumThingsToBring} non-empty texts`);
+  if (isInvalidOrNull(fields, "deadline", parseDeadline)) problems.push("deadline is not a date or null");
+  if (isInvalidOrNull(fields, "description", parseDescription)) {
+    problems.push(`description is not a non-empty text of at most ${maximumTaskDescriptionLength} characters or null`);
   }
   return problems;
+}
+
+/** Whether a field that may be null is stated as something else that does not parse. */
+function isInvalidOrNull(fields: Record<string, unknown>, key: string, parse: (value: unknown) => unknown): boolean {
+  return key in fields && fields[key] !== null && parse(fields[key]) === null;
 }
 
 function unknownFieldProblems(fields: Record<string, unknown>, known: readonly string[]): string[] {
@@ -64,7 +71,7 @@ function unknownFieldProblems(fields: Record<string, unknown>, known: readonly s
 }
 
 /** What a Source or a message states about a Task; whether it is done is up to the Family. */
-export type StatedTask = Pick<Task, "title" | "deadline" | "bring" | "cancelled">;
+export type StatedTask = Pick<Task, "title" | "deadline" | "description" | "cancelled">;
 
 /** The Task its fields describe, or null while it has no title yet. */
 export function taskOf(folded: ItemFields | null): StatedTask | null {
@@ -74,7 +81,7 @@ export function taskOf(folded: ItemFields | null): StatedTask | null {
   return {
     title,
     deadline: parseDeadline(folded.fields.deadline),
-    bring: parseBring(folded.fields.bring) ?? [],
+    description: parseDescription(folded.fields.description),
     cancelled: folded.cancelled,
   };
 }
@@ -121,18 +128,16 @@ export function isOutstanding(task: Task): boolean {
   return !task.doneAt;
 }
 
-function parseText(value: unknown): string | null {
+function parseText(value: unknown, maximumLength = maximumTaskTextLength): string | null {
   if (typeof value !== "string") return null;
   const text = value.trim();
-  return text !== "" && text.length <= maximumTaskTextLength ? text : null;
+  return text !== "" && text.length <= maximumLength ? text : null;
 }
 
 function parseDeadline(value: unknown): LocalDate | null {
   return typeof value === "string" && isLocalDate(value) ? value : null;
 }
 
-function parseBring(value: unknown): string[] | null {
-  if (!Array.isArray(value) || value.length > maximumThingsToBring) return null;
-  const things = value.map(parseText);
-  return things.every((thing) => thing !== null) ? things : null;
+function parseDescription(value: unknown): string | null {
+  return parseText(value, maximumTaskDescriptionLength);
 }

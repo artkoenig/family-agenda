@@ -22,7 +22,7 @@ export type StatedLesson = {
   previousTeacher: string | null;
   note: string | null;
 };
-export type StatedTask = { kind: "task"; title: string; deadline: string | null; bring: string[] };
+export type StatedTask = { kind: "task"; title: string; deadline: string | null; description: string | null };
 
 /** What a test plugin emits: a Source Record with a Date and bytes in place of their JSON forms. */
 export type Origin = {

@@ -59,7 +59,7 @@ const event = {
 const task = {
   title: "Sachen für den Ausflug",
   deadline: { day: 18, month: 9, year: null, weekday: "friday", daysAfter: null, weeksAfter: null },
-  bring: ["Regenjacke", "Brotdose"],
+  description: "- Regenjacke\n- Brotdose",
   evidence: "für den Ausflug am Freitag, 18.09., bitte mitgeben: Regenjacke und Brotdose",
 };
 
@@ -127,8 +127,8 @@ describe("the OpenAI-compatible Extractor", () => {
       JSON.stringify({ events: [{ ...event, date: { ...event.date, weekday: "donnerstag" } }], tasks: [] }),
       JSON.stringify({ events: [{ ...event, date: { ...event.date, day: "17" } }], tasks: [] }),
       JSON.stringify({ events: [event] }),
-      JSON.stringify({ events: [], tasks: [{ ...task, bring: "Regenjacke" }] }),
-      JSON.stringify({ events: [], tasks: [{ ...task, bring: [1] }] }),
+      JSON.stringify({ events: [], tasks: [{ ...task, description: ["Regenjacke"] }] }),
+      JSON.stringify({ events: [], tasks: [{ ...task, description: undefined }] }),
       JSON.stringify({ events: [], tasks: [{ ...task, deadline: null }] }),
     ]) {
       server.answer(200, completion(content));

@@ -5,7 +5,7 @@ import { seedTasks } from "../support/seed-task";
 const password = "correct horse battery";
 
 /** A Task a message stated before the week began. */
-const task = (key: string, fields: { title: string; deadline?: string; bring?: string[] }) => ({ key, sentAt: "2026-09-10T10:00:00Z", ...fields });
+const task = (key: string, fields: { title: string; deadline?: string; description?: string }) => ({ key, sentAt: "2026-09-10T10:00:00Z", ...fields });
 
 describe("Tasks over HTTP", () => {
   let instance: HttpTestInstance;
@@ -22,7 +22,7 @@ describe("Tasks over HTTP", () => {
     path = `/agendas/${created.id}`;
     await seedTasks(
       (sql) => instance.query(sql),
-      task("kit", { title: "Bring sports kit", deadline: "2026-09-14", bring: ["Trainers", "Towel"] }),
+      task("kit", { title: "Bring sports kit", deadline: "2026-09-14", description: "Pack it the night before.\n- Trainers\n- Towel" }),
       task("form", { title: "Sign the trip form" }),
       task("photos", { title: "Pay for the photos", deadline: "2026-09-16" }),
     );
@@ -41,12 +41,16 @@ describe("Tasks over HTTP", () => {
   /** Where the tick of a Task row posts to. */
   const tickOf = (row: string) => /<form[^>]*action="([^"]+)"/.exec(row)?.[1] ?? "";
 
-  it("pins Due Tasks at the top of an Agenda, with their things to bring, and shows later ones on their day", async () => {
+  it("pins Due Tasks at the top of an Agenda, with their descriptions, and shows later ones on their day", async () => {
     const page = await (await instance.get(path)).text();
 
     const pinned = pinnedOf(page);
     expect(pinned).toContain("To do");
-    expect(rowOf(pinned, "Bring sports kit")).toContain("Trainers, Towel");
+    // Its list has rows of its own, so the pinned area, where only it has a description, holds it.
+    expect(pinned).toContain(
+      '<div class="fam-item__meta fam-task__description"><p>Pack it the night before.</p><ul><li>Trainers</li><li>Towel</li></ul></div>',
+    );
+    expect(rowOf(pinned, "Sign the trip form")).not.toContain("fam-task__description");
     expect(rowOf(pinned, "Bring sports kit")).toContain("Due");
     expect(rowOf(pinned, "Sign the trip form")).toContain("Due");
     expect(pinned).not.toContain("Pay for the photos");

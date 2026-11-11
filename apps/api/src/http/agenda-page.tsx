@@ -737,7 +737,7 @@ function taskStatusLabel(row: TimelineTask, v: Catalogue["agenda"], deadline: st
 
 /**
  * A Task as one row with its tick, the design system's checkbox, which posts once it changes as
- * htmx swaps the timeline or the Task List, and its Deadline and things to bring. A done one is
+ * htmx swaps the timeline or the Task List, and its Deadline and description. A done one is
  * checked and dimmed, and its tick can be taken back. On its day, the tick takes the place of an
  * Event's time, and the row leaves out its Deadline and status, which the day and the tick say.
  */
@@ -753,7 +753,8 @@ function TaskRow(props: { row: TimelineTask; members: FamilyMemberSummary[]; tic
   return (
     <li class={classes}>
       {props.onDay ? <span class="fam-item__lead">{props.tick}</span> : props.tick}
-      <span class="fam-item__text">
+      {/* A div, not a span, as its description holds paragraphs and a list. */}
+      <div class="fam-item__text">
         <span class="fam-item__title">
           {row.cancelled ? (
             <>
@@ -764,17 +765,44 @@ function TaskRow(props: { row: TimelineTask; members: FamilyMemberSummary[]; tic
           )}
         </span>
         {props.onDay ? null : <span class="fam-item__meta fam-task__status">{status}</span>}
-        {row.bring.length > 0 ? (
-          <span class="fam-item__meta">
-            {v.bring}: {row.bring.join(", ")}
-          </span>
-        ) : null}
+        {row.description === null ? null : <TaskDescription description={row.description} />}
         <Sources row={row} />
-      </span>
+      </div>
       <Concerned concerns={row.concerns} members={props.members} />
       {props.action}
     </li>
   );
+}
+
+/** A Task's description: its `- ` lines as a list, every other line as a paragraph of its own. */
+function TaskDescription(props: { description: string }) {
+  return (
+    <div class="fam-item__meta fam-task__description">
+      {descriptionBlocks(props.description).map((block) =>
+        typeof block === "string" ? (
+          <p>{block}</p>
+        ) : (
+          <ul>
+            {block.map((entry) => (
+              <li>{entry}</li>
+            ))}
+          </ul>
+        ),
+      )}
+    </div>
+  );
+}
+
+/** The paragraphs of a description, and its runs of `- ` lines as the entries of a list. */
+function descriptionBlocks(description: string): (string | string[])[] {
+  const blocks: (string | string[])[] = [];
+  for (const line of description.split("\n").map((text) => text.trim()).filter(Boolean)) {
+    const last = blocks.at(-1);
+    if (!line.startsWith("- ")) blocks.push(line);
+    else if (Array.isArray(last)) last.push(line.slice(2).trim());
+    else blocks.push([line.slice(2).trim()]);
+  }
+  return blocks;
 }
 
 function TickForm(props: { row: TimelineTask; page: AgendaPage | TaskListPage }) {
