@@ -81,6 +81,7 @@ import {
   type SourceAdding,
 } from "./pages";
 import { icsFeed } from "./ics-feed";
+import { avatarImages, avatarStylesheet } from "./avatars";
 import {
   ActivityIndicator,
   activityEnded,
@@ -154,9 +155,10 @@ const htmx = readFileSync(
 const resolve = createRequire(import.meta.url).resolve;
 
 /** The design system's stylesheets (`design/`), served as they are. */
-const stylesheets: Record<string, typeof htmx> = {
+const stylesheets: Record<string, Uint8Array<ArrayBuffer>> = {
   "tokens.css": readFileSync(new URL("./design/tokens.css", import.meta.url)),
   "design.css": readFileSync(new URL("./design/design.css", import.meta.url)),
+  "avatars.css": avatarStylesheet,
 };
 
 /** The font files `tokens.css` names, from their packages: the Instance serves them itself, as it runs offline. */
@@ -261,6 +263,15 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     if (!icon) return c.notFound();
     return c.body(icon, 200, {
       "content-type": "image/png",
+      "cache-control": "public, max-age=86400",
+    });
+  });
+
+  app.get("/static/avatars/:file", (c) => {
+    const image = avatarImages[c.req.param("file")];
+    if (!image) return c.notFound();
+    return c.body(image, 200, {
+      "content-type": "image/svg+xml",
       "cache-control": "public, max-age=86400",
     });
   });
@@ -836,7 +847,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     c: Context<Env>,
     shown: {
       problem?: string;
-      adding?: { name?: string; problem?: string };
+      adding?: { name?: string; colour?: string; avatar?: string; problem?: string };
       editing?: { id: FamilyMemberId; problem?: string };
       status?: 200 | 400 | 413;
     } = {},
@@ -892,11 +903,12 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     const photo = await upload(form, "photo");
     const result = await familyMembers.add({
       name,
+      ...looksIn(form),
       ...(photo ? { photo } : {}),
     });
     if (!result.ok)
       return familyMembersPage(c, {
-        adding: { name, problem: problemIn(c, result.problem) },
+        adding: { name, ...looksIn(form), problem: problemIn(c, result.problem) },
       });
     return c.redirect("/admin/family-members", 303);
   });
@@ -909,6 +921,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
       c.req.param("id") as FamilyMemberId,
       {
         name: field(form, "name"),
+        ...looksIn(form),
         ...(photo !== undefined ? { photo } : {}),
       },
     );
@@ -1919,6 +1932,15 @@ async function upload(
   const value = form[name];
   if (!(value instanceof File) || value.size === 0) return undefined;
   return new Uint8Array(await value.arrayBuffer());
+}
+
+/** The colour and the animal a Family Member's form chose, leaving out those it did not send. */
+function looksIn(form: Record<string, unknown>): { colour?: string; avatar?: string } {
+  const { colour, avatar } = form;
+  return {
+    ...(typeof colour === "string" ? { colour } : {}),
+    ...(typeof avatar === "string" ? { avatar } : {}),
+  };
 }
 
 function field(form: Record<string, unknown>, name: string): string {

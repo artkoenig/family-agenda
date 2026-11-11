@@ -86,6 +86,31 @@ describe("Events in an Agenda over HTTP", () => {
     expect(rowOf(page, "Piano lesson")).toMatch(/<span class="fam-event__who" aria-label="Mia" role="img">.*>M<\/span>/s);
   });
 
+  it("names the one Family Member an Agenda is for in its bar, and leaves them out of its rows", async () => {
+    const mia = await instance.app.familyMembers.add({ name: "Mia", avatar: "fox" });
+    const leo = await instance.app.familyMembers.add({ name: "Leo" });
+    if (!mia.ok || !leo.ok) throw new Error("adding failed");
+    const forMia = await instance.app.agendas.create({ memberIds: [mia.id], horizonDays: 3 });
+    if (!forMia.ok) throw new Error("creating failed");
+    const [source] = await instance.app.sources.list();
+    if (!source) throw new Error("no Source");
+    const span = { allDay: false as const, start: "2026-09-15T14:00:00Z", end: "2026-09-15T15:00:00Z" };
+    await arrive(event("piano", { title: "Piano lesson", span }));
+    await assignSource(instance, source.id, [mia.id, leo.id]);
+
+    const page = await (await instance.get(`/agendas/${forMia.id}`)).text();
+
+    expect(page).toMatch(/<p class="fam-bar__member">.*src="\/static\/avatars\/fox.svg".*<span class="fam-bar__member-name">Mia<\/span><\/p>/s);
+    expect(page).not.toContain('id="quick-filter"');
+    // The row still names Leo, whom the bar does not.
+    expect(rowOf(page, "Piano lesson")).toMatch(/<span class="fam-event__who" aria-label="Leo" role="img">.*>L<\/span>/s);
+    expect(rowOf(page, "Piano lesson")).not.toContain("fox.svg");
+    // An Agenda for the whole Family names no one, and its rows show everyone.
+    const whole = await (await instance.get(path)).text();
+    expect(whole).not.toContain("fam-bar__member");
+    expect(rowOf(whole, "Piano lesson")).toContain("fox.svg");
+  });
+
   it("strikes cancelled Events through and dims those of today that are over", async () => {
     await arrive(
       event("breakfast", { title: "School breakfast", span: { allDay: false, start: "2026-09-14T05:30:00Z", end: "2026-09-14T06:30:00Z" } }),

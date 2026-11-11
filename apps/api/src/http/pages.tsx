@@ -21,6 +21,14 @@ import {
   familyLanguages,
   horizonDaysRange,
   maximumNameLength,
+  initialOf,
+  memberAvatars,
+  memberColours,
+  nextColour,
+  parseAvatar,
+  parseColour,
+  type MemberAvatar,
+  type MemberColour,
   minimumPasswordLength,
   photoTypes,
   silentAfterMs,
@@ -44,6 +52,7 @@ import {
   type FragmentPoll,
 } from "./lazy-fragment";
 import { Avatar, MessageItems, agendaUrl } from "./agenda-page";
+import { avatarUrl } from "./avatars";
 
 /** The Family Languages to choose from, the given one selected. */
 function FamilyLanguageOptions(props: { selected: FamilyLanguage }) {
@@ -972,116 +981,214 @@ export function RecoveryKitPage(props: {
   );
 }
 
+/** What a Family Member's avatar shows, for the list. */
+function looksOf(member: FamilyMemberSummary, m: Catalogue["members"]): string {
+  if (member.hasPhoto) return m.withPhoto;
+  return member.avatar ? m.withAnimal(m.animals[member.avatar]) : m.withInitial;
+}
+
+function parseAvatarOrNone(raw: string | undefined): MemberAvatar | null {
+  const parsed = parseAvatar(raw ?? "");
+  return parsed.ok ? parsed.avatar : null;
+}
+
+/**
+ * A Family Member's colour and animal, with a preview that follows what is chosen: the stylesheets
+ * colour it after the checked colour, and `avatars.css` puts the checked animal on it.
+ */
+function LooksFields(props: {
+  name: string;
+  colour: MemberColour;
+  avatar: MemberAvatar | null;
+  m: Catalogue["members"];
+}) {
+  const { m } = props;
+  const initial = initialOf(props.name);
+  return (
+    <div class="fam-looks">
+      <div class="fam-looks__head">
+        <span class="fam-avatar fam-looks__preview" aria-hidden="true">
+          <span class="fam-looks__initial">{initial}</span>
+        </span>
+        <small>{m.looksHint}</small>
+      </div>
+      <fieldset>
+        <legend>{m.colour}</legend>
+        <div class="fam-swatches">
+          {memberColours.map((colour) => (
+            <label class={`fam-swatch fam-avatar--m${colour}`} title={m.colourNumber(colour)}>
+              <input
+                type="radio"
+                name="colour"
+                value={String(colour)}
+                checked={props.colour === colour}
+                aria-label={m.colourNumber(colour)}
+              />
+            </label>
+          ))}
+        </div>
+      </fieldset>
+      <fieldset>
+        <legend>{m.avatar}</legend>
+        <div class="fam-swatches">
+          <label class="fam-swatch fam-swatch--animal" title={m.noAnimal}>
+            <input type="radio" name="avatar" value="" checked={props.avatar === null} aria-label={m.noAnimal} />
+            <span class="fam-swatch__initial" aria-hidden="true">{initial || "A"}</span>
+          </label>
+          {memberAvatars.map((avatar) => (
+            <label class="fam-swatch fam-swatch--animal" title={m.animals[avatar]}>
+              <input
+                type="radio"
+                name="avatar"
+                value={avatar}
+                checked={props.avatar === avatar}
+                aria-label={m.animals[avatar]}
+              />
+              <img src={avatarUrl(avatar)} alt="" loading="lazy" />
+            </label>
+          ))}
+        </div>
+      </fieldset>
+    </div>
+  );
+}
+
 function MemberDialog(props: {
   edited?: FamilyMemberSummary | undefined;
-  adding?: { name?: string; problem?: string } | undefined;
+  adding?: NewMemberForm | undefined;
+  editing?: { id: FamilyMemberId; problem?: string } | undefined;
+  /** The colour a new Family Member would get. */
+  newColour: MemberColour;
+  m: Catalogue["members"];
+  commonSave: string;
+}) {
+  const { edited, adding } = props;
+  if (edited) return <EditMemberDialog {...props} edited={edited} />;
+  if (adding) return <AddMemberDialog {...props} adding={adding} />;
+  return null;
+}
+
+type NewMemberForm = { name?: string; colour?: string; avatar?: string; problem?: string };
+
+function EditMemberDialog(props: {
+  edited: FamilyMemberSummary;
   editing?: { id: FamilyMemberId; problem?: string } | undefined;
   m: Catalogue["members"];
   commonSave: string;
 }) {
-  const { edited, adding, editing, m, commonSave } = props;
-  if (edited) {
-    return (
-      <Dialog
-        id="edit-member"
-        eyebrow={m.eyebrow}
-        title={edited.name}
-        closeHref="/admin/family-members"
+  const { edited, editing, m, commonSave } = props;
+  return (
+    <Dialog
+      id="edit-member"
+      eyebrow={m.eyebrow}
+      title={edited.name}
+      closeHref="/admin/family-members"
+    >
+      <form
+        method="post"
+        action={`/admin/family-members/${edited.id}`}
+        enctype="multipart/form-data"
+        class="fam-dialog__form"
       >
-        <form
-          method="post"
-          action={`/admin/family-members/${edited.id}`}
-          enctype="multipart/form-data"
-          class="fam-dialog__form"
-        >
-          <Problem message={editing?.problem} />
-          <div class="fam-field">
-            <label for="name">{m.name}</label>
-            <input
-              id="name"
-              name="name"
-              required
-              autofocus
-              maxlength={maximumNameLength}
-              value={edited.name}
-            />
-            <small>{m.nameHint}</small>
-          </div>
-          <div class="fam-field">
-            <label for="photo">
-              {edited.hasPhoto ? m.replacePhoto : m.photo}
-            </label>
-            <input
-              id="photo"
-              name="photo"
-              type="file"
-              accept={photoTypes.join(",")}
-            />
-            {edited.hasPhoto ? (
-              <label>
-                <input type="checkbox" name="removePhoto" value="yes" />{" "}
-                {m.removePhoto}
-              </label>
-            ) : (
-              <small>{m.photoHint}</small>
-            )}
-          </div>
-          <DialogFooter
-            closeHref="/admin/family-members"
-            submit={commonSave}
-            remove={{ form: "remove-member", label: m.remove(edited.name) }}
+        <Problem message={editing?.problem} />
+        <div class="fam-field">
+          <label for="name">{m.name}</label>
+          <input
+            id="name"
+            name="name"
+            required
+            autofocus
+            maxlength={maximumNameLength}
+            value={edited.name}
           />
-        </form>
-        <RemoveForm
-          id="remove-member"
-          action={`/admin/family-members/${edited.id}/remove`}
-        />
-      </Dialog>
-    );
-  }
-  if (adding) {
-    return (
-      <Dialog
-        id="add-member"
-        eyebrow={m.eyebrow}
-        title={m.dialogTitle}
-        closeHref="/admin/family-members"
-      >
-        <form
-          method="post"
-          action="/admin/family-members"
-          enctype="multipart/form-data"
-          class="fam-dialog__form"
-        >
-          <Problem message={adding.problem} />
-          <div class="fam-field">
-            <label for="name">{m.name}</label>
-            <input
-              id="name"
-              name="name"
-              required
-              autofocus
-              maxlength={maximumNameLength}
-              value={adding.name}
-            />
-            <small>{m.nameHint}</small>
-          </div>
-          <div class="fam-field">
-            <label for="photo">{m.photo}</label>
-            <input
-              id="photo"
-              name="photo"
-              type="file"
-              accept={photoTypes.join(",")}
-            />
+          <small>{m.nameHint}</small>
+        </div>
+        <LooksFields name={edited.name} colour={edited.colour} avatar={edited.avatar} m={m} />
+        <div class="fam-field">
+          <label for="photo">
+            {edited.hasPhoto ? m.replacePhoto : m.photo}
+          </label>
+          <input
+            id="photo"
+            name="photo"
+            type="file"
+            accept={photoTypes.join(",")}
+          />
+          {edited.hasPhoto ? (
+            <label>
+              <input type="checkbox" name="removePhoto" value="yes" />{" "}
+              {m.removePhoto}
+            </label>
+          ) : (
             <small>{m.photoHint}</small>
-          </div>
-          <DialogFooter closeHref="/admin/family-members" submit={m.add} />
-        </form>
-      </Dialog>
-    );
-  }
-  return null;
+          )}
+        </div>
+        <DialogFooter
+          closeHref="/admin/family-members"
+          submit={commonSave}
+          remove={{ form: "remove-member", label: m.remove(edited.name) }}
+        />
+      </form>
+      <RemoveForm
+        id="remove-member"
+        action={`/admin/family-members/${edited.id}/remove`}
+      />
+    </Dialog>
+  );
+}
+
+function AddMemberDialog(props: {
+  adding: NewMemberForm;
+  newColour: MemberColour;
+  m: Catalogue["members"];
+}) {
+  const { adding, m } = props;
+  return (
+    <Dialog
+      id="add-member"
+      eyebrow={m.eyebrow}
+      title={m.dialogTitle}
+      closeHref="/admin/family-members"
+    >
+      <form
+        method="post"
+        action="/admin/family-members"
+        enctype="multipart/form-data"
+        class="fam-dialog__form"
+      >
+        <Problem message={adding.problem} />
+        <div class="fam-field">
+          <label for="name">{m.name}</label>
+          <input
+            id="name"
+            name="name"
+            required
+            autofocus
+            maxlength={maximumNameLength}
+            value={adding.name}
+          />
+          <small>{m.nameHint}</small>
+        </div>
+        <LooksFields
+          name={adding.name ?? ""}
+          colour={parseColour(adding.colour ?? "") ?? props.newColour}
+          avatar={parseAvatarOrNone(adding.avatar)}
+          m={m}
+        />
+        <div class="fam-field">
+          <label for="photo">{m.photo}</label>
+          <input
+            id="photo"
+            name="photo"
+            type="file"
+            accept={photoTypes.join(",")}
+          />
+          <small>{m.photoHint}</small>
+        </div>
+        <DialogFooter closeHref="/admin/family-members" submit={m.add} />
+      </form>
+    </Dialog>
+  );
 }
 
 export function FamilyMembersPage(props: {
@@ -1089,7 +1196,7 @@ export function FamilyMembersPage(props: {
   members: FamilyMemberSummary[];
   problem?: string;
   /** The add dialog, open with what was entered and why it was refused. */
-  adding?: { name?: string; problem?: string } | undefined;
+  adding?: { name?: string; colour?: string; avatar?: string; problem?: string } | undefined;
   /** A Family Member's dialog, open with why a change was refused. */
   editing?: { id: FamilyMemberId; problem?: string } | undefined;
 }) {
@@ -1105,6 +1212,7 @@ export function FamilyMembersPage(props: {
         edited={edited}
         adding={adding}
         editing={editing}
+        newColour={nextColour(props.members.map((member) => member.colour))}
         m={m}
         commonSave={t.common.save}
       />
@@ -1132,7 +1240,7 @@ export function FamilyMembersPage(props: {
                 href={`/admin/family-members/${member.id}`}
                 lead={<Avatar member={member} size="sm" />}
                 name={member.name}
-                meta={member.hasPhoto ? m.withPhoto : m.withInitial}
+                meta={looksOf(member, m)}
               />
             ))}
           </ul>

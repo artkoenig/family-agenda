@@ -18,6 +18,7 @@ import { raw } from "hono/html";
 import type { Catalogue } from "./i18n/en";
 import { useTranslation, type Translation } from "./i18n/translation";
 import { Layout } from "./layout";
+import { avatarUrl } from "./avatars";
 
 // The Agenda layouts: a vertical timeline, or a Task List, that works on a phone, a
 // desktop and a wall tablet, in the Family Agenda design system (`design/design.css`).
@@ -171,7 +172,7 @@ export function AgendaTimeline(props: { page: AgendaPage }) {
           </h2>
           <ul class="fam-tasks__list">
             {page.pinned.map((row) => (
-              <TaskRow row={row} members={page.members} tick={<TickForm row={row} page={page} />} />
+              <TaskRow row={row} members={othersThanSole(page)} tick={<TickForm row={row} page={page} />} />
             ))}
           </ul>
         </section>
@@ -209,7 +210,7 @@ export function TaskList(props: { page: TaskListPage }) {
         </h2>
         <ul class="fam-tasks__list">
           {rows.map((row) => (
-            <TaskRow row={row} members={page.members} tick={<TickForm row={row} page={page} />} />
+            <TaskRow row={row} members={othersThanSole(page)} tick={<TickForm row={row} page={page} />} />
           ))}
         </ul>
       </section>
@@ -250,6 +251,7 @@ function AgendaBar(props: { page: AgendaPage | TaskListPage; kind?: string }) {
   const { t, locale } = useTranslation();
   const everyone = showsEveryChoice(page);
   const shown = everyone ? [] : page.choices.filter((member) => page.showing.includes(member.id));
+  const sole = soleChoice(page);
   return (
     <header class="fam-bar">
       <div class="fam-bar__inner">
@@ -260,6 +262,12 @@ function AgendaBar(props: { page: AgendaPage | TaskListPage; kind?: string }) {
         {page.mayBeOutOfDate ? (
           <p class="fam-out-of-date" role="status" tabindex={0}>
             <span class="fam-out-of-date__text">{t.agenda.outOfDate}</span>
+          </p>
+        ) : null}
+        {sole ? (
+          <p class="fam-bar__member">
+            <Avatar member={sole} />
+            <span class="fam-bar__member-name">{sole.name}</span>
           </p>
         ) : null}
         {page.choices.length > 1 ? (
@@ -454,11 +462,11 @@ function DayEntry(props: { page: AgendaPage; day: TimelineDay }) {
   const now = day.date === page.now.date ? page.now.time : undefined;
   const show = (row: DayRow) =>
     row.kind === "event" ? (
-      <EventRow row={row.row} day={day.date} members={page.members} now={now} />
+      <EventRow row={row.row} day={day.date} members={othersThanSole(page)} now={now} />
     ) : row.kind === "school" ? (
-      <SchoolDayRow row={row.row} members={page.members} now={now} />
+      <SchoolDayRow row={row.row} members={othersThanSole(page)} now={now} />
     ) : (
-      <TimetableChangeRow row={row.row} members={page.members} now={now} />
+      <TimetableChangeRow row={row.row} members={othersThanSole(page)} now={now} />
     );
   return (
     <li class={day.date === page.now.date ? "fam-day fam-day--today" : "fam-day"} data-date={day.date}>
@@ -470,7 +478,7 @@ function DayEntry(props: { page: AgendaPage; day: TimelineDay }) {
       {day.tasks.length > 0 ? (
         <ul class="fam-tasks__list">
           {day.tasks.map((row) => (
-            <TaskRow row={row} members={page.members} tick={<TickForm row={row} page={page} />} onDay />
+            <TaskRow row={row} members={othersThanSole(page)} tick={<TickForm row={row} page={page} />} onDay />
           ))}
         </ul>
       ) : null}
@@ -508,6 +516,21 @@ function RunningMark() {
 /** Whether something from `from` until `until` on today, either null if it goes on past the day, runs at `now`. */
 function runsAt(now: string | undefined, from: string | null, until: string | null): boolean {
   return now !== undefined && (from === null || from <= now) && (until === null || now < until);
+}
+
+/**
+ * The one Family Member an Agenda is for, whom its bar names instead of offering a filter; none for
+ * an Agenda for the whole Family, even one of a single member.
+ */
+function soleChoice(page: { choices: FamilyMemberSummary[]; showing: Showing }): FamilyMemberSummary | undefined {
+  const [first, ...rest] = page.choices;
+  return rest.length === 0 && page.showing !== "all" ? first : undefined;
+}
+
+/** Whom rows show avatars of: in an Agenda for one Family Member, the bar names them, so its rows leave them out. */
+function othersThanSole(page: { choices: FamilyMemberSummary[]; showing: Showing; members: FamilyMemberSummary[] }): FamilyMemberSummary[] {
+  const sole = soleChoice(page);
+  return sole ? page.members.filter((member) => member.id !== sole.id) : page.members;
 }
 
 /** The avatars of the Family Members a row concerns, none if it concerns the whole Family. */
@@ -822,7 +845,7 @@ export function spanLabel(span: TimelineEvent["span"], { t, locale }: Translatio
     : `${date(start.date)}, ${start.time} – ${date(end.date)}, ${end.time}`;
 }
 
-/** A round avatar: the photo, or the initial on one of the eight member colours. */
+/** A round avatar: the photo, or the animal or else the initial on one of the eight member colours. */
 export function Avatar(props: { member: FamilyMemberSummary; size?: "sm" }) {
   const { member } = props;
   const size = props.size ? ` fam-avatar--${props.size}` : "";
@@ -831,8 +854,8 @@ export function Avatar(props: { member: FamilyMemberSummary; size?: "sm" }) {
       <img src={`/family-members/${member.id}/photo`} alt="" />
     </span>
   ) : (
-    <span class={`fam-avatar${size} fam-avatar--m${memberColourOf(member.id)}`} aria-hidden="true">
-      {member.initial}
+    <span class={`fam-avatar${size} fam-avatar--m${member.colour}`} aria-hidden="true">
+      {member.avatar ? <img class="fam-avatar__animal" src={avatarUrl(member.avatar)} alt="" /> : member.initial}
     </span>
   );
 }
@@ -887,12 +910,6 @@ export function dateLabel(date: LocalDate, locale: string): string {
 }
 
 /** Which of the eight member colours a Family Member has, stable by id, so that their avatar keeps it. */
-function memberColourOf(id: string): number {
-  let hash = 0;
-  for (const char of id) hash = (hash * 31 + char.charCodeAt(0)) % 8;
-  return hash + 1;
-}
-
 /** The tick of a Task on the message page: shown as in an Agenda, but only the Agenda changes it. */
 function StaticTick(props: { row: TimelineTask }) {
   return (

@@ -226,6 +226,81 @@ describe("Agendas over HTTP", () => {
     expect(farAheadPage).toContain("between 1 and 31 days");
   });
 
+  it("gives each new Family Member a colour no one has yet, which the Admin can change", async () => {
+    const cookie = await signIn();
+    const vera = await addMember("Vera");
+    const avatarOf = async (id: FamilyMemberId) => {
+      const page = await (await instance.get(`/admin/family-members/${id}`, { cookie })).text();
+      return /class="fam-swatch fam-avatar--m(\d)"[^>]*><input[^>]*checked/.exec(page)?.[1];
+    };
+    // Mia and Leo were added first.
+    expect(await avatarOf(vera)).toBe("3");
+
+    const changed = await instance.post(`/admin/family-members/${vera}`, { name: "Vera", colour: "6" }, { cookie });
+    expect(changed.status).toBe(303);
+    expect(await avatarOf(vera)).toBe("6");
+    const list = await (await instance.get("/admin/family-members", { cookie })).text();
+    expect(list).toContain('fam-avatar--m6" aria-hidden="true">V<');
+
+    const renamed = await instance.post(`/admin/family-members/${vera}`, { name: "Vroni" }, { cookie });
+    expect(renamed.status).toBe(303);
+    expect(await avatarOf(vera)).toBe("6");
+
+    const refused = await instance.post(`/admin/family-members/${vera}`, { name: "Vera", colour: "9" }, { cookie });
+    expect(refused.status).toBe(400);
+    expect(await refused.text()).toContain("Choose one of the colours.");
+  });
+
+  it("lets the Admin choose a colour and an animal when adding a Family Member, and change them later", async () => {
+    const cookie = await signIn();
+    const form = await (await instance.get("/admin/family-members/new", { cookie })).text();
+    // Mia and Leo have the first two colours; the dialog offers the next, and the initial rather than an animal.
+    expect(form).toMatch(/name="colour" value="3" checked/);
+    expect(form).toMatch(/name="avatar" value="" checked/);
+    expect(form).toContain('<img src="/static/avatars/fox.svg"');
+
+    const refused = await instance.post("/admin/family-members", { name: " ", colour: "5", avatar: "fox" }, { cookie });
+    expect(refused.status).toBe(400);
+    const refusedPage = await refused.text();
+    // What was chosen stays chosen.
+    expect(refusedPage).toMatch(/name="colour" value="5" checked/);
+    expect(refusedPage).toMatch(/name="avatar" value="fox" checked/);
+
+    const added = await instance.post("/admin/family-members", { name: "Vera", colour: "5", avatar: "fox" }, { cookie });
+    expect(added.status).toBe(303);
+    const vera = (await instance.app.familyMembers.list()).find((member) => member.name === "Vera");
+    expect(vera).toMatchObject({ colour: 5, avatar: "fox" });
+    const list = await (await instance.get("/admin/family-members", { cookie })).text();
+    expect(list).toContain('fam-avatar--m5" aria-hidden="true"><img class="fam-avatar__animal" src="/static/avatars/fox.svg" alt=""/>');
+    expect(list).toContain("Shows the fox");
+    expect(list).toContain("Shows the initial");
+
+    const changed = await instance.post(`/admin/family-members/${vera?.id}`, { name: "Vera", avatar: "owl" }, { cookie });
+    expect(changed.status).toBe(303);
+    expect((await instance.app.familyMembers.list()).find((member) => member.name === "Vera")).toMatchObject({ colour: 5, avatar: "owl" });
+    const none = await instance.post(`/admin/family-members/${vera?.id}`, { name: "Vera", avatar: "" }, { cookie });
+    expect(none.status).toBe(303);
+    expect((await instance.app.familyMembers.list()).find((member) => member.name === "Vera")?.avatar).toBe(null);
+
+    const unknown = await instance.post(`/admin/family-members/${vera?.id}`, { name: "Vera", avatar: "dragon" }, { cookie });
+    expect(unknown.status).toBe(400);
+    expect(await unknown.text()).toContain("Choose one of the animals, or the initial.");
+    const unknownAdded = await instance.post("/admin/family-members", { name: "Zoe", avatar: "dragon" }, { cookie });
+    expect(unknownAdded.status).toBe(400);
+    const badColour = await instance.post("/admin/family-members", { name: "Zoe", colour: "0" }, { cookie });
+    expect(await badColour.text()).toContain("Choose one of the colours.");
+  });
+
+  it("serves the animals and the rules that preview them", async () => {
+    const fox = await instance.get("/static/avatars/fox.svg");
+    expect(fox.status).toBe(200);
+    expect(fox.headers.get("content-type")).toBe("image/svg+xml");
+    expect(await fox.text()).toMatch(/^<svg xmlns="http:\/\/www.w3.org\/2000\/svg" width="32" height="32" viewBox="0 0 32 32">/);
+    expect((await instance.get("/static/avatars/dragon.svg")).status).toBe(404);
+    const rules = await (await instance.get("/static/avatars.css")).text();
+    expect(rules).toContain('.fam-looks:has(input[name="avatar"][value="fox"]:checked) .fam-looks__preview { background-image: url(/static/avatars/fox.svg); }');
+  });
+
   it("tells an Admin which Source Attributes keep a Family Member from being removed", async () => {
     const cookie = await signIn();
     await instance.installPlugin({ sourceTypeId: "calendar" });
