@@ -90,11 +90,11 @@
 .fam-swatch input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
 .fam-swatch:has(input:checked) { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--ink); }
 .fam-swatch:has(input:focus-visible) { outline: 2px solid var(--focus); outline-offset: 4px; }
-.fam-swatch--animal { display: grid; place-items: center; width: 44px; height: 44px; background: var(--surface-sunken); }
-.fam-swatch--animal img { width: 30px; height: 30px; }
+.fam-swatch--animal { display: grid; place-items: center; width: var(--avatar-sm); height: var(--avatar-sm); background: var(--surface-sunken); }
+.fam-swatch--animal img { width: 68%; height: 68%; }
 .fam-swatch__initial { font-weight: 700; color: var(--ink-muted); }
 /* An animal on the member colour, in place of the initial. */
-/* As in the choice of animals (30 of 44 px); more specific than `.fam-avatar img`, which fills the circle with a photo. */
+/* As in the choice of animals (68% of the circle); more specific than `.fam-avatar img`, which fills the circle with a photo. */
 .fam-avatar .fam-avatar__animal { width: 68%; height: 68%; object-fit: contain; }
 /* A Family Member's colour and animal, with a preview that follows the choice (the animals: avatars.css). */
 .fam-looks { display: grid; gap: var(--space-4); }
@@ -442,7 +442,7 @@ html[data-theme-mode="dark"] .fam-theme__icon--dark { display: block; }
   font-size: 14px; line-height: 20px; font-weight: 600; text-decoration: none; cursor: pointer;
   transition: padding .25s ease, background-color .2s, border-color .2s, transform .1s;
 }
-/* A pill is as high as the other controls of a bar, around an avatar of 44 px. */
+/* A pill is as high as the other controls of a bar, around an avatar of 40 px. */
 .fam-pillswitch::after { content: ""; position: absolute; inset: -4px -2px; }
 .fam-pillswitch input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
 .fam-pillswitch .fam-avatar {
