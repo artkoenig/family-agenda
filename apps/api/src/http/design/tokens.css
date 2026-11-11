@@ -103,6 +103,8 @@
   --radius-xl: 24px;
   --radius-full: 999px;
   --avatar-sm: 44px;
+  /* The height of every control in an Agenda's bar: its Theme switch, its filter's pills, the folded filter and hint. */
+  --bar-control: 50px;
   --avatar-md: 48px;
   --avatar-lg: 64px;
   --control-height: 44px;
