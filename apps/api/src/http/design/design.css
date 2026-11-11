@@ -94,7 +94,8 @@
 .fam-swatch--animal img { width: 30px; height: 30px; }
 .fam-swatch__initial { font-weight: 700; color: var(--ink-muted); }
 /* An animal on the member colour, in place of the initial. */
-.fam-avatar__animal { width: 66%; height: 66%; object-fit: contain; }
+/* As in the preview of a Family Member's dialog; more specific than `.fam-avatar img`, which fills the circle with a photo. */
+.fam-avatar .fam-avatar__animal { width: 62%; height: 62%; object-fit: contain; }
 /* A Family Member's colour and animal, with a preview that follows the choice (the animals: avatars.css). */
 .fam-looks { display: grid; gap: var(--space-4); }
 .fam-looks__head { display: flex; align-items: center; gap: var(--space-4); }
@@ -179,7 +180,7 @@
   grid-area: filter; display: flex; justify-content: center; align-items: center; gap: var(--space-2);
   margin: var(--space-2) 0 0; font-size: 16px; line-height: 24px; font-weight: 700;
 }
-.fam-bar__member .fam-avatar { width: 32px; height: 32px; font-size: 14px; }
+.fam-bar__member .fam-avatar { width: 44px; height: 44px; font-size: 20px; }
 
 /* Folded bar: the avatars of those shown stand in for the filter. */
 .fam-bar__summary {
@@ -212,7 +213,7 @@ html[data-theme-mode="dark"] .fam-theme__icon--dark { display: block; }
   .fam-scrolled .fam-bar__summary { display: flex; }
   .fam-scrolled .fam-bar__title { display: none; }
   .fam-scrolled .fam-bar__member { grid-area: summary; margin: 0; }
-  .fam-scrolled .fam-bar__member .fam-avatar { width: 28px; height: 28px; font-size: 13px; }
+  .fam-scrolled .fam-bar__member .fam-avatar { width: 32px; height: 32px; font-size: 14px; }
   .fam-scrolled .fam-bar__member-name { display: none; }
   /* Folded, the filter is a button of avatars, and the room that leaves goes to the hint as an icon, as small as they are. */
   .fam-scrolled .fam-bar__inner {
@@ -756,7 +757,7 @@ html[data-theme-mode="dark"] .fam-theme__icon--dark { display: block; }
   .fam-agenda .fam-bar__title { margin: 0; font-size: 26px; line-height: 32px; }
   /* Without a title, the one Family Member takes its place in the middle of the row. */
   .fam-agenda .fam-bar__inner:not(:has(.fam-bar__title)) > .fam-bar__member { grid-area: title; margin: 0; font-size: 26px; line-height: 32px; }
-  .fam-agenda .fam-bar__inner:not(:has(.fam-bar__title)) > .fam-bar__member .fam-avatar { width: 44px; height: 44px; font-size: 20px; }
+  .fam-agenda .fam-bar__inner:not(:has(.fam-bar__title)) > .fam-bar__member .fam-avatar { width: 56px; height: 56px; font-size: 24px; }
   .fam-agenda .fam-out-of-date { margin: 0; }
   .fam-agenda .fam-bar__inner > .fam-filter { margin: calc(var(--space-2) - 4px) 0 -4px; padding: 4px; -webkit-mask-image: none; mask-image: none; }
   /* Centred while it fits, scrolling from its start when it does not. */
