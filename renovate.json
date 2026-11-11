@@ -35,6 +35,12 @@
       "allowedVersions": "<7"
     },
     {
+      "description": "A Postgres major upgrade makes every Instance dump and restore (docs/upgrading.md), and postgres:18 moves the data directory: done by hand, not by Renovate",
+      "matchDatasources": ["docker"],
+      "matchPackageNames": ["postgres"],
+      "allowedVersions": "<18"
+    },
+    {
       "description": "One PR with every update (all managers, all update types)",
       "matchPackageNames": ["*"],
       "groupName": "all dependencies"
