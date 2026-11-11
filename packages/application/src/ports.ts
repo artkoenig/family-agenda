@@ -602,7 +602,7 @@ export type ProjectedItem = ItemDetails & {
   messages: { id: RawMessageId; sourceTypeId: SourceTypeId; sourceName: string | null; sentAt: Date }[];
   /**
    * The Family Members assigned to each Source Attribute of its Source Record, in the Family's
-   * order; an empty list for one assigned to no one. They decide whom it concerns. Those a copy of
+   * order; an empty list for one assigned to no one. They decide whom it concerns. Those a Copy of
    * its message in another Source gave the Source Record are among them.
    */
   assignments: FamilyMemberId[][];
@@ -610,8 +610,8 @@ export type ProjectedItem = ItemDetails & {
 
 /**
  * Items, each written from its one Source Record (ADR-0005). Messages with the same external id
- * in Sources of one Source Type are copies of one message: only the first is read, and its Items
- * concern those of every copy.
+ * in Sources of one Source Type are Copies of one message: only the first is read, and its Items
+ * concern those of every Copy.
  */
 export interface ItemRepository {
   /**
@@ -630,8 +630,9 @@ export interface ItemRepository {
    * until a run refuses nothing or a declare covers them. One recorded again with another list of
    * Source Attributes moves to it without being read again; one with an empty list is withdrawn.
    *
-   * A message another Source of the Source Type has a copy of, read or waiting to be, is recorded
-   * as read, and its Source Attributes are added to that copy for as long as its Source has it.
+   * A message another Source of the Source Type has a Copy of, read or waiting to be, is recorded
+   * as read, and its Source Attributes are added to that Copy for as long as its Source has it.
+   * When a message is withdrawn before it was read, one of its Copies is read in its place.
    */
   recordRun(run: SourceRun, read: ReadStated): Promise<RunRecorded>;
   /**

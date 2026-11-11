@@ -352,7 +352,7 @@ export const sourceRecords = pgTable(
       .references(() => sources.id, { onDelete: "cascade" }),
     /**
      * Its id within its Source, such as a mail's Message-ID or a calendar entry's UID. Messages
-     * with the same one in Sources of one Source Type are copies of one message (ADR-0005).
+     * with the same one in Sources of one Source Type are Copies of one message (ADR-0005).
      */
     externalId: text("external_id").notNull(),
     /** When the Source received a message, as its plugin tells; null for a stated Item. */
@@ -436,6 +436,9 @@ export const sourceRecordAttachments = pgTable(
  * The Source Attributes a Source Record carries (a mail under two allow-listed labels has two).
  * Emitting a Source Record again with another list replaces its rows without reading it again; an
  * empty list withdraws it. No cascade from the attribute: archiving must not unassign Items.
+ *
+ * A message that has the Items of its Copies carries the Source Attributes of those Copies too,
+ * which belong to other Sources (ADR-0005); emitting it again replaces only those of its own.
  */
 export const sourceRecordAttributes = pgTable(
   "source_record_attribute",

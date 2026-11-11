@@ -95,17 +95,28 @@ describe("A message that several Sources of one Source Type deliver", () => {
   };
   const titles = async (show: Showing = "all") => (await rows(show)).items.map((item) => item.title);
 
-  it("writes its Items once when the copies arrive together", async () => {
+  it("writes its Items once when the Copies arrive together", async () => {
     testPluginControls.emitFor("mail", mias, [mail()]);
     testPluginControls.emitFor("mail", leos, [mail()]);
     await run();
 
     expect(await titles()).toEqual(["Wandertag 5b"]);
     expect(extractor.requests, "the message is read by the LLM once").toHaveLength(1);
-    expect(await instance.app.extraction.waiting(), "no copy waits to be read").toBe(0);
+    expect(await instance.app.extraction.waiting(), "no Copy waits to be read").toBe(0);
+    expect(await instance.query("SELECT count(*)::int AS n FROM source_record"), "each mailbox keeps its Source Record").toEqual([{ n: 2 }]);
   });
 
-  it("does not read a copy that arrives after its Items were written", async () => {
+  it("writes its Items once when three Sources deliver it", async () => {
+    const omas = "oma.mail.example.org";
+    await source("mail", omas);
+    for (const url of [mias, leos, omas]) testPluginControls.emitFor("mail", url, [mail()]);
+    await run();
+
+    expect(await titles()).toEqual(["Wandertag 5b"]);
+    expect(extractor.requests).toHaveLength(1);
+  });
+
+  it("does not read a Copy that arrives after its Items were written", async () => {
     testPluginControls.emitFor("mail", mias, [mail()]);
     await run();
     testPluginControls.emitFor("mail", leos, [mail()]);
@@ -116,7 +127,7 @@ describe("A message that several Sources of one Source Type deliver", () => {
     expect(await instance.app.extraction.waiting()).toBe(0);
   });
 
-  it("does not bring back an Item an Admin deleted when a copy arrives later", async () => {
+  it("does not bring back an Item an Admin deleted when a Copy arrives later", async () => {
     testPluginControls.emitFor("mail", mias, [mail()]);
     await run();
     const [item] = (await rows()).items;
@@ -152,7 +163,7 @@ describe("A message that several Sources of one Source Type deliver", () => {
     expect(await titles()).toEqual(["Piano", "Piano"]);
   });
 
-  it("lets its Items concern everyone any copy concerns", async () => {
+  it("lets its Items concern everyone any Copy concerns", async () => {
     testPluginControls.emitFor("mail", mias, [mail()]);
     testPluginControls.emitFor("mail", leos, [mail()]);
     await run();
@@ -164,7 +175,7 @@ describe("A message that several Sources of one Source Type deliver", () => {
     expect(await titles([leo])).toEqual(["Wandertag 5b"]);
   });
 
-  it("lets its Items concern the whole Family when the inbox of one copy is assigned to no one", async () => {
+  it("lets its Items concern the whole Family when the inbox of one Copy is assigned to no one", async () => {
     testPluginControls.emitFor("mail", mias, [mail()]);
     testPluginControls.emitFor("mail", leos, [mail()]);
     await run();
@@ -184,22 +195,36 @@ describe("A message that several Sources of one Source Type deliver", () => {
       await assignInbox(leosMailbox, [leo]);
     });
 
-    it("no longer concerns those of a copy that is withdrawn", async () => {
+    it("no longer concerns those of a Copy that is withdrawn", async () => {
       testPluginControls.emitFor("mail", leos, [], withdrawn);
       await run();
 
       expect(await concerning()).toEqual(["Wandertag 5b: Mia"]);
     });
 
-    it("loses its Items with the copy that was read, though another remains", async () => {
+    it("no longer concerns those of a Copy that names no Source Attribute any more", async () => {
+      testPluginControls.emitFor("mail", leos, [{ ...mail(), attributes: [] }]);
+      await run();
+
+      expect(await concerning()).toEqual(["Wandertag 5b: Mia"]);
+    });
+
+    it("shows each Copy with the Source Attributes of its own Source", async () => {
+      const [item] = (await rows()).items;
+      const opened = await instance.app.messages.open(item!.messages[0]!.id);
+
+      expect(opened?.attributes).toEqual(["INBOX"]);
+    });
+
+    it("loses its Items with the Copy that was read, though another remains", async () => {
       testPluginControls.emitFor("mail", mias, [], withdrawn);
       await run();
 
       expect(await concerning()).toEqual([]);
-      expect(extractor.requests, "the copy that remains is not read in its place").toHaveLength(1);
+      expect(extractor.requests, "the Copy that remains is not read in its place").toHaveLength(1);
     });
 
-    it("follows a copy that was not read to another folder", async () => {
+    it("follows a Copy that was not read to another folder", async () => {
       testPluginControls.emitFor("mail", leos, [mail("Schule")]);
       await run();
       expect(await concerning(), "the new folder is assigned to no one").toEqual(["Wandertag 5b: Family"]);
@@ -208,7 +233,7 @@ describe("A message that several Sources of one Source Type deliver", () => {
       expect(await concerning()).toEqual(["Wandertag 5b: Mia, Leo"]);
     });
 
-    it("keeps concerning those of the other copy when the one that was read moves to another folder", async () => {
+    it("keeps concerning those of the other Copy when the one that was read moves to another folder", async () => {
       testPluginControls.emitFor("mail", mias, [mail("Schule")]);
       await run();
       await assignInbox(miasMailbox, [mia], "Schule");
@@ -216,14 +241,14 @@ describe("A message that several Sources of one Source Type deliver", () => {
       expect(await concerning()).toEqual(["Wandertag 5b: Mia, Leo"]);
     });
 
-    it("no longer concerns those of a copy whose Source is removed", async () => {
+    it("no longer concerns those of a Copy whose Source is removed", async () => {
       await instance.app.sources.remove(leosMailbox);
 
       expect(await concerning()).toEqual(["Wandertag 5b: Mia"]);
     });
   });
 
-  it("reads a copy that arrives when every earlier copy is withdrawn", async () => {
+  it("reads a Copy that arrives when every earlier Copy is withdrawn", async () => {
     testPluginControls.emitFor("mail", mias, [mail()]);
     await run();
     testPluginControls.emitFor("mail", mias, [], [mail().externalId]);
@@ -237,7 +262,7 @@ describe("A message that several Sources of one Source Type deliver", () => {
     expect(extractor.requests).toHaveLength(2);
   });
 
-  it("reads a copy that arrives after the one that was read was withdrawn and came back without its content", async () => {
+  it("reads a Copy that arrives after the one that was read was withdrawn and came back without its content", async () => {
     testPluginControls.emitFor("mail", mias, [mail()]);
     await run();
     testPluginControls.emitFor("mail", mias, [], [mail().externalId]);
@@ -258,7 +283,7 @@ describe("A message that several Sources of one Source Type deliver", () => {
     testPluginControls.emitFor("mail", leos, [mail()]);
     await run();
     expect(await titles()).toEqual([]);
-    expect(extractor.requests, "only one copy was tried").toHaveLength(1);
+    expect(extractor.requests, "only one Copy was tried").toHaveLength(1);
 
     extractor.recover();
     await run();
@@ -266,5 +291,46 @@ describe("A message that several Sources of one Source Type deliver", () => {
     expect(await titles()).toEqual(["Wandertag 5b"]);
     expect(extractor.requests).toHaveLength(2);
     expect(await instance.app.extraction.waiting()).toBe(0);
+  });
+
+  describe("when the first Copy still waits to be read", () => {
+    const omas = "oma.mail.example.org";
+    let extractorRequestsBefore: number;
+    beforeEach(async () => {
+      await source("mail", omas);
+      extractor.fail("unreachable");
+      testPluginControls.emitFor("mail", mias, [mail()]);
+      await run();
+      testPluginControls.emitFor("mail", leos, [mail()]);
+      testPluginControls.emitFor("mail", omas, [mail()]);
+      await run();
+      await assignInbox(miasMailbox, [mia]);
+      await assignInbox(leosMailbox, [leo]);
+      extractor.recover();
+      extractorRequestsBefore = extractor.requests.length;
+    });
+
+    it("follows a later Copy to another folder", async () => {
+      testPluginControls.emitFor("mail", leos, [mail("Schule")]);
+      await run();
+
+      expect(await concerning(), "Oma's inbox and Leo's new folder are assigned to no one").toEqual(["Wandertag 5b: Family"]);
+      await assignInbox(leosMailbox, [mia], "Schule");
+      const [oma] = (await instance.app.sources.list()).filter((listed) => ![miasMailbox, leosMailbox].includes(listed.id));
+      await assignInbox(oma!.id, [mia]);
+      expect(await concerning(), "Leo's inbox no longer counts").toEqual(["Wandertag 5b: Mia"]);
+    });
+
+    it("reads one of the later Copies in its place when it is withdrawn", async () => {
+      testPluginControls.emitFor("mail", mias, [], [mail().externalId]);
+      await run();
+
+      expect(await titles()).toEqual(["Wandertag 5b"]);
+      expect(extractor.requests.length, "the two later Copies are read once between them").toBe(extractorRequestsBefore + 1);
+      expect(await concerning(), "Oma's inbox is assigned to no one").toEqual(["Wandertag 5b: Family"]);
+      const [oma] = (await instance.app.sources.list()).filter((listed) => ![miasMailbox, leosMailbox].includes(listed.id));
+      await assignInbox(oma!.id, [leo]);
+      expect(await concerning(), "Mia's Copy is gone").toEqual(["Wandertag 5b: Leo"]);
+    });
   });
 });

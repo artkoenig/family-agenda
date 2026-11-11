@@ -607,7 +607,7 @@ export class PostgresSourceRepository implements SourceRepository {
         .select({ blob: sourceRecordAttachments.blob })
         .from(sourceRecordAttachments)
         .where(inArray(sourceRecordAttachments.recordId, recordsOfSource));
-      // Copies in other Sources of messages it has lose the Source Attributes it gave them.
+      // The Copies in other Sources of its messages lose the Source Attributes it gave them (ADR-0005).
       await tx
         .delete(sourceRecordAttributes)
         .where(inArray(sourceRecordAttributes.attributeId, tx.select({ id: sourceAttributes.id }).from(sourceAttributes).where(eq(sourceAttributes.sourceId, id))));
