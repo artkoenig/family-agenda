@@ -76,7 +76,7 @@
   font-weight: 700; font-size: 20px; line-height: 1;
 }
 .fam-avatar img { width: 100%; height: 100%; object-fit: cover; }
-.fam-avatar--sm { width: var(--avatar-sm); height: var(--avatar-sm); font-size: 14px; }
+.fam-avatar--sm { width: var(--avatar-sm); height: var(--avatar-sm); font-size: 18px; }
 .fam-avatar--m1 { background: var(--member-1); } .fam-avatar--m2 { background: var(--member-2); }
 .fam-avatar--m3 { background: var(--member-3); } .fam-avatar--m4 { background: var(--member-4); }
 .fam-avatar--m5 { background: var(--member-5); } .fam-avatar--m6 { background: var(--member-6); }
@@ -94,14 +94,14 @@
 .fam-swatch--animal img { width: 30px; height: 30px; }
 .fam-swatch__initial { font-weight: 700; color: var(--ink-muted); }
 /* An animal on the member colour, in place of the initial. */
-/* As in the preview of a Family Member's dialog; more specific than `.fam-avatar img`, which fills the circle with a photo. */
-.fam-avatar .fam-avatar__animal { width: 62%; height: 62%; object-fit: contain; }
+/* As in the choice of animals (30 of 44 px); more specific than `.fam-avatar img`, which fills the circle with a photo. */
+.fam-avatar .fam-avatar__animal { width: 68%; height: 68%; object-fit: contain; }
 /* A Family Member's colour and animal, with a preview that follows the choice (the animals: avatars.css). */
 .fam-looks { display: grid; gap: var(--space-4); }
 .fam-looks__head { display: flex; align-items: center; gap: var(--space-4); }
 .fam-looks__preview {
   width: 88px; height: 88px; font-size: 38px;
-  background-repeat: no-repeat; background-position: center; background-size: 62%;
+  background-repeat: no-repeat; background-position: center; background-size: 68%;
   transition: background-color .2s;
 }
 .fam-looks:has(input[name="colour"][value="1"]:checked) .fam-looks__preview { background-color: var(--member-1); }
@@ -188,7 +188,7 @@
   color: var(--ink-muted); font: inherit; cursor: pointer; position: relative;
 }
 .fam-bar__summary::after { content: ""; position: absolute; inset: -8px -6px; }
-.fam-bar__summary .fam-avatar { width: 28px; height: 28px; font-size: 13px; }
+.fam-bar__summary .fam-avatar { width: var(--avatar-sm); height: var(--avatar-sm); font-size: 18px; }
 .fam-bar__chevron { width: 16px; font-size: 12px; text-align: center; transition: transform .15s; }
 .fam-bar__summary[aria-expanded="true"] .fam-bar__chevron { transform: rotate(180deg); }
 
@@ -213,7 +213,7 @@ html[data-theme-mode="dark"] .fam-theme__icon--dark { display: block; }
   .fam-scrolled .fam-bar__summary { display: flex; }
   .fam-scrolled .fam-bar__title { display: none; }
   .fam-scrolled .fam-bar__member { grid-area: summary; margin: 0; }
-  .fam-scrolled .fam-bar__member .fam-avatar { width: 32px; height: 32px; font-size: 14px; }
+  .fam-scrolled .fam-bar__member .fam-avatar { width: var(--avatar-sm); height: var(--avatar-sm); font-size: 18px; }
   .fam-scrolled .fam-bar__member-name { display: none; }
   /* Folded, the filter is a button of avatars, and the room that leaves goes to the hint as an icon, as small as they are. */
   .fam-scrolled .fam-bar__inner {
@@ -438,18 +438,18 @@ html[data-theme-mode="dark"] .fam-theme__icon--dark { display: block; }
   margin: -4px; padding: 4px;
 }
 .fam-pillswitch {
-  --sw-h: 36px; --sw-k: 28px; --sw-pad: 3px;
+  --sw-h: 50px; --sw-k: var(--avatar-sm); --sw-pad: 2px;
   position: relative; display: flex; flex: none; align-items: center; height: var(--sw-h); padding: 0 0 0 calc(var(--sw-h) - 2px);
   border: 1px solid var(--line); border-radius: var(--radius-full); color: var(--ink-muted);
   font-size: 14px; line-height: 20px; font-weight: 600; text-decoration: none; cursor: pointer;
   transition: padding .25s ease, background-color .2s, border-color .2s, transform .1s;
 }
-/* A pill is 36 px high; its touch target is still 44 px. */
+/* A pill is 50 px high, around an avatar of 44 px. */
 .fam-pillswitch::after { content: ""; position: absolute; inset: -4px -2px; }
 .fam-pillswitch input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
 .fam-pillswitch .fam-avatar {
   position: absolute; top: calc((var(--sw-h) - 2px - var(--sw-k)) / 2); left: var(--sw-pad);
-  width: var(--sw-k); height: var(--sw-k); font-size: 13px; opacity: .55; transition: left .25s ease, opacity .2s;
+  width: var(--sw-k); height: var(--sw-k); font-size: 18px; opacity: .55; transition: left .25s ease, opacity .2s;
 }
 .fam-pillswitch__name {
   display: inline-block; max-width: 0; overflow: hidden; white-space: nowrap; opacity: 0;
@@ -763,8 +763,8 @@ html[data-theme-mode="dark"] .fam-theme__icon--dark { display: block; }
   /* Centred while it fits, scrolling from its start when it does not. */
   .fam-agenda .fam-filter > :first-child { margin-left: auto; }
   .fam-agenda .fam-filter > :last-child { margin-right: auto; }
-  .fam-agenda .fam-filter .fam-pillswitch { --sw-h: 32px; --sw-k: 26px; --sw-pad: 2px; }
-  .fam-agenda .fam-filter .fam-pillswitch .fam-avatar { font-size: 12px; }
+  .fam-agenda .fam-filter .fam-pillswitch { --sw-h: 50px; --sw-k: var(--avatar-sm); --sw-pad: 2px; }
+  .fam-agenda .fam-filter .fam-pillswitch .fam-avatar { font-size: 18px; }
   .fam-agenda .fam-filter .fam-pillswitch[aria-current] { box-shadow: 0 0 0 1px var(--ink); }
   .fam-agenda .fam-bar__summary { display: none; }
 }
