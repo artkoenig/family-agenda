@@ -350,7 +350,10 @@ export const sourceRecords = pgTable(
     sourceId: uuid("source_id")
       .notNull()
       .references(() => sources.id, { onDelete: "cascade" }),
-    /** Its id within its Source, such as a mail's Message-ID or a calendar entry's UID. */
+    /**
+     * Its id within its Source, such as a mail's Message-ID or a calendar entry's UID. Messages
+     * with the same one in Sources of one Source Type are copies of one message (ADR-0005).
+     */
     externalId: text("external_id").notNull(),
     /** When the Source received a message, as its plugin tells; null for a stated Item. */
     occurredAt: timestamptz("occurred_at"),

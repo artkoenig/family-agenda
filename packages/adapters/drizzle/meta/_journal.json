@@ -50,6 +50,13 @@
       "when": 1794407632926,
       "tag": "0006_member_avatar",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1794428255243,
+      "tag": "0007_message_copies",
+      "breakpoints": true
     }
   ]
 }

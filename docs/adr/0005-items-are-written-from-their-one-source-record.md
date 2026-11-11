@@ -21,7 +21,7 @@ Family Members are assigned only to Source Attributes (`source_attribute_member`
 ## Items
 
 - **Three kinds:** Event, Task and Lesson, stored as a base `item` table plus one detail table per kind. Notice is dropped. A Timetable Change is no longer an Item: it is the change on a Lesson (`change`, with the subject, room and teacher it replaces). Events do not recur. School Days stay derived from Lessons.
-- **No key, no merging.** An Item has its Source Record's id (`item.record_id NOT NULL`) and nothing else that identifies it. Items are never merged across messages or Sources, and a later message never changes, moves or cancels an Item an earlier one created.
+- **No key, no merging.** An Item has its Source Record's id (`item.record_id NOT NULL`) and nothing else that identifies it. Items are never merged across messages or Sources, and a later message never changes, moves or cancels an Item an earlier one created. The same message in several Sources is read once (see Amendments).
 - **Messages are read once.** A successful reading writes the message's Items and sets `processed_at`. Nothing reads the message again: an edited message keeps its first reading. An Admin can retry a message whose extraction keeps failing, which has no Items yet.
 - **Automatic checks replace rejection.** When an extracted Item fails a check (evidence not found verbatim, a weekday not matching its date, no resolvable date), the whole message is read once more and the second reading counts. An Item that fails again is written to the application log and not to the database. Evidence is checked during extraction and then discarded. There is no confidence and no other uncertainty flag: an Item is either written and trusted, or not written.
 - **Stated Source Records are written without the LLM.** ICS (when its ETag changed) and WebUntis (its 14-day window) emit their full state on every run. A `stated` equal to the stored one (compared as `jsonb`, whatever the order of its keys) is skipped without a write. A changed one overwrites its Item in place; a stated Task is overwritten in its title, Deadline and things to bring only, because whether it is done is the Family's to say by ticking it (see Amendments). One stating another kind of Item replaces it. An entry that vanishes is withdrawn, not cancelled. `event.cancelled` is set only for `STATUS:CANCELLED`, and a Lesson's change comes from the Untis flags. A stated Item failing a check, the domain's or the schema's, is stored as a Source Record but writes no Item, and deletes the Item an earlier valid version wrote, since the Source no longer states it. It is logged and its external id is listed in `source_run.invalid_records`, shown as a warning beside the Source Status, until it writes its Item or is withdrawn. It is not read again.
@@ -52,6 +52,21 @@ The migration history is squashed into one initial migration, `packages/adapters
 An Instance whose database was created before the rebuild is detected by the hash of its first applied migration and refused at start with a message telling the Admin to start over, instead of failing on a half-applied schema. The release notes (`RELEASE_NOTES.md`) say what to note down first and which volumes to remove. The Recovery Kit stays valid for the Source credentials entered afterwards only if the master key is kept.
 
 Where the first drafts of the schema document and the code differed, the implementation settled it: a Source Record has an optional `link` to the original; attachments have a `position` and a `conversion_problem`; a Source's `name` may be empty, and the Admin area then derives one; and an Agenda's `layout` replaces its `kind`.
+
+## Amendments
+
+### Copies of a message
+
+A mail to a mailing list arrives in the mailbox of every Family Member on the list. Each mailbox is a Source, so the mail became one Source Record per mailbox, each was read, and its Items appeared once per mailbox. Messages with the same external id in Sources of the same Source Type are now Copies of one message.
+
+- **What makes two Source Records Copies.** Both are messages, their Sources have the same Source Type, and their external ids are equal as strings. Stated Source Records are never Copies, and nothing is compared across Source Types. A plugin therefore gives a message the same external id in every Source of its Source Type that receives it, and different messages different ones; the IMAP plugin uses the `Message-ID` header. Within one Source this was always so.
+- **Each Copy stays a Source Record** of its own Source, with its own Source Attributes, content and retention. The Admin area shows it with its Source.
+- **A message is still read once.** Of the Copies that wait, only the first is read, and the others are marked as read with it. A Copy that arrives when another one was read, and is not Withdrawn, is marked as read at once. So a later Copy does not bring back an Item an Admin deleted. A Copy that arrives when every earlier one is Withdrawn is a new message and is read.
+- **An Item still has exactly one Source Record**, one of the Copies. Whom it concerns is the union over the Source Attributes of all Copies that are not Withdrawn, the whole Family if one of them is assigned to no one. It names every such Copy as its message and link, and it is shown while the Source of one of them is shown.
+- **Items outlive a Copy.** When the Copy they belong to is Withdrawn, or its Source is removed, they pass to another Copy that is not Withdrawn, one that still has its content first. They are deleted with the last Copy.
+- **Retention counts the Items for every Copy.** The content of a Copy is kept as long as an Item on any Copy needs it, and its row as long as any Copy has an Item.
+
+This does not merge Items of different messages, which stays rejected below: a forwarded mail has another external id and is read on its own. A plugin whose external ids are not the same message across its Sources, such as a position in a mailbox for a mail without `Message-ID`, can make two different messages look like Copies, and the second is then not read; such ids have to differ per Source.
 
 ## Consequences
 

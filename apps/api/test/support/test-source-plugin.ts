@@ -97,6 +97,13 @@ export const testPluginControls = {
     pending.set(sourceTypeId, { origins });
     if (options.declaring === false) undeclared.add(sourceTypeId);
   },
+  /**
+   * As `emit` and `withdraw`, but on the next run of the one Source whose `url` is this, where a
+   * Source Type has several Sources.
+   */
+  emitFor(sourceTypeId: string, url: string, origins: Origin[], withdrawn: string[] = []): void {
+    pending.set(ofSource(sourceTypeId, url), { origins, withdrawn });
+  },
   /** On its next run, the plugin also declares these Source Attributes, naming them as given. */
   declare(sourceTypeId: string, attributes: SourceAttributeDeclaration[]): void {
     declaring.set(sourceTypeId, [...(declaring.get(sourceTypeId) ?? []), ...attributes]);
@@ -200,6 +207,9 @@ const defaultConfiguration: TestConfiguration = {
   ],
 };
 
+/** What is pending for the one Source of a Source Type with this `url`. */
+const ofSource = (sourceTypeId: string, url: string) => `${sourceTypeId} at ${url}`;
+
 const contextOf = (context: ContractRunContext): RunContext => ({ ...context, now: new Date(context.now) });
 
 /**
@@ -232,8 +242,10 @@ export function testSourcePlugin(plugin: TestPluginPackage): PluginImplementatio
     },
     poll: (context) => {
       runs.set(sourceTypeId, [...(runs.get(sourceTypeId) ?? []), contextOf(context)]);
-      const next = pending.get(sourceTypeId) ?? { origins: [] };
-      pending.delete(sourceTypeId);
+      const own = ofSource(sourceTypeId, String(context.config.plain.url));
+      const key = pending.has(own) ? own : sourceTypeId;
+      const next = pending.get(key) ?? { origins: [] };
+      pending.delete(key);
       if (next.failure) throw next.failure;
       return {
         sourceRecords: next.origins.map(sourceRecordOf),

@@ -65,11 +65,15 @@ The entries a Source Type offers for an Admin to enable one by one, such as the 
 _Avoid_: Option list, sub-type
 
 **Source Record**:
-One thing a Source delivered that Items come from: a message, such as a mail or a WhatsApp message, or an entry the Source states itself, such as a calendar entry or a Lesson. Each Item has exactly one Source Record.
+One thing a Source delivered that Items come from: a message, such as a mail or a WhatsApp message, or an entry the Source states itself, such as a calendar entry or a Lesson. Each Item has exactly one Source Record, which may be one of several Copies.
 _Avoid_: Source message, provenance
 
+**Copy**:
+One of the Source Records that are the same message, because several Sources of one Source Type received it, such as a mail to a mailing list in two mailboxes; they have the same external id. The message is read once, and its Items concern everyone any Copy concerns.
+_Avoid_: Duplicate, twin
+
 **Withdrawn**:
-Said of a Source Record its Source no longer has, such as a deleted message or calendar entry; it backs no Items.
+Said of a Source Record its Source no longer has, such as a deleted message or calendar entry; it backs no Items, which pass to another Copy if there is one.
 _Avoid_: Deleted, revoked, removed
 
 **Sync Cursor**:

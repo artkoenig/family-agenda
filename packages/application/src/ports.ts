@@ -596,18 +596,23 @@ export type ItemDetails =
 
 export type ProjectedItem = ItemDetails & {
   id: ItemId;
-  /** Where its Source Record can be looked at, with the Source Type and name of its Source. */
+  /** Where its Source Record, and each other copy of its message, can be looked at, with the Source Type and name of its Source. */
   links: { url: string; sourceTypeId: SourceTypeId; sourceName: string | null }[];
-  /** The message it was extracted from, if any, with the Source Type and name of its Source. */
+  /** The message it was extracted from, if any, as each Source that has a copy of it delivered it, with the Source Type and name of that Source. */
   messages: { id: RawMessageId; sourceTypeId: SourceTypeId; sourceName: string | null; sentAt: Date }[];
   /**
-   * The Family Members assigned to each Source Attribute of its Source Record, in the Family's
-   * order; an empty list for one assigned to no one. They decide whom it concerns.
+   * The Family Members assigned to each Source Attribute of its Source Record and of the other
+   * copies of its message, in the Family's order; an empty list for one assigned to no one. They
+   * decide whom it concerns.
    */
   assignments: FamilyMemberId[][];
 };
 
-/** Items, each written from its one Source Record (ADR-0005). */
+/**
+ * Items, each written from its one Source Record (ADR-0005). Messages with the same external id
+ * in Sources of one Source Type are copies of one message: it is read once, its Items pass to
+ * another copy when theirs is withdrawn or its Source removed, and go with the last one.
+ */
 export interface ItemRepository {
   /**
    * Records a run in one transaction: its Source Records, the one Item of each calendar or
@@ -629,21 +634,23 @@ export interface ItemRepository {
   /**
    * Deletes the text and attachments of messages nothing needs any more, or that arrived before
    * `retainedSince`, leaving a tombstone, and deletes the rows of those older than that without
-   * an Item. A message not extracted yet is kept until it is older than `retainedSince`. Returns
-   * the files of the removed attachments, for the caller to remove.
+   * an Item. The Items of a message count for each of its copies. A message not extracted yet is
+   * kept until it is older than `retainedSince`. Returns the files of the removed attachments, for
+   * the caller to remove.
    */
   purgeMessages(now: Date, retainedSince: Date): Promise<{ files: BlobRef[]; purged: number; deleted: number }>;
-  /** Raw messages not yet extracted successfully, oldest first. */
+  /** Raw messages not yet extracted successfully, oldest first; of the copies of one message, only the first. */
   pendingMessages(limit: number): Promise<PendingMessage[]>;
   /** How many raw messages, of one Source or of all, wait for extraction. */
   pendingMessageCount(scope: { sourceId?: SourceId }): Promise<number>;
   /**
    * Records a message's one extraction in one transaction: its Items, and the message as
-   * extracted, so that it is never read again. A message extracted already is left as it is.
+   * extracted, so that it is never read again, along with its copies that wait. A message
+   * extracted already is left as it is, and one a copy of which was writes no Items.
    */
   recordExtraction(extraction: Extraction): Promise<void>;
   findMessage(id: RawMessageId): Promise<RawMessage | null>;
-  /** The Items written from a message, in the order they were, also those of a hidden Source. */
+  /** The Items written from a message, whichever of its copies this is, in the order they were, also those of a hidden Source. */
   itemsOfMessage(id: RawMessageId): Promise<ProjectedItem[]>;
   /**
    * The Family's Items that may touch the given time, with the link of their Source Record; a
