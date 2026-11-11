@@ -477,7 +477,7 @@ html[data-theme-mode="dark"] .fam-theme__icon--dark { display: block; }
 .fam-navitem__icon { flex: none; }
 .fam-navitem__text { display: flex; flex-direction: column; min-width: 0; }
 .fam-navitem__label { font-weight: 600; }
-.fam-navitem__summary { font-size: 14px; line-height: 20px; color: var(--ink-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fam-navitem__summary { font-size: 14px; line-height: 20px; color: var(--ink-muted); overflow-wrap: anywhere; }
 .fam-navitem__summary--attention { color: var(--ink); font-weight: 600; }
 .fam-navitem__summary--attention::before {
   content: ""; display: inline-block; width: 8px; height: 8px; margin-right: 6px; border-radius: var(--radius-full);

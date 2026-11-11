@@ -113,20 +113,14 @@ export type SourceProblem =
 export type AddingId = string & { readonly __brand: "AddingId" };
 
 /** Added already, as `add` answers, or still being prepared in the background. */
-export type StartAddingResult = AddSourceResult | { ok: true; adding: AddingId };
+export type StartAddingResult = Exclude<AddSourceResult, { ok: true }> | { ok: true; adding: AddingId };
 
 /** How a Source added in the background is coming along. */
 export type AddingProgress =
   | { status: "running"; sourceTypeId: string; plain: PlainConfig }
-  | { status: "added"; sourceTypeId: string; id: SourceId; setUp: boolean }
+  | { status: "added"; sourceTypeId: string; id: SourceId; setUp: boolean; plain: PlainConfig }
   /** Its plugin could not prepare it; what was entered, without secrets, for the form to show again. */
   | { status: "failed"; sourceTypeId: string; message: string; plain: PlainConfig; pollIntervalSeconds: number | null };
-
-/** How long adding a Source waits for its plugin before leaving it to the background. */
-const addingWaitMs = 1000;
-
-/** Resolves to undefined after `ms`, for a race against a slower answer. */
-const delay = (ms: number) => new Promise<undefined>((resolve) => setTimeout(() => { resolve(undefined); }, ms).unref());
 
 /** How long an adding that ended is remembered. */
 const addingsKeptMs = 10 * 60_000;
@@ -136,7 +130,7 @@ function failedAdding(input: SourceInput & { sourceTypeId: string }, message: st
 }
 
 function addingProgressOf(input: SourceInput & { sourceTypeId: string }, result: AddSourceResult): AddingProgress {
-  if (result.ok) return { status: "added", sourceTypeId: input.sourceTypeId, id: result.id, setUp: result.setUp };
+  if (result.ok) return { status: "added", sourceTypeId: input.sourceTypeId, id: result.id, setUp: result.setUp, plain: input.plain };
   return failedAdding(input, "message" in result ? result.message : result.problem);
 }
 
@@ -517,13 +511,10 @@ export function createSourceAccess(deps: SourcesDeps) {
      * Adds a Source like `add`, but answers once its form is checked: its plugin prepares it in
      * the background, such as an IMAP plugin logging in, which `adding` tells about meanwhile.
      */
-    async startAdding(input: SourceInput & { sourceTypeId: string }, waitMs = addingWaitMs): Promise<StartAddingResult> {
+    async startAdding(input: SourceInput & { sourceTypeId: string }): Promise<StartAddingResult> {
       const checked = await checkedAdding(input);
       if ("problem" in checked) return checked;
       const completing = completeAdding(input, checked.sourceType);
-      // Most plugins prepare a Source at once; only one that takes longer is left to the background.
-      const quick = await Promise.race([completing, delay(waitMs)]);
-      if (quick) return quick;
       pruneAddings();
       const id = randomUUID() as AddingId;
       const startedAt = clock.now().getTime();
@@ -540,11 +531,13 @@ export function createSourceAccess(deps: SourcesDeps) {
       return addings.get(id)?.progress ?? null;
     },
 
-    /** The Sources of a Source Type still being prepared in the background, or whose preparing failed, oldest first. */
-    addingsOf(sourceTypeId: string): { id: AddingId; progress: Exclude<AddingProgress, { status: "added" }> }[] {
-      const listed: { id: AddingId; progress: Exclude<AddingProgress, { status: "added" }> }[] = [];
+    /** The Sources of a Source Type still being prepared in the background, whose preparing failed, or with setup steps to go on to, oldest first. */
+    addingsOf(sourceTypeId: string): { id: AddingId; progress: AddingProgress }[] {
+      const listed: { id: AddingId; progress: AddingProgress }[] = [];
       for (const [id, { progress }] of addings) {
-        if (progress.sourceTypeId === sourceTypeId && progress.status !== "added") listed.push({ id, progress });
+        // One added with live setup steps stays listed until an Admin goes on to them.
+        const shown = progress.status !== "added" || progress.setUp;
+        if (progress.sourceTypeId === sourceTypeId && shown) listed.push({ id, progress });
       }
       return listed;
     },

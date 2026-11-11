@@ -3146,6 +3146,9 @@ function liveStepHref(sourceId: string, stepId: string): string {
 /** How often a live setup step asks its plugin again while it waits. */
 const liveStepPollSeconds = 3;
 
+/** How often the row of a Source being added asks again; most plugins answer within it. */
+const addingPollSeconds = 1;
+
 function stepMessage(
   message: MultilingualText | null,
   fallback: string,
@@ -3154,13 +3157,17 @@ function stepMessage(
   return message !== null ? text(message) : fallback;
 }
 
-/** A Source being added in the background, or whose adding failed. */
+/** A Source being added in the background, whose adding failed, or added with setup steps to go on to. */
 export type Adding = {
   id: string;
   progress:
-    | { status: "running"; plain: Record<string, unknown> }
+    | { status: "running" | "added"; plain: Record<string, unknown> }
     | { status: "failed"; plain: Record<string, unknown>; message: string };
 };
+
+/** When the row of a Source being added asks again: one already added goes on at once. */
+const addingTrigger = (status: "running" | "added") =>
+  status === "added" ? "load" : `load delay:${addingPollSeconds}s`;
 
 /**
  * The row of a Source being added: a spinner while its plugin prepares it, asking again every few
@@ -3201,7 +3208,7 @@ export function AddingRow(props: {
     <li
       class="fam-row"
       hx-get={`${href}/row`}
-      hx-trigger={`load delay:${liveStepPollSeconds}s`}
+      hx-trigger={addingTrigger(progress.status)}
       hx-swap="outerHTML"
       aria-live="polite"
     >
