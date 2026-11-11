@@ -428,7 +428,7 @@ html[data-theme-mode="dark"] .fam-theme__icon--dark { display: block; }
 .fam-choice__label { font-weight: 600; }
 .fam-choice__hint { font-size: 14px; line-height: 20px; color: var(--ink-muted); }
 /* A Family Member as a switch, to tick whom an Agenda or a Source concerns, or to filter an Agenda by. Off, it is the
-   avatar alone. Hovering unfolds the name next to it, the avatar staying where it is. On, ticked or the current choice,
+   avatar alone. Hovering with a mouse unfolds the name next to it, the avatar staying where it is. On, ticked or the current choice,
    the avatar, the knob, slides to the right end and the name to the left, and the pill gets the dark edge. */
 .fam-choices--members, .fam-attribute__members {
   display: flex; flex-wrap: nowrap; align-items: center; gap: var(--space-2); overflow-x: auto; scrollbar-width: thin;
@@ -453,10 +453,15 @@ html[data-theme-mode="dark"] .fam-theme__icon--dark { display: block; }
   display: inline-block; max-width: 0; overflow: hidden; white-space: nowrap; opacity: 0;
   transition: max-width .25s ease, opacity .2s ease, padding .25s ease;
 }
-.fam-pillswitch:is(:hover, :focus-visible, [aria-current], :has(input:checked, input:focus-visible)) { padding-right: calc(var(--sw-gap) - 1px); }
-.fam-pillswitch:is(:hover, :focus-visible, [aria-current], :has(input:checked, input:focus-visible)) .fam-pillswitch__name { max-width: 14em; opacity: 1; padding-left: calc(var(--sw-gap) - var(--sw-pad)); }
-.fam-pillswitch:hover { background: var(--hearth-tint); }
-.fam-pillswitch:hover .fam-avatar { opacity: 1; }
+.fam-pillswitch:is(:focus-visible, [aria-current], :has(input:checked, input:focus-visible)) { padding-right: calc(var(--sw-gap) - 1px); }
+.fam-pillswitch:is(:focus-visible, [aria-current], :has(input:checked, input:focus-visible)) .fam-pillswitch__name { max-width: 14em; opacity: 1; padding-left: calc(var(--sw-gap) - var(--sw-pad)); }
+/* Only a pointer that can hover unfolds the name: a touch screen keeps an element it tapped hovered, so a pill tapped off
+   would go on showing its name. */
+@media (hover: hover) {
+  .fam-pillswitch:hover { padding-right: calc(var(--sw-gap) - 1px); background: var(--hearth-tint); }
+  .fam-pillswitch:hover .fam-pillswitch__name { max-width: 14em; opacity: 1; padding-left: calc(var(--sw-gap) - var(--sw-pad)); }
+  .fam-pillswitch:hover .fam-avatar { opacity: 1; }
+}
 /* On: the name moves left, the knob right. The two paddings swap, so that the pill keeps its width. */
 .fam-pillswitch:is([aria-current], :has(input:checked)) {
   padding-left: calc(var(--sw-gap) - 1px); padding-right: calc(var(--sw-k) + 2 * var(--sw-pad));
