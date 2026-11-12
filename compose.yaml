@@ -4,7 +4,7 @@ name: family-agenda
 # FAMILY_AGENDA_VERSION is a release such as 0.3.1, `latest` for the newest release or `main` for
 # the current main branch. The default is the release this file belongs to; a release sets it.
 # To build the image from this working tree instead, add compose.dev.yaml (see docs/upgrading.md).
-x-image: &image ghcr.io/artkoenig/family-agenda:${FAMILY_AGENDA_VERSION:-0.4.1}
+x-image: &image ghcr.io/artkoenig/family-agenda:${FAMILY_AGENDA_VERSION:-0.5.0}
 
 x-app: &app
   image: *image
