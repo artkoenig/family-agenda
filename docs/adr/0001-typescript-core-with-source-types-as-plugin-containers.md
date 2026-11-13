@@ -26,7 +26,7 @@ For self-hosting, the operator lists the plugins in `plugins.yml` (id, pinned im
 
 ## What a plugin can reach
 
-Plugins sit on internal networks without published ports, with no token between core and plugin. A plugin's only way out is its own egress proxy (HTTP CONNECT), which allows the declared hosts plus the hosts the Admin entered in host fields of that plugin's Sources, served to it by the core. A missing or failed proxy means no internet at all.
+Plugins sit on internal networks without published ports, with no token between core and plugin. A plugin's only way out is its own egress proxy (HTTP CONNECT), which allows the declared hosts plus the hosts the Admin entered in host fields of that plugin's Sources, served to it by the core. Since plugin contract 3.0 each call for a Source carries a ticket (Family, Source, short expiry, signed with a key the core shares with the proxies) in the proxy URL it hands the plugin; the proxy refuses a connection without one (407) and allows only the host fields of that one Source, which the core reads from that Source's Family, so that one stateless plugin can serve several Families. A missing or failed proxy means no internet at all.
 
 ## Considered Options
 

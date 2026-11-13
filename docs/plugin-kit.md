@@ -12,6 +12,10 @@ A plugin is a container that answers the plugin contract over HTTP (ADR-0001). T
 
 A Source Record's `externalId` is what it is known by within its Source. For a message it means more: the core takes messages with the same `externalId` in Sources of one Source Type for Copies of one message (ADR-0005), reads only the first, and lets its Items concern everyone any Copy concerns. So give a message the same `externalId` in every Source of your Source Type that receives it, such as a mail's `Message-ID` in each mailbox of a mailing list, and never give it to another message. An id that only says where a message is, such as a position in a mailbox, has to differ per Source, for example by carrying the account. This does not apply to stated Source Records, such as calendar entries.
 
+## Connections outside
+
+A plugin's container reaches the internet only through its egress proxy. Since plugin contract 3.0, every call for a Source, and the call for the Catalogue entries, carries `egressProxy`, such as `http://ticket:<ticket>@plugin-imap-egress:3128`: make every connection of that call through it, with its credentials, for example `new ProxyAgent(context.egressProxy)` of `undici` as the `dispatcher` of `fetch`, which sends them as `Proxy-Authorization`. Use the URL of the call at hand, never one kept from an earlier call: its ticket is for that one Source, or for none, and expires shortly after the call's timeout. The proxy refuses a connection without it, such as through `HTTPS_PROXY` of the environment, with `407`; answer that like any other failure to connect, as a temporary error. It lets the call through to the hosts declared in `plugins.yml` and the host fields of that Source only; for the Catalogue entries, the declared hosts only. The contract tests poll and ask for the Catalogue entries with `options.egressProxy`, by default a proxy that never resolves.
+
 ## Consuming it from another repository
 
 Neither the kit nor the contract is published to a registry. Add both as git dependencies, pinned to a release tag, each from its directory of this repository (pnpm's `path:` selector):

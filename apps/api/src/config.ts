@@ -1,5 +1,5 @@
 import { parseIdentityProviderSettings, type IdentityProviderSettings } from "@family-agenda/application";
-import { parseEgressTokens, parsePluginEgress } from "./egress/allowlist";
+import { parsePluginEgress } from "./egress/allowlist";
 import { parsePluginUrls, type PluginBinding } from "./plugin-containers/bindings";
 import { versionOf } from "./version";
 
@@ -11,8 +11,11 @@ export type Config = {
   pluginContainers: PluginBinding[];
   /** The declared egress hosts per plugin container, from `PLUGIN_EGRESS`, which their egress proxies allow. */
   pluginEgress: Map<string, string[]>;
-  /** The token per egress proxy's container, from `PLUGIN_EGRESS_TOKENS`, with which it fetches its allowlist. */
-  egressTokens: Map<string, string>;
+  /**
+   * The key the tickets of plugin calls are signed with, from `EGRESS_TICKET_KEY`, shared with the
+   * egress proxies; required with plugin containers.
+   */
+  egressTicketKey: string | null;
   /** The `tessdata` volume of Tesseract models. */
   tessdataDirectory: string;
   /** Where the image keeps the Tesseract models it ships; empty for none. */
@@ -31,13 +34,14 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const databaseUrl = env.DATABASE_URL;
   if (!databaseUrl) throw new Error("DATABASE_URL is not set");
   const publicUrl = publicUrlOf(env.PUBLIC_URL);
+  const pluginContainers = parsePluginUrls(env.PLUGIN_URLS);
   return {
     databaseUrl,
     masterKeyFile: env.MASTER_KEY_FILE ?? "/var/lib/family-agenda/master-key/master.key",
     blobDirectory: env.BLOB_DIRECTORY ?? "/var/lib/family-agenda/blobs",
-    pluginContainers: parsePluginUrls(env.PLUGIN_URLS),
+    pluginContainers,
     pluginEgress: parsePluginEgress(env.PLUGIN_EGRESS),
-    egressTokens: parseEgressTokens(env.PLUGIN_EGRESS_TOKENS),
+    egressTicketKey: egressTicketKeyOf(env, pluginContainers),
     tessdataDirectory: env.TESSDATA_DIRECTORY ?? "/var/lib/family-agenda/tessdata",
     bundledTessdataDirectory: (env.BUNDLED_TESSDATA_DIRECTORY ?? "/usr/share/tesseract-ocr/5/tessdata") || null,
     port: Number(env.PORT ?? 3000),
@@ -46,6 +50,19 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): Config {
     identityProvider: identityProviderOf(env, publicUrl),
     version: versionOf(env),
   };
+}
+
+/** The shortest ticket key: the generator writes 24 random bytes as 32 characters. */
+const minimumTicketKeyLength = 32;
+
+function egressTicketKeyOf(env: NodeJS.ProcessEnv, pluginContainers: PluginBinding[]): string | null {
+  const key = env.EGRESS_TICKET_KEY ?? "";
+  if (key === "") {
+    if (pluginContainers.length > 0) throw new Error("EGRESS_TICKET_KEY must be set with PLUGIN_URLS; generating compose.plugins.yaml writes it to .env");
+    return null;
+  }
+  if (key.length < minimumTicketKeyLength) throw new Error(`EGRESS_TICKET_KEY must be at least ${minimumTicketKeyLength} characters long`);
+  return key;
 }
 
 function publicUrlOf(value: string | undefined): string | null {

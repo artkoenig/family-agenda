@@ -133,12 +133,16 @@ A container a plugin needs beside its own, such as Synapse for the Matrix plugin
 _Avoid_: Sidecar, plugin service
 
 **Egress Proxy**:
-The only way out to the internet for a plugin container or a Companion with egress hosts; it lets through only what that container's Allowlist names, and only to public addresses.
+The only way out to the internet for a plugin container or a Companion with egress hosts; it lets through only what that container's Allowlist names, and only to public addresses. A plugin's own proxy lets through only a call that presents its Ticket.
 _Avoid_: Firewall, gateway, sidecar
 
 **Allowlist**:
-The hosts one Egress Proxy lets through: those declared in `plugins.yml`, plus, for the plugin's own container, the values of Host Fields of its Sources. The api serves it to that proxy alone.
+The hosts one Egress Proxy lets through: those declared in `plugins.yml`, plus, for the plugin's own container, the values of Host Fields of the one Source its Ticket names, read from that Source's Family. The api serves it for each Ticket; a Companion's proxy has its declared hosts only.
 _Avoid_: Whitelist, egress rules
+
+**Ticket**:
+What the core grants one call to a plugin: the Family, the Source the call is for (none for the Catalogue entries, which reach the declared hosts only) and a short expiry, signed with a key the core shares with the Egress Proxies. It comes with the call in the proxy URL, and the plugin presents it to its Egress Proxy on every connection; without a valid one the proxy answers 407.
+_Avoid_: Token, egress token
 
 **Host Field**:
 A configuration field of a Source Type whose value is a host the plugin connects to, such as an IMAP server; its value joins the plugin's Allowlist. A pasted URL counts as its host: the scheme and everything from the first `/`, `?` or `#` are dropped. A secret field can be one too, such as a calendar address with a token in it: the core keeps its host in the clear, without user, password or path, as the Admin enters the value.

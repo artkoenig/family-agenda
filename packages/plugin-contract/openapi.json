@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Family Agenda plugin contract",
-    "version": "2.0",
+    "version": "3.0",
     "description": "What a plugin container answers; the core calls, plugins never call the core (ADR-0001). Bodies are at most 10485760 bytes."
   },
   "paths": {
@@ -326,9 +326,19 @@
       }
     },
     "/catalogue/entries": {
-      "get": {
+      "post": {
         "operationId": "catalogueEntries",
         "summary": "Every Catalogue entry and whether it is installed. Timeout 10 s.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CatalogueEntriesRequest"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "OK.",
@@ -462,6 +472,20 @@
   },
   "components": {
     "schemas": {
+      "CatalogueEntriesRequest": {
+        "type": "object",
+        "properties": {
+          "egressProxy": {
+            "type": "string",
+            "format": "uri"
+          }
+        },
+        "required": [
+          "egressProxy"
+        ],
+        "additionalProperties": false,
+        "description": "The egress proxy of a call of no Source: it allows the declared egress hosts only (since 3.0)."
+      },
       "CatalogueEntriesResponse": {
         "type": "object",
         "properties": {
@@ -944,13 +968,18 @@
           "timeZone": {
             "type": "string",
             "minLength": 1
+          },
+          "egressProxy": {
+            "type": "string",
+            "format": "uri"
           }
         },
         "required": [
           "config",
           "syncCursor",
           "now",
-          "timeZone"
+          "timeZone",
+          "egressProxy"
         ],
         "additionalProperties": false
       },
@@ -1087,12 +1116,17 @@
           "timeZone": {
             "type": "string",
             "minLength": 1
+          },
+          "egressProxy": {
+            "type": "string",
+            "format": "uri"
           }
         },
         "required": [
           "config",
           "now",
-          "timeZone"
+          "timeZone",
+          "egressProxy"
         ],
         "additionalProperties": false
       },

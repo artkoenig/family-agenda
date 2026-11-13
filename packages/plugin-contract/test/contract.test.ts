@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
+  catalogueEntriesRequestSchema,
   contractVersion,
   descriptionSchema,
   endpoints,
@@ -21,6 +22,7 @@ const context = {
   syncCursor: null,
   now: "2026-11-09T10:00:00.000Z",
   timeZone: "Europe/Berlin",
+  egressProxy: "http://ticket:abc.def@plugin-ics-egress:3128",
 };
 
 describe("the contract version", () => {
@@ -84,6 +86,9 @@ describe("the schemas", () => {
 
   it("refuse a poll without a time zone, a Source Record with an unknown kind of content, and and a Task title or description over its limit", () => {
     expect(pollRequestSchema.safeParse({ ...context, timeZone: undefined }).success).toBe(false);
+    // Since 3.0, a call without the egress proxy of its ticket, or with one of another scheme.
+    expect(pollRequestSchema.safeParse({ ...context, egressProxy: undefined }).success).toBe(false);
+    expect(pollRequestSchema.safeParse({ ...context, egressProxy: "https://ticket:abc.def@plugin-ics-egress:3128" }).success).toBe(false);
     const origin = { externalId: "x", attributes: [], content: { kind: "video" } };
     expect(pollResponseSchema.safeParse({ sourceRecords: [origin], syncCursor: null }).success).toBe(false);
     const stating = (task: { title: string; description: string | null }) => ({ externalId: "x", attributes: [], content: { kind: "stated", stated: { kind: "task", deadline: null, ...task } } });
@@ -116,6 +121,14 @@ describe("the schemas", () => {
   it("tell a definite error from a temporary one", () => {
     expect(errorSchema.parse({ kind: "definite", message: "Wrong password" }).kind).toBe("definite");
     expect(errorSchema.safeParse({ kind: "fatal", message: "?" }).success).toBe(false);
+  });
+});
+
+describe("the request for the Catalogue entries", () => {
+  it("carries the egress proxy of its ticket (since 3.0)", () => {
+    expect(endpoints.catalogueEntries.method).toBe("post");
+    expect(catalogueEntriesRequestSchema.safeParse({ egressProxy: context.egressProxy }).success).toBe(true);
+    expect(catalogueEntriesRequestSchema.safeParse({}).success).toBe(false);
   });
 });
 

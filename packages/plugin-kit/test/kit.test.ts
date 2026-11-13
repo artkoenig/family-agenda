@@ -6,7 +6,7 @@ import type { ServerResponse } from "node:http";
 import { answerUnexpectedFailure, createPluginHandler, describePlugin, servePlugin } from "../src/server";
 import { answerProblems, contractProblems, pluginClient } from "../src/testing";
 
-const context = { config: { plain: {}, secrets: {} }, syncCursor: null, now: "2026-11-09T10:00:00.000Z", timeZone: "Europe/Berlin" };
+const context = { config: { plain: {}, secrets: {} }, syncCursor: null, now: "2026-11-09T10:00:00.000Z", timeZone: "Europe/Berlin", egressProxy: "http://ticket:t@plugin-fake-egress:3128" };
 const config = context.config;
 
 const record = (externalId: string, attributes: string[], kind: "stated" | "raw-message" = "stated") => ({
@@ -142,6 +142,21 @@ describe("the contract harness", () => {
     expect(await contractProblems(lenient)).toContainEqual(expect.stringMatching(/invalid poll request was answered 200/));
   });
 
+  it("asks for the Catalogue entries with the egress proxy it is given", async () => {
+    const proxies: string[] = [];
+    const listing = plugin(
+      {
+        catalogueEntries: ({ egressProxy }) => {
+          proxies.push(egressProxy);
+          return { entries: [] };
+        },
+      },
+      { catalogue: { title: "C", configKey: "installed" } },
+    );
+    expect(await contractProblems(createPluginHandler(listing), { egressProxy: "http://ticket:t@127.0.0.1:3128" })).toEqual([]);
+    expect(proxies).toEqual(["http://ticket:t@127.0.0.1:3128"]);
+  });
+
   it("finds duplicates, texts not given in a language, and a missing migration", async () => {
     const field = { key: "url", label: "URL", secret: false, required: true, hasChoices: false };
     const step = { id: "s", title: "T", description: "D", live: false };
@@ -185,6 +200,24 @@ describe("the contract harness", () => {
     });
     await contractProblems(createPluginHandler(recording), { config, timeZone: "America/New_York" });
     expect(zones).toEqual(["America/New_York", "America/New_York"]);
+  });
+
+  it("polls with the egress proxy it is given, by default one that never resolves", async () => {
+    const proxies: string[] = [];
+    const recording = plugin({
+      poll: (request) => {
+        proxies.push(request.egressProxy);
+        return { sourceRecords: [], syncCursor: null };
+      },
+    });
+    await contractProblems(createPluginHandler(recording), { config });
+    await contractProblems(createPluginHandler(recording), { config, egressProxy: "http://ticket:t@127.0.0.1:3128" });
+    expect(proxies).toEqual([
+      "http://ticket:contract-test@egress.invalid:3128",
+      "http://ticket:contract-test@egress.invalid:3128",
+      "http://ticket:t@127.0.0.1:3128",
+      "http://ticket:t@127.0.0.1:3128",
+    ]);
   });
 
   it("finds a poll that fails, and does not poll a push plugin or one without a configuration", async () => {

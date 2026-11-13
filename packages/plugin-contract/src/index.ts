@@ -9,7 +9,7 @@ import { z } from "zod";
  * `major.minor`. A minor change is additive only, such as an optional field or an optional new
  * endpoint; anything else is a new major. CI compares `openapi.json` with the last release.
  */
-export const contractVersion = "2.0";
+export const contractVersion = "3.0";
 
 export type ContractVersion = { major: number; minor: number };
 
@@ -72,6 +72,15 @@ export const runContextSchema = z
     now: isoInstant,
     /** The IANA time zone of the Family. */
     timeZone: z.string().min(1),
+    /**
+     * The proxy through which the plugin makes every connection outside for this call, such as
+     * `http://ticket:<ticket>@plugin-imap-egress:3128`: an HTTP CONNECT proxy whose credentials are
+     * this call's ticket, which an HTTP client sends as `Proxy-Authorization`. It lets the call
+     * through to the plugin's declared egress hosts and the host fields of this one Source, and
+     * expires shortly after the call's timeout. A connection without it, such as through the
+     * `HTTPS_PROXY` of the container's environment, is refused with 407 (since 3.0).
+     */
+    egressProxy: z.url({ protocol: /^http$/ }),
   })
   .meta({ id: "RunContext" });
 
@@ -241,6 +250,9 @@ export const fieldChoicesRequestSchema = z.object({ field: z.string().min(1), co
 export const fieldChoicesResponseSchema = z
   .object({ choices: z.array(z.object({ value: z.string(), label: z.string() })) })
   .meta({ id: "FieldChoicesResponse" });
+export const catalogueEntriesRequestSchema = runContextSchema
+  .pick({ egressProxy: true })
+  .meta({ id: "CatalogueEntriesRequest", description: "The egress proxy of a call of no Source: it allows the declared egress hosts only (since 3.0)." });
 export const catalogueEntriesResponseSchema = z
   .object({
     entries: z.array(
@@ -334,10 +346,11 @@ export const endpoints = {
     response: fieldChoicesResponseSchema,
   },
   catalogueEntries: {
-    method: "get",
+    method: "post",
     path: "/catalogue/entries",
     summary: "Every Catalogue entry and whether it is installed.",
     timeoutMs: limits.callTimeoutMs,
+    request: catalogueEntriesRequestSchema,
     response: catalogueEntriesResponseSchema,
   },
   setupProgress: {

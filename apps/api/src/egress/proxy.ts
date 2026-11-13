@@ -2,9 +2,14 @@ import { lookup } from "node:dns/promises";
 import { createServer, type IncomingMessage, type Server } from "node:http";
 import { BlockList, connect, isIP, type Socket } from "node:net";
 import { allows, isHostName, isPort, parseEntry, type AllowEntry, type HostPort } from "./allowlist";
+import { ticketOfProxyAuthorization } from "./ticket";
 
-/** Fetches what the proxy allows now; rejects when it cannot tell. */
-export type AllowlistFetch = () => Promise<string[]>;
+/**
+ * Fetches what the proxy allows now for a connection with `ticket`, the one its client presented
+ * (null for none); null when the ticket is refused, or missing where one is needed; rejects when it
+ * cannot tell.
+ */
+export type AllowlistFetch = (ticket: string | null) => Promise<string[] | null>;
 
 /** The addresses a host name resolves to. */
 export type Resolve = (host: string) => Promise<string[]>;
@@ -58,8 +63,9 @@ export function isPublicAddress(address: string): boolean {
 
 /**
  * An HTTP CONNECT proxy, the only way out of one plugin container (ADR-0001). It asks `allowlist`
- * on every connection and refuses it when the host is not in it, or when the allowlist cannot be
- * fetched: it fails closed. It resolves the host once and connects to that address, and only to a
+ * on every connection, with the ticket the client presented as `Proxy-Authorization`, and answers
+ * 407 when the ticket is refused, or missing where one is needed. It refuses the connection when the
+ * host is not in the allowlist, or when the allowlist cannot be fetched: it fails closed. It resolves the host once and connects to that address, and only to a
  * public one, so neither an allowed name nor DNS rebinding reaches the Instance's own network;
  * names without a dot, such as compose services, it refuses outright. Any request other than
  * CONNECT is refused.
@@ -70,7 +76,8 @@ export function createEgressProxy({ allowlist, resolve = systemResolve, isReacha
   });
   server.on("connect", (request: IncomingMessage, client: Socket, head: Buffer) => {
     client.on("error", () => client.destroy());
-    void decide(request.url ?? "", { allowlist, resolve, isReachable }).then((decision) => {
+    const ticket = ticketOfProxyAuthorization(request.headers["proxy-authorization"]);
+    void decide(request.url ?? "", ticket, { allowlist, resolve, isReachable }).then((decision) => {
       if ("refusal" in decision) {
         log(`Refused ${request.url}: ${decision.why}`);
         refuse(client, decision.refusal);
@@ -82,23 +89,33 @@ export function createEgressProxy({ allowlist, resolve = systemResolve, isReacha
 
 type Decision = { address: string; port: number } | { refusal: string; why: string };
 
-async function decide(authority: string, options: Required<Omit<EgressProxyOptions, "log">>): Promise<Decision> {
+async function decide(authority: string, ticket: string | null, options: Required<Omit<EgressProxyOptions, "log">>): Promise<Decision> {
   const target = targetOf(authority);
   if (target === null) return { refusal: "400 Bad Request", why: "no host:port" };
-  const entries = await entriesOf(options.allowlist);
-  if (entries === null) return { refusal: "503 Service Unavailable", why: "no allowlist" };
-  if (!allows(entries, target)) return { refusal: "403 Forbidden", why: "not allowed" };
+  const refusal = await allowlistRefusal(target, ticket, options.allowlist);
+  if (refusal !== null) return refusal;
   const addresses = await addressesOf(target.host, options.resolve);
   if (addresses.length === 0) return { refusal: "502 Bad Gateway", why: "does not resolve" };
   if (!addresses.every(options.isReachable)) return { refusal: "403 Forbidden", why: "an internal address" };
   return { address: addresses[0] ?? "", port: target.port };
 }
 
-async function entriesOf(allowlist: AllowlistFetch): Promise<AllowEntry[] | null> {
+/** Why the allowlist for `ticket` keeps the proxy from connecting to `target`; null where it allows it. */
+async function allowlistRefusal(target: HostPort, ticket: string | null, allowlist: AllowlistFetch): Promise<Extract<Decision, { refusal: string }> | null> {
+  const entries = await entriesOf(allowlist, ticket);
+  if (entries === "unavailable") return { refusal: "503 Service Unavailable", why: "no allowlist" };
+  if (entries === "refused") return { refusal: proxyAuthenticationRequired, why: ticket === null ? "no ticket" : "ticket refused" };
+  return allows(entries, target) ? null : { refusal: "403 Forbidden", why: "not allowed" };
+}
+
+const proxyAuthenticationRequired = '407 Proxy Authentication Required\r\nProxy-Authenticate: Basic realm="family-agenda"';
+
+async function entriesOf(allowlist: AllowlistFetch, ticket: string | null): Promise<AllowEntry[] | "refused" | "unavailable"> {
   try {
-    return (await allowlist()).flatMap((text) => parseEntry(text) ?? []);
+    const hosts = await allowlist(ticket);
+    return hosts === null ? "refused" : hosts.flatMap((text) => parseEntry(text) ?? []);
   } catch {
-    return null;
+    return "unavailable";
   }
 }
 

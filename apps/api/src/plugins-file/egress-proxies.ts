@@ -1,31 +1,34 @@
-import { allowlistUrlOf, pluginServiceOf, proxyOf, proxyPort, tokenVariableOf } from "../egress/wiring";
+import { allowlistUrlOf, pluginServiceOf, proxyOf, proxyPort, ticketKeyVariable } from "../egress/wiring";
 import type { Plugin, PluginsFile } from "./schema";
 
 type Service = Record<string, unknown>;
 
-/** A container that gets an egress proxy, and the other containers of its plugin, which it reaches directly. */
-export type ProxiedContainer = { service: string; siblings: string[] };
+/**
+ * A container that gets an egress proxy, and the other containers of its plugin, which it reaches
+ * directly. The plugin's own container is called by the core, whose tickets its proxy checks;
+ * a companion's proxy allows the companion's declared `hosts`, as the core never calls it.
+ */
+export type ProxiedContainer = { service: string; siblings: string[]; companionHosts: string[] | null };
 
 /** The containers of `plugin` with an egress proxy: the plugin's own, and each companion with egress hosts. */
 export function proxiedContainersOf(plugin: Plugin): ProxiedContainer[] {
   const own = pluginServiceOf(plugin.id);
   const companionOf = (name: string) => `${own}-${name}`;
   const all = [own, ...plugin.companions.map((companion) => companionOf(companion.name))];
-  const proxied = [own, ...plugin.companions.filter((companion) => companion.egress.length > 0).map((companion) => companionOf(companion.name))];
-  return proxied.map((service) => ({ service, siblings: all.filter((other) => other !== service) }));
+  const siblingsOf = (service: string) => all.filter((other) => other !== service);
+  return [
+    { service: own, siblings: siblingsOf(own), companionHosts: null },
+    ...plugin.companions
+      .filter((companion) => companion.egress.length > 0)
+      .map((companion) => ({ service: companionOf(companion.name), siblings: siblingsOf(companionOf(companion.name)), companionHosts: companion.egress })),
+  ];
 }
 
 /** The proxied containers of the whole file. */
 export const allProxiedContainersOf = (file: PluginsFile) => file.plugins.flatMap(proxiedContainersOf);
 
-/** The `.env` variable of each proxy's token, which the generator fills like a database password. */
-export const tokenVariablesOf = (file: PluginsFile) => allProxiedContainersOf(file).map(({ service }) => tokenVariableOf(service));
-
-/** `PLUGIN_EGRESS_TOKENS` for the api: each container with the token its proxy presents. */
-export const egressTokensOf = (file: PluginsFile) =>
-  allProxiedContainersOf(file)
-    .map(({ service }) => `${service}=\${${tokenVariableOf(service)}}`)
-    .join(",");
+/** The `.env` variable of the ticket key, which the generator fills like a database password, if there are plugins. */
+export const ticketKeyVariablesOf = (file: PluginsFile) => (file.plugins.length > 0 ? [ticketKeyVariable] : []);
 
 /**
  * The image the egress proxies run: the core image of the release that generates the file, as
@@ -39,12 +42,14 @@ export function proxyImageOf(version: string): string {
 }
 
 /**
- * The egress proxy of `container` (ADR-0001), and what its container adds. The proxy sits on the
+ * The egress proxy of `container` (ADR-0001), and what its container adds. The proxy of a plugin's
+ * own container checks the ticket of each connection and asks the api what it allows; a
+ * companion's allows its declared hosts. The proxy sits on the
  * Instance's default network, which reaches the internet and the api, and on an internal network
  * shared with that container alone. The container gets that network and the proxy in its
  * environment, but reaches its siblings directly. Without the proxy it reaches nothing outside.
  */
-export function egressProxyOf({ service, siblings }: ProxiedContainer, image: string): {
+export function egressProxyOf({ service, siblings, companionHosts }: ProxiedContainer, image: string): {
   name: string;
   proxy: Service;
   container: { network: string; environment: Record<string, string> };
@@ -58,7 +63,12 @@ export function egressProxyOf({ service, siblings }: ProxiedContainer, image: st
       image,
       restart: "unless-stopped",
       command: ["node", "--import", "tsx", "src/egress-proxy-main.ts"],
-      environment: { EGRESS_ALLOWLIST_URL: allowlistUrlOf(service), EGRESS_TOKEN: `\${${tokenVariableOf(service)}}`, PORT: String(proxyPort) },
+      environment: {
+        ...(companionHosts === null
+          ? { EGRESS_ALLOWLIST_URL: allowlistUrlOf(service), EGRESS_TICKET_KEY: `\${${ticketKeyVariable}}` }
+          : { EGRESS_HOSTS: companionHosts.join(";") }),
+        PORT: String(proxyPort),
+      },
       networks: ["default", name],
       mem_limit: "128m",
     },

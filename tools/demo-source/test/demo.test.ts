@@ -7,9 +7,10 @@ type StatedItem = Extract<SourceRecord["content"], { kind: "stated" }>["stated"]
 const config = { plain: {}, secrets: {} };
 // A Monday morning.
 const now = new Date("2026-09-14T07:00:00Z");
+const egressProxy = "http://ticket:t@plugin-demo-egress:3128";
 
 const poll = async (day: Date = now): Promise<IngestResult & { origins: SourceRecord[] }> => {
-  const result = (await demoPlugin.poll?.({ config, syncCursor: null, now: day.toISOString(), timeZone: "Europe/Berlin" })) as IngestResult;
+  const result = (await demoPlugin.poll?.({ config, syncCursor: null, now: day.toISOString(), timeZone: "Europe/Berlin", egressProxy })) as IngestResult;
   return { ...result, origins: result.sourceRecords };
 };
 

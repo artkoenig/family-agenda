@@ -1,3 +1,4 @@
+import type { Ticketing } from "../egress/ticket";
 import { endpoints, errorSchema, type Endpoint, type EndpointName, type EndpointResponse } from "@family-agenda/plugin-contract";
 
 /** What a call to a plugin came to: its validated answer, or an error as the contract classifies it. */
@@ -8,6 +9,11 @@ export type CallResult<N extends EndpointName = EndpointName> =
 type CallError = Extract<CallResult, { ok: false }>;
 
 export type PluginContainerOptions = {
+  /**
+   * What the tickets of plugin calls for a Source are minted with; by default a key no proxy
+   * shares, so that no call gets through, as in a test without proxies.
+   */
+  ticketing?: Ticketing;
   /** Replaces the timeouts of the plugin contract, such as for a test of a plugin that does not answer. */
   timeoutsMs?: Partial<Record<EndpointName, number>>;
   /** How long a plugin's description is used before it is asked again; 0 asks every time a Source Type is loaded. */

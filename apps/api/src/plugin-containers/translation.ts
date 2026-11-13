@@ -1,17 +1,19 @@
-import type { AttributeReporting, LoadedSourceType, SetupProgress, SourceRunContext, SourceRunResult } from "@family-agenda/application";
+import type { AttributeReporting, CalledSource, LoadedSourceType, SetupProgress, SourceRunContext, SourceRunResult } from "@family-agenda/application";
 import { limits, type Description, type EndpointName, type EndpointResponse, type IngestResult, type RunContext } from "@family-agenda/plugin-contract";
 import type { CallResult } from "./transport";
 
 /** Calls one endpoint of a Source Type's plugin. */
 export type PluginCall = <N extends EndpointName>(name: N, body?: unknown) => Promise<CallResult<N>>;
 
-function runContextOf(context: Omit<SourceRunContext, "syncCursor"> & { syncCursor?: string | null }): RunContext {
-  const { plain, secrets, syncCursor = null, now, timeZone } = context;
-  return { config: { plain, secrets }, syncCursor, now: now.toISOString(), timeZone };
-}
+/** The proxy URL, with a ticket, a call of endpoint `name` for `source` carries; null for a call of no Source. */
+export type EgressProxyOf = (source: CalledSource | null, name: EndpointName) => string;
 
 /** A Source Type as the core uses it, every function a call to its plugin container. */
-export function loadedSourceType(description: Description, call: PluginCall): LoadedSourceType {
+export function loadedSourceType(description: Description, call: PluginCall, egressProxyOf: EgressProxyOf): LoadedSourceType {
+  const runContextOf = (name: EndpointName, context: Omit<SourceRunContext, "syncCursor"> & { syncCursor?: string | null }): RunContext => {
+    const { plain, secrets, syncCursor = null, now, timeZone, source } = context;
+    return { config: { plain, secrets }, syncCursor, now: now.toISOString(), timeZone, egressProxy: egressProxyOf(source, name) };
+  };
   const { configuration, ingestion, catalogue } = description;
   return {
     configuration: {
@@ -43,12 +45,12 @@ export function loadedSourceType(description: Description, call: PluginCall): Lo
         ? {
             mode: "polling",
             suggestedIntervalSeconds: ingestion.suggestedIntervalSeconds,
-            poll: async (context, attributes) => runOf(await call("poll", runContextOf(context)), attributes),
+            poll: async (context, attributes) => runOf(await call("poll", runContextOf("poll", context)), attributes),
           }
         : {
             mode: "push",
             receive: async (context, payload, attributes) => {
-              const request = { context: runContextOf(context), payload: Buffer.from(payload).toString("base64") };
+              const request = { context: runContextOf("receive", context), payload: Buffer.from(payload).toString("base64") };
               const size = Buffer.byteLength(JSON.stringify(request));
               if (size > limits.maxPayloadBytes) {
                 return { ok: false, kind: "definite", message: `The request to receive is ${size} bytes, more than the ${limits.maxPayloadBytes} bytes the plugin contract allows` };
@@ -62,37 +64,37 @@ export function loadedSourceType(description: Description, call: PluginCall): Lo
           title: catalogue.title,
           configKey: catalogue.configKey,
           async entries() {
-            const answer = await call("catalogueEntries");
+            const answer = await call("catalogueEntries", { egressProxy: egressProxyOf(null, "catalogueEntries") });
             if (!answer.ok) return { ok: false, message: answer.message };
             return { ok: true, value: answer.body.entries.map((entry) => ({ ...entry, riskNotice: entry.riskNotice ?? null })) };
           },
         }
       : null,
     async choices(field, context) {
-      const answer = await call("fieldChoices", { field, context: runContextOf(context) });
+      const answer = await call("fieldChoices", { field, context: runContextOf("fieldChoices", context) });
       return answer.ok ? { ok: true, value: answer.body.choices } : { ok: false, message: answer.message };
     },
     async setupProgress(stepId, context) {
-      const answer = await call("setupProgress", { stepId, context: runContextOf(context) });
+      const answer = await call("setupProgress", { stepId, context: runContextOf("setupProgress", context) });
       if (!answer.ok) return { status: "failed", message: answer.message };
       return progressOf(answer.body);
     },
     async sourceAdded(context) {
       if (!description.endpoints.sourceAdded) return { ok: true, plain: {}, secrets: {} };
-      const { config, now, timeZone } = runContextOf(context);
-      const answer = await call("sourceAdded", { config, now, timeZone });
+      const { config, now, timeZone, egressProxy } = runContextOf("sourceAdded", context);
+      const answer = await call("sourceAdded", { config, now, timeZone, egressProxy });
       if (!answer.ok) return { ok: false, message: answer.message };
       return { ok: true, plain: answer.body.plain, secrets: answer.body.secrets };
     },
     attributes: description.endpoints.sourceAttributes
       ? async (context) => {
-          const answer = await call("sourceAttributes", runContextOf(context));
+          const answer = await call("sourceAttributes", runContextOf("sourceAttributes", context));
           return answer.ok ? { ok: true, value: answer.body } : { ok: false, message: answer.message };
         }
       : null,
     async sourceRemoved(context) {
       if (!description.endpoints.sourceRemoved) return;
-      const answer = await call("sourceRemoved", runContextOf(context));
+      const answer = await call("sourceRemoved", runContextOf("sourceRemoved", context));
       // The contract ignores a failed cleanup; the core logs to the console like everywhere else.
       if (!answer.ok) console.warn(`Cleaning up after a removed Source of type "${description.sourceTypeId}" failed: ${answer.message}`);
     },

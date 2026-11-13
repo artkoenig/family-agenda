@@ -14,8 +14,8 @@ export const pluginServiceOf = (id: string) => `plugin-${id}`;
 /** The egress proxy of container `service`, and the internal network it shares with that container only. */
 export const proxyOf = (service: string) => `${service}-egress`;
 
-/** The `.env` variable holding the token with which `service`'s proxy fetches its allowlist. */
-export const tokenVariableOf = (service: string) => `${service.replaceAll("-", "_").toUpperCase()}_EGRESS_TOKEN`;
+/** The `.env` variable holding the key the core signs the tickets of plugin calls with, which the proxies check. */
+export const ticketKeyVariable = "EGRESS_TICKET_KEY";
 
 /** The URL the proxy of `service` fetches its allowlist from. */
 export const allowlistUrlOf = (service: string) => `http://api:${allowlistPort}/egress/${service}`;
