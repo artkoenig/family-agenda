@@ -68,15 +68,14 @@ describe("generatePluginsCompose", () => {
     expect(compose.services["plugin-matrix"]?.healthcheck).toBeUndefined();
   });
 
-  it("binds api and worker to every plugin and lists the egress hosts per container", () => {
+  it("binds api and worker to every plugin, lists the egress hosts per plugin and gives them the ticket key", () => {
     const { compose } = generated(matrix);
 
     for (const core of [compose.services.api, compose.services.worker]) {
       expect(core?.environment).toEqual({
         PLUGIN_URLS: "demo=http://plugin-demo:8080,matrix=http://plugin-matrix:8080",
-        PLUGIN_EGRESS: "plugin-demo=api.example.com:443,plugin-matrix-synapse=*.whatsapp.net:443",
-        PLUGIN_EGRESS_TOKENS:
-          "plugin-demo=${PLUGIN_DEMO_EGRESS_TOKEN},plugin-matrix=${PLUGIN_MATRIX_EGRESS_TOKEN},plugin-matrix-synapse=${PLUGIN_MATRIX_SYNAPSE_EGRESS_TOKEN}",
+        PLUGIN_EGRESS: "plugin-demo=api.example.com:443",
+        EGRESS_TICKET_KEY: "${EGRESS_TICKET_KEY}",
       });
       expect(core?.networks).toEqual(["default", "plugin-demo", "plugin-matrix"]);
     }
@@ -113,21 +112,23 @@ describe("generatePluginsCompose", () => {
   it("gives each plugin and each companion with egress hosts an egress proxy of its own", () => {
     const { compose } = generated(matrix);
 
-    for (const container of ["plugin-demo", "plugin-matrix", "plugin-matrix-synapse"]) {
-      expect(compose.networks[`${container}-egress`]).toEqual({ internal: true });
-      expect(compose.services[`${container}-egress`]).toEqual({
-        image: "${EGRESS_PROXY_IMAGE:-family-agenda:local}",
-        restart: "unless-stopped",
-        command: ["node", "--import", "tsx", "src/egress-proxy-main.ts"],
-        environment: {
-          EGRESS_ALLOWLIST_URL: `http://api:3001/egress/${container}`,
-          EGRESS_TOKEN: `\${${container.replaceAll("-", "_").toUpperCase()}_EGRESS_TOKEN}`,
-          PORT: "3128",
-        },
-        networks: ["default", `${container}-egress`],
-        mem_limit: "128m",
-      });
+    const proxyOf = (container: string, environment: Record<string, string>) => ({
+      image: "${EGRESS_PROXY_IMAGE:-family-agenda:local}",
+      restart: "unless-stopped",
+      command: ["node", "--import", "tsx", "src/egress-proxy-main.ts"],
+      environment: { ...environment, PORT: "3128" },
+      networks: ["default", `${container}-egress`],
+      mem_limit: "128m",
+    });
+    for (const container of ["plugin-demo", "plugin-matrix", "plugin-matrix-synapse"]) expect(compose.networks[`${container}-egress`]).toEqual({ internal: true });
+    // A plugin's own proxy checks the tickets of the core's calls and asks the api what each allows.
+    for (const container of ["plugin-demo", "plugin-matrix"]) {
+      expect(compose.services[`${container}-egress`]).toEqual(
+        proxyOf(container, { EGRESS_ALLOWLIST_URL: `http://api:3001/egress/${container}`, EGRESS_TICKET_KEY: "${EGRESS_TICKET_KEY}" }),
+      );
     }
+    // The core never calls a companion: its proxy allows its declared hosts.
+    expect(compose.services["plugin-matrix-synapse-egress"]).toEqual(proxyOf("plugin-matrix-synapse", { EGRESS_HOSTS: "*.whatsapp.net:443" }));
     expect(compose.services["plugin-demo"]?.environment).toEqual(proxyEnvironment("plugin-demo", ""));
     expect(compose.services["plugin-matrix"]?.environment).toEqual(proxyEnvironment("plugin-matrix", "plugin-matrix-synapse"));
     // Only proxies reach the default network, the one with internet access.
@@ -151,8 +152,8 @@ describe("generatePluginsCompose", () => {
     expect(compose.services["plugin-a-b-egress"]).toBeUndefined();
   });
 
-  it("adds a password to .env for each new database and a token for each new proxy, and keeps those already there", () => {
-    const secrets = ["PLUGIN_MATRIX_SYNAPSE_DATABASE_PASSWORD", "PLUGIN_DEMO_EGRESS_TOKEN", "PLUGIN_MATRIX_EGRESS_TOKEN", "PLUGIN_MATRIX_SYNAPSE_EGRESS_TOKEN"];
+  it("adds a password to .env for each new database and the ticket key, and keeps those already there", () => {
+    const secrets = ["PLUGIN_MATRIX_SYNAPSE_DATABASE_PASSWORD", "EGRESS_TICKET_KEY"];
     const lines = secrets.map((variable) => `${variable}=secret\n`).join("");
     expect(generated(matrix).dotEnv).toBe(lines);
     expect(generated(matrix, "PORT=8080").dotEnv).toBe(`PORT=8080\n${lines}`);
@@ -163,7 +164,7 @@ describe("generatePluginsCompose", () => {
     const { compose, dotEnv } = generated("");
 
     expect(compose.services.postgres).toBeUndefined();
-    expect(compose.services.api?.environment).toEqual({ PLUGIN_URLS: "", PLUGIN_EGRESS: "", PLUGIN_EGRESS_TOKENS: "" });
+    expect(compose.services.api?.environment).toEqual({ PLUGIN_URLS: "", PLUGIN_EGRESS: "" });
     expect(dotEnv).toBeNull();
   });
 

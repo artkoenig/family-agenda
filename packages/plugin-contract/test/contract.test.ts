@@ -21,6 +21,7 @@ const context = {
   syncCursor: null,
   now: "2026-11-09T10:00:00.000Z",
   timeZone: "Europe/Berlin",
+  egressProxy: "http://ticket:abc.def@plugin-ics-egress:3128",
 };
 
 describe("the contract version", () => {
@@ -84,6 +85,9 @@ describe("the schemas", () => {
 
   it("refuse a poll without a time zone, a Source Record with an unknown kind of content, and and a Task title or description over its limit", () => {
     expect(pollRequestSchema.safeParse({ ...context, timeZone: undefined }).success).toBe(false);
+    // Since 3.0, a call without the egress proxy of its ticket, or with one of another scheme.
+    expect(pollRequestSchema.safeParse({ ...context, egressProxy: undefined }).success).toBe(false);
+    expect(pollRequestSchema.safeParse({ ...context, egressProxy: "https://ticket:abc.def@plugin-ics-egress:3128" }).success).toBe(false);
     const origin = { externalId: "x", attributes: [], content: { kind: "video" } };
     expect(pollResponseSchema.safeParse({ sourceRecords: [origin], syncCursor: null }).success).toBe(false);
     const stating = (task: { title: string; description: string | null }) => ({ externalId: "x", attributes: [], content: { kind: "stated", stated: { kind: "task", deadline: null, ...task } } });

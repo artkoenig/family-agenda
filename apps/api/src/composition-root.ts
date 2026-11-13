@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { mkdir } from "node:fs/promises";
 import {
   Argon2idPasswordHasher,
@@ -105,7 +106,12 @@ export type ApplicationConfig = DatabaseConfig & {
   /** The Source Types, whose plugins run in containers of their own, by URL (ADR-0001). */
   pluginContainers?: PluginBinding[];
   /** Replaces the timeouts of the plugin contract, such as in a test of a plugin that does not answer. */
-  pluginContainerOptions?: PluginContainerOptions;
+  pluginContainerOptions?: Omit<PluginContainerOptions, "ticketing">;
+  /**
+   * The key the tickets of plugin calls are signed with, shared with the egress proxies
+   * (`EGRESS_TICKET_KEY`); without one, a random key no proxy shares.
+   */
+  egressTicketKey?: string | null;
   /** The IANA time zone the Family lives in; by default the one of the process (`TZ`). */
   timeZone?: string;
   clock?: Clock;
@@ -123,6 +129,8 @@ export type ApplicationConfig = DatabaseConfig & {
 };
 
 export type Application = {
+  /** What names the Family outside its database, such as in the ticket of a plugin call. */
+  familyId: string;
   /** The IANA time zone the Family lives in. */
   timeZone: string;
   /** Keeps slow plugin and LLM answers briefly, failures shorter. */
@@ -153,7 +161,7 @@ export type Application = {
   /** Extracts Items from the raw messages that wait for it; the worker does on each tick. */
   extraction: ExtractionAccess;
   messages: MessageAccess;
-  /** The hosts in host fields of a Source Type's Sources, which its plugin's egress proxy allows. */
+  /** The hosts in host fields of a Source, which its plugin's egress proxy allows while the plugin is called for it. */
   egressHosts: EgressHosts;
   close(): Promise<void>;
 };
@@ -232,7 +240,11 @@ export async function bootApplication(config: ApplicationConfig): Promise<Applic
 
   const items = new PostgresItemRepository(postgres.db);
   const activity = createActivityLog({ clock, activities: new PostgresActivityRepository(postgres.db) });
-  const registry = await PluginContainers.connect(config.pluginContainers ?? [], config.pluginContainerOptions);
+  const familyId = await withDatabase(postgres, () => families.publicId());
+  const registry = await PluginContainers.connect(config.pluginContainers ?? [], {
+    ...config.pluginContainerOptions,
+    ticketing: { ticketKey: config.egressTicketKey ?? randomBytes(32).toString("base64url"), familyId },
+  });
   const sourceTypeRepository = new PostgresSourceTypeRepository(postgres.db);
   const sourceRepository = new PostgresSourceRepository(postgres.db);
   const sourceHealth = createSourceHealth({
@@ -334,6 +346,7 @@ export async function bootApplication(config: ApplicationConfig): Promise<Applic
   });
 
   return {
+    familyId,
     timeZone,
     cached,
     admins,

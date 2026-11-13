@@ -44,13 +44,18 @@ const allOrNone = (...columns: AnyPgColumn[]): SQL =>
 const timestamptz = (name: string) => timestamp(name, { withTimezone: true });
 
 /**
- * What belongs to the Instance's one Family itself, as there is no Family id (ADR-0003); its one
+ * What belongs to the Instance's one Family itself, as no query filters by Family (ADR-0003); its one
  * row is created with the schema.
  */
 export const family = pgTable(
   "family",
   {
     id: singleRowId(),
+    /**
+     * What names the Family outside its database, such as in the ticket of a plugin call, which its
+     * Egress Proxy presents to the api; made once, with the row.
+     */
+    publicId: uuid("public_id").notNull().defaultRandom(),
     recoveryKitConfirmedAt: timestamptz("recovery_kit_confirmed_at"),
     /** The Family Language, `en` or `de`, which dates are formatted in. */
     language: text("language").notNull().default("en"),

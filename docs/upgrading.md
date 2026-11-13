@@ -62,6 +62,8 @@ Keep the backup files somewhere other than the host that runs the Instance.
    docker compose up -d
    ```
 
+If you use plugin containers, generate `compose.plugins.yaml` again with the new release's image ([Plugins](configuration.md#plugins)) before `up`, and use the `plugins.yml` of the release, or images of your plugins built for its plugin contract: a plugin built for another major version of the contract is not loaded. Plugin contract 3.0 replaced the egress tokens per proxy (`PLUGIN_<ID>_EGRESS_TOKEN` in `.env`, which you may delete) with one ticket key, `EGRESS_TICKET_KEY`, which generating adds.
+
 An Instance runs the release you named. `latest` is the newest release; it moves when a new release is published, and only after you pull. An exact version such as `0.3.1` never changes under you.
 
 Check the running version in the Admin area, below the settings list, or at `/api/health`.

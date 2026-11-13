@@ -23,6 +23,7 @@ import type {
 } from "./ports";
 import { createCache, type Cached } from "./cached";
 import { usableEntries } from "./catalogues";
+import { hostsOfSource } from "./egress-hosts";
 import { enabledSourceType } from "./enabled-source-type";
 import { isPollInterval } from "./poll-interval";
 import { secretHostsOf } from "./secret-hosts";
@@ -361,7 +362,11 @@ export function createSourceAccess(deps: SourcesDeps) {
   async function completeAdding(input: SourceInput & { sourceTypeId: string }, sourceType: LoadedSourceType): Promise<AddSourceResult> {
     const sourceTypeId = input.sourceTypeId as SourceTypeId;
     const given = { plain: plainOf(input), secrets: Object.fromEntries(Object.entries(input.secrets).filter(([, value]) => value !== "")) };
-    const prepared = await sourceType.sourceAdded({ ...given, now: clock.now(), timeZone });
+    const id = randomUUID() as SourceId;
+    const secretHosts = secretHostsOf(sourceType.configuration.fields, given.secrets, {});
+    // Not stored yet: the ticket of the call carries its hosts.
+    const hosts = hostsOfSource(sourceType.configuration.fields, { plain: given.plain, secretHosts });
+    const prepared = await sourceType.sourceAdded({ ...given, now: clock.now(), timeZone, source: { id, sourceTypeId, hosts } });
     if (!prepared.ok) return { ok: false, problem: "setup-failed", message: prepared.message };
     const setByPlugin = new Set(sourceType.configuration.fields.filter((field) => field.setByPlugin).map((field) => field.key));
     const ofPlugin = (values: Record<string, unknown>) => Object.entries(values).filter(([key]) => setByPlugin.has(key));
@@ -370,14 +375,13 @@ export function createSourceAccess(deps: SourcesDeps) {
     for (const [key, value] of [...Object.entries(given.secrets), ...ofPlugin(prepared.secrets)]) {
       refs[key] = await secrets.put(String(value));
     }
-    const id = randomUUID() as SourceId;
     await sources.add({
       id,
       sourceTypeId,
       plain: { ...given.plain, ...Object.fromEntries(ofPlugin(prepared.plain)) },
       configVersion: sourceType.configuration.version,
       secrets: refs,
-      secretHosts: secretHostsOf(sourceType.configuration.fields, given.secrets, {}),
+      secretHosts,
       syncCursor: null,
       pollIntervalSeconds: input.pollIntervalSeconds ?? null,
       shown: true,
@@ -631,7 +635,9 @@ export function createSourceAccess(deps: SourcesDeps) {
       const source = await sources.findById(id);
       if (!source) return;
       const sourceType = await enabled(source.sourceTypeId);
-      const context = await contextOf(source);
+      const stored = await contextOf(source);
+      // Removed by the time its plugin cleans up: the ticket of the call carries its hosts.
+      const context = { ...stored, source: { ...stored.source, hosts: hostsOfSource(sourceType?.configuration.fields ?? [], source) } };
       const files = await sources.remove(id);
       await cleanup(source, sourceType, context, files);
     },
@@ -650,7 +656,14 @@ export async function runContextOf(
     const value = await context.secrets.get(ref);
     if (value !== null) secretValues[key] = value;
   }
-  return { plain: source.plain, secrets: secretValues, syncCursor: source.syncCursor, now: context.now, timeZone: context.timeZone };
+  return {
+    plain: source.plain,
+    secrets: secretValues,
+    syncCursor: source.syncCursor,
+    now: context.now,
+    timeZone: context.timeZone,
+    source: { id: source.id, sourceTypeId: source.sourceTypeId, hosts: null },
+  };
 }
 
 /** Whether a value has the shape its field takes: names for a choice, a single value otherwise. */

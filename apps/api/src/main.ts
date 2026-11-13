@@ -1,8 +1,10 @@
+import { randomBytes } from "node:crypto";
 import { serve } from "@hono/node-server";
 import { openAgendaAccess } from "@family-agenda/application";
 import { bootApplication } from "./composition-root";
 import { readConfig } from "./config";
 import { createAllowlistApp } from "./egress/allowlist-server";
+import { singleFamily } from "./egress/single-family";
 import { allowlistPort } from "./egress/wiring";
 import { createHttpApp } from "./http/app";
 
@@ -24,10 +26,11 @@ const server = serve(
 // Where each plugin container's egress proxy fetches what it allows (ADR-0001).
 const allowlistServer = serve({
   fetch: createAllowlistApp({
+    // Without a ticket key there are no plugin containers, and so no proxies; one nobody knows refuses every ticket.
+    ticketKey: config.egressTicketKey ?? randomBytes(32).toString("base64url"),
     declared: config.pluginEgress,
-    bindings: config.pluginContainers,
-    hostsOf: (sourceTypeId) => application.egressHosts.ofSourceType(sourceTypeId),
-  }, config.egressTokens).fetch,
+    family: singleFamily(application),
+  }).fetch,
   port: allowlistPort,
 });
 

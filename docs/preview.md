@@ -14,7 +14,7 @@ pnpm preview down 189    # remove its containers, volumes, image and worktree
 
 1. Fetches `pull/<n>/head` and checks it out into `.previews/pr-<n>`, a git worktree, so your working directory stays untouched.
 2. Builds the pull request's image and the demo Source's plugin container (`tools/demo-source/Dockerfile`, from your clone).
-3. Copies `tools/preview/plugins.yml` into the worktree and runs the pull request's own generator on it (`plugins generate`, see [configuration.md](configuration.md#plugins)), which writes `compose.plugins.yaml` and the egress tokens in `.env` into the worktree.
+3. Copies `tools/preview/plugins.yml` into the worktree and runs the pull request's own generator on it (`plugins generate`, see [configuration.md](configuration.md#plugins)), which writes `compose.plugins.yaml`, and the ticket key of the egress proxies in `.env`, into the worktree.
 4. Starts the pull request's `compose.yaml`, the generated `compose.plugins.yaml` and the overlay `tools/preview/compose.preview.yaml` as the Compose project `fa-pr-<n>`, with its own port, images and volumes, and without the `mdns` service. The overlay names the preview's own images, also for the egress proxies (`EGRESS_PROXY_IMAGE`). Previews of several pull requests run side by side and beside the real Instance.
 5. Seeds a demo Family: an Admin, four Family Members and an Agenda for the whole Family and for each child.
 

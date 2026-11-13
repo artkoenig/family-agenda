@@ -7,9 +7,23 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SourceId, SourceTypeId } from "@family-agenda/domain";
 import { parsePluginUrls } from "../../src/plugin-containers/bindings";
 import { descriptionProblem, PluginContainers } from "../../src/plugin-containers/registry";
+import { verifyTicket, type Ticket } from "../../src/egress/ticket";
 import { bootForTest, type TestInstance } from "../support/boot";
 
 const minutes = 60 * 1000;
+const egressTicketKey = "a-ticket-key-of-at-least-32-characters";
+
+/**
+ * The proxy a call's `egressProxy` names, and the ticket it carries as its password, as the proxy
+ * reads it; with how long the ticket lasts from now instead of when it expires.
+ */
+function egressOf(egressProxy: string): { proxy: string; ticket: (Omit<Ticket, "expiresAt"> & { lastsMs: number }) | null } {
+  const url = new URL(egressProxy);
+  const ticket = verifyTicket(egressTicketKey, decodeURIComponent(url.password), Date.now());
+  if (ticket === null) return { proxy: url.origin, ticket: null };
+  const { expiresAt, ...rest } = ticket;
+  return { proxy: url.origin, ticket: { ...rest, lastsMs: expiresAt - Date.now() } };
+}
 
 type Poll = (context: RunContext) => Promise<unknown>;
 
@@ -26,7 +40,7 @@ function fakePlugin(state: { poll: Poll; runs: RunContext[] }, sourceTypeId = "s
       configuration: {
         version: 1,
         fields: [
-          { key: "url", label: "Address", secret: false, required: true, hasChoices: false },
+          { key: "url", label: "Address", secret: false, required: true, hasChoices: false, host: true },
           { key: "token", label: "Token", secret: true, required: true, hasChoices: false },
         ],
       },
@@ -66,6 +80,7 @@ describe("A Source Type whose plugin runs in a container", () => {
   let instance: TestInstance;
   let server: Server;
   let state: { poll: Poll; runs: RunContext[] };
+  let sourceId: SourceId;
 
   beforeEach(async () => {
     state = { runs: [], poll: () => Promise.resolve({ sourceRecords: [], syncCursor: null }) };
@@ -74,10 +89,12 @@ describe("A Source Type whose plugin runs in a container", () => {
       sourcePlugins: [{ sourceTypeId: "club-mail" }],
       pluginContainers: [{ sourceTypeId: "school-portal" as SourceTypeId, url: urlOf(server) }],
       pluginContainerOptions: { timeoutsMs: { poll: 200 }, descriptionMaxAgeMs: 0 },
+      egressTicketKey,
     });
     expect(await instance.app.sourceTypes.enable("school-portal")).toEqual({ ok: true });
     const added = await instance.app.sources.add({ sourceTypeId: "school-portal", plain: { url: "https://portal.example.org" }, secrets: { token: "first" } });
     if (!added.ok) throw new Error(`adding failed: ${added.problem}`);
+    sourceId = added.id;
   });
   afterEach(async () => {
     await instance.close();
@@ -123,6 +140,7 @@ describe("A Source Type whose plugin runs in a container", () => {
       syncCursor: null,
       now: "2026-09-14T07:10:00.000Z",
       timeZone: "Europe/Berlin",
+      egressProxy: expect.any(String) as unknown,
     });
     expect(await instance.query("SELECT external_id FROM source_record")).toEqual([{ external_id: "evening" }]);
 
@@ -131,6 +149,18 @@ describe("A Source Type whose plugin runs in a container", () => {
 
     expect(state.runs[1]).toMatchObject({ syncCursor: "cursor-1", config: { secrets: { token: "second" } } });
     expect((await instance.query("SELECT sync_cursor FROM source_run"))[0]?.sync_cursor).toBe("cursor-2");
+  });
+
+  it("hands each call the plugin's egress proxy with a ticket for the Source of the call, lasting a little longer than the call may", async () => {
+    await poll();
+
+    const egress = egressOf(state.runs[0]?.egressProxy ?? "");
+    expect(egress).toEqual({
+      proxy: "http://plugin-school-portal-egress:3128",
+      ticket: { familyId: instance.app.familyId, sourceTypeId: "school-portal", sourceId, hosts: null, lastsMs: expect.any(Number) as unknown },
+    });
+    expect(egress.ticket?.lastsMs).toBeGreaterThan(200);
+    expect(egress.ticket?.lastsMs).toBeLessThanOrEqual(200 + 30_000);
   });
 
   it("receives no pushed payload for its Sources", async () => {
@@ -190,19 +220,28 @@ describe("A Source Type whose plugin receives pushed payloads", () => {
   let receive: Receive;
   let sourceId: SourceId;
   let description: PluginImplementation["description"];
+  const added: RunContext[] = [];
   const removed: unknown[] = [];
+  const removedContexts: RunContext[] = [];
 
   beforeEach(async () => {
     receive = () => Promise.resolve({ sourceRecords: [], syncCursor: null });
+    added.length = 0;
     removed.length = 0;
+    removedContexts.length = 0;
     const base = fakePlugin({ runs: [], poll: () => Promise.resolve({}) }, "chat-relay");
     description = { ...base.description, ingestion: { mode: "push" } };
     server = await servePlugin(
       {
         description,
         receive: async (request) => (await receive(request)) as never,
+        sourceAdded: (context) => {
+          added.push({ ...context, syncCursor: null });
+          return { plain: {}, secrets: {} };
+        },
         sourceRemoved: (context) => {
           removed.push(context.config.plain);
+          removedContexts.push(context);
         },
       },
       { host: "127.0.0.1" },
@@ -210,11 +249,12 @@ describe("A Source Type whose plugin receives pushed payloads", () => {
     instance = await bootForTest({
       pluginContainers: [{ sourceTypeId: "chat-relay" as SourceTypeId, url: urlOf(server) }],
       pluginContainerOptions: { timeoutsMs: { receive: 200 }, descriptionMaxAgeMs: 0 },
+      egressTicketKey,
     });
     expect(await instance.app.sourceTypes.enable("chat-relay")).toEqual({ ok: true });
-    const added = await instance.app.sources.add({ sourceTypeId: "chat-relay", plain: { url: "https://chat.example.org" }, secrets: { token: "first" } });
-    if (!added.ok) throw new Error(`adding failed: ${added.problem}`);
-    sourceId = added.id;
+    const adding = await instance.app.sources.add({ sourceTypeId: "chat-relay", plain: { url: "https://chat.example.org" }, secrets: { token: "first" } });
+    if (!adding.ok) throw new Error(`adding failed: ${adding.problem}`);
+    sourceId = adding.id;
   });
   afterEach(async () => {
     await instance.close();
@@ -233,7 +273,13 @@ describe("A Source Type whose plugin receives pushed payloads", () => {
     const result = await instance.app.polling.receive(sourceId, payload);
 
     expect(result).toMatchObject({ ok: true, report: { ran: [sourceId], failed: [] } });
-    expect(requests).toEqual([{ context: { config: { plain: { url: "https://chat.example.org" }, secrets: { token: "first" } }, syncCursor: null, now: "2026-09-14T07:00:00.000Z", timeZone: "Europe/Berlin" }, payload: "aGVsbG8=" }]);
+    expect(requests).toEqual([
+      {
+        context: { config: { plain: { url: "https://chat.example.org" }, secrets: { token: "first" } }, syncCursor: null, now: "2026-09-14T07:00:00.000Z", timeZone: "Europe/Berlin", egressProxy: expect.any(String) as unknown },
+        payload: "aGVsbG8=",
+      },
+    ]);
+    expect(egressOf(requests[0]?.context.egressProxy ?? "").ticket).toMatchObject({ familyId: instance.app.familyId, sourceTypeId: "chat-relay", sourceId, hosts: null });
     expect(await instance.query("SELECT external_id FROM source_record")).toEqual([{ external_id: "evening" }]);
     expect((await instance.query("SELECT sync_cursor FROM source_run"))[0]?.sync_cursor).toBe("cursor-1");
   });
@@ -303,6 +349,16 @@ describe("A Source Type whose plugin receives pushed payloads", () => {
     expect(await instance.app.polling.receive("unknown" as SourceId, payload)).toEqual({ ok: false, problem: "unknown-source" });
   });
 
+  it("tickets the calls for a Source that is not stored with its hosts: while it is added, and once it is removed", async () => {
+    await instance.app.sources.remove(sourceId);
+
+    const tickets = [...added, ...removedContexts].map((context) => egressOf(context.egressProxy).ticket);
+    expect(tickets).toEqual([
+      { familyId: instance.app.familyId, sourceTypeId: "chat-relay", sourceId, hosts: ["https://chat.example.org"], lastsMs: expect.any(Number) as unknown },
+      { familyId: instance.app.familyId, sourceTypeId: "chat-relay", sourceId, hosts: ["https://chat.example.org"], lastsMs: expect.any(Number) as unknown },
+    ]);
+  });
+
   it("notifies its plugin when a Source is removed, and removes it even when the plugin is gone", async () => {
     await instance.app.sources.remove(sourceId);
     expect(removed).toEqual([{ url: "https://chat.example.org" }]);
@@ -345,14 +401,14 @@ describe("A plugin container bound to another Source Type", () => {
 
 describe("The description of a plugin container", () => {
   const binding = { sourceTypeId: "school-portal" as SourceTypeId, url: "http://plugin" };
-  const description = { ...fakePlugin({ runs: [], poll: () => Promise.resolve({}) }).description, contractVersion: "2.0", endpoints: { sourceAdded: false, sourceRemoved: false } };
+  const description = { ...fakePlugin({ runs: [], poll: () => Promise.resolve({}) }).description, contractVersion: "3.0", endpoints: { sourceAdded: false, sourceRemoved: false } };
 
   it("is loadable for the bound Source Type and the core's contract", () => {
     expect(descriptionProblem(binding, description)).toBeNull();
   });
 
   it("is refused for a plugin contract the core does not implement", () => {
-    expect(descriptionProblem(binding, { ...description, contractVersion: "1.3" })).toBe(`built for plugin contract 1.3, but the core implements ${contractVersion}`);
+    expect(descriptionProblem(binding, { ...description, contractVersion: "2.0" })).toBe(`built for plugin contract 2.0, but the core implements ${contractVersion}`);
   });
 });
 
@@ -374,7 +430,14 @@ describe("PLUGIN_URLS", () => {
 });
 
 describe("The other functions of a plugin container", () => {
-  const context = { plain: { url: "https://portal.example.org" }, secrets: { token: "first" }, syncCursor: null, now: new Date("2026-09-14T07:00:00Z"), timeZone: "Europe/Berlin" };
+  const context = {
+    plain: { url: "https://portal.example.org" },
+    secrets: { token: "first" },
+    syncCursor: null,
+    now: new Date("2026-09-14T07:00:00Z"),
+    timeZone: "Europe/Berlin",
+    source: { id: "source-1" as SourceId, sourceTypeId: "school-portal" as SourceTypeId, hosts: null },
+  };
   const removed: unknown[] = [];
   const base = fakePlugin({ runs: [], poll: () => Promise.resolve({}) });
   const plugin: PluginImplementation = {

@@ -27,9 +27,10 @@ async function upstream(): Promise<number> {
 }
 
 /** Sends CONNECT to the proxy and resolves with the status line and the bytes after it. */
-async function connectThrough(proxyPort: number, authority: string, send = ""): Promise<{ status: string; body: string }> {
+async function connectThrough(proxyPort: number, authority: string, send = "", proxyAuthorization?: string): Promise<{ status: string; head: string; body: string }> {
   const socket = connect(proxyPort, "127.0.0.1");
-  socket.write(`CONNECT ${authority} HTTP/1.1\r\nHost: ${authority}\r\n\r\n${send}`);
+  const credentials = proxyAuthorization === undefined ? "" : `Proxy-Authorization: ${proxyAuthorization}\r\n`;
+  socket.write(`CONNECT ${authority} HTTP/1.1\r\nHost: ${authority}\r\n${credentials}\r\n${send}`);
   let received = "";
   socket.on("data", (chunk: Buffer) => {
     received += chunk.toString();
@@ -37,7 +38,7 @@ async function connectThrough(proxyPort: number, authority: string, send = ""): 
   });
   await once(socket, "close");
   const [head = "", body = ""] = received.split("\r\n\r\n");
-  return { status: head.split("\r\n")[0] ?? "", body };
+  return { status: head.split("\r\n")[0] ?? "", head, body };
 }
 
 async function proxy(allowlist: AllowlistFetch, options: Partial<EgressProxyOptions> = { isReachable: () => true }): Promise<number> {
@@ -49,7 +50,7 @@ describe("the egress proxy", () => {
     const port = await upstream();
     const proxyPort = await proxy(() => Promise.resolve([`127.0.0.1:${port}`]));
 
-    expect(await connectThrough(proxyPort, `127.0.0.1:${port}`, "ping")).toEqual({ status: "HTTP/1.1 200 Connection Established", body: "helloping" });
+    expect(await connectThrough(proxyPort, `127.0.0.1:${port}`, "ping")).toMatchObject({ status: "HTTP/1.1 200 Connection Established", body: "helloping" });
   });
 
   it("tunnels an allowed name to the address it resolves to", async () => {
@@ -98,6 +99,30 @@ describe("the egress proxy", () => {
     const proxyPort = await proxy(() => Promise.resolve([`127.0.0.1:${closed}`]));
 
     expect((await connectThrough(proxyPort, `127.0.0.1:${closed}`)).status).toBe("HTTP/1.1 502 Bad Gateway");
+  });
+
+  it("passes the ticket of the call's proxy URL on to the allowlist", async () => {
+    const port = await upstream();
+    const tickets: (string | null)[] = [];
+    const proxyPort = await proxy((ticket) => {
+      tickets.push(ticket);
+      return Promise.resolve([`127.0.0.1:${port}`]);
+    });
+    const basic = `Basic ${Buffer.from("ticket:abc.def").toString("base64")}`;
+
+    expect((await connectThrough(proxyPort, `127.0.0.1:${port}`, "", basic)).status).toBe("HTTP/1.1 200 Connection Established");
+    expect(tickets).toEqual(["abc.def"]);
+  });
+
+  it("answers 407 when the allowlist refuses the ticket, or there is none", async () => {
+    const port = await upstream();
+    const proxyPort = await proxy((ticket) => Promise.resolve(ticket === "good" ? [`127.0.0.1:${port}`] : null));
+
+    const without = await connectThrough(proxyPort, `127.0.0.1:${port}`);
+    expect(without.status).toBe("HTTP/1.1 407 Proxy Authentication Required");
+    expect(without.head).toMatch(/\r\nProxy-Authenticate: Basic realm="family-agenda"/);
+    expect((await connectThrough(proxyPort, `127.0.0.1:${port}`, "", "Bearer bad")).status).toBe("HTTP/1.1 407 Proxy Authentication Required");
+    expect((await connectThrough(proxyPort, `127.0.0.1:${port}`, "", "Bearer good")).status).toBe("HTTP/1.1 200 Connection Established");
   });
 
   it("refuses a malformed target, a single-label name and any plain request", async () => {

@@ -8,6 +8,7 @@ import { demoPlugin, withDelay } from "../src/plugin";
 
 const config = { plain: {}, secrets: {} };
 const now = new Date("2026-09-14T07:00:00Z");
+const egressProxy = "http://ticket:t@plugin-demo-egress:3128";
 
 describePluginContract(() => createPluginHandler(demoPlugin), { config, now, languages: ["de"] });
 
@@ -27,7 +28,7 @@ describe("the demo Source over HTTP", () => {
   });
 
   it("states Items under the Source Attributes it declares", async () => {
-    const answer = await pluginClient(url)("poll", { config, syncCursor: null, now: now.toISOString(), timeZone: "Europe/Berlin" });
+    const answer = await pluginClient(url)("poll", { config, syncCursor: null, now: now.toISOString(), timeZone: "Europe/Berlin", egressProxy });
 
     expect(answer.status).toBe(200);
     expect(answer.body).toMatchObject({ attributes: { declared: [...demoAttributes] }, syncCursor: null });
@@ -39,7 +40,7 @@ describe("the demo Source with a delay", () => {
   it("answers poll only after the delay, with the same answer", async () => {
     vi.useFakeTimers();
     try {
-      const request = { config, syncCursor: null, now: now.toISOString(), timeZone: "Europe/Berlin" };
+      const request = { config, syncCursor: null, now: now.toISOString(), timeZone: "Europe/Berlin", egressProxy };
       let settled = false;
       const answer = Promise.resolve(withDelay(demoPlugin, 2000).poll?.(request)).then((value) => {
         settled = true;
@@ -60,10 +61,10 @@ describe("the demo Source with a delay", () => {
 });
 
 describe("the demo Source's endpoints that load after a page", () => {
-  const context = { config, syncCursor: null, now: now.toISOString(), timeZone: "Europe/Berlin" };
+  const context = { config, syncCursor: null, now: now.toISOString(), timeZone: "Europe/Berlin", egressProxy };
 
   it("adds a Source without setting any field itself", async () => {
-    expect(await demoPlugin.sourceAdded?.({ config, now: context.now, timeZone: context.timeZone })).toEqual({ plain: {}, secrets: {} });
+    expect(await demoPlugin.sourceAdded?.({ config, now: context.now, timeZone: context.timeZone, egressProxy })).toEqual({ plain: {}, secrets: {} });
   });
 
   it("names its Source Attributes without a run", async () => {

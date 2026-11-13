@@ -1,5 +1,5 @@
-import { pluginServiceOf, proxyOf } from "../egress/wiring";
-import { allProxiedContainersOf, egressProxyOf, egressTokensOf, proxiedContainersOf, tokenVariablesOf } from "./egress-proxies";
+import { pluginServiceOf, proxyOf, ticketKeyVariable } from "../egress/wiring";
+import { allProxiedContainersOf, egressProxyOf, proxiedContainersOf, ticketKeyVariablesOf } from "./egress-proxies";
 
 export { proxyImageOf } from "./egress-proxies";
 import type { Companion, Plugin, PluginsFile } from "./schema";
@@ -33,11 +33,11 @@ function namesOf(plugin: Plugin, companion: Companion): CompanionNames {
 
 const databaseCompanionsOf = (plugin: Plugin) => plugin.companions.filter((companion) => companion.database);
 
-/** Every `.env` secret the generated file needs: a password per database, a token per egress proxy. */
+/** Every `.env` secret the generated file needs: a password per database, and the ticket key of the egress proxies. */
 export function passwordVariablesOf(file: PluginsFile): string[] {
   return [
     ...file.plugins.flatMap((plugin) => databaseCompanionsOf(plugin).map((companion) => namesOf(plugin, companion).passwordVariable)),
-    ...tokenVariablesOf(file),
+    ...ticketKeyVariablesOf(file),
   ];
 }
 
@@ -201,23 +201,20 @@ function coreServiceOf(file: PluginsFile): Service {
     environment: {
       PLUGIN_URLS: file.plugins.map((plugin) => `${plugin.id}=http://${serviceOf(plugin)}:8080`).join(","),
       PLUGIN_EGRESS: egressOf(file),
-      PLUGIN_EGRESS_TOKENS: egressTokensOf(file),
+      ...(file.plugins.length > 0 ? { [ticketKeyVariable]: `\${${ticketKeyVariable}}` } : {}),
     },
     networks: ["default", ...file.plugins.map(serviceOf)],
   };
 }
 
 /**
- * The egress hosts per container, such as `plugin-demo=api.example.com:443;*.example.org:443`,
- * containers separated by commas, which the api serves to their egress proxies (ADR-0001).
+ * The egress hosts per plugin's own container, such as `plugin-demo=api.example.com:443;*.example.org:443`,
+ * containers separated by commas, which the api serves to their egress proxies (ADR-0001). A
+ * companion's proxy has its hosts in its own environment.
  */
 function egressOf(file: PluginsFile): string {
-  const entries = file.plugins.flatMap((plugin) => [
-    { service: serviceOf(plugin), hosts: plugin.egress },
-    ...plugin.companions.map((companion) => ({ service: namesOf(plugin, companion).service, hosts: companion.egress })),
-  ]);
-  return entries
-    .filter((entry) => entry.hosts.length > 0)
-    .map((entry) => `${entry.service}=${entry.hosts.join(";")}`)
+  return file.plugins
+    .filter((plugin) => plugin.egress.length > 0)
+    .map((plugin) => `${serviceOf(plugin)}=${plugin.egress.join(";")}`)
     .join(",");
 }

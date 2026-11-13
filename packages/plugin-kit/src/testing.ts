@@ -35,7 +35,15 @@ export type ContractOptions = {
   languages?: string[];
   /** The IANA time zone of the Family the plugin is polled for; by default Europe/Berlin. */
   timeZone?: string;
+  /**
+   * The proxy URL with a ticket the plugin is polled with, such as a local proxy that the test
+   * runs; by default one at `egress.invalid`, which never resolves.
+   */
+  egressProxy?: string;
 };
+
+// eslint-disable-next-line sonarjs/no-clear-text-protocols -- an egress proxy takes CONNECT over plain HTTP; TLS runs inside the tunnel.
+const unresolvableProxy = "http://ticket:contract-test@egress.invalid:3128";
 
 /** Calls an endpoint of a plugin under test. */
 export type Call = ReturnType<typeof pluginClient>;
@@ -162,11 +170,21 @@ function undeclared(run: PollRun): string[] {
   return [...new Set(named)];
 }
 
+/** What a poll of the contract tests carries but its Sync Cursor. */
+function pollContextOf(config: NonNullable<ContractOptions["config"]>, options: ContractOptions) {
+  return {
+    config,
+    now: (options.now ?? new Date()).toISOString(),
+    timeZone: options.timeZone ?? "Europe/Berlin",
+    egressProxy: options.egressProxy ?? unresolvableProxy,
+  };
+}
+
 /** Polls twice, the second time with the sync cursor of the first, as the core would for one Source. */
 async function pollsASource(call: Call, options: ContractOptions): Promise<string[]> {
   const description = await descriptionOf(call);
   if (description.ingestion.mode !== "polling" || options.config === undefined) return [];
-  const context = { config: options.config, now: (options.now ?? new Date()).toISOString(), timeZone: options.timeZone ?? "Europe/Berlin" };
+  const context = pollContextOf(options.config, options);
   const first = await pollOnce(call, context, null, new Set());
   if (!first.ok) return first.problems;
   const second = await pollOnce(call, context, first.body.result.syncCursor, first.body.declared);

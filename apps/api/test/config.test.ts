@@ -73,3 +73,21 @@ describe("the configuration", () => {
     });
   });
 });
+
+describe("the ticket key in the environment", () => {
+  const key = "abcdefghijklmnopqrstuvwxyz012345";
+  const plugins = { ...base, PLUGIN_URLS: "imap=http://plugin-imap:8080" };
+
+  it("is required with plugin containers", () => {
+    expect(() => readConfig(plugins)).toThrow(/EGRESS_TICKET_KEY must be set/);
+    expect(readConfig({ ...plugins, EGRESS_TICKET_KEY: key }).egressTicketKey).toBe(key);
+  });
+
+  it("may be left out without plugin containers", () => {
+    expect(readConfig(base).egressTicketKey).toBeNull();
+  });
+
+  it("is refused when it is short", () => {
+    expect(() => readConfig({ ...base, EGRESS_TICKET_KEY: key.slice(1) })).toThrow(/at least 32 characters/);
+  });
+});

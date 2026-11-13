@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Family Agenda plugin contract",
-    "version": "2.0",
+    "version": "3.0",
     "description": "What a plugin container answers; the core calls, plugins never call the core (ADR-0001). Bodies are at most 10485760 bytes."
   },
   "paths": {
@@ -944,13 +944,18 @@
           "timeZone": {
             "type": "string",
             "minLength": 1
+          },
+          "egressProxy": {
+            "type": "string",
+            "format": "uri"
           }
         },
         "required": [
           "config",
           "syncCursor",
           "now",
-          "timeZone"
+          "timeZone",
+          "egressProxy"
         ],
         "additionalProperties": false
       },
@@ -1087,12 +1092,17 @@
           "timeZone": {
             "type": "string",
             "minLength": 1
+          },
+          "egressProxy": {
+            "type": "string",
+            "format": "uri"
           }
         },
         "required": [
           "config",
           "now",
-          "timeZone"
+          "timeZone",
+          "egressProxy"
         ],
         "additionalProperties": false
       },

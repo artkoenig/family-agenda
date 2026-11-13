@@ -42,6 +42,8 @@ export type TestOptions = {
   pluginContainers?: NonNullable<ApplicationConfig["pluginContainers"]>;
   /** Shorter timeouts than the plugin contract's, for a plugin that does not answer. */
   pluginContainerOptions?: NonNullable<ApplicationConfig["pluginContainerOptions"]>;
+  /** The key plugin calls' tickets are signed with; a random one by default. */
+  egressTicketKey?: string;
   /** Test plugins served before the first boot, as plugin containers. */
   sourcePlugins?: TestPluginPackage[];
 };

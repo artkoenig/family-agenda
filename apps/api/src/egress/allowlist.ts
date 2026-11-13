@@ -1,5 +1,4 @@
-import type { SourceTypeId } from "@family-agenda/domain";
-import type { PluginBinding } from "../plugin-containers/bindings";
+import type { Ticket } from "./ticket";
 import { pluginServiceOf } from "./wiring";
 
 /** A host and port to connect to. */
@@ -9,58 +8,52 @@ export type HostPort = { host: string; port: number };
 export type AllowEntry = { name: string; wildcard: boolean; port: number | null };
 
 /**
- * Pairs `<container>=<value>` separated by commas, each container named once, as `PLUGIN_EGRESS`
- * and `PLUGIN_EGRESS_TOKENS` hold them.
- */
-function parsePairs(variable: string, text: string | undefined): [string, string][] {
-  return (text ?? "")
-    .split(",")
-    .map((part) => part.trim())
-    .filter((part) => part !== "")
-    .map((entry) => {
-      const at = entry.indexOf("=");
-      const service = entry.slice(0, Math.max(at, 0)).trim();
-      if (service === "") throw new Error(`${variable} takes containers with values, such as plugin-demo=...; "${entry}" is none`);
-      return [service, entry.slice(at + 1).trim()];
-    });
-}
-
-/**
- * The declared egress hosts per container of `PLUGIN_EGRESS`, such as
- * `plugin-demo=api.example.com:443;*.example.org:443,plugin-demo-companion=example.net:443`.
+ * The declared egress hosts per plugin container of `PLUGIN_EGRESS`, containers separated by
+ * commas, such as `plugin-demo=api.example.com:443;*.example.org:443,plugin-imap=login.example.com:443`.
  */
 export function parsePluginEgress(text: string | undefined): Map<string, string[]> {
   const declared = new Map<string, string[]>();
-  for (const [service, value] of parsePairs("PLUGIN_EGRESS", text)) {
-    const hosts = value.split(";").map((host) => host.trim()).filter((host) => host !== "");
+  for (const entry of (text ?? "").split(",").map((part) => part.trim()).filter((part) => part !== "")) {
+    const at = entry.indexOf("=");
+    const service = entry.slice(0, Math.max(at, 0)).trim();
+    if (service === "") throw new Error(`PLUGIN_EGRESS takes containers with values, such as plugin-demo=...; "${entry}" is none`);
+    const hosts = entry.slice(at + 1).split(";").map((host) => host.trim()).filter((host) => host !== "");
     declared.set(service, [...(declared.get(service) ?? []), ...hosts]);
   }
   return declared;
 }
 
-/** The token per egress proxy's container of `PLUGIN_EGRESS_TOKENS`, such as `plugin-demo=abc`. */
-export function parseEgressTokens(text: string | undefined): Map<string, string> {
-  return new Map(parsePairs("PLUGIN_EGRESS_TOKENS", text).filter(([, token]) => token !== ""));
-}
+/** What the allowlist needs of one Family. */
+export type FamilyEgress = {
+  /** The host field values of the stored Source `sourceId` of `sourceTypeId`; null for none such. */
+  hostsOf(sourceId: string, sourceTypeId: string): Promise<string[] | null>;
+};
 
 export type AllowlistSources = {
-  /** From `PLUGIN_EGRESS`. */
+  /** The declared egress hosts per plugin container, from `PLUGIN_EGRESS`. */
   declared: Map<string, string[]>;
-  /** From `PLUGIN_URLS`: the Source Types whose plugins run in containers. */
-  bindings: PluginBinding[];
-  /** The hosts in host fields of a Source Type's Sources. */
-  hostsOf: (sourceTypeId: SourceTypeId) => Promise<string[]>;
+  /** The Family a ticket names, through its own database; null for one the Instance does not serve. */
+  family: (familyId: string) => Promise<FamilyEgress | null>;
 };
 
 /**
- * What the egress proxy of container `service` allows (ADR-0001): its declared hosts and, for a
- * plugin's own container, the hosts the Admin entered in host fields of that plugin's Sources.
- * Nothing for a container the core does not know.
+ * What the egress proxy of container `service` allows for the plugin call `ticket` was minted for
+ * (ADR-0001): the container's declared hosts and the hosts the Admin entered in host fields of that
+ * one Source, read from its Family's database, or carried by the ticket for a Source that is not
+ * stored. Null where the ticket does not hold: for a Family the Instance does not serve, a Source it
+ * does not have, or a container other than the plugin's own.
  */
-export async function allowlistOf(service: string, { declared, bindings, hostsOf }: AllowlistSources): Promise<string[]> {
-  const binding = bindings.find((candidate) => pluginServiceOf(candidate.sourceTypeId) === service);
-  const fromSources = binding === undefined ? [] : (await hostsOf(binding.sourceTypeId)).flatMap(hostFieldEntry);
-  return [...new Set([...(declared.get(service) ?? []), ...fromSources])];
+export async function allowlistOf(
+  service: string,
+  ticket: Ticket,
+  { declared, family }: AllowlistSources,
+): Promise<string[] | null> {
+  if (pluginServiceOf(ticket.sourceTypeId) !== service) return null;
+  const egress = await family(ticket.familyId);
+  if (egress === null) return null;
+  const hosts = ticket.hosts ?? (await egress.hostsOf(ticket.sourceId, ticket.sourceTypeId));
+  if (hosts === null) return null;
+  return [...new Set([...(declared.get(service) ?? []), ...hosts.flatMap(hostFieldEntry)])];
 }
 
 /**

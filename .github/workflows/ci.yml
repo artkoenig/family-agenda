@@ -51,7 +51,7 @@ jobs:
   containers:
     # The core with the demo Source as a plugin container, wired by the generator from
     # .github/container-ci/plugins.yml (ADR-0001): the core reaches the plugin's /description, and
-    # the plugin reaches its declared egress host through its proxy and nothing else. The image
+    # the plugin reaches nothing outside but through its proxy, which wants a ticket. The image
     # also runs the tests of the command-line tools it ships, which `pnpm check` leaves out.
     runs-on: ubuntu-latest
     steps:
@@ -63,7 +63,7 @@ jobs:
       - name: poppler and Tesseract in the image turn PDF attachments into text
         run: .github/container-ci/image-tests.sh family-agenda:local
       - name: Generate compose.plugins.yaml
-        # The generated file names the egress tokens as ${...} only; their values stay in .env.
+        # The generated file names the ticket key as ${...} only; its value stays in .env.
         run: |
           cp .github/container-ci/plugins.yml plugins.yml
           docker compose run --rm --no-deps --user "$(id -u):$(id -g)" -v "$PWD:/deployment" api plugins generate
@@ -73,7 +73,7 @@ jobs:
         run: docker compose up --detach --wait --scale mdns=0
       - name: The core describes the demo Source from its container
         run: .github/container-ci/check-core.sh http://localhost:8080
-      - name: The demo Source reaches example.com through its egress proxy, and nothing else
+      - name: The demo Source reaches nothing without a ticket from the core
         run: docker compose exec -T plugin-demo node --input-type=module - < .github/container-ci/check-egress.mjs
       - name: Logs
         if: failure()

@@ -38,6 +38,8 @@ export interface PasswordHasher {
 
 /** The settings of the Instance's one Family (ADR-0003). */
 export interface FamilyRepository {
+  /** What names the Family outside its database, such as in the ticket of a plugin call. */
+  publicId(): Promise<string>;
   recoveryKitConfirmed(): Promise<boolean>;
   /** Keeps the first confirmation if there is one. */
   confirmRecoveryKit(at: Date): Promise<void>;
@@ -215,6 +217,20 @@ export type CatalogueSpec = {
   entries(): Promise<PluginAnswer<CatalogueEntrySpec[]>>;
 };
 
+/**
+ * The Source a plugin is called for, so that its Egress Proxy lets the call through to that
+ * Source's hosts alone (ADR-0001).
+ */
+export type CalledSource = {
+  id: SourceId;
+  sourceTypeId: SourceTypeId;
+  /**
+   * The values of its host fields while it is not stored: while it is being added, and once it is
+   * removed; null for a stored Source, whose hosts are read where it is stored.
+   */
+  hosts: string[] | null;
+};
+
 /** What a plugin is given for one run of a Source. */
 export type SourceRunContext = {
   plain: PlainConfig;
@@ -222,6 +238,7 @@ export type SourceRunContext = {
   syncCursor: string | null;
   now: Date;
   timeZone: string;
+  source: CalledSource;
 };
 
 /** The Item a calendar or timetable entry states, as JSON the way its plugin states it, with its `kind`. */

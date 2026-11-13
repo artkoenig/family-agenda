@@ -1,6 +1,8 @@
-import type { InstalledSourceType, LoadedSourceType, SourceTypeRegistry } from "@family-agenda/application";
+import { randomBytes } from "node:crypto";
+import type { CalledSource, InstalledSourceType, LoadedSourceType, SourceTypeRegistry } from "@family-agenda/application";
 import type { SourceTypeId } from "@family-agenda/domain";
-import { loadProblem, type Description } from "@family-agenda/plugin-contract";
+import { endpoints, loadProblem, type Description, type EndpointName } from "@family-agenda/plugin-contract";
+import { egressProxyFor, type Ticketing } from "../egress/ticket";
 import type { PluginBinding } from "./bindings";
 import { loadedSourceType } from "./translation";
 import { callPlugin, type PluginContainerOptions } from "./transport";
@@ -31,10 +33,14 @@ export class PluginContainers implements SourceTypeRegistry {
   /** The description asked for last, while it is fresh or still on its way. */
   private readonly asked = new Map<SourceTypeId, { at: number; state: Promise<State> }>();
 
+  private readonly ticketing: Ticketing;
+
   private constructor(
     private readonly bindings: PluginBinding[],
     private readonly options: PluginContainerOptions,
-  ) {}
+  ) {
+    this.ticketing = options.ticketing ?? { ticketKey: randomBytes(32).toString("base64url"), familyId: "unknown" };
+  }
 
   /** Asks every bound plugin for its description, so that the Admin area has something to show. */
   static async connect(bindings: PluginBinding[], options: PluginContainerOptions = {}): Promise<PluginContainers> {
@@ -69,7 +75,12 @@ export class PluginContainers implements SourceTypeRegistry {
     if (!binding) return { ok: false };
     const { description, problem } = await this.fresh(binding);
     if (description === null || problem !== null) return { ok: false };
-    return { ok: true, sourceType: loadedSourceType(description, (name, body) => callPlugin(binding.url, name, body, this.options)) };
+    const egressProxyOf = (source: CalledSource, name: EndpointName) => egressProxyFor(this.ticketing, source, this.timeoutOf(name));
+    return { ok: true, sourceType: loadedSourceType(description, (name, body) => callPlugin(binding.url, name, body, this.options), egressProxyOf) };
+  }
+
+  private timeoutOf(name: EndpointName): number {
+    return this.options.timeoutsMs?.[name] ?? endpoints[name].timeoutMs;
   }
 
   /** The plugin's description, asked for again once the last one is older than the maximum age. */
