@@ -75,7 +75,7 @@ export class PluginContainers implements SourceTypeRegistry {
     if (!binding) return { ok: false };
     const { description, problem } = await this.fresh(binding);
     if (description === null || problem !== null) return { ok: false };
-    const egressProxyOf = (source: CalledSource, name: EndpointName) => egressProxyFor(this.ticketing, source, this.timeoutOf(name));
+    const egressProxyOf = (source: CalledSource | null, name: EndpointName) => egressProxyFor(this.ticketing, id, source, this.timeoutOf(name));
     return { ok: true, sourceType: loadedSourceType(description, (name, body) => callPlugin(binding.url, name, body, this.options), egressProxyOf) };
   }
 

@@ -439,6 +439,7 @@ describe("The other functions of a plugin container", () => {
     source: { id: "source-1" as SourceId, sourceTypeId: "school-portal" as SourceTypeId, hosts: null },
   };
   const removed: unknown[] = [];
+  const catalogueProxies: string[] = [];
   const base = fakePlugin({ runs: [], poll: () => Promise.resolve({}) });
   const plugin: PluginImplementation = {
     ...base,
@@ -452,7 +453,10 @@ describe("The other functions of a plugin container", () => {
       removed.push(request.config.plain);
     },
     fieldChoices: ({ field }) => ({ choices: [{ value: field, label: "Class 3b" }] }),
-    catalogueEntries: () => ({ entries: [{ id: "north", displayName: "North", description: "The north school", installed: true }] }),
+    catalogueEntries: ({ egressProxy }) => {
+      catalogueProxies.push(egressProxy);
+      return { entries: [{ id: "north", displayName: "North", description: "The north school", installed: true }] };
+    },
     setupProgress: ({ stepId }) => {
       if (stepId === "pair") return { status: "waiting", qrCode: "QR" };
       if (stepId === "done") return { status: "done" };
@@ -461,7 +465,9 @@ describe("The other functions of a plugin container", () => {
   };
 
   const loadedFrom = async (server: Server) => {
-    const containers = await PluginContainers.connect([{ sourceTypeId: "school-portal" as SourceTypeId, url: urlOf(server) }]);
+    const containers = await PluginContainers.connect([{ sourceTypeId: "school-portal" as SourceTypeId, url: urlOf(server) }], {
+      ticketing: { ticketKey: egressTicketKey, familyId: "family-1" },
+    });
     const loaded = await containers.load("school-portal" as SourceTypeId);
     if (!loaded.ok) throw new Error("not loaded");
     return { containers, sourceType: loaded.sourceType };
@@ -509,6 +515,21 @@ describe("The other functions of a plugin container", () => {
       expect(await sourceType.setupProgress("pair", context)).toMatchObject({ status: "failed" });
     } finally {
       if (server.listening) await closed(server);
+    }
+  });
+
+  it("tickets a call of no Source, for the Catalogue entries, for the Family alone, so that the proxy allows the declared hosts", async () => {
+    const server = await servePlugin(plugin, { host: "127.0.0.1" });
+    try {
+      const { sourceType } = await loadedFrom(server);
+      catalogueProxies.length = 0;
+      await sourceType.catalogue?.entries();
+
+      expect(catalogueProxies.map(egressOf)).toEqual([
+        { proxy: "http://plugin-school-portal-egress:3128", ticket: { familyId: "family-1", sourceTypeId: "school-portal", sourceId: null, hosts: null, lastsMs: expect.any(Number) as unknown } },
+      ]);
+    } finally {
+      await closed(server);
     }
   });
 

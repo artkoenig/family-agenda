@@ -40,7 +40,7 @@ export type AllowlistSources = {
  * What the egress proxy of container `service` allows for the plugin call `ticket` was minted for
  * (ADR-0001): the container's declared hosts and the hosts the Admin entered in host fields of that
  * one Source, read from its Family's database, or carried by the ticket for a Source that is not
- * stored. Null where the ticket does not hold: for a Family the Instance does not serve, a Source it
+ * stored; only the declared hosts for a call of no Source. Null where the ticket does not hold: for a Family the Instance does not serve, a Source it
  * does not have, or a container other than the plugin's own.
  */
 export async function allowlistOf(
@@ -51,7 +51,7 @@ export async function allowlistOf(
   if (pluginServiceOf(ticket.sourceTypeId) !== service) return null;
   const egress = await family(ticket.familyId);
   if (egress === null) return null;
-  const hosts = ticket.hosts ?? (await egress.hostsOf(ticket.sourceId, ticket.sourceTypeId));
+  const hosts = ticket.hosts ?? (ticket.sourceId === null ? [] : await egress.hostsOf(ticket.sourceId, ticket.sourceTypeId));
   if (hosts === null) return null;
   return [...new Set([...(declared.get(service) ?? []), ...hosts.flatMap(hostFieldEntry)])];
 }

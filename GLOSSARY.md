@@ -141,7 +141,7 @@ The hosts one Egress Proxy lets through: those declared in `plugins.yml`, plus, 
 _Avoid_: Whitelist, egress rules
 
 **Ticket**:
-What the core grants one call to a plugin for a Source: the Family, the Source and a short expiry, signed with a key the core shares with the Egress Proxies. It comes with the call in the proxy URL, and the plugin presents it to its Egress Proxy on every connection; without a valid one the proxy answers 407.
+What the core grants one call to a plugin: the Family, the Source the call is for (none for the Catalogue entries, which reach the declared hosts only) and a short expiry, signed with a key the core shares with the Egress Proxies. It comes with the call in the proxy URL, and the plugin presents it to its Egress Proxy on every connection; without a valid one the proxy answers 407.
 _Avoid_: Token, egress token
 
 **Host Field**:

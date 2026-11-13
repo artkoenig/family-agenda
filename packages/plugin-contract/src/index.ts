@@ -250,6 +250,9 @@ export const fieldChoicesRequestSchema = z.object({ field: z.string().min(1), co
 export const fieldChoicesResponseSchema = z
   .object({ choices: z.array(z.object({ value: z.string(), label: z.string() })) })
   .meta({ id: "FieldChoicesResponse" });
+export const catalogueEntriesRequestSchema = runContextSchema
+  .pick({ egressProxy: true })
+  .meta({ id: "CatalogueEntriesRequest", description: "The egress proxy of a call of no Source: it allows the declared egress hosts only (since 3.0)." });
 export const catalogueEntriesResponseSchema = z
   .object({
     entries: z.array(
@@ -343,10 +346,11 @@ export const endpoints = {
     response: fieldChoicesResponseSchema,
   },
   catalogueEntries: {
-    method: "get",
+    method: "post",
     path: "/catalogue/entries",
     summary: "Every Catalogue entry and whether it is installed.",
     timeoutMs: limits.callTimeoutMs,
+    request: catalogueEntriesRequestSchema,
     response: catalogueEntriesResponseSchema,
   },
   setupProgress: {

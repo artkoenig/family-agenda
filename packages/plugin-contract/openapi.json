@@ -326,9 +326,19 @@
       }
     },
     "/catalogue/entries": {
-      "get": {
+      "post": {
         "operationId": "catalogueEntries",
         "summary": "Every Catalogue entry and whether it is installed. Timeout 10 s.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CatalogueEntriesRequest"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "OK.",
@@ -462,6 +472,20 @@
   },
   "components": {
     "schemas": {
+      "CatalogueEntriesRequest": {
+        "type": "object",
+        "properties": {
+          "egressProxy": {
+            "type": "string",
+            "format": "uri"
+          }
+        },
+        "required": [
+          "egressProxy"
+        ],
+        "additionalProperties": false,
+        "description": "The egress proxy of a call of no Source: it allows the declared egress hosts only (since 3.0)."
+      },
       "CatalogueEntriesResponse": {
         "type": "object",
         "properties": {

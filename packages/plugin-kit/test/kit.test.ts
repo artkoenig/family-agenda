@@ -142,6 +142,21 @@ describe("the contract harness", () => {
     expect(await contractProblems(lenient)).toContainEqual(expect.stringMatching(/invalid poll request was answered 200/));
   });
 
+  it("asks for the Catalogue entries with the egress proxy it is given", async () => {
+    const proxies: string[] = [];
+    const listing = plugin(
+      {
+        catalogueEntries: ({ egressProxy }) => {
+          proxies.push(egressProxy);
+          return { entries: [] };
+        },
+      },
+      { catalogue: { title: "C", configKey: "installed" } },
+    );
+    expect(await contractProblems(createPluginHandler(listing), { egressProxy: "http://ticket:t@127.0.0.1:3128" })).toEqual([]);
+    expect(proxies).toEqual(["http://ticket:t@127.0.0.1:3128"]);
+  });
+
   it("finds duplicates, texts not given in a language, and a missing migration", async () => {
     const field = { key: "url", label: "URL", secret: false, required: true, hasChoices: false };
     const step = { id: "s", title: "T", description: "D", live: false };

@@ -5,8 +5,8 @@ import type { CallResult } from "./transport";
 /** Calls one endpoint of a Source Type's plugin. */
 export type PluginCall = <N extends EndpointName>(name: N, body?: unknown) => Promise<CallResult<N>>;
 
-/** The proxy URL, with a ticket, a call of endpoint `name` for `source` carries. */
-export type EgressProxyOf = (source: CalledSource, name: EndpointName) => string;
+/** The proxy URL, with a ticket, a call of endpoint `name` for `source` carries; null for a call of no Source. */
+export type EgressProxyOf = (source: CalledSource | null, name: EndpointName) => string;
 
 /** A Source Type as the core uses it, every function a call to its plugin container. */
 export function loadedSourceType(description: Description, call: PluginCall, egressProxyOf: EgressProxyOf): LoadedSourceType {
@@ -64,7 +64,7 @@ export function loadedSourceType(description: Description, call: PluginCall, egr
           title: catalogue.title,
           configKey: catalogue.configKey,
           async entries() {
-            const answer = await call("catalogueEntries");
+            const answer = await call("catalogueEntries", { egressProxy: egressProxyOf(null, "catalogueEntries") });
             if (!answer.ok) return { ok: false, message: answer.message };
             return { ok: true, value: answer.body.entries.map((entry) => ({ ...entry, riskNotice: entry.riskNotice ?? null })) };
           },

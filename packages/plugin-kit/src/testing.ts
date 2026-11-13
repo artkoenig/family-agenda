@@ -70,8 +70,8 @@ async function checkedCall<T>(call: Call, name: EndpointName, parse: (body: unkn
 }
 
 /** Like `checkedCall`, for an answer that later checks depend on: a problem fails the check at once. */
-async function validBody<T>(call: Call, name: EndpointName, parse: (body: unknown) => T): Promise<T> {
-  const checked = await checkedCall(call, name, parse);
+async function validBody<T>(call: Call, name: EndpointName, parse: (body: unknown) => T, body?: unknown): Promise<T> {
+  const checked = await checkedCall(call, name, parse, body);
   if (!checked.ok) throw new Error(checked.problems.join("; "));
   return checked.body;
 }
@@ -95,15 +95,16 @@ function duplicates(ids: string[], what: string): string[] {
   return ids.filter((id, index) => ids.indexOf(id) !== index).map((id) => `${what} ${id} is listed more than once`);
 }
 
-async function catalogueEntries(call: Call): Promise<{ id: string; texts: unknown[] }[]> {
-  const { entries } = await validBody(call, "catalogueEntries", (body) => endpoints.catalogueEntries.response.parse(body));
+async function catalogueEntries(call: Call, options: ContractOptions): Promise<{ id: string; texts: unknown[] }[]> {
+  const request = { egressProxy: options.egressProxy ?? unresolvableProxy };
+  const { entries } = await validBody(call, "catalogueEntries", (body) => endpoints.catalogueEntries.response.parse(body), request);
   return entries.map((entry) => ({ id: entry.id, texts: [entry.displayName, entry.description, entry.riskNotice] }));
 }
 
-async function listsEverythingOnce(call: Call): Promise<string[]> {
+async function listsEverythingOnce(call: Call, options: ContractOptions): Promise<string[]> {
   const description = await descriptionOf(call);
   const problems = [...duplicates(description.setupSteps.map((step) => step.id), "setup step"), ...duplicates(description.configuration.fields.map((field) => field.key), "configuration field")];
-  if (description.catalogue) problems.push(...duplicates((await catalogueEntries(call)).map((entry) => entry.id), "catalogue entry"));
+  if (description.catalogue) problems.push(...duplicates((await catalogueEntries(call, options)).map((entry) => entry.id), "catalogue entry"));
   return problems;
 }
 
@@ -117,7 +118,7 @@ async function migratesEveryVersion(call: Call): Promise<string[]> {
 }
 
 /** Every text a plugin shows, by where it comes from. */
-async function textsOf(call: Call): Promise<[string, unknown][]> {
+async function textsOf(call: Call, options: ContractOptions): Promise<[string, unknown][]> {
   const description = await descriptionOf(call);
   const texts: [string, unknown][] = [
     ["displayName", description.displayName],
@@ -128,14 +129,14 @@ async function textsOf(call: Call): Promise<[string, unknown][]> {
   for (const step of description.setupSteps) texts.push([`setup step ${step.id}'s title`, step.title], [`setup step ${step.id}'s description`, step.description]);
   if (description.catalogue) {
     texts.push(["the catalogue's title", description.catalogue.title]);
-    for (const entry of await catalogueEntries(call)) texts.push(...entry.texts.map((text): [string, unknown] => [`catalogue entry ${entry.id}`, text]));
+    for (const entry of await catalogueEntries(call, options)) texts.push(...entry.texts.map((text): [string, unknown] => [`catalogue entry ${entry.id}`, text]));
   }
   return texts.filter(([, text]) => text !== undefined);
 }
 
 /** Where a text is not given in `language`. */
-async function untranslatedTexts(call: Call, language: string): Promise<string[]> {
-  const texts = await textsOf(call);
+async function untranslatedTexts(call: Call, language: string, options: ContractOptions): Promise<string[]> {
+  const texts = await textsOf(call, options);
   const given = (text: unknown) => {
     const translation = typeof text === "object" && text !== null ? (text as Record<string, unknown>)[language] : undefined;
     return typeof translation === "string" && translation.trim() !== "";
@@ -198,9 +199,9 @@ export function contractChecks(options: ContractOptions = {}): ContractCheck[] {
   return [
     { name: "describes itself for this contract version", problems: (call) => describesItself(call) },
     { name: "refuses an invalid request with a definite error", problems: (call) => refusesInvalidRequests(call) },
-    { name: "lists setup steps, configuration fields and catalogue entries once each", problems: (call) => listsEverythingOnce(call) },
+    { name: "lists setup steps, configuration fields and catalogue entries once each", problems: (call) => listsEverythingOnce(call, options) },
     { name: "migrates a configuration of every older version", problems: (call) => migratesEveryVersion(call) },
-    ...(options.languages ?? []).map((language) => ({ name: `gives every text in ${language} too`, problems: (call: Call) => untranslatedTexts(call, language) })),
+    ...(options.languages ?? []).map((language) => ({ name: `gives every text in ${language} too`, problems: (call: Call) => untranslatedTexts(call, language, options) })),
     { name: "polls a Source validly, declaring Source Attributes before naming them", problems: (call) => pollsASource(call, options) },
   ];
 }

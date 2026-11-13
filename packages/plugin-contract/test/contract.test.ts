@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
+  catalogueEntriesRequestSchema,
   contractVersion,
   descriptionSchema,
   endpoints,
@@ -120,6 +121,14 @@ describe("the schemas", () => {
   it("tell a definite error from a temporary one", () => {
     expect(errorSchema.parse({ kind: "definite", message: "Wrong password" }).kind).toBe("definite");
     expect(errorSchema.safeParse({ kind: "fatal", message: "?" }).success).toBe(false);
+  });
+});
+
+describe("the request for the Catalogue entries", () => {
+  it("carries the egress proxy of its ticket (since 3.0)", () => {
+    expect(endpoints.catalogueEntries.method).toBe("post");
+    expect(catalogueEntriesRequestSchema.safeParse({ egressProxy: context.egressProxy }).success).toBe(true);
+    expect(catalogueEntriesRequestSchema.safeParse({}).success).toBe(false);
   });
 });
 

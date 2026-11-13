@@ -96,6 +96,11 @@ describe("the allowlist server", () => {
     expect((await get("plugin-imap", `Bearer ${ticketFor({ familyId: "family-c", hosts: ["new.example"] })}`)).status).toBe(403);
   });
 
+  it("serves only the declared hosts for a call of no Source, such as for the Catalogue entries, of a known Family", async () => {
+    expect(await hostsOf("plugin-imap", ticketFor({ sourceId: null }))).toEqual(["login.example.com:443"]);
+    expect((await get("plugin-imap", `Bearer ${ticketFor({ familyId: "family-c", sourceId: null })}`)).status).toBe(403);
+  });
+
   it("rejects a request without a ticket", async () => {
     expect((await get("plugin-imap")).status).toBe(401);
     expect((await get("plugin-imap", "Basic abc")).status).toBe(401);

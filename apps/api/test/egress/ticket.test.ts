@@ -16,6 +16,11 @@ describe("a ticket", () => {
     expect(verifyTicket(key, mintTicket(key, unstored), 0)).toEqual(unstored);
   });
 
+  it("names no Source for a call of none, such as for the Catalogue entries", () => {
+    const ofNoSource = { ...ticket, sourceId: null };
+    expect(verifyTicket(key, mintTicket(key, ofNoSource), 0)).toEqual(ofNoSource);
+  });
+
   it("is refused with another key", () => {
     expect(verifyTicket("another-ticket-key-of-at-least-32-chars", mintTicket(key, ticket), 0)).toBeNull();
   });

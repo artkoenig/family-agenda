@@ -10,7 +10,8 @@ import { pluginServiceOf, proxyOf, proxyPort } from "./wiring";
 export type Ticket = {
   familyId: string;
   sourceTypeId: string;
-  sourceId: string;
+  /** Null for a call of no Source, such as for the Catalogue entries, which reaches the declared hosts only. */
+  sourceId: string | null;
   /** Milliseconds since the epoch. */
   expiresAt: number;
   /**
@@ -23,7 +24,7 @@ export type Ticket = {
 const ticketSchema = z.object({
   familyId: z.string().min(1),
   sourceTypeId: z.string().min(1),
-  sourceId: z.string().min(1),
+  sourceId: z.string().min(1).nullable(),
   expiresAt: z.number(),
   hosts: z.array(z.string()).nullable(),
 });
@@ -81,14 +82,22 @@ export type Ticketing = {
 export const ticketGraceMs = 30_000;
 
 /**
- * The proxy URL a plugin call for `source` carries: the plugin's own egress proxy, with a ticket for
- * that Source as the password, lasting `timeoutMs` and a little longer.
+ * The proxy URL a call to the plugin of `sourceTypeId` carries: the plugin's own Egress Proxy, with
+ * a ticket for `source` as the password (none for a call of no Source), lasting `timeoutMs` and a
+ * little longer.
  */
 export function egressProxyFor(
   { ticketKey, familyId, now = Date.now }: Ticketing,
-  source: { id: string; sourceTypeId: string; hosts: string[] | null },
+  sourceTypeId: string,
+  source: { id: string; hosts: string[] | null } | null,
   timeoutMs: number,
 ): string {
-  const ticket = mintTicket(ticketKey, { familyId, sourceTypeId: source.sourceTypeId, sourceId: source.id, expiresAt: now() + timeoutMs + ticketGraceMs, hosts: source.hosts });
-  return `http://ticket:${ticket}@${proxyOf(pluginServiceOf(source.sourceTypeId))}:${proxyPort}`;
+  const ticket = mintTicket(ticketKey, {
+    familyId,
+    sourceTypeId,
+    sourceId: source?.id ?? null,
+    expiresAt: now() + timeoutMs + ticketGraceMs,
+    hosts: source?.hosts ?? null,
+  });
+  return `http://ticket:${ticket}@${proxyOf(pluginServiceOf(sourceTypeId))}:${proxyPort}`;
 }
