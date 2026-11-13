@@ -6,16 +6,16 @@ plugins:
   # host the egress proxy allows by itself; for an older plugin, add the host of each calendar
   # here, such as calendar.google.com:443.
   - id: ics
-    image: ghcr.io/artkoenig/family-agenda-ics:0.2.0@sha256:5e826c237b641ca40f47e4cacda90705c75838da5971f3f2489daf5814a0f753
+    image: ghcr.io/artkoenig/family-agenda-ics:0.4.0@sha256:830488f1f64b65372c49d3a65cfc7e386e45c310eed64a4dbbbfb5f3d35a724a
     egress: []
 
   # Mailboxes over IMAP. The mail server is a host field, which the egress proxy allows by itself.
   - id: imap
-    image: ghcr.io/artkoenig/family-agenda-imap:0.1.0@sha256:a0f799d4e59d753ad1e08732a7fd5ad80a3546916673889cf8fb31ba5fe3c669
+    image: ghcr.io/artkoenig/family-agenda-imap:0.3.0@sha256:676319139e6130c88a21cc870483c747fe2387e75e3bd7a9e0ab4d2f86e3c1c5
 
   # Timetables from WebUntis. The server is a host field, which the egress proxy allows by itself.
   - id: webuntis
-    image: ghcr.io/artkoenig/family-agenda-webuntis:0.1.0@sha256:d8465fb0d0a423c87dbd506ea06db21f1fcf7991ba940573f7b26f717b3a1aa9
+    image: ghcr.io/artkoenig/family-agenda-webuntis:0.3.0@sha256:1395ed919e299ed1f3851e1746ee7991f1b7e0797208b038c93024c1f3b55ab5
 
   # Opt-in: messengers through Matrix bridges (ADR-0002), as in plugins.example.yml of the plugin's repository.
   # Uncomment the block to use it.
@@ -24,7 +24,7 @@ plugins:
   # `ready` in it last; the companion waits for it, then starts from it. A companion without `ready`
   # after five minutes exits and is restarted. (`$$` is a `$` to Docker Compose.)
   # - id: matrix
-  #   image: ghcr.io/artkoenig/family-agenda-matrix:0.1.0@sha256:190609f27c881c0397ad2f5cffb3b59eb0bb7d21bedbe7100c75c64b0414fa09
+  #   image: ghcr.io/artkoenig/family-agenda-matrix:0.3.0@sha256:20675817b3a88a5b5aabda4bc1b36d713fe91f574fd5b70f6d6f9b26709d735e
   #   # No egress: the plugin talks only to its companions.
   #   volumes:
   #     matrix-secrets: /config
