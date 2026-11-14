@@ -6,3 +6,4 @@ reports
 coverage/
 .previews/
 compose.plugins.yaml
+site/dist/
