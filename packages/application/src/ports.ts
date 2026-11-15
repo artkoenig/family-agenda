@@ -834,11 +834,9 @@ export interface OcrModelStore {
  * Runs the worker's pieces of work in the Family's database: each occurrence once, however many
  * workers share the database, and never while the previous run of the same work is still going.
  */
-export interface WorkSchedule {
-  /** Runs `run` on each occurrence of the cron expression `cron` (UTC). */
-  every(name: string, cron: string, run: () => Promise<void>): Promise<void>;
-  /** Runs `run` once, soon. */
-  now(name: string, run: () => Promise<void>): Promise<void>;
+export interface WorkRunner {
+  /** Runs `run` on each occurrence of the cron expression `cron` (UTC), and once on start if `atStart`. */
+  every(name: string, cron: string, run: () => Promise<void>, options?: { atStart?: boolean }): Promise<void>;
 }
 
 /** What the worker is busy with in the background: running Sources, or extracting messages. */

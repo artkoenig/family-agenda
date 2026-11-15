@@ -1,15 +1,16 @@
 import { PGlite } from "@electric-sql/pglite";
 import { fromPglite, TestClock } from "pg-boss";
 import { afterEach, describe, expect, it } from "vitest";
-import { PgBossWorkSchedule } from "../src/pg-boss-work-schedule";
+import { PgBossWorkRunner } from "../src/pg-boss-work-runner";
 
-const opened: PgBossWorkSchedule[] = [];
+const opened: PgBossWorkRunner[] = [];
+const errors: [string, unknown][] = [];
 afterEach(async () => {
   await Promise.all(opened.splice(0).map((schedule) => schedule.stop()));
 });
 
-async function workerOn(postgres: PGlite, clock: TestClock): Promise<PgBossWorkSchedule> {
-  const schedule = new PgBossWorkSchedule({ db: fromPglite(postgres), backend: "pglite", clock });
+async function workerOn(postgres: PGlite, clock: TestClock): Promise<PgBossWorkRunner> {
+  const schedule = new PgBossWorkRunner({ db: fromPglite(postgres), backend: "pglite", clock }, { error: (line, error) => errors.push([line, error]) });
   opened.push(schedule);
   await schedule.start();
   return schedule;
@@ -81,17 +82,24 @@ describe("work run from pg-boss schedules", () => {
     expect(runs.length).toBeLessThanOrEqual(3);
   });
 
-  it("runs work once when asked to", async () => {
+  it("runs work on start, and once when two workers start together", async () => {
+    const postgres = await PGlite.create();
     const clock = new TestClock("2026-11-15T10:00:30Z");
-    const schedule = await workerOn(await PGlite.create(), clock);
+    const workers = [await workerOn(postgres, clock), await workerOn(postgres, clock)];
     let runs = 0;
+    let finish = () => {};
+    const going = new Promise<void>((resolve) => (finish = resolve));
 
-    await schedule.now("sweep", () => {
-      runs++;
-      return Promise.resolve();
-    });
-    await minutes(clock, 2);
+    for (const worker of workers) {
+      await worker.every("sweep", "0 3 * * *", () => {
+        runs++;
+        return going;
+      }, { atStart: true });
+    }
+    await minutes(clock, 1);
+    finish();
 
     expect(runs).toBe(1);
+    expect(errors).toEqual([]);
   });
 });

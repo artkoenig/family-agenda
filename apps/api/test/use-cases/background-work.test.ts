@@ -96,4 +96,15 @@ describe("The worker's work from pg-boss schedules", () => {
 
     expect(await instance.query("SELECT state FROM pgboss.job WHERE name = 'secret-sweep'")).toEqual([{ state: "completed" }]);
   });
+
+  it("boots a second worker on one database, whose start-up sweep finds the first one's", async () => {
+    await instance.bootWorker(schedules, log);
+    await instance.bootWorker(schedules, log);
+
+    await scheduleMinutes(1);
+
+    expect(await instance.query("SELECT count(*)::int AS n FROM pgboss.job WHERE name = 'secret-sweep'")).toEqual([{ n: 1 }]);
+    expect(await instance.query("SELECT cron FROM pgboss.schedule WHERE name = 'secret-sweep'")).toEqual([{ cron: "17 3 * * *" }]);
+    expect(logged).toEqual([]);
+  });
 });

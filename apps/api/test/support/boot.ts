@@ -15,8 +15,8 @@ import type {
   TextExtractor,
 } from "@family-agenda/application";
 import { fromPglite, type TestClock } from "pg-boss";
-import { PgBossWorkSchedule } from "@family-agenda/adapters";
-import type { WorkLog } from "../../src/scheduled-work";
+import { PgBossWorkRunner } from "@family-agenda/adapters";
+import type { WorkLog } from "../../src/background-work";
 import {
   bootApplication,
   bootWorker,
@@ -146,8 +146,8 @@ export async function bootForTest(options: TestOptions = {}): Promise<TestInstan
       return container;
     },
     async bootWorker(schedules, log) {
-      const workSchedule = new PgBossWorkSchedule({ db: fromPglite(postgres.pglite), backend: "pglite", clock: schedules });
-      const worker = await bootWorker({ ...config, workSchedule, log });
+      const workRunner = new PgBossWorkRunner({ db: fromPglite(postgres.pglite), backend: "pglite", clock: schedules }, log);
+      const worker = await bootWorker({ ...config, workRunner, log });
       otherContainers.push(worker);
       return worker;
     },

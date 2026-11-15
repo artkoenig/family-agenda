@@ -10,7 +10,7 @@ import {
   FileBlobStore,
   holdsSecrets,
   OpenAiCompatibleExtractor,
-  PgBossWorkSchedule,
+  PgBossWorkRunner,
   PostgresActivityRepository,
   PostgresAdminRepository,
   PostgresAdminSessionRepository,
@@ -74,6 +74,7 @@ import {
   type Retention,
   type SecretSweep,
   type DueWork,
+  type WorkRunner,
   type SourceAccess,
   type SourcePolling,
   type SourceTypeAccess,
@@ -81,7 +82,7 @@ import {
   type TaskAccess,
   type AgendaAccess,
 } from "@family-agenda/application";
-import { scheduleWork, type WorkLog } from "./scheduled-work";
+import { startBackgroundWork, type WorkLog } from "./background-work";
 import type { PluginBinding } from "./plugin-containers/bindings";
 import { PluginContainers } from "./plugin-containers/registry";
 import type { PluginContainerOptions } from "./plugin-containers/transport";
@@ -154,7 +155,6 @@ export type Application = {
   /** What an Admin enables within a Source Type, such as Messengers. */
   catalogues: CatalogueAccess;
   sources: SourceAccess;
-  /** Which Family Members the Items of a Source's Origins concern. */
   /** Runs the Sources that are due, or one Source now. */
   polling: SourcePolling;
   /** Runs the due Sources, then Extraction, once; the worker does once a minute. */
@@ -397,17 +397,18 @@ async function loadMasterKey(postgres: PostgresConnection, file: string): Promis
 
 export type WorkerConfig = ApplicationConfig & {
   /** Replaces pg-boss on `databaseUrl`, such as with pg-boss on an in-process database. */
-  workSchedule?: PgBossWorkSchedule;
+  workRunner?: WorkRunner & { start(): Promise<void>; stop(): Promise<void> };
   /** Where failures and refusals are written; the console by default. */
   log?: WorkLog;
 };
 
 /** The same Application, taking its work from pg-boss schedules in the Family's database. */
 export async function bootWorker(config: WorkerConfig): Promise<Application> {
-  const schedule = config.workSchedule ?? pgBossOn(config);
+  const log = config.log ?? console;
+  const schedule = config.workRunner ?? pgBossOn(config, log);
   const application = await bootApplication(config);
   await schedule.start();
-  await scheduleWork(application, schedule, config.log ?? console);
+  await startBackgroundWork(application, schedule, log);
   return {
     ...application,
     async close() {
@@ -417,7 +418,7 @@ export async function bootWorker(config: WorkerConfig): Promise<Application> {
   };
 }
 
-function pgBossOn(config: DatabaseConfig): PgBossWorkSchedule {
-  if (!("databaseUrl" in config)) throw new Error("The worker needs a databaseUrl for pg-boss, or a workSchedule.");
-  return new PgBossWorkSchedule({ connectionString: config.databaseUrl });
+function pgBossOn(config: DatabaseConfig, log: WorkLog): PgBossWorkRunner {
+  if (!("databaseUrl" in config)) throw new Error("The worker needs a databaseUrl for pg-boss, or a workRunner.");
+  return new PgBossWorkRunner({ connectionString: config.databaseUrl }, log);
 }
