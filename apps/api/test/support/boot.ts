@@ -18,10 +18,12 @@ import { fromPglite, type TestClock } from "pg-boss";
 import { PgBossWorkRunner } from "@family-agenda/adapters";
 import type { WorkLog } from "../../src/background-work";
 import {
-  bootApplication,
+  bootFamily,
+  bootShared,
   bootWorker,
   type Application,
   type ApplicationConfig,
+  type SharedWiring,
 } from "../../src/composition-root";
 import { FakeClock } from "./fake-clock";
 import { acquirePostgres } from "./in-process-postgres";
@@ -52,6 +54,13 @@ export type TestOptions = {
   sourcePlugins?: TestPluginPackage[];
 };
 
+/** A second Family the same process serves, against a database and stores of its own. */
+export type SecondFamily = {
+  app: Application;
+  /** Runs SQL against this Family's database. */
+  query(sql: string): Promise<Record<string, unknown>[]>;
+};
+
 export type TestInstance = {
   app: Application;
   clock: FakeClock;
@@ -80,6 +89,12 @@ export type TestInstance = {
    * and logging to `log`; it is closed with the Instance.
    */
   bootWorker(schedules: TestClock, log: WorkLog): Promise<Application>;
+  /**
+   * Boots a second Family in the same process, sharing its plugin bindings, extractors, OCR models
+   * and Clock, against a database, master key file and blob directory of its own; it is closed with
+   * the Instance.
+   */
+  bootSecondFamily(): Promise<SecondFamily>;
   close(): Promise<void>;
 };
 
@@ -125,8 +140,11 @@ export async function bootForTest(options: TestOptions = {}): Promise<TestInstan
   };
 
   const otherContainers: Application[] = [];
+  const otherDatabases: Awaited<ReturnType<typeof acquirePostgres>>[] = [];
+  // What the process shares among its Families, wired again on each restart.
+  let shared: SharedWiring = await bootShared(config);
   const instance: TestInstance = {
-    app: await bootApplication(config),
+    app: await bootFamily(shared, config),
     clock,
     masterKeyFile: config.masterKeyFile,
     tessdataDirectory: config.tessdataDirectory,
@@ -138,10 +156,11 @@ export async function bootForTest(options: TestOptions = {}): Promise<TestInstan
       await stopped.close();
       // Already closed, should booting again fail.
       instance.app = { ...stopped, close: () => Promise.resolve() };
-      instance.app = await bootApplication(config);
+      shared = await bootShared(config);
+      instance.app = await bootFamily(shared, config);
     },
     async bootApiContainer() {
-      const container = await bootApplication(config);
+      const container = await bootFamily(await bootShared(config), config);
       otherContainers.push(container);
       return container;
     },
@@ -151,10 +170,26 @@ export async function bootForTest(options: TestOptions = {}): Promise<TestInstan
       otherContainers.push(worker);
       return worker;
     },
+    async bootSecondFamily() {
+      const database = await acquirePostgres();
+      otherDatabases.push(database);
+      // Databases come from one snapshot, and so with the same Family id at first.
+      await database.query("update family set family_id = gen_random_uuid()");
+      const directory = await mkdtemp(join(keyDirectory, "second-family-"));
+      const app = await bootFamily(shared, {
+        connectDatabase: () => database.connect(),
+        masterKeyFile: join(directory, "master.key"),
+        blobDirectory: join(directory, "blobs"),
+        timeZone: "Europe/Berlin",
+      });
+      otherContainers.push(app);
+      return { app, query: (sql) => database.query(sql) };
+    },
     async close() {
       for (const container of otherContainers) await container.close();
       await instance.app.close();
       await postgres.release();
+      for (const database of otherDatabases) await database.release();
       await Promise.all(servers.map((server) => new Promise((resolve) => server.close(resolve))));
       await rm(keyDirectory, { recursive: true, force: true });
     },

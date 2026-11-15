@@ -16,6 +16,9 @@ type State = {
   unreachable: string | null;
 };
 
+/** A bound Source Type loaded to be called, or not, where its plugin is not loadable. */
+export type Loaded = { ok: true; sourceType: LoadedSourceType } | { ok: false };
+
 const initialState: State = { description: null, problem: null, unreachable: null };
 
 /** How long a description a plugin gave is used before it is asked again. */
@@ -33,13 +36,17 @@ export class PluginContainers implements SourceTypeRegistry {
   /** The description asked for last, while it is fresh or still on its way. */
   private readonly asked = new Map<SourceTypeId, { at: number; state: Promise<State> }>();
 
-  private readonly ticketing: Ticketing;
+  private readonly ticketing: Omit<Ticketing, "familyId">;
+  /** The Family the calls of `load` are ticketed for, where one is configured. */
+  private readonly familyId: string | null;
 
   private constructor(
     private readonly bindings: PluginBinding[],
     private readonly options: PluginContainerOptions,
   ) {
-    this.ticketing = options.ticketing ?? { ticketKey: randomBytes(32).toString("base64url"), familyId: "unknown" };
+    const { familyId, ...ticketing } = options.ticketing ?? { ticketKey: randomBytes(32).toString("base64url") };
+    this.ticketing = ticketing;
+    this.familyId = familyId ?? null;
   }
 
   /** Asks every bound plugin for its description, so that the Admin area has something to show. */
@@ -70,12 +77,28 @@ export class PluginContainers implements SourceTypeRegistry {
     });
   }
 
-  async load(id: SourceTypeId): Promise<{ ok: true; sourceType: LoadedSourceType } | { ok: false }> {
+  /** Loads a Source Type whose calls are ticketed for the configured Family; a call fails without one. */
+  load(id: SourceTypeId): Promise<Loaded> {
+    return this.loadFor(id, this.familyId);
+  }
+
+  /**
+   * The same Source Types, for one Family: the bindings and descriptions are the process's, but the
+   * tickets of its plugin calls carry that Family's id.
+   */
+  forFamily(familyId: string): SourceTypeRegistry {
+    return { installed: () => this.installed(), load: (id) => this.loadFor(id, familyId) };
+  }
+
+  private async loadFor(id: SourceTypeId, familyId: string | null): Promise<Loaded> {
     const binding = this.bindings.find((candidate) => candidate.sourceTypeId === id);
     if (!binding) return { ok: false };
     const { description, problem } = await this.fresh(binding);
     if (description === null || problem !== null) return { ok: false };
-    const egressProxyOf = (source: CalledSource | null, name: EndpointName) => egressProxyFor(this.ticketing, id, source, this.timeoutOf(name));
+    const egressProxyOf = (source: CalledSource | null, name: EndpointName) => {
+      if (familyId === null) throw new Error("A plugin call is ticketed for a Family: load the Source Type through forFamily.");
+      return egressProxyFor({ ...this.ticketing, familyId }, id, source, this.timeoutOf(name));
+    };
     return { ok: true, sourceType: loadedSourceType(description, (name, body) => callPlugin(binding.url, name, body, this.options), egressProxyOf) };
   }
 
