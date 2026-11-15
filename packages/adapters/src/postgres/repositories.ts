@@ -2,6 +2,7 @@ import type {
   ActivityKind,
   ActivityRepository,
   AddingId,
+  AddingProgress,
   SourceAdding,
   SourceAddingRepository,
   AdminRepository,
@@ -760,9 +761,15 @@ export class PostgresActivityRepository implements ActivityRepository {
 export class PostgresSourceAddingRepository implements SourceAddingRepository {
   constructor(private readonly db: Database) {}
 
-  async save(adding: SourceAdding): Promise<void> {
-    const values = { id: adding.id, sourceTypeId: adding.progress.sourceTypeId, progress: adding.progress, startedAt: adding.startedAt };
-    await this.db.insert(sourceAddings).values(values).onConflictDoUpdate({ target: sourceAddings.id, set: { progress: adding.progress } });
+  async start(adding: SourceAdding): Promise<void> {
+    await this.db.insert(sourceAddings).values(adding);
+  }
+
+  async end(id: AddingId, progress: AddingProgress): Promise<void> {
+    await this.db
+      .update(sourceAddings)
+      .set({ progress })
+      .where(and(eq(sourceAddings.id, id), sql`${sourceAddings.progress}->>'status' = 'running'`));
   }
 
   async find(id: AddingId): Promise<SourceAdding | null> {
@@ -771,7 +778,7 @@ export class PostgresSourceAddingRepository implements SourceAddingRepository {
   }
 
   async listOfType(sourceTypeId: string): Promise<SourceAdding[]> {
-    const rows = await this.db.select().from(sourceAddings).where(eq(sourceAddings.sourceTypeId, sourceTypeId)).orderBy(asc(sourceAddings.position));
+    const rows = await this.db.select().from(sourceAddings).where(sql`${sourceAddings.progress}->>'sourceTypeId' = ${sourceTypeId}`).orderBy(asc(sourceAddings.position));
     return rows.map(addingOf);
   }
 

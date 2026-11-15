@@ -4,7 +4,7 @@ import { bootForTest, type TestInstance, type TestOptions } from "./boot";
 
 type RequestInit = { cookie?: string; headers?: Record<string, string> };
 
-/** Requests to one core of an Instance. */
+/** Requests to one `api` container of an Instance. */
 export type HttpClient = {
   /** Posts a multipart form, as for a file upload. */
   request(path: string, init: RequestInit & { body: FormData }): Promise<Response>;
@@ -17,8 +17,8 @@ export type HttpClient = {
 };
 
 export type HttpTestInstance = TestInstance & HttpClient & {
-  /** Boots a second core against the same database, as a second `api` container, and drives its Hono app. */
-  bootAnotherHttpCore(): Promise<HttpClient>;
+  /** Boots a second `api` container against the same database, and drives its Hono app. */
+  bootHttpApiContainer(): Promise<HttpClient>;
 };
 
 /** Boots an Instance and drives its Hono app with in-process requests. */
@@ -41,8 +41,8 @@ export async function bootHttpForTest(
   };
   // The same object, so that `app` stays the one running after a restart.
   return Object.assign(instance, clientOf(http), {
-    bootAnotherHttpCore: async () => {
-      const other = createHttpApp(await instance.bootAnotherCore(), { trustProxy: false, agendaAccess: openAgendaAccess, ...options });
+    bootHttpApiContainer: async () => {
+      const other = createHttpApp(await instance.bootApiContainer(), { trustProxy: false, agendaAccess: openAgendaAccess, ...options });
       return clientOf({ request: (path, init) => other.request(path, init) });
     },
   });

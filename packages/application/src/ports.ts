@@ -858,13 +858,15 @@ export type AddingProgress =
   /** Its plugin could not prepare it; what was entered, without secrets, for the form to show again. */
   | { status: "failed"; sourceTypeId: string; message: string; plain: PlainConfig; pollIntervalSeconds: number | null };
 
-/** A Source being added in the background, as any core of the Family reads it. */
+/** A Source being added in the background, as any `api` container of the Family reads it. */
 export type SourceAdding = { id: AddingId; startedAt: Date; progress: AddingProgress };
 
-/** The Sources being added in the background, kept in the Family's database so that every core knows them. */
+/** The Sources being added in the background, kept in the Family's database so that every `api` container knows them. */
 export interface SourceAddingRepository {
-  /** Stores an adding, or replaces its progress. */
-  save(adding: SourceAdding): Promise<void>;
+  /** Stores an adding that has just started. */
+  start(adding: SourceAdding): Promise<void>;
+  /** Stores how an adding ended, only while it is kept and still running: one forgotten meanwhile stays so. */
+  end(id: AddingId, progress: AddingProgress): Promise<void>;
   find(id: AddingId): Promise<SourceAdding | null>;
   /** Those of a Source Type, oldest first. */
   listOfType(sourceTypeId: string): Promise<SourceAdding[]>;

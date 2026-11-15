@@ -577,18 +577,20 @@ export const lessons = pgTable(
   ],
 );
 
-/** The Sources being added in the background, so that every core can tell how far they got. */
+/**
+ * The Sources being added in the background, so that every `api` container can tell how far they
+ * got. Each is kept for ten minutes after it started, or for the longest a preparation may take if
+ * that is longer.
+ */
 export const sourceAddings = pgTable(
   "source_adding",
   {
     id: uuid("id").primaryKey(),
     position: bigint("position", { mode: "number" }).notNull().generatedAlwaysAsIdentity(),
-    sourceTypeId: text("source_type_id").notNull(),
-    /** As far as it got, with what was entered but its secrets. */
+    /** As far as it got, with its Source Type and what was entered but its secrets. */
     progress: jsonb("progress").$type<AddingProgress>().notNull(),
     startedAt: timestamptz("started_at").notNull(),
   },
-  (table) => [index("source_adding_source_type_idx").on(table.sourceTypeId, table.position)],
 );
 
 /** The Family's one LLM endpoint; its API key is in the SecretStore. */

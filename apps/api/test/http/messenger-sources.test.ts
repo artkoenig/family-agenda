@@ -273,9 +273,9 @@ describe("Sources of a Source Type with a catalogue and a live setup step", () =
     expect((await instance.get(adding, { cookie })).headers.get("location")).toBe("/admin/sources");
   });
 
-  it("shows the progress and the outcome of an adding started through one core through another on the same database", async () => {
+  it("shows the progress and the outcome of an adding started through one api container through another on the same database", async () => {
     await instance.app.catalogues.enable("bridged", "whatsapp", { riskAcknowledged: true });
-    const other = await instance.bootAnotherHttpCore();
+    const other = await instance.bootHttpApiContainer();
     const release = testPluginControls.holdAdding("bridged");
     const { adding } = await addHeld();
 
@@ -287,12 +287,12 @@ describe("Sources of a Source Type with a catalogue and a live setup step", () =
     });
     const [source] = await instance.app.sources.list();
     expect((await other.get(adding, { cookie })).headers.get("location")).toBe(`/admin/sources/${source!.id}/setup`);
-    expect((await instance.get(adding, { cookie })).headers.get("location"), "forgotten by every core").toBe("/admin/sources");
+    expect((await instance.get(adding, { cookie })).headers.get("location"), "forgotten by every api container").toBe("/admin/sources");
   });
 
-  it("reports an adding as failed once it ran longer than a preparation may take, as when its core died", async () => {
+  it("reports an adding as failed once it ran longer than a preparation may take, as when its api container died", async () => {
     await instance.app.catalogues.enable("bridged", "whatsapp", { riskAcknowledged: true });
-    const other = await instance.bootAnotherHttpCore();
+    const other = await instance.bootHttpApiContainer();
     const release = testPluginControls.holdAdding("bridged");
     const { adding } = await addHeld();
 
@@ -304,6 +304,20 @@ describe("Sources of a Source Type with a catalogue and a live setup step", () =
     expect(refused.status).toBe(400);
     expect(await refused.text()).toContain("The Source could not be set up");
     release();
+  });
+
+  it("keeps an adding forgotten once shown as failed, when its preparation ends after all", async () => {
+    await instance.app.catalogues.enable("bridged", "whatsapp", { riskAcknowledged: true });
+    const release = testPluginControls.holdAdding("bridged");
+    const { adding } = await addHeld();
+    instance.clock.advance(5 * 60_000);
+    expect((await instance.get(adding, { cookie })).status, "shown as failed, and forgotten").toBe(400);
+
+    release();
+    await vi.waitFor(async () => { expect(await instance.app.sources.list()).toHaveLength(1); });
+    // Past storing its outcome, which follows storing the Source.
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect((await instance.get(adding, { cookie })).headers.get("location")).toBe("/admin/sources");
   });
 
   it("allow-lists chats with one checkbox each, and clears them all", async () => {

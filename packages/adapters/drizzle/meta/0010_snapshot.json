@@ -1,5 +1,5 @@
 {
-  "id": "fe879790-0614-41e6-92eb-aa17cb652f99",
+  "id": "c9a32ecc-c11d-4e9e-9e85-d9eb4ceae87f",
   "prevId": "b73cc069-ca2c-498d-b610-5be5f1c2edca",
   "version": "7",
   "dialect": "postgresql",
@@ -1128,12 +1128,6 @@
             "cycle": false
           }
         },
-        "source_type_id": {
-          "name": "source_type_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
         "progress": {
           "name": "progress",
           "type": "jsonb",
@@ -1147,29 +1141,7 @@
           "notNull": true
         }
       },
-      "indexes": {
-        "source_adding_source_type_idx": {
-          "name": "source_adding_source_type_idx",
-          "columns": [
-            {
-              "expression": "source_type_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "position",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
+      "indexes": {},
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},

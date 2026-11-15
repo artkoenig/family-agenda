@@ -42,11 +42,11 @@ export type SourcesDeps = {
   sourceTypes: SourceTypeRepository;
   catalogues: CatalogueRepository;
   sources: SourceRepository;
-  /** The Sources being added in the background, shared by every core of the Family. */
+  /** The Sources being added in the background, shared by every `api` container of the Family. */
   addings: SourceAddingRepository;
   /**
    * The longest a plugin may take to prepare a Source being added; one still running after that
-   * is reported as failed, as when the core preparing it stopped.
+   * is reported as failed, as when the `api` container preparing it stopped.
    */
   preparationMaxMs: number;
   secrets: SecretStore;
@@ -131,10 +131,10 @@ const addingsKeptMs = 10 * 60_000;
 function abandonedAdding(adding: SourceAdding, now: Date, preparationMaxMs: number): AddingProgress {
   const { progress } = adding;
   if (progress.status !== "running" || now.getTime() - adding.startedAt.getTime() <= preparationMaxMs) return progress;
-  const message = `it was not prepared within ${preparationMaxMs / 1000} s`;
-  return { status: "failed", sourceTypeId: progress.sourceTypeId, message, plain: progress.plain, pollIntervalSeconds: null };
+  return failedAdding({ ...progress, secrets: {} }, `it was not prepared within ${preparationMaxMs / 1000} s`);
 }
 
+/** The progress of an adding that failed, with what was entered but its secrets. */
 function failedAdding(input: SourceInput & { sourceTypeId: string }, message: string): AddingProgress {
   return { status: "failed", sourceTypeId: input.sourceTypeId, message, plain: input.plain, pollIntervalSeconds: input.pollIntervalSeconds ?? null };
 }
@@ -407,7 +407,7 @@ export function createSourceAccess(deps: SourcesDeps) {
     return { ok: true, id, setUp: sourceType.setupSteps.some((step) => step.live) };
   }
 
-  /** How an adding reads now, a running one whose core stopped as failed. */
+  /** How an adding reads now, a running one whose `api` container stopped as failed. */
   const progressOf = (adding: SourceAdding) => abandonedAdding(adding, clock.now(), preparationMaxMs);
 
   /** The form of an enabled Source Type, for adding and editing its Sources. */
@@ -520,18 +520,20 @@ export function createSourceAccess(deps: SourcesDeps) {
       const checked = await checkedAdding(input);
       if ("problem" in checked) return checked;
       const startedAt = clock.now();
-      // Those that ended long ago, and those whose core stopped, so that the table does not grow.
+      // Those that ended long ago, and those whose `api` container stopped, so that the table does not grow.
       await addings.removeStartedBefore(new Date(startedAt.getTime() - Math.max(addingsKeptMs, preparationMaxMs)));
       const id = randomUUID() as AddingId;
-      await addings.save({ id, startedAt, progress: { status: "running", sourceTypeId: input.sourceTypeId, plain: input.plain } });
-      const ended = (progress: AddingProgress) => addings.save({ id, startedAt, progress });
+      await addings.start({ id, startedAt, progress: { status: "running", sourceTypeId: input.sourceTypeId, plain: input.plain } });
+      const ended = (progress: AddingProgress) => addings.end(id, progress);
       completeAdding(input, checked.sourceType)
         .then(
           (result) => ended(addingProgressOf(input, result)),
           (error: unknown) => ended(failedAdding(input, error instanceof Error ? error.message : String(error))),
         )
         // Its row then reads as failed once it is older than a preparation may take.
-        .catch(() => undefined);
+        .catch((error: unknown) => {
+          console.error(`Storing how adding a Source of type "${input.sourceTypeId}" ended failed:`, error);
+        });
       return { ok: true, adding: id };
     },
 
