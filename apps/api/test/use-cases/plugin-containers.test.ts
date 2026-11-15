@@ -8,7 +8,7 @@ import type { SourceId, SourceTypeId } from "@family-agenda/domain";
 import { parsePluginUrls } from "../../src/plugin-containers/bindings";
 import { descriptionProblem, PluginContainers } from "../../src/plugin-containers/registry";
 import { verifyTicket, type Ticket } from "../../src/egress/ticket";
-import { bootForTest, type TestInstance } from "../support/boot";
+import { bootForTest, type TestInstance, type TestOptions } from "../support/boot";
 
 const minutes = 60 * 1000;
 const egressTicketKey = "a-ticket-key-of-at-least-32-characters";
@@ -254,16 +254,22 @@ describe("A Source Type whose plugin receives pushed payloads", () => {
       },
       { host: "127.0.0.1" },
     );
+    await bootRelay(200);
+  });
+
+  /** Boots the Instance with the plugin's Source Type enabled and one Source of it. */
+  const bootRelay = async (receiveTimeoutMs: number, options: Pick<TestOptions, "sourceRunTurns"> = {}) => {
     instance = await bootForTest({
       pluginContainers: [{ sourceTypeId: "chat-relay" as SourceTypeId, url: urlOf(server) }],
-      pluginContainerOptions: { timeoutsMs: { receive: 200 }, descriptionMaxAgeMs: 0 },
+      pluginContainerOptions: { timeoutsMs: { receive: receiveTimeoutMs }, descriptionMaxAgeMs: 0 },
+      ...options,
       egressTicketKey,
     });
     expect(await instance.app.sourceTypes.enable("chat-relay")).toEqual({ ok: true });
     const adding = await instance.app.sources.add({ sourceTypeId: "chat-relay", plain: { url: "https://chat.example.org" }, secrets: { token: "first" } });
     if (!adding.ok) throw new Error(`adding failed: ${adding.problem}`);
     sourceId = adding.id;
-  });
+  };
   afterEach(async () => {
     await instance.close();
     if (server.listening) await closed(server);
@@ -330,7 +336,7 @@ describe("A Source Type whose plugin receives pushed payloads", () => {
     expect(called).toBe(false);
   });
 
-  it("runs a pushed payload after the run under way, from the Source Cursor that run left", async () => {
+  it("runs a pushed payload after the run under way, from the Sync Cursor that run left", async () => {
     const cursors: (string | null)[] = [];
     receive = async ({ context, payload: sent }) => {
       cursors.push(context.syncCursor);
@@ -346,6 +352,98 @@ describe("A Source Type whose plugin receives pushed payloads", () => {
     await Promise.all([first, instance.app.polling.receive(sourceId, payload)]);
 
     expect(cursors).toEqual([null, "Zmlyc3Q="]);
+  });
+
+  describe("taking turns across api containers", () => {
+    beforeEach(async () => {
+      await instance.close();
+      // Turns a run can outlast several times over, well within the plugin's timeout.
+      await bootRelay(10_000, { sourceRunTurns: { lastsMs: 1000, renewedEveryMs: 250, waitsAtMostMs: 3000 } });
+    });
+
+    it("runs a pushed payload on another api container after the run under way, from the Sync Cursor that run left", async () => {
+      const other = await instance.bootApiContainer();
+      const cursors: (string | null)[] = [];
+      receive = async ({ context, payload: sent }) => {
+        cursors.push(context.syncCursor);
+        if (sent === "Zmlyc3Q=") await new Promise((resolve) => setTimeout(resolve, 100));
+        return { sourceRecords: [], syncCursor: sent };
+      };
+
+      const first = instance.app.polling.receive(sourceId, new TextEncoder().encode("first"));
+      await vi.waitFor(() => {
+        expect(cursors).toHaveLength(1);
+      });
+      await Promise.all([first, other.polling.receive(sourceId, payload)]);
+
+      expect(cursors).toEqual([null, "Zmlyc3Q="]);
+    });
+
+    /** Leaves the turn of the Source held for so long, as an api container that died in a run of it would. */
+    const runLeftByDeadContainer = (id: SourceId, lasting = "2 seconds") =>
+      instance.query(`INSERT INTO source_run_turn (source_id, holder, expires_at) VALUES ('${id}', gen_random_uuid(), now() + interval '${lasting}')`);
+
+    it("runs a pushed payload once the run a dead api container left under way is known to be over", async () => {
+      await runLeftByDeadContainer(sourceId);
+      let received = false;
+      receive = () => {
+        received = true;
+        return Promise.resolve({ sourceRecords: [], syncCursor: "after" });
+      };
+
+      const pushed = instance.app.polling.receive(sourceId, payload);
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      expect(received).toBe(false);
+
+      expect(await pushed).toMatchObject({ ok: true, report: { ran: [sourceId] } });
+      expect(await instance.query("SELECT count(*)::int AS count FROM source_run_turn")).toEqual([{ count: 0 }]);
+    });
+
+    it("fails a pushed payload temporarily when the run under way of its Source does not end in time", async () => {
+      await runLeftByDeadContainer(sourceId, "1 hour");
+
+      const result = await instance.app.polling.receive(sourceId, payload);
+
+      expect(result.ok && result.report.failed).toEqual([{ sourceId, kind: "temporary", message: expect.stringContaining("another run of the Source did not end") as string }]);
+    });
+
+    it("keeps the turn of a run that lasts longer than a turn, by renewing it", async () => {
+      receive = async () => {
+        await new Promise((resolve) => setTimeout(resolve, 2500));
+        return { sourceRecords: [evening], syncCursor: "long", attributes: { declared: [{ externalId: "main", name: "Class 3b" }], archived: [] } };
+      };
+
+      expect(await instance.app.polling.receive(sourceId, payload)).toMatchObject({ ok: true, report: { ran: [sourceId], lost: [] } });
+      expect((await instance.query("SELECT sync_cursor FROM source_run"))[0]?.sync_cursor).toBe("long");
+    });
+
+    it("writes nothing of a run whose turn another api container took meanwhile, and reports it lost", async () => {
+      let answer = () => {};
+      receive = async () => {
+        await new Promise<void>((resolve) => (answer = resolve));
+        return { sourceRecords: [evening], syncCursor: "lost", attributes: { declared: [{ externalId: "main", name: "Class 3b" }], archived: [] } };
+      };
+      const pushed = instance.app.polling.receive(sourceId, payload);
+      await vi.waitFor(async () => {
+        expect(await instance.query("SELECT count(*)::int AS count FROM source_run_turn")).toEqual([{ count: 1 }]);
+      });
+
+      // The turn expired, as on a container that stalled, and another container took it.
+      await instance.query("UPDATE source_run_turn SET holder = gen_random_uuid()");
+      answer();
+
+      expect(await pushed).toMatchObject({ ok: true, report: { ran: [], lost: [sourceId] } });
+      expect(await instance.query("SELECT count(*)::int AS count FROM source_record")).toEqual([{ count: 0 }]);
+      expect((await instance.query("SELECT sync_cursor FROM source_run"))[0]?.sync_cursor).toBeNull();
+    });
+
+    it("runs a pushed payload without waiting for a run of another Source", async () => {
+      const adding = await instance.app.sources.add({ sourceTypeId: "chat-relay", plain: { url: "https://other-chat.example.org" }, secrets: { token: "first" } });
+      if (!adding.ok) throw new Error(`adding failed: ${adding.problem}`);
+      await runLeftByDeadContainer(sourceId, "1 hour");
+
+      expect(await instance.app.polling.receive(adding.id, payload)).toMatchObject({ ok: true, report: { ran: [adding.id] } });
+    });
   });
 
   it("receives nothing while its plugin is not loadable", async () => {

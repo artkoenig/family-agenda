@@ -444,6 +444,29 @@ export type SourceAttribute = {
   concerns: FamilyMemberId[];
 };
 
+/**
+ * Who of the Family's processes runs a Source now, kept in the Family's database, so that the runs
+ * of one Source take turns across api containers. A turn lasts until its holder ends it, or until
+ * it expires without being renewed, as when its holder died. Expiry is told by the database's
+ * clock, so that the processes' clocks need not agree.
+ */
+export interface SourceRunTurns {
+  /** Takes the Source's turn for `holder`, lasting `lastsMs`, if no turn is held or the one held has expired; whether it did. */
+  take(sourceId: SourceId, holder: string, lastsMs: number): Promise<boolean>;
+  /** Makes the turn `holder` holds last `lastsMs` from now; whether it still held it, unexpired. */
+  renew(sourceId: SourceId, holder: string, lastsMs: number): Promise<boolean>;
+  /** Ends the turn `holder` holds, if it still does. */
+  end(sourceId: SourceId, holder: string): Promise<void>;
+}
+
+/** A run is not recorded: the process that ran it no longer held its Source's turn. */
+export class TurnLost extends Error {
+  constructor(readonly sourceId: SourceId) {
+    super(`The run of Source ${sourceId} lost its turn before it was recorded.`);
+    this.name = "TurnLost";
+  }
+}
+
 export interface SourceRepository {
   add(source: Source): Promise<void>;
   /** In the order they were added. */
@@ -517,6 +540,8 @@ export type StoredMessage = {
 /** One successful run of a Source, to record at once. */
 export type SourceRun = {
   sourceId: SourceId;
+  /** The process whose turn of the Source the run is in; unless it still holds it, nothing is recorded and `TurnLost` is thrown. */
+  holder: string;
   at: Date;
   /** Where the plugin resumes on its next run, stored only together with the run's Origins. */
   syncCursor: string | null;

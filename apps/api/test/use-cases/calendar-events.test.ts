@@ -304,8 +304,9 @@ describe("polling Sources", () => {
       failed: [{ sourceId: school, kind: "definite", message: "school-cal failed" }],
       invalid: [],
       refused: [],
+      lost: [],
     });
-    expect(await instance.app.polling.pollDue()).toEqual({ ran: [], failed: [], invalid: [], refused: [] });
+    expect(await instance.app.polling.pollDue()).toEqual({ ran: [], failed: [], invalid: [], refused: [], lost: [] });
 
     instance.clock.advance(10 * minutes);
     await instance.app.polling.pollDue();
@@ -334,6 +335,6 @@ describe("polling Sources", () => {
     instance.uninstallPlugin("school-cal");
     await instance.restart();
 
-    expect(await instance.app.polling.pollDue()).toEqual({ ran: [], failed: [], invalid: [], refused: [] });
+    expect(await instance.app.polling.pollDue()).toEqual({ ran: [], failed: [], invalid: [], refused: [], lost: [] });
   });
 });

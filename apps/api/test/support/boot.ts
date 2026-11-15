@@ -50,6 +50,8 @@ export type TestOptions = {
   pluginContainerOptions?: NonNullable<ApplicationConfig["pluginContainerOptions"]>;
   /** The key plugin calls' tickets are signed with; a random one by default. */
   egressTicketKey?: string;
+  /** Shorter turns of Sources' runs than in production, for a test that outlasts one. */
+  sourceRunTurns?: NonNullable<ApplicationConfig["sourceRunTurns"]>;
   /** Test plugins served before the first boot, as plugin containers. */
   sourcePlugins?: TestPluginPackage[];
 };

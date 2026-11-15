@@ -22,6 +22,7 @@ import type {
   Source,
   SourceAttribute,
   SourceRepository,
+  SourceRunTurns,
   SourceTypeRecord,
   SourceTypeRepository,
   StoredLlmEndpoint,
@@ -68,6 +69,7 @@ import {
   sourceRecordAttachments,
   sourceRecords,
   sourceRuns,
+  sourceRunTurns,
   sources,
   sourceTypes,
   agendaMembers,
@@ -755,6 +757,36 @@ export class PostgresActivityRepository implements ActivityRepository {
 
   async clear(): Promise<void> {
     await this.db.delete(backgroundActivities);
+  }
+}
+
+/** When a turn lasting so long from the database's now expires. */
+const expiryAfter = (lastsMs: number) => sql`now() + ${lastsMs} * interval '1 millisecond'`;
+
+/** The turns of the Sources' runs, each taken and renewed in one statement, by the database's clock. */
+export class PostgresSourceRunTurns implements SourceRunTurns {
+  constructor(private readonly db: Database) {}
+
+  async take(sourceId: SourceId, holder: string, lastsMs: number): Promise<boolean> {
+    const taken = await this.db
+      .insert(sourceRunTurns)
+      .values({ sourceId, holder, expiresAt: expiryAfter(lastsMs) })
+      .onConflictDoUpdate({ target: sourceRunTurns.sourceId, set: { holder, expiresAt: expiryAfter(lastsMs) }, setWhere: lt(sourceRunTurns.expiresAt, sql`now()`) })
+      .returning({ holder: sourceRunTurns.holder });
+    return taken.length > 0;
+  }
+
+  async renew(sourceId: SourceId, holder: string, lastsMs: number): Promise<boolean> {
+    const renewed = await this.db
+      .update(sourceRunTurns)
+      .set({ expiresAt: expiryAfter(lastsMs) })
+      .where(and(eq(sourceRunTurns.sourceId, sourceId), eq(sourceRunTurns.holder, holder), gt(sourceRunTurns.expiresAt, sql`now()`)))
+      .returning({ holder: sourceRunTurns.holder });
+    return renewed.length > 0;
+  }
+
+  async end(sourceId: SourceId, holder: string): Promise<void> {
+    await this.db.delete(sourceRunTurns).where(and(eq(sourceRunTurns.sourceId, sourceId), eq(sourceRunTurns.holder, holder)));
   }
 }
 

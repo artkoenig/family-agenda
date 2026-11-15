@@ -304,6 +304,20 @@ export const sourceRuns = pgTable(
 );
 
 /**
+ * The run of a Source under way, so that its runs take turns across api containers: one row while
+ * a run holds the turn. A run renews `expires_at` while it lasts; once that has passed, the run is
+ * known to be over, such as when its container died, and another may take the turn.
+ */
+export const sourceRunTurns = pgTable("source_run_turn", {
+  sourceId: uuid("source_id")
+    .primaryKey()
+    .references(() => sources.id, { onDelete: "cascade" }),
+  /** The process whose run holds the turn. */
+  holder: uuid("holder").notNull(),
+  expiresAt: timestamptz("expires_at").notNull(),
+});
+
+/**
  * A subdivision of a Source that its plugin reports (ADR-0005), such as a mail folder, a chat or a
  * child of a school account. Written only through the plugin's port, never by the core on its own:
  * `declare` inserts one, or renames a known one and revives it, keeping its assignment, and

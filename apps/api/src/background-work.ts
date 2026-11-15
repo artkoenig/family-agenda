@@ -13,7 +13,7 @@ const purgeCron = "0 * * * *";
 /** Secrets nothing refers to: when the worker starts, and once a day at night (ADR-0005). */
 const sweepCron = "17 3 * * *";
 
-/** Writes the Sources that failed or were refused, and the messages Extraction could not read. */
+/** Writes the Sources that failed, were refused or lost their turn, and the messages Extraction could not read. */
 export function logDueWork(report: DueWorkReport, log: WorkLog): void {
   if (report.polled.ok) logPolled(report.polled.report, log);
   else log.error("Polling Sources failed:", report.polled.error);
@@ -30,6 +30,9 @@ function logPolled(report: RunReport, log: WorkLog): void {
   }
   for (const record of report.invalid) {
     log.warn(`Source ${record.sourceId} states an invalid Item for ${record.externalId}, which is not written: ${record.problems.join("; ")}`);
+  }
+  for (const sourceId of report.lost) {
+    log.warn(`Source ${sourceId} lost its turn to another process during its run, which is not recorded`);
   }
 }
 

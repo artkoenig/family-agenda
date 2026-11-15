@@ -206,6 +206,13 @@ CREATE TABLE source_run (
     CHECK ((cardinality(invalid_records) = 0) = (invalid_records_since IS NULL))
 );
 
+-- The run of a Source under way, so that its runs take turns across api containers (ADR-0008).
+CREATE TABLE source_run_turn (
+  source_id   UUID PRIMARY KEY REFERENCES source(id) ON DELETE CASCADE,
+  holder      UUID NOT NULL,                  -- the process whose run holds the turn
+  expires_at  TIMESTAMPTZ NOT NULL            -- renewed while the run lasts; once passed, the run is over
+);
+
 -- ---------------------------------------------------------------------------------------------
 -- Source Attributes and their assignment
 -- ---------------------------------------------------------------------------------------------
