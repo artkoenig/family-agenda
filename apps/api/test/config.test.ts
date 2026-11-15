@@ -129,12 +129,17 @@ describe("the mode of the core", () => {
   it("reads no Family from the environment in supplied mode, and refuses one given there", () => {
     const supplied = { CONTEXT_MODE: "supplied", CONTEXT_KEY: contextKey, PORT: "8080", CALLER_PORT: "3002", TZ: "Europe/Berlin" };
     expect(readMode(supplied)).toBe("supplied");
-    expect(readSuppliedConfig(supplied)).toMatchObject({ contextKey, callerPort: 3002, trustProxy: false, publicUrl: null, identityProvider: null, pluginContainers: [] });
+    expect(readSuppliedConfig(supplied)).toMatchObject({ contextKey, callerPort: 3002, trustProxy: false, pluginContainers: [] });
+    expect(readSuppliedConfig(supplied)).not.toHaveProperty("publicUrl");
+    expect(readSuppliedConfig(supplied)).not.toHaveProperty("identityProvider");
     expect(readSuppliedConfig(supplied)).not.toHaveProperty("databaseUrl");
     expect(readSuppliedConfig(supplied)).not.toHaveProperty("port");
     expect(() => readSuppliedConfig({ ...supplied, CALLER_PORT: undefined })).toThrow(/CALLER_PORT must be set/);
     expect(() => readSuppliedConfig({ ...supplied, CALLER_PORT: "http" })).toThrow(/CALLER_PORT must be set/);
     expect(() => readSuppliedConfig({ ...supplied, CALLER_PORT: "8080" })).toThrow(/CALLER_PORT must differ from PORT/);
+    for (const variable of ["PUBLIC_URL", "OIDC_ISSUER_URL", "OIDC_CLIENT_ID", "OIDC_CLIENT_SECRET", "OIDC_REQUIRED_GROUP"]) {
+      expect(() => readSuppliedConfig({ ...supplied, [variable]: "https://x.example.org" })).toThrow(new RegExp(`${variable} must not be set with CONTEXT_MODE=supplied: every Context`));
+    }
     for (const variable of ["DATABASE_URL", "FAMILY_ID", "MASTER_KEY_FILE", "BLOB_DIRECTORY"]) {
       expect(() => readSuppliedConfig({ ...supplied, [variable]: "x" })).toThrow(new RegExp(`${variable} must not be set`));
     }

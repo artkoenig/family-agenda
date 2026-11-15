@@ -19,13 +19,13 @@ export async function serveSupplied(config: SuppliedConfig, log: { info(message:
   const shared = await bootShared(config);
   const families = new SuppliedFamilies({
     shared,
-    // Settings of their own come with the Context later (#380); until then, the environment's for every Family.
-    settings: { identityProvider: config.identityProvider },
-    serving: (application) => {
+    settings: {},
+    serving: (application, context) => {
       const app = createHttpApp(application, {
         trustProxy: config.trustProxy,
         version: config.version,
-        ...(config.publicUrl ? { publicUrl: config.publicUrl } : {}),
+        // The Family's own address, its path prefix included: the caller removed the prefix from the request.
+        publicUrl: context.publicUrl,
         // As on the one listener of a fixed core: Agendas open without a secret until Agenda Links are reworked (ADR-0004).
         agendaAccess: openAgendaAccess,
       });

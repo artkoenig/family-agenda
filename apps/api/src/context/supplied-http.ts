@@ -1,5 +1,5 @@
 import type { HealthResponse } from "@family-agenda/contracts";
-import { contextHeader, contextOfRequest } from "./context";
+import { contextHeader, openContextOutcome } from "./context";
 import type { SuppliedFamilies } from "./supplied-families";
 
 export type { FamilyFetch } from "./supplied-families";
@@ -16,7 +16,7 @@ export type SuppliedHttpOptions = {
   now?: () => number;
 };
 
-const refusal = (status: 401 | 403 | 409 | 503, text: string) =>
+const refusal = (status: 400 | 401 | 403 | 409 | 503, text: string) =>
   new Response(text, { status, headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" } });
 
 /**
@@ -29,11 +29,18 @@ export function suppliedFetch({ contextKey, families, version, log, now = Date.n
     if (new URL(request.url).pathname === "/api/health") {
       return Response.json({ status: "ok", version } satisfies HealthResponse);
     }
-    const context = contextOfRequest(contextKey, request, now());
-    if (context === null) {
+    const text = request.headers.get(contextHeader);
+    const outcome = text === null ? { ok: false as const, problem: null } : openContextOutcome(contextKey, text, now());
+    if (!outcome.ok && outcome.problem !== null) {
+      // Sealed with the Context key, so by the trusted caller: it learns what is wrong, never a value.
+      log.warn(`Refused a Context with settings the core does not take: ${outcome.problem}`);
+      return refusal(400, `The Context is refused: ${outcome.problem}.`);
+    }
+    if (!outcome.ok) {
       log.warn("Refused a request without a valid Context");
       return refusal(401, "A valid Context is required.");
     }
+    const { context } = outcome;
     const opening = await families.serve(context, async (family) => family.fetch(withoutContext(request), env));
     if (opening.ok) return opening.family;
     log.warn(`Could not open the Family ${context.familyId} from its Context: ${opening.problem}${nameOf(opening.error)}`);

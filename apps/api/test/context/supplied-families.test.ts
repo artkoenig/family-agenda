@@ -16,6 +16,7 @@ import { createHttpApp } from "../../src/http/app";
 import { FakeClock } from "../support/fake-clock";
 import { acquirePostgres, type InProcessPostgres } from "../support/in-process-postgres";
 import { photos } from "../support/photos";
+import { ScriptedIdentityProviderClient } from "../support/scripted-identity-provider";
 
 const contextKey = "a-context-key-of-at-least-32-characters";
 const idleMs = 60_000;
@@ -32,8 +33,9 @@ describe("a core in supplied mode", () => {
   let fetch: (request: Request) => Promise<Response>;
   let a: Context;
   let b: Context;
+  let provider: ScriptedIdentityProviderClient;
 
-  const familyOf = async (name: string): Promise<Context> => {
+  const familyOf = async (name: string, settings: Partial<Context> = {}): Promise<Context> => {
     const database = await acquirePostgres();
     const familyId = randomUUID() as FamilyId;
     // Databases come from one snapshot, and so with the same Family id at first.
@@ -44,7 +46,10 @@ describe("a core in supplied mode", () => {
       databaseUrl: `postgres://${name}`,
       familyKey: randomBytes(32).toString("base64url"),
       blobDirectory: join(directory, "blobs"),
+      timeZone: "Europe/Berlin",
+      publicUrl: "http://core",
       expiresAt: now + 3_600_000,
+      ...settings,
     };
   };
 
@@ -90,14 +95,15 @@ describe("a core in supplied mode", () => {
     seen = [];
     warnings = [];
     const shared = await bootShared({ tessdataDirectory: join(directory, "tessdata"), bundledTessdataDirectory: null, clock: new FakeClock(new Date(now)) });
+    provider = new ScriptedIdentityProviderClient();
     families = new SuppliedFamilies({
       shared,
-      settings: { timeZone: "Europe/Berlin" },
+      settings: { identityProviderClient: provider },
       connectDatabase,
       idleMs,
       now: () => now,
-      serving: (application) => {
-        const app = createHttpApp(application, { trustProxy: false, agendaAccess: openAgendaAccess });
+      serving: (application, context) => {
+        const app = createHttpApp(application, { trustProxy: false, publicUrl: context.publicUrl, agendaAccess: openAgendaAccess });
         const serve: FamilyFetch = (incoming, env) => {
           seen.push(incoming);
           return app.fetch(incoming, env as never);
@@ -245,5 +251,101 @@ describe("a core in supplied mode", () => {
     const answer = await request(null, "/api/health");
     expect(await answer.json()).toEqual({ status: "ok", version: "test" });
     expect(opened).toEqual([]);
+  });
+
+  describe("with the settings of each Family's own Context", () => {
+    const password = "correct horse battery";
+    const cookieOf = (response: Response, name: string) => {
+      const header = response.headers.getSetCookie().find((cookie) => cookie.startsWith(`${name}=`)) ?? "";
+      return { pair: header.split(";")[0] ?? "", path: /Path=([^;]*)/i.exec(header)?.[1] };
+    };
+    const form = (fields: Record<string, string>): RequestInit => ({
+      method: "POST",
+      body: new URLSearchParams(fields),
+      headers: { origin: "http://core", "content-type": "application/x-www-form-urlencoded" },
+    });
+    const anna = { subject: "sub-anna", email: "anna@example.org", emailVerified: true, groups: ["homelab-admin"] };
+    const identityProvider = { issuerUrl: "https://id.example.org", clientId: "family-agenda", clientSecret: "s3cret-of-a" };
+
+    it("shows each Family its Agenda's days in its own time zone", async () => {
+      // The core's clock says 07:00 in UTC on Monday: Monday in Berlin, still Sunday in Pago Pago.
+      const berlin = await familyOf("berlin", { timeZone: "Europe/Berlin" });
+      const pagoPago = await familyOf("pago-pago", { timeZone: "Pacific/Pago_Pago" });
+      const dayOf = async (context: Context) => {
+        expect(await on(context, (application) => Promise.resolve(application.timeZone))).toBe(context.timeZone);
+        const created = await on(context, (application) => application.agendas.create({ memberIds: [], horizonDays: 1 }));
+        if (!created.ok) throw new Error(created.problem);
+        const page = await on(context, (application) => application.agendas.open(created.id, { access: openAgendaAccess }));
+        return page?.layout === "timeline" ? page.days.map((day) => day.date) : null;
+      };
+
+      expect(await dayOf(berlin)).toEqual(["2026-09-14"]);
+      expect(await dayOf(pagoPago)).toEqual(["2026-09-13"]);
+    });
+
+    it("emits each Family's links, redirects, cookies, web manifest and Agenda feed below its own prefix", async () => {
+      const first = await familyOf("first", { publicUrl: "https://first.example.org/one" });
+      const second = await familyOf("second", { publicUrl: "https://second.example.org/two/" });
+
+      for (const [context, prefix, origin] of [[first, "/one", "https://first.example.org"], [second, "/two", "https://second.example.org"]] as const) {
+        expect((await request(context, "/admin")).headers.get("location")).toBe(`${prefix}/setup`);
+        expect(await (await request(context, "/setup")).text()).toContain(`action="${prefix}/setup"`);
+        const created = await request(context, "/setup", form({ email: "anna@example.org", password }));
+        expect(created.headers.get("location")).toBe(`${prefix}/admin/recovery-kit`);
+        expect(cookieOf(created, "fb_session").path).toBe(prefix);
+        const agenda = await on(context, (application) => application.agendas.create({ memberIds: [], horizonDays: 3 }));
+        if (!agenda.ok) throw new Error(agenda.problem);
+        const manifest = (await (await request(context, `/agendas/${agenda.id}/manifest.webmanifest`)).json()) as { start_url: string; scope: string };
+        expect(manifest.start_url).toMatch(new RegExp(`^${prefix}/agendas/${agenda.id}`));
+        // The feed itself answers, and the Admin area hands out its address below the prefix.
+        expect((await request(context, `/agendas/${agenda.id}/feed.ics`)).status).toBe(200);
+        await on(context, (application) => application.recoveryKit.confirm());
+        const editing = await (await request(context, `/admin/agendas/${agenda.id}`, { headers: { cookie: cookieOf(created, "fb_session").pair } })).text();
+        expect(editing).toContain(`href="${origin}${prefix}/agendas/${agenda.id}/feed.ics"`);
+      }
+    });
+
+    it("offers single sign-on to a Family whose Context names an Identity Provider, through it, and not to one whose Context names none", async () => {
+      const offered = await familyOf("offered", { publicUrl: "http://core/one", identityProvider });
+      const without = await familyOf("without", { publicUrl: "http://core/two" });
+
+      expect(await (await request(without, "/setup")).text()).not.toContain("/sso/start");
+      expect((await request(without, "/sso/start")).headers.get("location") ?? "").not.toContain("id.example.org");
+      expect(await (await request(offered, "/setup")).text()).toContain(`href="/one/sso/start"`);
+
+      const start = await request(offered, "/sso/start");
+      expect(provider.begun).toEqual([{ connection: identityProvider, redirectUri: "http://core/one/sso/callback" }]);
+      const sso = cookieOf(start, "fb_sso");
+      expect(sso.path).toBe("/one/sso");
+      const pending = JSON.parse(decodeURIComponent(sso.pair.split("=").slice(1).join("="))) as Parameters<typeof provider.returnWith>[0];
+      const back = await request(offered, `/sso/callback${provider.returnWith(pending, anna)}`, { headers: { cookie: sso.pair } });
+
+      expect(back.headers.get("location")).toBe("/one/admin/recovery-kit");
+      expect(cookieOf(back, "fb_session").path).toBe("/one");
+      expect(await on(offered, (application) => application.admins.listAdmins())).toMatchObject([{ email: "anna@example.org" }]);
+      expect(warnings.join()).not.toContain("s3cret");
+    });
+
+    it("opens a Family anew for a Context with other settings, and keeps it apart from the one opened before", async () => {
+      await request(a);
+      await request({ ...a, publicUrl: "http://core/elsewhere" });
+      await request({ ...a, identityProvider: { ...identityProvider, issuerUrl: "http://core" } });
+      await request({ ...a, identityProvider: { ...identityProvider, clientSecret: "another" } });
+      await request({ ...a, timeZone: "Asia/Tokyo" });
+      expect(families.size).toBe(5);
+
+      expect((await request({ ...a, publicUrl: "http://core/elsewhere" }, "/admin")).headers.get("location")).toBe("/elsewhere/setup");
+      expect((await request(a, "/admin")).headers.get("location")).toBe("/setup");
+      expect(families.size).toBe(5);
+    });
+
+    it("refuses a Context with incomplete Identity Provider settings, naming what is missing, and opens nothing", async () => {
+      const answer = await request({ ...a, identityProvider: { issuerUrl: identityProvider.issuerUrl, clientId: "family-agenda" } as NonNullable<Context["identityProvider"]> });
+
+      expect(answer.status).toBe(400);
+      expect(await answer.text()).toContain("identityProvider.clientSecret must be set");
+      expect(warnings).toEqual(["Refused a Context with settings the core does not take: identityProvider.clientSecret must be set when identityProvider.issuerUrl is"]);
+      expect(opened).toEqual([]);
+    });
   });
 });

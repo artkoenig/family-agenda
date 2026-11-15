@@ -47,6 +47,8 @@ describe("starting a core in supplied mode", () => {
         databaseUrl: "postgres://family:secret-password@127.0.0.1:1/none",
         familyKey: Buffer.alloc(32, 7).toString("base64url"),
         blobDirectory: join(directory, "blobs"),
+        timeZone: "Europe/Berlin",
+        publicUrl: "https://a.example.org",
         expiresAt: Date.now() + 60_000,
       });
       expect((await fetch(`http://127.0.0.1:${core.port}/setup`, { headers: { [contextHeader]: lost } })).status).toBe(503);

@@ -129,7 +129,7 @@ _Avoid_: Late, expired, missed
 ### Operation
 
 **Context**:
-What a core in supplied mode needs to open the Family one request is for: its Family id, its database, its family key and its blob location, with an expiry at most a day ahead, encrypted and signed by a trusted caller in front with the Context key. It reaches the core only on the caller port; without a valid one the core refuses the request and opens nothing. It opens only a Family that is already prepared, and writes nothing.
+What a core in supplied mode needs to open the Family one request is for: its Family id, its database, its family key and its blob location, and the settings that are the Family's own: its time zone, its public address (the path prefix included) and, if any, its Identity Provider, with an expiry at most a day ahead, encrypted and signed by a trusted caller in front with the Context key. It reaches the core only on the caller port; without a valid one the core refuses the request and opens nothing. It opens only a Family that is already prepared, and writes nothing.
 _Avoid_: Tenant context, session, family token
 
 **Context key**:
