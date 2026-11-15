@@ -28,6 +28,10 @@ x-app: &app
     # The Family's time zone, which decides where an Agenda's days start.
     TZ: ${TZ:-Europe/Berlin}
     PLUGIN_URLS: ${PLUGIN_URLS:-}
+    # Triggered operations (Due work, purge, secret sweep) listen on port 3001 of `api`, which is
+    # not published, only while this is set; each request needs `Authorization: Bearer <token>`.
+    # Generating compose.plugins.yaml adds one to .env.
+    TRIGGER_TOKEN: ${TRIGGER_TOKEN:-}
   volumes:
     # The master key that Source credentials are encrypted with; never in Postgres (ADR-0003).
     - master-key:/var/lib/family-agenda/master-key

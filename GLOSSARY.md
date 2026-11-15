@@ -132,6 +132,14 @@ _Avoid_: Late, expired, missed
 One installation of Family Agenda with its own database, serving exactly one Family.
 _Avoid_: Server, deployment, tenant
 
+**Due work**:
+One run of the Family's background work: the Sources whose polling interval has passed, then Extraction of the messages they and earlier runs brought in. The `worker` runs it every minute; it is also a Triggered operation.
+_Avoid_: Polling job, sync
+
+**Triggered operation**:
+A piece of the `worker`'s work, such as Due work, the purge or the secret sweep, that something outside the core runs on request through the `api`'s own unpublished port, with the Instance's trigger token. It runs the same code as the `worker`'s schedule.
+_Avoid_: Job, webhook, internal API
+
 **Companion**:
 A container a plugin needs beside its own, such as Synapse for the Matrix plugin, declared with the plugin in `plugins.yml`; reachable only on that plugin's network.
 _Avoid_: Sidecar, plugin service

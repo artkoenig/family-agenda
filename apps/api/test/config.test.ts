@@ -45,6 +45,7 @@ describe("the configuration", () => {
       tessdataDirectory: "/var/lib/family-agenda/tessdata",
       bundledTessdataDirectory: null,
       port: 3000,
+      trigger: { port: 3001, token: null },
       trustProxy: false,
       publicUrl: null,
     });
@@ -59,6 +60,8 @@ describe("the configuration", () => {
         TESSDATA_DIRECTORY: "/t",
         BUNDLED_TESSDATA_DIRECTORY: "/u",
         PORT: "8080",
+        TRIGGER_PORT: "4001",
+        TRIGGER_TOKEN: "t0ken",
         TRUST_PROXY: "true",
         PUBLIC_URL: "https://agenda.example.org/x",
       }),
@@ -68,6 +71,7 @@ describe("the configuration", () => {
       tessdataDirectory: "/t",
       bundledTessdataDirectory: "/u",
       port: 8080,
+      trigger: { port: 4001, token: "t0ken" },
       trustProxy: true,
       publicUrl: "https://agenda.example.org/x",
     });

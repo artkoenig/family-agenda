@@ -45,6 +45,20 @@ function logExtracted(report: ExtractionReport, log: WorkLog): void {
   }
 }
 
+/** What the log says when one of the worker's operations fails, by the operation's name. */
+export const workFailures = {
+  "due-work": "Running due Sources and Extraction failed:",
+  purge: "Purging messages past their retention failed:",
+  "secret-sweep": "Removing secrets nothing refers to failed:",
+} as const;
+
+/** Runs due work once and logs what failed, as the worker's schedule and a trigger both do. */
+export async function runDueWork(app: Pick<BackgroundWork, "dueWork">, log: WorkLog): Promise<DueWorkReport> {
+  const report = await app.dueWork.run();
+  logDueWork(report, log);
+  return report;
+}
+
 /** Runs `work`, writing it to the log should it fail, so that the schedule goes on. */
 const logged = (work: () => Promise<unknown>, failure: string, log: WorkLog) => async (): Promise<void> => {
   try {
@@ -56,10 +70,7 @@ const logged = (work: () => Promise<unknown>, failure: string, log: WorkLog) => 
 
 /** Gives the worker its work from schedules: due work, the purge, and the sweep on start and daily. */
 export async function startBackgroundWork(app: BackgroundWork, schedule: WorkRunner, log: WorkLog): Promise<void> {
-  const dueWork = async () => {
-    logDueWork(await app.dueWork.run(), log);
-  };
-  await schedule.every("due-work", dueWorkCron, logged(dueWork, "Running due Sources and Extraction failed:", log));
-  await schedule.every("purge", purgeCron, logged(() => app.retention.purge(), "Purging messages past their retention failed:", log));
-  await schedule.every("secret-sweep", sweepCron, logged(() => app.secretSweep.sweep(), "Removing secrets nothing refers to failed:", log), { atStart: true });
+  await schedule.every("due-work", dueWorkCron, logged(() => runDueWork(app, log), workFailures["due-work"], log));
+  await schedule.every("purge", purgeCron, logged(() => app.retention.purge(), workFailures.purge, log));
+  await schedule.every("secret-sweep", sweepCron, logged(() => app.secretSweep.sweep(), workFailures["secret-sweep"], log), { atStart: true });
 }

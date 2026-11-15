@@ -64,6 +64,8 @@ Keep the backup files somewhere other than the host that runs the Instance.
 
 If you use plugin containers, generate `compose.plugins.yaml` again with the new release's image ([Plugins](configuration.md#plugins)) before `up`, and use the `plugins.yml` of the release, or images of your plugins built for its plugin contract: a plugin built for another major version of the contract is not loaded. Plugin contract 3.0 replaced the egress tokens per proxy (`PLUGIN_<ID>_EGRESS_TOKEN` in `.env`, which you may delete) with one ticket key, `EGRESS_TICKET_KEY`, which generating adds. Since the egress proxies decide from the ticket alone, the core no longer takes `PLUGIN_EGRESS` and serves no allowlist; generating `compose.plugins.yaml` again gives each plugin's proxy its declared hosts (`EGRESS_HOSTS`) and the plugin it serves (`EGRESS_PLUGIN`). With the new image and an older file, a plugin's proxy fails at start (`EGRESS_PLUGIN is not set, nor EGRESS_HOSTS`) and restarts in a loop: it fails closed, so the plugin reaches nothing outside until you generate the file again.
 
+Port `3001` of the `api`, which served that allowlist, now serves the [Triggered operations](configuration.md#triggered-operations) instead, and only with a `TRIGGER_TOKEN`, which generating `compose.plugins.yaml` again adds to `.env`. Remove any mapping that publishes port `3001` from your own compose files; if you want to reach it from the host, publish it bound to `127.0.0.1` only.
+
 An Instance runs the release you named. `latest` is the newest release; it moves when a new release is published, and only after you pull. An exact version such as `0.3.1` never changes under you.
 
 Check the running version in the Admin area, below the settings list, or at `/api/health`.
