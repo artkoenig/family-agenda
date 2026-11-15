@@ -203,3 +203,50 @@ describe("single sign-on over HTTP", () => {
     });
   });
 });
+
+describe("single sign-on over HTTP for known Admins only", () => {
+  let instance: HttpTestInstance;
+  let provider: ScriptedIdentityProviderClient;
+  beforeEach(async () => {
+    provider = new ScriptedIdentityProviderClient();
+    instance = await bootHttpForTest({}, { identityProviderClient: provider, identityProvider: { ...identityProvider, knownAdminsOnly: true } });
+  });
+  afterEach(async () => {
+    await instance.close();
+  });
+
+  const callbackFor = async (identity: typeof anna) => {
+    const start = await instance.get("/sso/start");
+    const ssoCookie = start.headers.get("set-cookie")?.split(";")[0] ?? "";
+    const pending = JSON.parse(decodeURIComponent(ssoCookie.split("=").slice(1).join("="))) as { state: string; nonce: string; codeVerifier: string };
+    return instance.get(`/sso/callback${provider.returnWith(pending, identity)}`, { cookie: ssoCookie });
+  };
+
+  it("offers no Identity Provider on the setup page, and makes no first Admin from a sign-in", async () => {
+    expect(await (await instance.get("/setup")).text()).not.toContain("/sso/start");
+
+    const response = await callbackFor(anna);
+
+    expect(response.status).toBe(401);
+    const page = await response.text();
+    expect(page).toContain("No Admin here has the email address");
+    expect(page).not.toContain("/sso/start");
+    expect(await instance.app.admins.needsFirstAdmin()).toBe(true);
+  });
+
+  it("signs in an Admin another Admin added by email address alone, and refuses anyone else", async () => {
+    await instance.post("/setup", { email: "anna@example.org", password });
+    await instance.app.recoveryKit.confirm();
+    const cookie = sessionCookieOf(await instance.post("/admin/sign-in", { email: "anna@example.org", password }));
+    expect((await instance.post("/admin/admins", { email: "ben@example.org", password: "" }, { cookie })).status).toBe(303);
+
+    const ben = await callbackFor({ ...anna, subject: "sub-ben", email: "ben@example.org" });
+    const carla = await callbackFor({ ...anna, subject: "sub-carla", email: "carla@example.org" });
+
+    expect(ben.status).toBe(303);
+    expect(ben.headers.get("location")).toBe("/admin");
+    expect(carla.status).toBe(401);
+    expect(await carla.text()).toContain("No Admin here has the email address");
+    expect((await instance.app.admins.listAdmins()).map((admin) => admin.email)).toEqual(["anna@example.org", "ben@example.org"]);
+  });
+});

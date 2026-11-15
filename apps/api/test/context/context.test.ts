@@ -93,6 +93,12 @@ describe("a Context", () => {
     expect(sealContext(key, withProvider)).not.toContain("s3cret");
   });
 
+  it("carries whether only known Admins sign in through the Identity Provider", () => {
+    const opened = (knownAdminsOnly: boolean) => openContext(key, sealContext(key, { ...context, identityProvider: { ...identityProvider, knownAdminsOnly } }), 1_000);
+    expect(opened(true)?.identityProvider?.knownAdminsOnly).toBe(true);
+    expect(opened(false)?.identityProvider).not.toHaveProperty("knownAdminsOnly");
+  });
+
   it.each<[string, Partial<Record<keyof Context, unknown>>, RegExp]>([
     ["without a time zone", { timeZone: undefined }, /timeZone must be/],
     ["with a time zone that is none", { timeZone: "Mars/Olympus" }, /timeZone must be/],
@@ -104,6 +110,7 @@ describe("a Context", () => {
     ["with an Identity Provider without client id", { identityProvider: { ...identityProvider, clientId: "" } }, /identityProvider.clientId must be set/],
     ["with an Identity Provider without client secret", { identityProvider: { ...identityProvider, clientSecret: undefined } }, /identityProvider.clientSecret must be set/],
     ["with an empty required group", { identityProvider: { ...identityProvider, requiredGroup: " " } }, /identityProvider.requiredGroup must not be empty/],
+    ["with a switch for known Admins that is no boolean", { identityProvider: { ...identityProvider, knownAdminsOnly: "true" } }, /identityProvider.knownAdminsOnly must be true or false/],
     ["with an issuer that is no http address", { identityProvider: { ...identityProvider, issuerUrl: "id.example.org" } }, /identityProvider.issuerUrl must be an http/],
   ])("is refused %s, naming what is wrong", (_, change, problem) => {
     const sealed = sealContext(key, { ...context, ...change } as Context);

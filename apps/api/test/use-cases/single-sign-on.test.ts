@@ -297,3 +297,105 @@ describe("the Identity Provider from the environment", () => {
     expect(parseIdentityProviderSettings({ ...variables, ...change })).toEqual({ ok: false, problem });
   });
 });
+
+describe("signing in through an Identity Provider only as a known Admin", () => {
+  const knownOnly = { ...settings, knownAdminsOnly: true };
+  let instance: TestInstance;
+  let provider: ScriptedIdentityProviderClient;
+  beforeEach(async () => {
+    provider = new ScriptedIdentityProviderClient();
+    instance = await bootForTest({ identityProviderClient: provider, identityProvider: knownOnly });
+  });
+  afterEach(async () => {
+    await instance.close();
+  });
+
+  const signInAs = async (identity: typeof anna) => {
+    const sso = instance.app.singleSignOn;
+    const begun = await sso.begin(origin);
+    if (!begun) throw new Error("sign-in not offered");
+    return sso.complete({ baseUrl: origin, query: provider.returnWith(begun.pending, identity), pending: begun.pending });
+  };
+
+  it("signs in the Admin with the verified email and ties them to the identity", async () => {
+    await instance.app.admins.createFirstAdmin({ email: "anna@example.org", password });
+
+    const first = await signInAs(anna);
+    const again = await signInAs({ ...anna, email: "other@example.org" });
+
+    expect(first.ok && again.ok).toBe(true);
+    expect(await instance.app.admins.listAdmins()).toHaveLength(1);
+  });
+
+  it("refuses someone in the group whose email belongs to no Admin, and adds no Admin", async () => {
+    await instance.app.admins.createFirstAdmin({ email: "anna@example.org", password });
+
+    expect(await signInAs({ ...anna, subject: "sub-ben", email: "ben@example.org" })).toEqual({ ok: false, problem: "sso-unknown-admin" });
+    expect(await instance.app.admins.listAdmins()).toHaveLength(1);
+  });
+
+  it("refuses an email the provider has not verified, even of a known Admin", async () => {
+    await instance.app.admins.createFirstAdmin({ email: "anna@example.org", password });
+
+    expect(await signInAs({ ...anna, emailVerified: false })).toEqual({ ok: false, problem: "sso-email-unverified" });
+  });
+
+  it("makes no first Admin on a Family without one", async () => {
+    expect(await signInAs(anna)).toEqual({ ok: false, problem: "sso-unknown-admin" });
+    expect(await instance.app.admins.needsFirstAdmin()).toBe(true);
+    expect(instance.app.singleSignOn.makesFirstAdminAt(origin)).toBe(false);
+  });
+
+  it("signs in an Admin entered by email address without a password", async () => {
+    await instance.app.admins.enterAdmin({ email: "anna@example.org" });
+
+    expect((await signInAs(anna)).ok).toBe(true);
+  });
+
+  it("signs in an Admin another Admin added by email address alone", async () => {
+    await instance.app.admins.createFirstAdmin({ email: "anna@example.org", password });
+
+    expect(await instance.app.admins.createAdmin({ email: "ben@example.org", password: "" })).toEqual({ ok: true });
+
+    expect((await signInAs({ ...anna, subject: "sub-ben", email: "ben@example.org" })).ok).toBe(true);
+    expect((await instance.app.admins.signIn({ email: "ben@example.org", password: "", client: "192.0.2.1" })).ok).toBe(false);
+  });
+
+  it("does not tie a known Admin already tied to another identity", async () => {
+    await instance.app.admins.enterAdmin({ email: "anna@example.org" });
+    await signInAs(anna);
+
+    expect(await signInAs({ ...anna, subject: "sub-impostor" })).toEqual({ ok: false, problem: "sso-conflict" });
+  });
+});
+
+describe("the switch for known Admins only", () => {
+  const variables = { issuerUrl: "https://id.example.ts.net", clientId: "family-agenda", clientSecret: "s3cret", publicBaseUrl: origin };
+  const switched = (knownAdminsOnly: string | boolean | undefined) => {
+    const parsed = parseIdentityProviderSettings({ ...variables, knownAdminsOnly });
+    return parsed.ok ? (parsed.settings?.knownAdminsOnly ?? false) : parsed.problem;
+  };
+
+  it("is off unless set", () => {
+    expect(switched(undefined)).toBe(false);
+    expect(switched("")).toBe(false);
+    expect(switched(false)).toBe(false);
+    expect(switched("false")).toBe(false);
+  });
+
+  it("is on when set", () => {
+    expect(switched(true)).toBe(true);
+    expect(switched(" true ")).toBe(true);
+  });
+
+  it("is refused for anything else", () => {
+    expect(switched("yes")).toBe("invalid-known-admins-only");
+  });
+
+  it("makes the first Admin without it", async () => {
+    const instance = await bootForTest({ identityProvider: settings });
+    expect(instance.app.singleSignOn.makesFirstAdminAt(origin)).toBe(true);
+    expect(instance.app.singleSignOn.makesFirstAdminAt("http://family-agenda.local")).toBe(false);
+    await instance.close();
+  });
+});

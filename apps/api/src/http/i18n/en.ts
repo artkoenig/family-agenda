@@ -86,6 +86,8 @@ export const en = {
       "Your account at the Identity Provider is not in the group that may sign in here.",
     "sso-email-unverified":
       "The Identity Provider has not verified an email address for your account.",
+    "sso-unknown-admin":
+      "No Admin here has the email address the Identity Provider verified for your account. An Admin can add you by that address.",
     "sso-conflict":
       "An Admin with this email is already linked to another account at the Identity Provider.",
     "invalid-interval": `The polling interval must be between ${pollIntervalRange.minSeconds / 60} minute and ${pollIntervalRange.maxSeconds / 86_400} days.`,
@@ -173,6 +175,7 @@ export const en = {
     eyebrow: "Instance",
     dialogTitle: "Add an Admin",
     passwordHint: `At least ${minimumPasswordLength} characters. Tell it to them in person.`,
+    newAdminPasswordHint: `At least ${minimumPasswordLength} characters. Tell it to them in person. Leave it empty for an Admin who signs in through the Identity Provider.`,
     you: "You",
     admin: "Admin",
     newPassword: "New password",

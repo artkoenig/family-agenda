@@ -68,7 +68,7 @@ const familyVariables = {
 type FixedOnly = keyof typeof familyVariables | "port";
 
 /** The settings each Family's Context carries in supplied mode (ADR-0003, ADR-0007), which supplied mode refuses in the environment. */
-const contextVariables = ["PUBLIC_URL", "OIDC_ISSUER_URL", "OIDC_CLIENT_ID", "OIDC_CLIENT_SECRET", "OIDC_REQUIRED_GROUP"] as const;
+const contextVariables = ["PUBLIC_URL", "OIDC_ISSUER_URL", "OIDC_CLIENT_ID", "OIDC_CLIENT_SECRET", "OIDC_REQUIRED_GROUP", "OIDC_KNOWN_ADMINS_ONLY"] as const;
 
 
 /** The mode `CONTEXT_MODE` chooses, refusing a Context key without supplied mode and the other way round. */
@@ -201,6 +201,7 @@ const identityProviderProblems = {
   "invalid-client-id": "OIDC_CLIENT_ID must be set when OIDC_ISSUER_URL is",
   "client-secret-missing": "OIDC_CLIENT_SECRET must be set when OIDC_ISSUER_URL is",
   "invalid-required-group": "OIDC_REQUIRED_GROUP must not be empty",
+  "invalid-known-admins-only": "OIDC_KNOWN_ADMINS_ONLY must be true or false",
   "invalid-public-url": "PUBLIC_URL must be set when OIDC_ISSUER_URL is: the redirect URI lies below it",
 } as const;
 
@@ -210,6 +211,7 @@ function identityProviderOf(env: NodeJS.ProcessEnv, publicUrl: string | null): I
     clientId: env.OIDC_CLIENT_ID,
     clientSecret: env.OIDC_CLIENT_SECRET,
     requiredGroup: env.OIDC_REQUIRED_GROUP || undefined,
+    knownAdminsOnly: env.OIDC_KNOWN_ADMINS_ONLY,
     publicBaseUrl: publicUrl,
   });
   if (!parsed.ok) throw new Error(identityProviderProblems[parsed.problem]);

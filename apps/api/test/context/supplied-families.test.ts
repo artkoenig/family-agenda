@@ -350,11 +350,12 @@ describe("a core in supplied mode", () => {
       await request({ ...a, identityProvider: { ...identityProvider, issuerUrl: "http://core" } });
       await request({ ...a, identityProvider: { ...identityProvider, clientSecret: "another" } });
       await request({ ...a, timeZone: "Asia/Tokyo" });
-      expect(families.size).toBe(5);
+      await request({ ...a, identityProvider: { ...identityProvider, knownAdminsOnly: true } });
+      expect(families.size).toBe(6);
 
       expect((await request({ ...a, publicUrl: "http://core/elsewhere" }, "/admin")).headers.get("location")).toBe("/elsewhere/setup");
       expect((await request(a, "/admin")).headers.get("location")).toBe("/setup");
-      expect(families.size).toBe(5);
+      expect(families.size).toBe(6);
     });
 
     it("refuses a Context with incomplete Identity Provider settings, naming what is missing, and opens nothing", async () => {

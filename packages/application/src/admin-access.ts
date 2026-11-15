@@ -49,7 +49,7 @@ export type SignInResult =
 
 export type IdentitySignInResult =
   | { ok: true; sessionToken: string }
-  | { ok: false; problem: "identity-email-unverified" | "identity-conflict" };
+  | { ok: false; problem: "identity-email-unverified" | "identity-conflict" | "identity-unknown-admin" };
 
 export type PasswordResetResult =
   | { ok: true }
@@ -82,6 +82,13 @@ export function createAdminAccess(deps: AdminAccessDeps) {
     return { ok: true, sessionToken: await startSession(admin.id) };
   }
 
+  /** A new Admin without a password, tied to the identity; none when another took the email meanwhile. */
+  async function addAndSignIn(email: Email, subject: string): Promise<IdentitySignInResult> {
+    const admin: Admin = { id: randomUUID() as AdminId, email, passwordHash: null, identitySubject: subject, createdAt: clock.now() };
+    if (!(await admins.add(admin))) return { ok: false, problem: "identity-conflict" };
+    return { ok: true, sessionToken: await startSession(admin.id) };
+  }
+
   async function startSession(adminId: AdminId): Promise<string> {
     const token = randomBytes(32).toString("base64url");
     const now = clock.now();
@@ -107,6 +114,12 @@ export function createAdminAccess(deps: AdminAccessDeps) {
       createdAt: clock.now(),
     };
     return { ok: true, admin };
+  }
+
+  function adminWithoutPassword(rawEmail: string): { ok: true; admin: Admin } | { ok: false; problem: "invalid-email" } {
+    const email = parseEmail(rawEmail);
+    if (!email) return { ok: false, problem: "invalid-email" };
+    return { ok: true, admin: { id: randomUUID() as AdminId, email, passwordHash: null, identitySubject: null, createdAt: clock.now() } };
   }
 
   async function setPassword(admin: Admin, newPassword: string): Promise<PasswordResetResult> {
@@ -185,13 +198,16 @@ export function createAdminAccess(deps: AdminAccessDeps) {
     /**
      * Signs in the Admin the Identity Provider vouches for, who must already be in the required
      * group. The Admin with this `sub` signs in; else the one with the same verified email is
-     * linked to it; else a new Admin without a password is created.
+     * linked to it; else a new Admin without a password is created, unless `knownAdminsOnly`.
      */
-    async signInThroughIdentityProvider(identity: {
-      subject: string;
-      email: string | null;
-      emailVerified: boolean;
-    }): Promise<IdentitySignInResult> {
+    async signInThroughIdentityProvider(
+      identity: {
+        subject: string;
+        email: string | null;
+        emailVerified: boolean;
+      },
+      options: { knownAdminsOnly?: boolean } = {},
+    ): Promise<IdentitySignInResult> {
       const known = await admins.findByIdentitySubject(identity.subject);
       if (known)
         return { ok: true, sessionToken: await startSession(known.id) };
@@ -200,16 +216,9 @@ export function createAdminAccess(deps: AdminAccessDeps) {
         return { ok: false, problem: "identity-email-unverified" };
       const sameEmail = await admins.findByEmail(email);
       if (sameEmail) return linkAndSignIn(sameEmail, identity.subject);
-      const admin: Admin = {
-        id: randomUUID() as AdminId,
-        email,
-        passwordHash: null,
-        identitySubject: identity.subject,
-        createdAt: clock.now(),
-      };
-      if (!(await admins.add(admin)))
-        return { ok: false, problem: "identity-conflict" };
-      return { ok: true, sessionToken: await startSession(admin.id) };
+      if (options.knownAdminsOnly === true)
+        return { ok: false, problem: "identity-unknown-admin" };
+      return addAndSignIn(email, identity.subject);
     },
 
     async signOut(sessionToken: string): Promise<void> {
@@ -221,12 +230,16 @@ export function createAdminAccess(deps: AdminAccessDeps) {
       return all.map((admin) => ({ id: admin.id, email: admin.email }));
     },
 
-    /** Admins are equal: any Admin can create another. */
+    /**
+     * Admins are equal: any Admin can create another. Without a password, the new Admin signs in
+     * through the Identity Provider, which links the identity by this verified email, as with
+     * `enterAdmin`, or gets a password through a reset.
+     */
     async createAdmin(input: {
       email: string;
       password: string;
     }): Promise<{ ok: true } | { ok: false; problem: AccountProblem | "email-taken" }> {
-      const result = await newAdmin(input.email, input.password);
+      const result = input.password === "" ? adminWithoutPassword(input.email) : await newAdmin(input.email, input.password);
       if (!result.ok) return result;
       if (!(await admins.add(result.admin))) return { ok: false, problem: "email-taken" };
       return { ok: true };
@@ -249,9 +262,10 @@ export function createAdminAccess(deps: AdminAccessDeps) {
      * which links the identity by this verified email, or gets a password through a reset.
      */
     async enterAdmin(input: { email: string }): Promise<EnterAdminResult> {
-      const email = parseEmail(input.email);
-      if (!email) return { ok: false, problem: "invalid-email" };
-      const admin: Admin = { id: randomUUID() as AdminId, email, passwordHash: null, identitySubject: null, createdAt: clock.now() };
+      const entered = adminWithoutPassword(input.email);
+      if (!entered.ok) return entered;
+      const { admin } = entered;
+      const { email } = admin;
       // The first Admin, or else one more; neither when an Admin already has the email.
       if (await admins.addFirst(admin)) return { ok: true, email, outcome: "first" };
       return { ok: true, email, outcome: (await admins.add(admin)) ? "added" : "exists" };

@@ -845,11 +845,10 @@ export function AdminsPage(props: {
             id="password"
             name="password"
             type="password"
-            required
             minlength={minimumPasswordLength}
             autocomplete="new-password"
           />
-          <small>{t.admins.passwordHint}</small>
+          <small>{t.admins.newAdminPasswordHint}</small>
         </div>
         <DialogFooter closeHref={href(prefix, "/admin/admins")} submit={t.admins.add} />
       </form>

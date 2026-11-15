@@ -48,6 +48,8 @@ export type ContextIdentityProvider = {
   clientSecret: string;
   /** `homelab-admin` when not given. */
   requiredGroup?: string;
+  /** Only an Admin the Family already has signs in, and none is made from a sign-in; false when not given. */
+  knownAdminsOnly?: boolean;
 };
 
 /** The longest a Context may last: one lasting longer is refused, as `seal-context` refuses to seal one. */
@@ -72,6 +74,7 @@ const problems = {
   "invalid-client-id": "identityProvider.clientId must be set when identityProvider.issuerUrl is",
   "client-secret-missing": "identityProvider.clientSecret must be set when identityProvider.issuerUrl is",
   "invalid-required-group": "identityProvider.requiredGroup must not be empty",
+  "invalid-known-admins-only": "identityProvider.knownAdminsOnly must be true or false",
   "invalid-public-url": publicUrlProblem,
 } as const;
 
@@ -99,7 +102,7 @@ const contextSchema = z
     timeZone: z.string({ error: problems.timeZone }).refine(isTimeZone, problems.timeZone),
     publicUrl: z.string({ error: problems.publicUrl }).transform((text, context) => parsePublicUrl(text) ?? custom(context, problems.publicUrl)),
     identityProvider: z
-      .strictObject({ issuerUrl: optionalText, clientId: optionalText, clientSecret: optionalText, requiredGroup: optionalText }, { error: problems["missing-issuer-url"] })
+      .strictObject({ issuerUrl: optionalText, clientId: optionalText, clientSecret: optionalText, requiredGroup: optionalText, knownAdminsOnly: z.boolean({ error: problems["invalid-known-admins-only"] }).optional() }, { error: problems["missing-issuer-url"] })
       .optional(),
     expiresAt: z.number(),
   })
