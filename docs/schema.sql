@@ -27,11 +27,11 @@
 -- ---------------------------------------------------------------------------------------------
 
 -- The one row holding what belongs to the Family itself (ADR-0003: no query filters by Family;
--- `public_id` only names it to the outside).
+-- `family_id` only names it to the outside).
 CREATE TABLE family (
   id                         BOOLEAN PRIMARY KEY DEFAULT true,
-  -- Names the Family outside its database, such as in the ticket of a plugin call (ADR-0001).
-  public_id                  UUID NOT NULL DEFAULT gen_random_uuid(),
+  -- The Family id: names the Family outside its database, such as in the ticket of a plugin call (ADR-0001).
+  family_id                  UUID NOT NULL DEFAULT gen_random_uuid(),
   language                   TEXT NOT NULL DEFAULT 'en',
   ocr_enabled                BOOLEAN NOT NULL DEFAULT true,
   ocr_languages              TEXT[] NOT NULL DEFAULT '{eng}',

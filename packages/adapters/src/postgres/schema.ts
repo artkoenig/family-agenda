@@ -52,10 +52,10 @@ export const family = pgTable(
   {
     id: singleRowId(),
     /**
-     * What names the Family outside its database, such as in the ticket of a plugin call, which its
+     * The Family id, which names the Family outside its database, such as in the ticket of a plugin call, which its
      * Egress Proxy presents to the api; made once, with the row.
      */
-    publicId: uuid("public_id").notNull().defaultRandom(),
+    familyId: uuid("family_id").notNull().defaultRandom(),
     recoveryKitConfirmedAt: timestamptz("recovery_kit_confirmed_at"),
     /** The Family Language, `en` or `de`, which dates are formatted in. */
     language: text("language").notNull().default("en"),

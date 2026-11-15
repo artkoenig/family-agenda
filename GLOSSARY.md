@@ -10,6 +10,10 @@ Gathers family-relevant information from many channels into one overview of who 
 The household the system serves, owning all Sources and Items; each Instance serves exactly one.
 _Avoid_: Account, tenant, user group
 
+**Family id**:
+The one identifier of a Family, a random UUID made when the Family is set up; it names the Family outside its database, such as in a Ticket.
+_Avoid_: Public id, tenant id
+
 **Family Language**:
 The language, English or German, in which the Instance speaks to the Family and formats dates; chosen by an Admin.
 _Avoid_: Locale, UI language, region
