@@ -38,8 +38,8 @@ export interface PasswordHasher {
 
 /** The settings of the Instance's one Family (ADR-0003). */
 export interface FamilyRepository {
-  /** What names the Family outside its database, such as in the ticket of a plugin call. */
-  publicId(): Promise<string>;
+  /** The Family id, which names the Family outside its database, such as in the ticket of a plugin call. */
+  familyId(): Promise<string>;
   recoveryKitConfirmed(): Promise<boolean>;
   /** Keeps the first confirmation if there is one. */
   confirmRecoveryKit(at: Date): Promise<void>;

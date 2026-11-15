@@ -236,7 +236,7 @@ export async function bootApplication(config: ApplicationConfig): Promise<Applic
 
   const items = new PostgresItemRepository(postgres.db);
   const activity = createActivityLog({ clock, activities: new PostgresActivityRepository(postgres.db) });
-  const familyId = await withDatabase(postgres, () => families.publicId());
+  const familyId = await withDatabase(postgres, () => families.familyId());
   const registry = await PluginContainers.connect(config.pluginContainers ?? [], {
     ...config.pluginContainerOptions,
     ticketing: { ticketKey: config.egressTicketKey ?? randomBytes(32).toString("base64url"), familyId },

@@ -76,10 +76,10 @@ const setupLockKey = 7_342_002;
 export class PostgresFamilyRepository implements FamilyRepository {
   constructor(private readonly db: Database) {}
 
-  async publicId(): Promise<string> {
-    const [row] = await this.db.select({ publicId: family.publicId }).from(family);
+  async familyId(): Promise<string> {
+    const [row] = await this.db.select({ familyId: family.familyId }).from(family);
     if (!row) throw new Error("the family row is missing");
-    return row.publicId;
+    return row.familyId;
   }
 
   async recoveryKitConfirmed(): Promise<boolean> {
