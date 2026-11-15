@@ -160,6 +160,7 @@ export async function bootForTest(options: TestOptions = {}): Promise<TestInstan
       retention: instance.app.retention,
       secretSweep: instance.app.secretSweep,
       prepare: (familyId) => prepareFamily(shared, config, familyId),
+      admins: instance.app.admins,
     }),
     installPlugin,
     uninstallPlugin,

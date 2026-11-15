@@ -51,6 +51,8 @@ export const workFailures = {
   purge: "Purging messages past their retention failed:",
   "secret-sweep": "Removing secrets nothing refers to failed:",
   "prepare-family": "Preparing the Family failed:",
+  "enter-admin": "Entering an Admin failed:",
+  "reset-admin-password": "Resetting an Admin's password failed:",
 } as const;
 
 /** Runs due work once and logs what failed, as the worker's schedule and a trigger both do. */
