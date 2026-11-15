@@ -68,13 +68,12 @@ describe("generatePluginsCompose", () => {
     expect(compose.services["plugin-matrix"]?.healthcheck).toBeUndefined();
   });
 
-  it("binds api and worker to every plugin, lists the egress hosts per plugin and gives them the ticket key", () => {
+  it("binds api and worker to every plugin and gives them the ticket key, but no egress hosts", () => {
     const { compose } = generated(matrix);
 
     for (const core of [compose.services.api, compose.services.worker]) {
       expect(core?.environment).toEqual({
         PLUGIN_URLS: "demo=http://plugin-demo:8080,matrix=http://plugin-matrix:8080",
-        PLUGIN_EGRESS: "plugin-demo=api.example.com:443",
         EGRESS_TICKET_KEY: "${EGRESS_TICKET_KEY}",
       });
       expect(core?.networks).toEqual(["default", "plugin-demo", "plugin-matrix"]);
@@ -121,11 +120,9 @@ describe("generatePluginsCompose", () => {
       mem_limit: "128m",
     });
     for (const container of ["plugin-demo", "plugin-matrix", "plugin-matrix-synapse"]) expect(compose.networks[`${container}-egress`]).toEqual({ internal: true });
-    // A plugin's own proxy checks the tickets of the core's calls and asks the api what each allows.
-    for (const container of ["plugin-demo", "plugin-matrix"]) {
-      expect(compose.services[`${container}-egress`]).toEqual(
-        proxyOf(container, { EGRESS_ALLOWLIST_URL: `http://api:3001/egress/${container}`, EGRESS_TICKET_KEY: "${EGRESS_TICKET_KEY}" }),
-      );
+    // A plugin's own proxy checks the tickets of the core's calls and allows its declared hosts and those of each ticket.
+    for (const [container, hosts] of [["plugin-demo", "api.example.com:443"], ["plugin-matrix", ""]] as const) {
+      expect(compose.services[`${container}-egress`]).toEqual(proxyOf(container, { EGRESS_HOSTS: hosts, EGRESS_PLUGIN: container, EGRESS_TICKET_KEY: "${EGRESS_TICKET_KEY}" }));
     }
     // The core never calls a companion: its proxy allows its declared hosts.
     expect(compose.services["plugin-matrix-synapse-egress"]).toEqual(proxyOf("plugin-matrix-synapse", { EGRESS_HOSTS: "*.whatsapp.net:443" }));
@@ -164,7 +161,7 @@ describe("generatePluginsCompose", () => {
     const { compose, dotEnv } = generated("");
 
     expect(compose.services.postgres).toBeUndefined();
-    expect(compose.services.api?.environment).toEqual({ PLUGIN_URLS: "", PLUGIN_EGRESS: "" });
+    expect(compose.services.api?.environment).toEqual({ PLUGIN_URLS: "" });
     expect(dotEnv).toBeNull();
   });
 

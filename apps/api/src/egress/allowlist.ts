@@ -8,43 +8,14 @@ export type HostPort = { host: string; port: number };
 export type AllowEntry = { name: string; wildcard: boolean; port: number | null };
 
 /**
- * The declared egress hosts per plugin container of `PLUGIN_EGRESS`, containers separated by
- * commas, such as `plugin-demo=api.example.com:443;*.example.org:443,plugin-imap=login.example.com:443`.
- */
-export function parsePluginEgress(text: string | undefined): Map<string, string[]> {
-  const declared = new Map<string, string[]>();
-  for (const entry of (text ?? "").split(",").map((part) => part.trim()).filter((part) => part !== "")) {
-    const at = entry.indexOf("=");
-    const service = entry.slice(0, Math.max(at, 0)).trim();
-    if (service === "") throw new Error(`PLUGIN_EGRESS takes containers with values, such as plugin-demo=...; "${entry}" is none`);
-    const hosts = entry.slice(at + 1).split(";").map((host) => host.trim()).filter((host) => host !== "");
-    declared.set(service, [...(declared.get(service) ?? []), ...hosts]);
-  }
-  return declared;
-}
-
-export type AllowlistSources = {
-  /** The declared egress hosts per plugin container, from `PLUGIN_EGRESS`. */
-  declared: Map<string, string[]>;
-  /** Whether the Instance serves the Family a ticket names. */
-  family: (familyId: string) => Promise<boolean>;
-};
-
-/**
  * What the egress proxy of container `service` allows for the plugin call `ticket` was minted for
- * (ADR-0001, amended): the container's declared hosts and the hosts the Admin entered in host fields of that
- * one Source, as the ticket carries them; only the declared hosts for a call of no Source. Null
- * where the ticket does not hold: for a Family the Instance does not serve, or a container other
- * than the plugin's own.
+ * (ADR-0001, amended): the container's `declared` hosts and the hosts the Admin entered in host
+ * fields of that one Source, as the ticket carries them; only the declared hosts for a call of no
+ * Source. Null for a ticket minted for another container than the plugin's own.
  */
-export async function allowlistOf(
-  service: string,
-  ticket: Ticket,
-  { declared, family }: AllowlistSources,
-): Promise<string[] | null> {
+export function allowlistOf(service: string, ticket: Ticket, declared: string[]): string[] | null {
   if (pluginServiceOf(ticket.sourceTypeId) !== service) return null;
-  if (!(await family(ticket.familyId))) return null;
-  return [...new Set([...(declared.get(service) ?? []), ...ticket.hosts.flatMap(hostFieldEntry)])];
+  return [...new Set([...declared, ...ticket.hosts.flatMap(hostFieldEntry)])];
 }
 
 /**

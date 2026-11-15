@@ -200,21 +200,9 @@ function coreServiceOf(file: PluginsFile): Service {
   return {
     environment: {
       PLUGIN_URLS: file.plugins.map((plugin) => `${plugin.id}=http://${serviceOf(plugin)}:8080`).join(","),
-      PLUGIN_EGRESS: egressOf(file),
       ...(file.plugins.length > 0 ? { [ticketKeyVariable]: `\${${ticketKeyVariable}}` } : {}),
     },
     networks: ["default", ...file.plugins.map(serviceOf)],
   };
 }
 
-/**
- * The egress hosts per plugin's own container, such as `plugin-demo=api.example.com:443;*.example.org:443`,
- * containers separated by commas, which the api serves to their egress proxies (ADR-0001). A
- * companion's proxy has its hosts in its own environment.
- */
-function egressOf(file: PluginsFile): string {
-  return file.plugins
-    .filter((plugin) => plugin.egress.length > 0)
-    .map((plugin) => `${serviceOf(plugin)}=${plugin.egress.join(";")}`)
-    .join(",");
-}
