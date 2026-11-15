@@ -7,7 +7,7 @@ export type IdentityProviderSettings = {
   clientId: string;
   clientSecret: string;
   requiredGroup: string;
-  /** The origin the Family reaches the Instance at; the redirect URI lies below it. */
+  /** The address the Family reaches the Instance at, its path prefix included; the redirect URI lies below it. */
   publicBaseUrl: string;
 };
 
@@ -18,7 +18,7 @@ export type SingleSignOnDeps = {
   admins: AdminAccess;
 };
 
-/** Where the Identity Provider sends an Admin back to, below the public base URL. */
+/** Where the Identity Provider sends an Admin back to, below the public base URL and so below its path prefix. */
 export const singleSignOnCallbackPath = "/sso/callback";
 
 export const defaultRequiredGroup = "homelab-admin";
@@ -33,8 +33,8 @@ export type SingleSignOnSignInResult =
 export function createSingleSignOn(deps: SingleSignOnDeps) {
   const { settings, client, admins } = deps;
 
-  const at = (origin: string): IdentityProviderSettings | null =>
-    settings !== null && settings.publicBaseUrl === origin ? settings : null;
+  const at = (baseUrl: string): IdentityProviderSettings | null =>
+    settings !== null && settings.publicBaseUrl === baseUrl ? settings : null;
 
   const connectionOf = (offered: IdentityProviderSettings) => ({
     issuerUrl: offered.issuerUrl,
@@ -43,14 +43,14 @@ export function createSingleSignOn(deps: SingleSignOnDeps) {
   });
 
   return {
-    /** Whether single sign-on is offered to someone who reached the Instance at `origin`. */
-    isOfferedAt(origin: string): boolean {
-      return at(origin) !== null;
+    /** Whether single sign-on is offered to someone who reached the Instance at `baseUrl`, path prefix included. */
+    isOfferedAt(baseUrl: string): boolean {
+      return at(baseUrl) !== null;
     },
 
-    /** Where to send an Admin to sign in, with what to remember until they return; null if it is not offered at `origin`. */
-    async begin(origin: string): Promise<{ authorizationUrl: string; pending: PendingSignIn } | null> {
-      const offered = at(origin);
+    /** Where to send an Admin to sign in, with what to remember until they return; null if it is not offered at `baseUrl`. */
+    async begin(baseUrl: string): Promise<{ authorizationUrl: string; pending: PendingSignIn } | null> {
+      const offered = at(baseUrl);
       if (!offered) return null;
       return client.begin(connectionOf(offered), offered.publicBaseUrl + singleSignOnCallbackPath);
     },
@@ -59,8 +59,8 @@ export function createSingleSignOn(deps: SingleSignOnDeps) {
      * Signs in the Admin the provider sent back, if they belong to the required group; on an
      * Instance without Admins yet, they become its first.
      */
-    async complete(input: { origin: string; query: string; pending: PendingSignIn }): Promise<SingleSignOnSignInResult> {
-      const offered = at(input.origin);
+    async complete(input: { baseUrl: string; query: string; pending: PendingSignIn }): Promise<SingleSignOnSignInResult> {
+      const offered = at(input.baseUrl);
       if (!offered) return { ok: false, problem: "sso-failed" };
       const redirectUri = offered.publicBaseUrl + singleSignOnCallbackPath;
       const identity = await client.complete(connectionOf(offered), redirectUri, redirectUri + input.query, input.pending);
@@ -107,11 +107,11 @@ type SettingsProblem = Extract<ParsedIdentityProviderSettings, { ok: false }>["p
 const settingCheckers: {
   [K in keyof IdentityProviderSettings]: [SettingsProblem, (variables: IdentityProviderVariables) => string | null];
 } = {
-  issuerUrl: ["invalid-issuer-url", (v) => httpUrl(v.issuerUrl ?? "", { keepPath: true })],
+  issuerUrl: ["invalid-issuer-url", (v) => httpUrl(v.issuerUrl ?? "")],
   clientId: ["invalid-client-id", (v) => shortText(v.clientId ?? "")],
   clientSecret: ["client-secret-missing", (v) => (v.clientSecret ?? "").trim() || null],
   requiredGroup: ["invalid-required-group", (v) => shortText(v.requiredGroup ?? defaultRequiredGroup)],
-  publicBaseUrl: ["invalid-public-url", (v) => httpUrl(v.publicBaseUrl ?? "", { keepPath: false })],
+  publicBaseUrl: ["invalid-public-url", (v) => httpUrl(v.publicBaseUrl ?? "")],
 };
 
 /** The Identity Provider the variables configure; none when the issuer is not set. */
@@ -135,11 +135,10 @@ function isShortText(text: string): boolean {
   return text !== "" && text.length <= maximumTextLength;
 }
 
-/** An http or https URL without credentials, query or fragment; its origin, or with its path unless it is the root. */
-function httpUrl(text: string, options: { keepPath: boolean }): string | null {
+/** An http or https URL without credentials, query or fragment, with its path but without a trailing slash. */
+function httpUrl(text: string): string | null {
   const url = parsedPlainUrl(text.trim());
   if (!url) return null;
-  if (!options.keepPath) return url.pathname === "/" ? url.origin : null;
   return url.href.replace(/\/+$/, ""); // eslint-disable-line sonarjs/super-linear-regex -- single-char quantifier anchored at end is O(n)
 }
 

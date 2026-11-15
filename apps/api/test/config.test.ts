@@ -69,8 +69,15 @@ describe("the configuration", () => {
       bundledTessdataDirectory: "/u",
       port: 8080,
       trustProxy: true,
-      publicUrl: "https://agenda.example.org",
+      publicUrl: "https://agenda.example.org/x",
     });
+  });
+});
+
+describe("the public address in the environment", () => {
+  it("keeps its path, the path prefix, without a trailing slash", () => {
+    expect(readConfig({ ...base, PUBLIC_URL: "https://home.example.org/agenda/" }).publicUrl).toBe("https://home.example.org/agenda");
+    expect(readConfig({ ...base, PUBLIC_URL: "http://192.168.1.10:8080/" }).publicUrl).toBe("http://192.168.1.10:8080");
   });
 });
 

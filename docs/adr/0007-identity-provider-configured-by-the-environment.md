@@ -4,7 +4,7 @@ status: accepted
 
 # The Identity Provider is configured by the environment, and can make the first Admin
 
-The one OpenID Connect Identity Provider that Admins may sign in through (ADR-0004) is set by the operator in the environment, next to `PUBLIC_URL`: `OIDC_ISSUER_URL`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET` and `OIDC_REQUIRED_GROUP` (default `homelab-admin`). The redirect URI lies below `PUBLIC_URL`. Wrong or incomplete variables stop the Instance at start, naming the variable. No Admin setting and no table hold it any more.
+The one OpenID Connect Identity Provider that Admins may sign in through (ADR-0004) is set by the operator in the environment, next to `PUBLIC_URL`: `OIDC_ISSUER_URL`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET` and `OIDC_REQUIRED_GROUP` (default `homelab-admin`). The redirect URI lies below `PUBLIC_URL`, its path prefix included. Wrong or incomplete variables stop the Instance at start, naming the variable. No Admin setting and no table hold it any more.
 
 Because it is there before any Admin, the setup page of an empty Instance offers it too: the first one in the required group who signs in becomes the first Admin, without a password, and sees the Recovery Kit next.
 

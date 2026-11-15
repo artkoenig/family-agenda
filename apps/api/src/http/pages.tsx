@@ -53,6 +53,7 @@ import {
 } from "./lazy-fragment";
 import { Avatar, MessageItems, agendaUrl } from "./agenda-page";
 import { avatarUrl } from "./avatars";
+import { href, usePathPrefix } from "./href";
 
 /** The Family Languages to choose from, the given one selected. */
 function FamilyLanguageOptions(props: { selected: FamilyLanguage }) {
@@ -107,7 +108,7 @@ export function FirstAdminPage(props: {
       intro={t.setup.intro}
       problem={props.problem}
     >
-      <form method="post" action="/setup" class="fam-sheet__form">
+      <form method="post" action={href(usePathPrefix(), "/setup")} class="fam-sheet__form">
         <div class="fam-group__fields">
           <div class="fam-field">
             <label for="email">{t.common.email}</label>
@@ -145,7 +146,7 @@ export function FirstAdminPage(props: {
             {t.setup.submit}
           </button>
           {props.singleSignOn ? (
-            <a href="/sso/start" class="fam-button">
+            <a href={href(usePathPrefix(), "/sso/start")} class="fam-button">
               {t.signIn.singleSignOn}
             </a>
           ) : null}
@@ -163,7 +164,7 @@ export function SignInPage(props: {
   const { t } = useTranslation();
   return (
     <EntrancePage title={t.signIn.title} problem={props.problem}>
-      <form method="post" action="/admin/sign-in" class="fam-sheet__form">
+      <form method="post" action={href(usePathPrefix(), "/admin/sign-in")} class="fam-sheet__form">
         <div class="fam-group__fields">
           <div class="fam-field">
             <label for="email">{t.common.email}</label>
@@ -193,7 +194,7 @@ export function SignInPage(props: {
             {t.signIn.submit}
           </button>
           {props.singleSignOn ? (
-            <a href="/sso/start" class="fam-button">
+            <a href={href(usePathPrefix(), "/sso/start")} class="fam-button">
               {t.signIn.singleSignOn}
             </a>
           ) : null}
@@ -491,12 +492,12 @@ function AdminLayout(props: {
     <Layout title={props.title}>
       <header class="fam-settings__header">
         <div class="fam-settings__brand">
-          <a href="/admin">Family Agenda</a>
+          <a href={href(usePathPrefix(), "/admin")}>Family Agenda</a>
           <span>{t.settings.title}</span>
         </div>
         <div class="fam-settings__account">
           <span class="fam-settings__who">{admin.email}</span>
-          <form method="post" action="/admin/sign-out">
+          <form method="post" action={href(usePathPrefix(), "/admin/sign-out")}>
             <button type="submit" class="fam-button fam-button--quiet">
               {t.settings.signOut}
             </button>
@@ -948,7 +949,7 @@ export function RecoveryKitPage(props: {
             </button>
             <a
               class="fam-button fam-button--quiet"
-              href="/admin/recovery-kit/download"
+              href={href(usePathPrefix(), "/admin/recovery-kit/download")}
             >
               {k.download}
             </a>
@@ -957,7 +958,7 @@ export function RecoveryKitPage(props: {
         {props.confirmed ? null : (
           <form
             method="post"
-            action="/admin/recovery-kit/confirm"
+            action={href(usePathPrefix(), "/admin/recovery-kit/confirm")}
             class="fam-sheet__form"
           >
             <Group title={k.confirmTitle} level={2}>

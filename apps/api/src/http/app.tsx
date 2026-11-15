@@ -93,11 +93,15 @@ import {
   AgendaTimeline,
   agendaUrl,
 } from "./agenda-page";
+import { href, pathPrefixOf, PathPrefixContext } from "./href";
 
 export type HttpOptions = {
   /** Whether a reverse proxy in front sets `X-Forwarded-For` and `X-Forwarded-Proto`. */
   trustProxy: boolean;
-  /** Scheme and host the Family reaches the Instance at; without it, those of the request. */
+  /**
+   * The address the Family reaches the Instance at; without it, the scheme and host of the request.
+   * Its path is the path prefix the Instance is served below (`href`).
+   */
   publicUrl?: string;
   /** Whether an Agenda opens, as decided for the listener this app serves. */
   agendaAccess: AgendaAccessPolicy;
@@ -112,19 +116,6 @@ type Env = {
 
 /** A problem a use case reports, as the catalogue words it. */
 type ProblemKey = keyof Catalogue["problems"];
-
-/** A page or fragment rendered in the request's Translation. */
-const render = (
-  c: Context<Env>,
-  node: Child,
-  status?: 200 | 400 | 401 | 413 | 429,
-) =>
-  c.html(
-    <TranslationContext.Provider value={c.get("translation")}>
-      {node}
-    </TranslationContext.Provider>,
-    status,
-  );
 
 /** What the catalogue of the request's Translation says about a problem. */
 const problemIn = (c: Context<Env>, problem: ProblemKey): string =>
@@ -200,6 +191,21 @@ export function createHttpApp(application: Application, options: HttpOptions) {
   } = application;
   const app = new Hono<Env>();
   const version = options.version ?? "dev";
+  const prefix = pathPrefixOf(options.publicUrl);
+  /** A page or fragment rendered in the request's Translation, its addresses below the path prefix. */
+  const render = (
+    c: Context<Env>,
+    node: Child,
+    status?: 200 | 400 | 401 | 413 | 429,
+  ) =>
+    c.html(
+      <PathPrefixContext.Provider value={prefix}>
+        <TranslationContext.Provider value={c.get("translation")}>
+          {node}
+        </TranslationContext.Provider>
+      </PathPrefixContext.Provider>,
+      status,
+    );
 
   const isHttps = (c: Context) =>
     options.trustProxy
@@ -211,8 +217,12 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     c.req.header("host") ??
     new URL(c.req.url).host;
 
-  /** Where the Family reaches the Instance: `PUBLIC_URL`, else the scheme and host of the request. */
-  const originOf = (c: Context) => options.publicUrl ?? requestOriginOf(c);
+  /** Where the Family reaches the Instance: the origin of `PUBLIC_URL`, else the scheme and host of the request. */
+  const originOf = (c: Context) =>
+    options.publicUrl ? new URL(options.publicUrl).origin : requestOriginOf(c);
+
+  /** The address the request came to, below the path prefix: what single sign-on is offered at. */
+  const requestBaseOf = (c: Context) => requestOriginOf(c) + prefix;
 
   /** The origin the request itself came to, whatever `PUBLIC_URL` says. */
   function requestOriginOf(c: Context): string {
@@ -234,7 +244,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
 
   const startSession = (c: Context<Env>, token: string) => {
     setCookie(c, sessionCookie, token, {
-      path: "/",
+      path: href(prefix, "/"),
       httpOnly: true,
       sameSite: "Lax",
       secure: isHttps(c),
@@ -301,7 +311,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
   app.use(async (c, next) => {
     const onSetup = c.req.path === "/setup";
     const needed = await admins.needsFirstAdmin();
-    if (needed && !onSetup && !c.req.path.startsWith("/sso/")) return c.redirect("/setup");
+    if (needed && !onSetup && !c.req.path.startsWith("/sso/")) return c.redirect(href(prefix, "/setup"));
     if (!needed && onSetup) return c.notFound();
     await next();
   });
@@ -321,7 +331,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
       c,
       <FirstAdminPage
         language={c.get("translation").language}
-        singleSignOn={singleSignOn.isOfferedAt(requestOriginOf(c))}
+        singleSignOn={singleSignOn.isOfferedAt(requestBaseOf(c))}
       />,
     ),
   );
@@ -344,16 +354,16 @@ export function createHttpApp(application: Application, options: HttpOptions) {
           language={c.get("translation").language}
           email={email}
           problem={problemIn(c, result.problem)}
-          singleSignOn={singleSignOn.isOfferedAt(requestOriginOf(c))}
+          singleSignOn={singleSignOn.isOfferedAt(requestBaseOf(c))}
         />
       );
       return render(c, page, 400);
     }
     startSession(c, result.sessionToken);
-    return c.redirect("/admin/recovery-kit", 303);
+    return c.redirect(href(prefix, "/admin/recovery-kit"), 303);
   });
 
-  app.get("/", (c) => c.redirect("/admin"));
+  app.get("/", (c) => c.redirect(href(prefix, "/admin")));
 
   // Agendas open without signing in, as far as the listener's AgendaAccessPolicy allows.
   app.get("/agendas/:id", async (c) => {
@@ -546,7 +556,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     render(
       c,
       <SignInPage
-        singleSignOn={singleSignOn.isOfferedAt(requestOriginOf(c))}
+        singleSignOn={singleSignOn.isOfferedAt(requestBaseOf(c))}
       />,
     ),
   );
@@ -555,10 +565,10 @@ export function createHttpApp(application: Application, options: HttpOptions) {
 
   // Sends the Admin to the Identity Provider, remembering state, nonce and PKCE verifier in a short-lived cookie.
   app.get("/sso/start", async (c) => {
-    const begun = await singleSignOn.begin(requestOriginOf(c));
+    const begun = await singleSignOn.begin(requestBaseOf(c));
     if (!begun) return c.notFound();
     setCookie(c, singleSignOnCookie, JSON.stringify(begun.pending), {
-      path: "/sso",
+      path: href(prefix, "/sso"),
       httpOnly: true,
       // Lax, so that the cookie comes back with the redirect from the Identity Provider.
       sameSite: "Lax",
@@ -569,14 +579,14 @@ export function createHttpApp(application: Application, options: HttpOptions) {
   });
 
   app.get("/sso/callback", async (c) => {
-    const origin = requestOriginOf(c);
+    const base = requestBaseOf(c);
     const pending = pendingSignInOf(getCookie(c, singleSignOnCookie));
-    deleteCookie(c, singleSignOnCookie, { path: "/sso" });
-    if (!singleSignOn.isOfferedAt(origin)) return c.notFound();
+    deleteCookie(c, singleSignOnCookie, { path: href(prefix, "/sso") });
+    if (!singleSignOn.isOfferedAt(base)) return c.notFound();
     const first = await admins.needsFirstAdmin();
     const result = pending
       ? await singleSignOn.complete({
-          origin,
+          baseUrl: base,
           query: new URL(c.req.url).search,
           pending,
         })
@@ -591,7 +601,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
       return render(c, page, 401);
     }
     startSession(c, result.sessionToken);
-    return c.redirect(first ? "/admin/recovery-kit" : "/admin", 303);
+    return c.redirect(href(prefix, first ? "/admin/recovery-kit" : "/admin"), 303);
   });
 
   app.post("/admin/sign-in", async (c) => {
@@ -611,7 +621,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
       );
     }
     startSession(c, result.sessionToken);
-    return c.redirect("/admin", 303);
+    return c.redirect(href(prefix, "/admin"), 303);
   });
 
   /**
@@ -679,7 +689,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     }
     const token = getCookie(c, sessionCookie);
     const admin = token ? await admins.authenticate(token) : null;
-    if (!admin) return c.redirect("/admin/sign-in");
+    if (!admin) return c.redirect(href(prefix, "/admin/sign-in"));
     c.set("admin", { ...admin, settings: await settings() });
     await next();
   });
@@ -689,7 +699,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
       ["/admin/sign-in", "/admin/sign-out"].includes(c.req.path) ||
       c.req.path.startsWith("/admin/recovery-kit");
     if (!exempt && !(await recoveryKit.isConfirmed()))
-      return c.redirect("/admin/recovery-kit");
+      return c.redirect(href(prefix, "/admin/recovery-kit"));
     await next();
   });
   /**
@@ -725,8 +735,8 @@ export function createHttpApp(application: Application, options: HttpOptions) {
   app.post("/admin/sign-out", async (c) => {
     const token = getCookie(c, sessionCookie);
     if (token) await admins.signOut(token);
-    deleteCookie(c, sessionCookie, { path: "/" });
-    return c.redirect("/admin/sign-in", 303);
+    deleteCookie(c, sessionCookie, { path: href(prefix, "/") });
+    return c.redirect(href(prefix, "/admin/sign-in"), 303);
   });
 
   const recoveryKitPage = async (c: Context<Env>, problem?: string) => {
@@ -761,7 +771,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     if (field(form, "saved") !== "yes")
       return recoveryKitPage(c, problemIn(c, "kit-not-saved"));
     await recoveryKit.confirm();
-    return c.redirect("/admin", 303);
+    return c.redirect(href(prefix, "/admin"), 303);
   });
 
   // The Admin area opens on its first section.

@@ -22,7 +22,11 @@ export type Config = {
   bundledTessdataDirectory: string | null;
   port: number;
   trustProxy: boolean;
-  /** The address the Family reaches the Instance at, such as `http://192.168.1.10:8080`; null to use the one a request came by. */
+  /**
+   * The address the Family reaches the Instance at, such as `http://192.168.1.10:8080`, without a
+   * trailing slash; null to use the one a request came by. Its path, such as `/agenda`, is the path
+   * prefix the Instance is served below.
+   */
   publicUrl: string | null;
   /** The Identity Provider from the `OIDC_*` variables, below `PUBLIC_URL`; null when `OIDC_ISSUER_URL` is not set. */
   identityProvider: IdentityProviderSettings | null;
@@ -68,9 +72,10 @@ function egressTicketKeyOf(env: NodeJS.ProcessEnv, pluginContainers: PluginBindi
 function publicUrlOf(value: string | undefined): string | null {
   if (!value) return null;
   if (!URL.canParse(value) || !/^https?:$/.test(new URL(value).protocol)) {
-    throw new Error("PUBLIC_URL must be an http or https address, such as http://192.168.1.10:8080");
+    throw new Error("PUBLIC_URL must be an http or https address, such as http://192.168.1.10:8080 or https://home.example.org/agenda");
   }
-  return new URL(value).origin;
+  const url = new URL(value);
+  return url.origin + url.pathname.replace(/\/+$/, ""); // eslint-disable-line sonarjs/super-linear-regex -- single-char quantifier anchored at end is O(n)
 }
 
 const identityProviderProblems = {
