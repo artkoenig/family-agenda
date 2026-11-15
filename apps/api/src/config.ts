@@ -64,8 +64,8 @@ const familyVariables = {
   blobDirectory: "BLOB_DIRECTORY",
 } as const;
 
-/** What only a fixed core has: its Family, its pages port and the Triggered operations' listener. */
-type FixedOnly = keyof typeof familyVariables | "port" | "trigger";
+/** What only a fixed core has: its Family and its pages port. */
+type FixedOnly = keyof typeof familyVariables | "port";
 
 /** The settings each Family's Context carries in supplied mode (ADR-0003, ADR-0007), which supplied mode refuses in the environment. */
 const contextVariables = ["PUBLIC_URL", "OIDC_ISSUER_URL", "OIDC_CLIENT_ID", "OIDC_CLIENT_SECRET", "OIDC_REQUIRED_GROUP"] as const;
@@ -128,7 +128,6 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): Config {
     ...familyIdConfigOf(env.FAMILY_ID),
     masterKeyFile: env.MASTER_KEY_FILE ?? "/var/lib/family-agenda/master-key/master.key",
     blobDirectory: env.BLOB_DIRECTORY ?? "/var/lib/family-agenda/blobs",
-    trigger: triggerConfigOf(env),
     ...sharedConfigOf(env),
     ...addressConfigOf(env),
   };
@@ -149,6 +148,7 @@ function sharedConfigOf(env: NodeJS.ProcessEnv): Omit<Config, Exclude<FixedOnly,
     tessdataDirectory: env.TESSDATA_DIRECTORY ?? "/var/lib/family-agenda/tessdata",
     bundledTessdataDirectory: (env.BUNDLED_TESSDATA_DIRECTORY ?? "/usr/share/tesseract-ocr/5/tessdata") || null,
     port: Number(env.PORT ?? 3000),
+    trigger: triggerConfigOf(env),
     trustProxy: env.TRUST_PROXY === "true",
     version: versionOf(env),
   };

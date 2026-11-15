@@ -4,6 +4,7 @@ import { openAgendaAccess } from "@family-agenda/application";
 import { bootShared } from "../composition-root";
 import type { SuppliedConfig } from "../config";
 import { createHttpApp } from "../http/app";
+import { serveSuppliedTriggers } from "../triggered-operations";
 import { SuppliedFamilies } from "./supplied-families";
 import { suppliedFetch, type FamilyFetch } from "./supplied-http";
 
@@ -13,9 +14,10 @@ const sweepEveryMs = 60_000;
 /**
  * Starts a core in supplied mode (ADR-0003): no database, master key file or blob directory of its
  * own, and no listener on `PORT`: only the caller port, where every request supplies the Context of
- * its Family. The Triggered operations are not offered.
+ * its Family. With `TRIGGER_TOKEN`, the Triggered operations listen on `TRIGGER_PORT`, each trigger
+ * with the Context of its Family too; the core runs no schedule and prepares no Family of its own.
  */
-export async function serveSupplied(config: SuppliedConfig, log: { info(message: string): void; warn(message: string): void }) {
+export async function serveSupplied(config: SuppliedConfig, log: { info(message: string): void; warn(message: string): void; error(message: string, error?: unknown): void }) {
   const shared = await bootShared(config);
   const families = new SuppliedFamilies({
     shared,
@@ -41,13 +43,15 @@ export async function serveSupplied(config: SuppliedConfig, log: { info(message:
       resolve({ server: listening, port: info.port });
     });
   });
-  log.info("Triggered operations are off in supplied mode");
+  // The same opened Families as the pages: a trigger and a request of one Context share one.
+  const triggers = serveSuppliedTriggers({ contextKey: config.contextKey, families }, config.trigger, log);
   return {
     /** The caller port it listens on. */
     port,
     close: () =>
       new Promise<void>((resolve) => {
         clearInterval(sweeping);
+        triggers?.close();
         server.close(() => void families.close().then(resolve));
       }),
   };

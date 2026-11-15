@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { connectPostgres, FamilyIdConflictError, type PostgresConnection } from "@family-agenda/adapters";
-import { FamilyNotPreparedError, openPreparedFamily, type Application, type FamilyConfig, type SharedWiring } from "../composition-root";
+import { FamilyNotPreparedError, openPreparedFamily, prepareFamily, type Application, type FamilyConfig, type PreparedFamily, type SharedWiring } from "../composition-root";
 import type { OpenedContext } from "./context";
 
 /** What a Family's pages answer a request with, such as its Hono app's `fetch`. */
@@ -35,6 +35,8 @@ type Entry = {
   lastUsed: number;
   /** Requests under way, which keep the Family open. */
   active: number;
+  /** Replaced by a newer opening after Preparing the Family; closed once no request uses it. */
+  retired: boolean;
 };
 
 export const defaultIdleMs = 5 * 60_000;
@@ -73,7 +75,29 @@ export class SuppliedFamilies {
     } finally {
       entry.active -= 1;
       entry.lastUsed = this.#now();
+      if (entry.retired && entry.active === 0) await closeEntry(entry);
     }
+  }
+
+  /**
+   * Preparing the Family a Context names, on its database itself, with the Context's Family id: the
+   * one way a core in supplied mode writes to a Family's database. Its blobs stay where they are: the
+   * blob location is shared, and only the Family's own folder is its. A Family opened before is
+   * opened anew by the next request.
+   */
+  async prepare(context: OpenedContext): Promise<PreparedFamily> {
+    const { shared, connectDatabase = connectPostgres } = this.#options;
+    const prepared = await prepareFamily(shared, { connectDatabase: () => connectDatabase(context.databaseUrl) }, context.familyId);
+    this.#retire(keyOf(context));
+    return prepared;
+  }
+
+  #retire(key: string): void {
+    const entry = this.#entries.get(key);
+    if (!entry) return;
+    this.#entries.delete(key);
+    entry.retired = true;
+    if (entry.active === 0) void closeEntry(entry);
   }
 
   /** Closes the Families no request has used for `idleMs`. */
@@ -99,7 +123,7 @@ export class SuppliedFamilies {
     const key = keyOf(context);
     const existing = this.#entries.get(key);
     if (existing) return existing;
-    const entry: Entry = { opening: this.#open(context), lastUsed: this.#now(), active: 0 };
+    const entry: Entry = { opening: this.#open(context), lastUsed: this.#now(), active: 0, retired: false };
     this.#entries.set(key, entry);
     // A Family that failed to open is tried again with the next request.
     entry.opening.catch(() => {
