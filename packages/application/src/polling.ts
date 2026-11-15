@@ -1,4 +1,5 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
+import { setTimeout as sleep } from "node:timers/promises";
 import type { SourceId, SourceTypeId } from "@family-agenda/domain";
 import type { ActivityLog } from "./activity";
 import { retainedSince } from "./retention";
@@ -16,6 +17,7 @@ import type {
   SourceRunContext,
   Source,
   SourceRepository,
+  SourceRunTurns,
   SecretRef,
   SourceRunResult,
   SourceTypeRegistry,
@@ -42,7 +44,16 @@ export type PollingDeps = {
   blobs: BlobStore;
   /** Where the run shows as the worker's activity. */
   activity: ActivityLog;
+  /** Who of the Family's processes runs a Source now, so that its runs take turns across them. */
+  turns: SourceRunTurns;
 };
+
+/** How long a run's turn lasts unless renewed: how long after a process died its runs are known to be over. */
+const turnLastsMs = 60_000;
+/** How often a run renews its turn while it lasts. */
+const turnRenewedEveryMs = 20_000;
+/** How often a run waiting for another process's run of the Source asks for the turn again. */
+const turnAskedEveryMs = 50;
 
 /** What a round of runs came to, by polling or by a pushed payload. */
 export type RunReport = {
@@ -61,7 +72,27 @@ function refusalsOf(sourceId: SourceId, attributes: string[]): RunReport["refuse
 }
 
 export function createSourcePolling(deps: PollingDeps) {
-  const { clock, timeZone, registry, sourceTypes, catalogues, sources, secrets, items, blobs, activity } = deps;
+  const { clock, timeZone, registry, sourceTypes, catalogues, sources, secrets, items, blobs, activity, turns } = deps;
+  /** This process, as the holder of the turns its runs take. */
+  const holder = randomUUID();
+  const turnEnd = () => new Date(clock.now().getTime() + turnLastsMs);
+
+  /**
+   * Does the work in the Source's turn, kept in the Family's database: waits while another process
+   * runs the Source, renews the turn while the work lasts and ends it after.
+   */
+  async function inTurn(sourceId: SourceId, work: () => Promise<void>): Promise<void> {
+    while (!(await turns.take(sourceId, holder, clock.now(), turnEnd()))) await sleep(turnAskedEveryMs);
+    const renewal = setInterval(() => {
+      turns.renew(sourceId, holder, turnEnd()).catch(() => undefined);
+    }, turnRenewedEveryMs);
+    try {
+      await work();
+    } finally {
+      clearInterval(renewal);
+      await turns.end(sourceId, holder);
+    }
+  }
 
   async function store(contents: Uint8Array): Promise<StoredFile> {
     const sha256 = createHash("sha256").update(contents).digest("hex");
@@ -88,20 +119,27 @@ export function createSourcePolling(deps: PollingDeps) {
     for (const file of message.attachments) await blobs.remove(file.blob);
   }
 
-  /** The run of each Source under way or queued in this process, which the next run of it waits for. */
+  /**
+   * The run of each Source under way or queued in this process, which the next run of it waits for
+   * before it asks the database for the turn, so that a process's own runs queue without asking.
+   */
   const runs = new Map<SourceId, Promise<void>>();
 
   /**
    * Runs one Source, by polling it or handing it a pushed payload, and records what it emitted into
    * the report. Runs of one Source take turns, a poll as well as a push, each reading the Source
-   * afresh, so that none starts from a Source Cursor another is about to replace.
+   * afresh, so that none starts from a Source Cursor another is about to replace. They take turns
+   * across the Family's processes too. A poll runs only if the Source, read afresh, is still due:
+   * another process may have polled it meanwhile.
    */
-  async function run(sourceId: SourceId, sourceType: HostFieldsOf, ingest: Ingest, report: RunReport): Promise<void> {
+  async function run(sourceId: SourceId, sourceType: HostFieldsOf, ingest: Ingest, report: RunReport, stillDue: (source: Source) => boolean = () => true): Promise<void> {
     const previous = runs.get(sourceId) ?? Promise.resolve();
-    const current = previous.then(async () => {
-      const source = await sources.findById(sourceId);
-      if (source) await runNow(source, sourceType, ingest, report);
-    });
+    const current = previous.then(() =>
+      inTurn(sourceId, async () => {
+        const source = await sources.findById(sourceId);
+        if (source && stillDue(source)) await runNow(source, sourceType, ingest, report);
+      }),
+    );
     const settled = current.catch(() => undefined);
     runs.set(sourceId, settled);
     try {
@@ -195,8 +233,10 @@ function isDue(
   return !(source.lastRunAt && now - source.lastRunAt.getTime() < interval);
 }
 
-    async function findDue(enabled: Set<SourceTypeId>, now: number): Promise<{ source: Source; ingestion: PollingIngestion; sourceType: HostFieldsOf }[]> {
-    const due: { source: Source; ingestion: PollingIngestion; sourceType: HostFieldsOf }[] = [];
+  type DueSource = { source: Source; ingestion: PollingIngestion; sourceType: HostFieldsOf; isDue: (source: Source) => boolean };
+
+  async function findDue(enabled: Set<SourceTypeId>, now: number): Promise<DueSource[]> {
+    const due: DueSource[] = [];
     for (const type of enabled) {
       const loaded = await registry.load(type);
       if (!loaded.ok) continue;
@@ -205,10 +245,9 @@ function isDue(
       const entryIntervals = new Map(
         catalogue ? (await catalogues.list(type)).map((record) => [record.entryId, record.pollIntervalSeconds]) : [],
       );
+      const dueNow = (source: Source) => isDue(source, ingestion, catalogue, entryIntervals, now);
       for (const source of await sources.listOfType(type)) {
-        if (isDue(source, ingestion, catalogue, entryIntervals, now)) {
-          due.push({ source, ingestion, sourceType: loaded.sourceType });
-        }
+        if (dueNow(source)) due.push({ source, ingestion, sourceType: loaded.sourceType, isDue: dueNow });
       }
     }
     return due;
@@ -228,8 +267,8 @@ function isDue(
       if (due.length === 0) return report;
       const progress = await activity.begin("polling", due.length);
       try {
-        for (const { source, ingestion, sourceType } of due) {
-          await run(source.id, sourceType, (context, attributes) => ingestion.poll(context, attributes), report);
+        for (const { source, ingestion, sourceType, isDue: stillDue } of due) {
+          await run(source.id, sourceType, (context, attributes) => ingestion.poll(context, attributes), report, stillDue);
           await progress.advance();
         }
       } finally {

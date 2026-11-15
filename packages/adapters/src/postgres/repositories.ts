@@ -22,6 +22,7 @@ import type {
   Source,
   SourceAttribute,
   SourceRepository,
+  SourceRunTurns,
   SourceTypeRecord,
   SourceTypeRepository,
   StoredLlmEndpoint,
@@ -68,6 +69,7 @@ import {
   sourceRecordAttachments,
   sourceRecords,
   sourceRuns,
+  sourceRunTurns,
   sources,
   sourceTypes,
   agendaMembers,
@@ -755,6 +757,28 @@ export class PostgresActivityRepository implements ActivityRepository {
 
   async clear(): Promise<void> {
     await this.db.delete(backgroundActivities);
+  }
+}
+
+/** The turns of the Sources' runs, each taken and renewed in one statement. */
+export class PostgresSourceRunTurns implements SourceRunTurns {
+  constructor(private readonly db: Database) {}
+
+  async take(sourceId: SourceId, holder: string, now: Date, until: Date): Promise<boolean> {
+    const taken = await this.db
+      .insert(sourceRunTurns)
+      .values({ sourceId, holder, expiresAt: until })
+      .onConflictDoUpdate({ target: sourceRunTurns.sourceId, set: { holder, expiresAt: until }, setWhere: lt(sourceRunTurns.expiresAt, now) })
+      .returning({ holder: sourceRunTurns.holder });
+    return taken.length > 0;
+  }
+
+  async renew(sourceId: SourceId, holder: string, until: Date): Promise<void> {
+    await this.db.update(sourceRunTurns).set({ expiresAt: until }).where(and(eq(sourceRunTurns.sourceId, sourceId), eq(sourceRunTurns.holder, holder)));
+  }
+
+  async end(sourceId: SourceId, holder: string): Promise<void> {
+    await this.db.delete(sourceRunTurns).where(and(eq(sourceRunTurns.sourceId, sourceId), eq(sourceRunTurns.holder, holder)));
   }
 }
 

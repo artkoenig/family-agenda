@@ -22,6 +22,7 @@ import {
   OidcIdentityProviderClient,
   PostgresSignInFailureLog,
   PostgresSourceAddingRepository,
+  PostgresSourceRunTurns,
   PostgresSourceRepository,
   PostgresSourceTypeRepository,
   PostgresAgendaRepository,
@@ -343,6 +344,7 @@ function wireFamily(
     items,
     blobs,
     activity,
+    turns: new PostgresSourceRunTurns(postgres.db),
   });
   const endpoints = new PostgresLlmEndpointRepository(postgres.db);
   const llmEndpoint = createLlmEndpointAccess({

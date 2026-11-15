@@ -348,6 +348,53 @@ describe("A Source Type whose plugin receives pushed payloads", () => {
     expect(cursors).toEqual([null, "Zmlyc3Q="]);
   });
 
+  it("runs a pushed payload on another api container after the run under way, from the Source Cursor that run left", async () => {
+    const other = await instance.bootApiContainer();
+    const cursors: (string | null)[] = [];
+    receive = async ({ context, payload: sent }) => {
+      cursors.push(context.syncCursor);
+      if (sent === "Zmlyc3Q=") await new Promise((resolve) => setTimeout(resolve, 100));
+      return { sourceRecords: [], syncCursor: sent };
+    };
+
+    const first = instance.app.polling.receive(sourceId, new TextEncoder().encode("first"));
+    await vi.waitFor(() => {
+      expect(cursors).toHaveLength(1);
+    });
+    await Promise.all([first, other.polling.receive(sourceId, payload)]);
+
+    expect(cursors).toEqual([null, "Zmlyc3Q="]);
+  });
+
+  /** Leaves a run of the Source under way until a minute from now, as an api container that died in it would. */
+  const runLeftByDeadContainer = (id: SourceId) =>
+    instance.query(`INSERT INTO source_run_turn (source_id, holder, expires_at) VALUES ('${id}', gen_random_uuid(), '2026-09-14T07:01:00Z')`);
+
+  it("runs a pushed payload once the run a dead api container left under way is known to be over", async () => {
+    await runLeftByDeadContainer(sourceId);
+    let received = false;
+    receive = () => {
+      received = true;
+      return Promise.resolve({ sourceRecords: [], syncCursor: "after" });
+    };
+
+    const pushed = instance.app.polling.receive(sourceId, payload);
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(received).toBe(false);
+    instance.clock.advance(2 * minutes);
+
+    expect(await pushed).toMatchObject({ ok: true, report: { ran: [sourceId] } });
+    expect(await instance.query("SELECT count(*)::int AS count FROM source_run_turn")).toEqual([{ count: 0 }]);
+  });
+
+  it("runs a pushed payload without waiting for a run of another Source", async () => {
+    const adding = await instance.app.sources.add({ sourceTypeId: "chat-relay", plain: { url: "https://other-chat.example.org" }, secrets: { token: "first" } });
+    if (!adding.ok) throw new Error(`adding failed: ${adding.problem}`);
+    await runLeftByDeadContainer(sourceId);
+
+    expect(await instance.app.polling.receive(adding.id, payload)).toMatchObject({ ok: true, report: { ran: [adding.id] } });
+  });
+
   it("receives nothing while its plugin is not loadable", async () => {
     description.sourceTypeId = "other-relay";
     expect(await instance.app.polling.receive(sourceId, payload)).toEqual({ ok: false, problem: "source-type-not-available" });

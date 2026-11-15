@@ -111,4 +111,15 @@ describe("A Source's run", () => {
     await execute(healed("event"));
     expect(await origins()).toBe(0);
   });
+
+  it("polls each due Source once when due work runs on two api containers at the same moment", async () => {
+    const other = await instance.bootApiContainer();
+    instance.clock.advance(10 * minutes);
+    const runsBefore = testPluginControls.runs("school-portal").length;
+
+    const reports = await Promise.all([instance.app.polling.pollDue(), other.polling.pollDue()]);
+
+    expect(testPluginControls.runs("school-portal")).toHaveLength(runsBefore + 1);
+    expect(reports.flatMap((report) => report.ran)).toHaveLength(1);
+  });
 });

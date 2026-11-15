@@ -444,6 +444,20 @@ export type SourceAttribute = {
   concerns: FamilyMemberId[];
 };
 
+/**
+ * Who of the Family's processes runs a Source now, kept in the Family's database, so that the runs
+ * of one Source take turns across api containers. A turn lasts until its holder ends it, or until
+ * it expires without being renewed, as when its holder died.
+ */
+export interface SourceRunTurns {
+  /** Takes the Source's turn for `holder` until `until`, if no turn is held or the one held has expired by `now`; whether it did. */
+  take(sourceId: SourceId, holder: string, now: Date, until: Date): Promise<boolean>;
+  /** Moves the end of the turn `holder` holds to `until`. */
+  renew(sourceId: SourceId, holder: string, until: Date): Promise<void>;
+  /** Ends the turn `holder` holds, if it still does. */
+  end(sourceId: SourceId, holder: string): Promise<void>;
+}
+
 export interface SourceRepository {
   add(source: Source): Promise<void>;
   /** In the order they were added. */
