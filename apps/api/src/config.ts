@@ -1,5 +1,4 @@
 import { parseIdentityProviderSettings, type IdentityProviderSettings } from "@family-agenda/application";
-import { parsePluginEgress } from "./egress/allowlist";
 import { parsePluginUrls, type PluginBinding } from "./plugin-containers/bindings";
 import { versionOf } from "./version";
 
@@ -9,8 +8,6 @@ export type Config = {
   blobDirectory: string;
   /** Source Types whose plugins run in containers, from `PLUGIN_URLS` such as `demo=http://demo:8080`. */
   pluginContainers: PluginBinding[];
-  /** The declared egress hosts per plugin container, from `PLUGIN_EGRESS`, which their egress proxies allow. */
-  pluginEgress: Map<string, string[]>;
   /**
    * The key the tickets of plugin calls are signed with, from `EGRESS_TICKET_KEY`, shared with the
    * egress proxies; required with plugin containers.
@@ -44,7 +41,6 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): Config {
     masterKeyFile: env.MASTER_KEY_FILE ?? "/var/lib/family-agenda/master-key/master.key",
     blobDirectory: env.BLOB_DIRECTORY ?? "/var/lib/family-agenda/blobs",
     pluginContainers,
-    pluginEgress: parsePluginEgress(env.PLUGIN_EGRESS),
     egressTicketKey: egressTicketKeyOf(env, pluginContainers),
     tessdataDirectory: env.TESSDATA_DIRECTORY ?? "/var/lib/family-agenda/tessdata",
     bundledTessdataDirectory: (env.BUNDLED_TESSDATA_DIRECTORY ?? "/usr/share/tesseract-ocr/5/tessdata") || null,

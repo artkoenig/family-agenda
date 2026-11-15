@@ -1,21 +1,20 @@
 import { lookup } from "node:dns/promises";
 import { createServer, type IncomingMessage, type Server } from "node:http";
 import { BlockList, connect, isIP, type Socket } from "node:net";
-import { allows, isHostName, isPort, parseEntry, type AllowEntry, type HostPort } from "./allowlist";
+import { allows, isHostName, isPort, parseEntry, type HostPort } from "./allowlist";
 import { ticketOfProxyAuthorization } from "./ticket";
 
 /**
- * Fetches what the proxy allows now for a connection with `ticket`, the one its client presented
- * (null for none); null when the ticket is refused, or missing where one is needed; rejects when it
- * cannot tell.
+ * What the proxy allows for a connection with `ticket`, the one its client presented (null for
+ * none); null when the ticket is refused, or missing where one is needed.
  */
-export type AllowlistFetch = (ticket: string | null) => Promise<string[] | null>;
+export type AllowlistFor = (ticket: string | null) => string[] | null;
 
 /** The addresses a host name resolves to. */
 export type Resolve = (host: string) => Promise<string[]>;
 
 export type EgressProxyOptions = {
-  allowlist: AllowlistFetch;
+  allowlist: AllowlistFor;
   resolve?: Resolve;
   /** Whether the proxy may connect to an address; by default only to public ones. */
   isReachable?: (address: string) => boolean;
@@ -65,7 +64,7 @@ export function isPublicAddress(address: string): boolean {
  * An HTTP CONNECT proxy, the only way out of one plugin container (ADR-0001). It asks `allowlist`
  * on every connection, with the ticket the client presented as `Proxy-Authorization`, and answers
  * 407 when the ticket is refused, or missing where one is needed. It refuses the connection when the
- * host is not in the allowlist, or when the allowlist cannot be fetched: it fails closed. It resolves the host once and connects to that address, and only to a
+ * host is not in the allowlist. It resolves the host once and connects to that address, and only to a
  * public one, so neither an allowed name nor DNS rebinding reaches the Instance's own network;
  * names without a dot, such as compose services, it refuses outright. Any request other than
  * CONNECT is refused.
@@ -92,7 +91,7 @@ type Decision = { address: string; port: number } | { refusal: string; why: stri
 async function decide(authority: string, ticket: string | null, options: Required<Omit<EgressProxyOptions, "log">>): Promise<Decision> {
   const target = targetOf(authority);
   if (target === null) return { refusal: "400 Bad Request", why: "no host:port" };
-  const refusal = await allowlistRefusal(target, ticket, options.allowlist);
+  const refusal = allowlistRefusal(target, ticket, options.allowlist);
   if (refusal !== null) return refusal;
   const addresses = await addressesOf(target.host, options.resolve);
   if (addresses.length === 0) return { refusal: "502 Bad Gateway", why: "does not resolve" };
@@ -101,23 +100,13 @@ async function decide(authority: string, ticket: string | null, options: Require
 }
 
 /** Why the allowlist for `ticket` keeps the proxy from connecting to `target`; null where it allows it. */
-async function allowlistRefusal(target: HostPort, ticket: string | null, allowlist: AllowlistFetch): Promise<Extract<Decision, { refusal: string }> | null> {
-  const entries = await entriesOf(allowlist, ticket);
-  if (entries === "unavailable") return { refusal: "503 Service Unavailable", why: "no allowlist" };
-  if (entries === "refused") return { refusal: proxyAuthenticationRequired, why: ticket === null ? "no ticket" : "ticket refused" };
-  return allows(entries, target) ? null : { refusal: "403 Forbidden", why: "not allowed" };
+function allowlistRefusal(target: HostPort, ticket: string | null, allowlist: AllowlistFor): Extract<Decision, { refusal: string }> | null {
+  const hosts = allowlist(ticket);
+  if (hosts === null) return { refusal: proxyAuthenticationRequired, why: ticket === null ? "no ticket" : "ticket refused" };
+  return allows(hosts.flatMap((text) => parseEntry(text) ?? []), target) ? null : { refusal: "403 Forbidden", why: "not allowed" };
 }
 
 const proxyAuthenticationRequired = '407 Proxy Authentication Required\r\nProxy-Authenticate: Basic realm="family-agenda"';
-
-async function entriesOf(allowlist: AllowlistFetch, ticket: string | null): Promise<AllowEntry[] | "refused" | "unavailable"> {
-  try {
-    const hosts = await allowlist(ticket);
-    return hosts === null ? "refused" : hosts.flatMap((text) => parseEntry(text) ?? []);
-  } catch {
-    return "unavailable";
-  }
-}
 
 async function addressesOf(host: string, resolve: Resolve): Promise<string[]> {
   if (isIP(host) !== 0) return [host];

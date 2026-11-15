@@ -137,15 +137,15 @@ A container a plugin needs beside its own, such as Synapse for the Matrix plugin
 _Avoid_: Sidecar, plugin service
 
 **Egress Proxy**:
-The only way out to the internet for a plugin container or a Companion with egress hosts; it lets through only what that container's Allowlist names, and only to public addresses. A plugin's own proxy lets through only a call that presents its Ticket.
+The only way out to the internet for a plugin container or a Companion with egress hosts; it lets through only what that container's Allowlist names, and only to public addresses. A plugin's own proxy lets through only a call that presents a Ticket minted for that plugin, and decides from the Ticket and its own declared hosts alone, without asking the core.
 _Avoid_: Firewall, gateway, sidecar
 
 **Allowlist**:
-The hosts one Egress Proxy lets through: those declared in `plugins.yml`, plus, for the plugin's own container, the values of Host Fields of the one Source its Ticket names, as the Ticket carries them. The api serves it for each Ticket; a Companion's proxy has its declared hosts only.
+The hosts one Egress Proxy lets through: those declared in `plugins.yml`, plus, for the plugin's own container, the values of Host Fields of the one Source its Ticket names, as the Ticket carries them. The plugin's proxy reads it from each Ticket and from the declared hosts in its own environment; a Companion's proxy has its declared hosts only.
 _Avoid_: Whitelist, egress rules
 
 **Ticket**:
-What the core grants one call to a plugin: the Family, the Source the call is for with the values of its Host Fields as they are when the Ticket is minted (no Source and no hosts for the Catalogue entries, which reach the declared hosts only) and a short expiry, signed with a key the core shares with the Egress Proxies. It comes with the call in the proxy URL, and the plugin presents it to its Egress Proxy on every connection; without a valid one the proxy answers 407.
+What the core grants one call to a plugin: the Family, the Source the call is for with the values of its Host Fields as they are when the Ticket is minted (no Source and no hosts for the Catalogue entries, which reach the declared hosts only) and a short expiry, signed with a key the core shares with the Egress Proxies, for one plugin, whose proxy alone takes it. It comes with the call in the proxy URL, and the plugin presents it to its Egress Proxy on every connection; without a valid one for its plugin the proxy answers 407. A change to a Host Field reaches a call under way only when its Ticket expires.
 _Avoid_: Token, egress token
 
 **Host Field**:

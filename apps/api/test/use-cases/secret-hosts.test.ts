@@ -1,13 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createAllowlistApp } from "../../src/egress/allowlist-server";
-import { singleFamily } from "../../src/egress/single-family";
+import { ticketAllowlist } from "../../src/egress/proxy-allowlist";
 import { mintTicket, verifyTicket } from "../../src/egress/ticket";
 import { bootForTest, type TestInstance } from "../support/boot";
 import { testPluginControls } from "../support/test-source-plugin";
 
 const ticketKey = "a-ticket-key-of-at-least-32-characters";
 
-describe("the egress allowlist of an Instance's Sources", () => {
+describe("what the egress proxy allows for an Instance's Sources", () => {
   let instance: TestInstance;
   beforeEach(async () => {
     instance = await bootForTest({ egressTicketKey: ticketKey });
@@ -28,20 +27,14 @@ describe("the egress allowlist of an Instance's Sources", () => {
     return added.id;
   };
 
-  /**
-   * What the proxy of the ics plugin may reach with the ticket of its next poll of `sourceId`, or the
-   * status of the refusal; for the ticket's claims made out to `familyId`, if given.
-   */
-  const allowed = async (sourceId: string, familyId?: string) => {
+  /** What the proxy of the ics plugin may reach with the ticket of its next poll of `sourceId`. */
+  const allowed = async (sourceId: string) => {
     instance.clock.advance(60 * 60 * 1000);
     await instance.app.polling.pollDue();
     const tickets = testPluginControls.runs("ics").map((run) => verifyTicket(ticketKey, decodeURIComponent(new URL(run.egressProxy).password), Date.now()));
     const minted = tickets.findLast((ticket) => ticket?.sourceId === sourceId);
     if (!minted) throw new Error("that Source was not polled");
-    const ticket = mintTicket(ticketKey, { ...minted, familyId: familyId ?? minted.familyId });
-    const app = createAllowlistApp({ ticketKey, declared: new Map([["plugin-ics", ["declared.example:443"]]]), family: singleFamily(instance.app) });
-    const response = await app.request("/egress/plugin-ics", { headers: { authorization: `Bearer ${ticket}` } });
-    return response.ok ? ((await response.json()) as { hosts: string[] }).hosts : response.status;
+    return ticketAllowlist({ service: "plugin-ics", hosts: ["declared.example:443"], ticketKey })(mintTicket(ticketKey, minted));
   };
 
   it("lets a secret address's host out as the Admin enters it, without its token, and follows a new one", async () => {
@@ -63,8 +56,4 @@ describe("the egress allowlist of an Instance's Sources", () => {
     expect(await allowed(second)).toEqual(["declared.example:443", "second.example.org"]);
   });
 
-  it("refuses a ticket of another Family", async () => {
-    const id = await add("https://first.example.org/feed");
-    expect(await allowed(id, "another-family")).toBe(403);
-  });
 });

@@ -2,7 +2,9 @@ import { once } from "node:events";
 import { request, type Server } from "node:http";
 import { connect, createServer as createTcpServer, type AddressInfo, type Server as TcpServer } from "node:net";
 import { afterEach, describe, expect, it } from "vitest";
-import { createEgressProxy, isPublicAddress, targetOf, type AllowlistFetch, type EgressProxyOptions } from "../../src/egress/proxy";
+import { ticketAllowlist } from "../../src/egress/proxy-allowlist";
+import { mintTicket } from "../../src/egress/ticket";
+import { createEgressProxy, isPublicAddress, targetOf, type AllowlistFor, type EgressProxyOptions } from "../../src/egress/proxy";
 
 const servers: (Server | TcpServer)[] = [];
 afterEach(async () => {
@@ -41,62 +43,55 @@ async function connectThrough(proxyPort: number, authority: string, send = "", p
   return { status: head.split("\r\n")[0] ?? "", head, body };
 }
 
-async function proxy(allowlist: AllowlistFetch, options: Partial<EgressProxyOptions> = { isReachable: () => true }): Promise<number> {
+async function proxy(allowlist: AllowlistFor, options: Partial<EgressProxyOptions> = { isReachable: () => true }): Promise<number> {
   return listening(createEgressProxy({ allowlist, log: () => {}, ...options }));
 }
 
 describe("the egress proxy", () => {
   it("tunnels to an allowed host", async () => {
     const port = await upstream();
-    const proxyPort = await proxy(() => Promise.resolve([`127.0.0.1:${port}`]));
+    const proxyPort = await proxy(() => [`127.0.0.1:${port}`]);
 
     expect(await connectThrough(proxyPort, `127.0.0.1:${port}`, "ping")).toMatchObject({ status: "HTTP/1.1 200 Connection Established", body: "helloping" });
   });
 
   it("tunnels an allowed name to the address it resolves to", async () => {
     const port = await upstream();
-    const proxyPort = await proxy(() => Promise.resolve([`api.example.com:${port}`]), { resolve: () => Promise.resolve(["127.0.0.1"]), isReachable: () => true });
+    const proxyPort = await proxy(() => [`api.example.com:${port}`], { resolve: () => Promise.resolve(["127.0.0.1"]), isReachable: () => true });
 
     expect((await connectThrough(proxyPort, `api.example.com:${port}`)).status).toBe("HTTP/1.1 200 Connection Established");
   });
 
   it("refuses a host not allowed", async () => {
     const port = await upstream();
-    const proxyPort = await proxy(() => Promise.resolve(["example.org:443"]));
+    const proxyPort = await proxy(() => ["example.org:443"]);
 
     expect((await connectThrough(proxyPort, `127.0.0.1:${port}`)).status).toBe("HTTP/1.1 403 Forbidden");
   });
 
   it("refuses an allowed internal address by default", async () => {
-    const proxyPort = await proxy(() => Promise.resolve(["127.0.0.1:8080", "10.0.0.1:80"]), {});
+    const proxyPort = await proxy(() => ["127.0.0.1:8080", "10.0.0.1:80"], {});
 
     expect((await connectThrough(proxyPort, "127.0.0.1:8080")).status).toBe("HTTP/1.1 403 Forbidden");
     expect((await connectThrough(proxyPort, "10.0.0.1:80")).status).toBe("HTTP/1.1 403 Forbidden");
   });
 
   it("refuses an allowed name that resolves to an internal address", async () => {
-    const proxyPort = await proxy(() => Promise.resolve(["rebind.example.com:443"]), { resolve: () => Promise.resolve(["93.184.216.34", "192.168.1.5"]) });
+    const proxyPort = await proxy(() => ["rebind.example.com:443"], { resolve: () => Promise.resolve(["93.184.216.34", "192.168.1.5"]) });
 
     expect((await connectThrough(proxyPort, "rebind.example.com:443")).status).toBe("HTTP/1.1 403 Forbidden");
   });
 
   it("answers 502 when an allowed name does not resolve", async () => {
-    const proxyPort = await proxy(() => Promise.resolve(["gone.example.com:443"]), { resolve: () => Promise.reject(new Error("ENOTFOUND")) });
+    const proxyPort = await proxy(() => ["gone.example.com:443"], { resolve: () => Promise.reject(new Error("ENOTFOUND")) });
 
     expect((await connectThrough(proxyPort, "gone.example.com:443")).status).toBe("HTTP/1.1 502 Bad Gateway");
-  });
-
-  it("fails closed when the allowlist cannot be fetched", async () => {
-    const port = await upstream();
-    const proxyPort = await proxy(() => Promise.reject(new Error("core down")));
-
-    expect((await connectThrough(proxyPort, `127.0.0.1:${port}`)).status).toBe("HTTP/1.1 503 Service Unavailable");
   });
 
   it("answers 502 when the allowed host cannot be reached", async () => {
     const closed = await upstream();
     await new Promise((resolve) => servers.pop()?.close(resolve));
-    const proxyPort = await proxy(() => Promise.resolve([`127.0.0.1:${closed}`]));
+    const proxyPort = await proxy(() => [`127.0.0.1:${closed}`]);
 
     expect((await connectThrough(proxyPort, `127.0.0.1:${closed}`)).status).toBe("HTTP/1.1 502 Bad Gateway");
   });
@@ -106,7 +101,7 @@ describe("the egress proxy", () => {
     const tickets: (string | null)[] = [];
     const proxyPort = await proxy((ticket) => {
       tickets.push(ticket);
-      return Promise.resolve([`127.0.0.1:${port}`]);
+      return [`127.0.0.1:${port}`];
     });
     const basic = `Basic ${Buffer.from("ticket:abc.def").toString("base64")}`;
 
@@ -116,7 +111,7 @@ describe("the egress proxy", () => {
 
   it("answers 407 when the allowlist refuses the ticket, or there is none", async () => {
     const port = await upstream();
-    const proxyPort = await proxy((ticket) => Promise.resolve(ticket === "good" ? [`127.0.0.1:${port}`] : null));
+    const proxyPort = await proxy((ticket) => (ticket === "good" ? [`127.0.0.1:${port}`] : null));
 
     const without = await connectThrough(proxyPort, `127.0.0.1:${port}`);
     expect(without.status).toBe("HTTP/1.1 407 Proxy Authentication Required");
@@ -125,11 +120,38 @@ describe("the egress proxy", () => {
     expect((await connectThrough(proxyPort, `127.0.0.1:${port}`, "", "Bearer good")).status).toBe("HTTP/1.1 200 Connection Established");
   });
 
+  it("decides from a plugin's ticket and declared hosts alone", async () => {
+    const port = await upstream();
+    const key = "a-ticket-key-of-at-least-32-characters";
+    const allowlist = ticketAllowlist({ service: "plugin-ics", hosts: [`declared.example:${port}`], ticketKey: key });
+    const resolved: string[] = [];
+    const proxyPort = await proxy(allowlist, {
+      resolve: (host) => {
+        resolved.push(host);
+        return Promise.resolve(({ "internal.example": ["10.0.0.1"], "gone.example": [] } as Record<string, string[]>)[host] ?? ["127.0.0.1"]);
+      },
+      isReachable: (address) => address === "127.0.0.1",
+    });
+    const ticketOf = (sourceTypeId: string, expiresAt = Date.now() + 60_000) =>
+      `Bearer ${mintTicket(key, { familyId: "f", sourceTypeId, sourceId: "s", expiresAt, hosts: ["https://cal.example/feed.ics", "internal.example", "gone.example"] })}`;
+    const status = async (authority: string, authorization?: string) => (await connectThrough(proxyPort, authority, "", authorization)).status;
+
+    expect(await status(`cal.example:${port}`, ticketOf("ics"))).toBe("HTTP/1.1 200 Connection Established");
+    expect(await status(`declared.example:${port}`, ticketOf("ics"))).toBe("HTTP/1.1 200 Connection Established");
+    expect(await status(`other.example:${port}`, ticketOf("ics"))).toBe("HTTP/1.1 403 Forbidden");
+    expect(await status("internal.example:443", ticketOf("ics"))).toBe("HTTP/1.1 403 Forbidden");
+    expect(await status("gone.example:443", ticketOf("ics"))).toBe("HTTP/1.1 502 Bad Gateway");
+    expect(await status(`cal.example:${port}`, ticketOf("imap"))).toBe("HTTP/1.1 407 Proxy Authentication Required");
+    expect(await status(`cal.example:${port}`, ticketOf("ics", Date.now() - 1))).toBe("HTTP/1.1 407 Proxy Authentication Required");
+    expect(await status(`cal.example:${port}`)).toBe("HTTP/1.1 407 Proxy Authentication Required");
+    expect(resolved).not.toContain("other.example");
+  });
+
   it("refuses a malformed target, a single-label name and any plain request", async () => {
-    const proxyPort = await proxy(() => Promise.resolve(["api:3001"]));
+    const proxyPort = await proxy(() => ["db:5432"]);
 
     expect((await connectThrough(proxyPort, "no-port")).status).toBe("HTTP/1.1 400 Bad Request");
-    expect((await connectThrough(proxyPort, "api:3001")).status).toBe("HTTP/1.1 400 Bad Request");
+    expect((await connectThrough(proxyPort, "db:5432")).status).toBe("HTTP/1.1 400 Bad Request");
     const response = await new Promise<number | undefined>((resolve, reject) => {
       request({ host: "127.0.0.1", port: proxyPort, path: "http://example.org/" }, (answer) => {
         answer.resume();
@@ -149,7 +171,7 @@ describe("targetOf", () => {
     ["[::1]:8443", { host: "::1", port: 8443 }],
     ["[1.2.3.4]:8443", null],
     ["10.0.0.1:80", { host: "10.0.0.1", port: 80 }],
-    ["api:3001", null],
+    ["db:5432", null],
     ["example.org", null],
     ["example.org:0", null],
     ["example.org:70000", null],
