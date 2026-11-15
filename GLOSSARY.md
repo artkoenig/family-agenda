@@ -7,7 +7,7 @@ Gathers family-relevant information from many channels into one overview of who 
 ### People
 
 **Family**:
-The household the system serves, owning all Sources and Items; each Instance serves exactly one.
+The household the system serves, owning all Sources and Items; each Instance serves exactly one, and a core in supplied mode serves the one whose Context a request carries.
 _Avoid_: Account, tenant, user group
 
 **Family id**:
@@ -127,6 +127,10 @@ Said of a Task not yet done after its Deadline day; it stays pinned until ticked
 _Avoid_: Late, expired, missed
 
 ### Operation
+
+**Context**:
+What a core in supplied mode needs to open the Family one request is for: its Family id, its database, its family key and its blob location, with a short expiry, encrypted and signed by a trusted caller in front with the Context key it shares with the core. Every request carries one; without a valid one the core refuses the request and opens nothing. A core in fixed mode takes its one Family from the environment instead and reads no Context.
+_Avoid_: Tenant context, session, family token
 
 **Instance**:
 One installation of Family Agenda with its own database, serving exactly one Family.

@@ -18,6 +18,8 @@ How to configure the containers, the address the Family opens, and single sign-o
 | `TRIGGER_TOKEN` | generated with `compose.plugins.yaml` | Token the [Triggered operations](#triggered-operations) require as `Authorization: Bearer <token>`. Empty, the `api` does not offer them |
 | `FAMILY_ID` | empty | The [Family id](#preparing-the-family) a new database gets on the first start, a UUID; empty, a random one. A database that already holds another one is refused at start |
 | `TRIGGER_PORT` | `3001` | Port of the Triggered operations inside the `api` container; not published |
+| `CONTEXT_MODE` | `fixed` | `fixed` serves the one Family these variables name; `supplied` serves the Family whose Context each request carries (see [Supplied mode](#supplied-mode)) |
+| `CONTEXT_KEY` | empty | The key Contexts are sealed with in supplied mode, 32 characters or more; set only with `CONTEXT_MODE=supplied` |
 | `PLUGIN_URLS` | empty | Plugin containers (ADR-0001): `id=url` pairs separated by commas, such as `school-portal=http://school-portal:8080`. The core polls each over REST; one that does not answer shows as "Not reachable" in the Admin area. Set by `compose.plugins.yaml` (see [Plugins](#plugins)); by hand only without one |
 
 Data lives in named volumes (`postgres-data`, `master-key`, `blobs`, ...). How to back them up, restore and upgrade is in [upgrading.md](upgrading.md). Keep the Recovery Kit, without it Source credentials cannot be restored (ADR-0003).
@@ -103,6 +105,23 @@ Preparing the Family brings its database schema up to date, makes sure it has it
 - **Family id.** A database that has none yet, an empty one, gets the id named, from `FAMILY_ID` at start or from the body of `prepare-family`, or a random UUID without one. A database that holds another id is refused before anything changes: the `api` and `worker` do not start, the operation answers `409`. To make an empty database usable with an id of your choosing, set `FAMILY_ID` before the first start. Since the `api` prepares its Family when it starts, the operation itself always finds a prepared database: it writes no new id, it confirms the one you name.
 - **Versions.** A database from before the rebuild of the data model, or one a newer release migrated, is refused as at start ([upgrading.md](upgrading.md)).
 - **After an upgrade**, the containers prepare the Family when they start again; `prepare-family` does the same for a scheduler or script of your own, such as to check the Family id it acts on.
+
+## Supplied mode
+
+For a provider serving many Families, not for a home Instance. With `CONTEXT_MODE=supplied` the core has no Family of its own: every request carries the **Context** of the Family it is for, and the core opens that Family's database, reads its Source credentials with its family key and keeps its blobs in its folder of the blob location (ADR-0003). Any core can then serve any Family, and one core several, each in its own database.
+
+- **Setting it.** `CONTEXT_MODE=supplied` and `CONTEXT_KEY`, 32 random characters or more, which only the core and the trusted caller in front of it hold. The core refuses to start in supplied mode without `CONTEXT_KEY`, with `CONTEXT_KEY` but without `CONTEXT_MODE=supplied`, and with `DATABASE_URL`, `FAMILY_ID`, `MASTER_KEY_FILE` or `BLOB_DIRECTORY` set: it never falls back to a fixed Family. The `worker` and the `family-agenda` Admin commands run in fixed mode only, and the Triggered operations are not offered. Settings such as `TZ`, `PUBLIC_URL` and the `OIDC_*` variables apply to every Family.
+- **The Context.** JSON with the Family id (a UUID), the database (a Postgres URL), the family key (32 random bytes in base64url, which stands in for the master key file) and the blob location (a directory; the Family's blobs lie in its folder `<directory>/<family id>`), plus an expiry, encrypted and signed with AES-256-GCM under a key derived from `CONTEXT_KEY`. Seal one with `family-agenda seal-context`, which reads it from standard input so that no secret appears in a process list, for 5 minutes unless `ttlSeconds` says otherwise:
+
+  ```sh
+  echo '{"familyId":"…","databaseUrl":"postgres://…","familyKey":"…","blobDirectory":"/var/lib/blobs","ttlSeconds":300}' \
+    | CONTEXT_KEY=… family-agenda seal-context
+  ```
+
+  A caller of its own seals the same format: `v1.<iv>.<ciphertext>.<tag>`, each base64url, AES-256-GCM with a 12-byte IV and a 16-byte tag, additional data `family-agenda context v1`, the key HKDF-SHA-256 of `CONTEXT_KEY` with salt `family-agenda` and info `context v1 aes-256-gcm`, the plaintext `{ familyId, databaseUrl, familyKey, blobDirectory, expiresAt }` with `expiresAt` in milliseconds since the epoch.
+- **Where it goes.** In the header `X-Family-Context` of every request to the pages port, and nowhere else. The core removes it before the Family's pages see the request. Without a valid one, or with an expired, altered or foreign one, the answer is `401` and nothing is opened; a Context whose Family id differs from the one its database holds gets `403`; a database that cannot be reached `503`. An empty database gets the Context's Family id and is prepared, as on a first start. Only `/api/health` answers without a Context.
+- **Deployment assumption.** The pages port of a core in supplied mode is reachable from the trusted caller only, on a network of their own, and never published to browsers. Browsers reach the caller, which signs them in, decides their Family, seals its Context and forwards the request; a browser never sees a Context.
+- **What the core keeps.** An opened Family, its database connections and wiring, stays in memory for 5 minutes after its last request and is then closed; idle database connections close after 10 seconds. No Context, family key or database password is written to disk or to the log.
 
 ## Address of the Instance
 

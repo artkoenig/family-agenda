@@ -122,12 +122,21 @@ export type SharedConfig = {
   textExtractor?: TextExtractor;
 };
 
+/** Where the key of a Family's Source credentials comes from. */
+export type FamilyKeyConfig =
+  | {
+      /** Where the master key is kept, outside Postgres; created on first start. */
+      masterKeyFile: string;
+    }
+  | {
+      /** The family key a Context supplies (ADR-0003), kept in memory only; never written anywhere. */
+      masterKey: Buffer;
+    };
+
 /** What belongs to one Family: its database and what is kept outside it. */
-export type FamilyConfig = DatabaseConfig & {
+export type FamilyConfig = DatabaseConfig & FamilyKeyConfig & {
   /** The Family id to write for a database that has none yet (`FAMILY_ID`); a random UUID if left out. */
   familyId?: FamilyId;
-  /** Where the master key is kept, outside Postgres; created on first start. */
-  masterKeyFile: string;
   /** Where files such as photos are kept, outside Postgres. */
   blobDirectory: string;
   /** The IANA time zone the Family lives in; by default the one of the process (`TZ`). */
@@ -256,7 +265,7 @@ export async function bootFamily(shared: SharedWiring, config: FamilyConfig): Pr
   const { masterKey, familyId } = await withDatabase(postgres, async () => {
     // The Family id is read only once the Family is prepared: it never changes after.
     const { familyId } = await prepareOn(shared, postgres, config.familyId, ownBlobDirectory(config));
-    return { masterKey: await loadMasterKey(postgres, config.masterKeyFile), familyId };
+    return { masterKey: await familyKeyOf(postgres, config), familyId };
   });
   return wireFamily(shared, config, postgres, masterKey, familyId);
 }
@@ -458,6 +467,9 @@ function wireFamily(
     close: () => postgres.close(),
   };
 }
+
+const familyKeyOf = (postgres: PostgresConnection, config: FamilyKeyConfig): Promise<Buffer> =>
+  "masterKey" in config ? Promise.resolve(config.masterKey) : loadMasterKey(postgres, config.masterKeyFile);
 
 /** Creates the master key on first start, but never a new one for secrets stored with a lost one. */
 async function loadMasterKey(postgres: PostgresConnection, file: string): Promise<Buffer> {

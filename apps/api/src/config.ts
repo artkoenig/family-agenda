@@ -43,22 +43,75 @@ export type TriggerConfig = {
   token: string | null;
 };
 
+/**
+ * How the core learns which Family a request is for (ADR-0003), from `CONTEXT_MODE`: `fixed`, the
+ * default, serves the one Family the environment names; `supplied` serves the Family whose Context
+ * each request carries, sealed with `CONTEXT_KEY`.
+ */
+export type ContextMode = "fixed" | "supplied";
+
+/** The shortest Context key, as for the ticket key. */
+const minimumContextKeyLength = 32;
+
+/** The mode `CONTEXT_MODE` chooses, refusing a Context key without supplied mode and the other way round. */
+export function readMode(env: NodeJS.ProcessEnv = process.env): ContextMode {
+  const mode = env.CONTEXT_MODE || "fixed";
+  if (mode !== "fixed" && mode !== "supplied") throw new Error(`CONTEXT_MODE must be fixed or supplied, not "${mode}"`);
+  checkContextKey(mode, env.CONTEXT_KEY ?? "");
+  return mode;
+}
+
+/** Refuses a Context key in fixed mode, and supplied mode without a long enough one. */
+function checkContextKey(mode: ContextMode, key: string): void {
+  if (mode === "fixed") {
+    if (key !== "") throw new Error("CONTEXT_KEY is set, but CONTEXT_MODE is not supplied; set CONTEXT_MODE=supplied, or unset CONTEXT_KEY");
+    return;
+  }
+  if (key === "") throw new Error("CONTEXT_KEY must be set with CONTEXT_MODE=supplied");
+  if (key.length < minimumContextKeyLength) throw new Error(`CONTEXT_KEY must be at least ${minimumContextKeyLength} characters long`);
+}
+
+/** A core in supplied mode: what it shares among the Families, and no Family of its own. */
+export type SuppliedConfig = Omit<Config, "databaseUrl" | "familyId" | "masterKeyFile" | "blobDirectory" | "trigger"> & {
+  /** The key the trusted caller seals Contexts with, from `CONTEXT_KEY`. */
+  contextKey: string;
+};
+
+/** The variables that name a fixed Family, which supplied mode never falls back to. */
+const fixedFamilyVariables = ["DATABASE_URL", "FAMILY_ID", "MASTER_KEY_FILE", "BLOB_DIRECTORY"] as const;
+
+/** The configuration of a core in supplied mode (`CONTEXT_MODE=supplied`). */
+export function readSuppliedConfig(env: NodeJS.ProcessEnv = process.env): SuppliedConfig {
+  if (readMode(env) !== "supplied") throw new Error("This configuration is for CONTEXT_MODE=supplied only");
+  const given = fixedFamilyVariables.find((variable) => env[variable]);
+  if (given) throw new Error(`${given} must not be set with CONTEXT_MODE=supplied: every request supplies its Family's Context`);
+  return { ...sharedConfigOf(env), contextKey: env.CONTEXT_KEY ?? "" };
+}
+
 export function readConfig(env: NodeJS.ProcessEnv = process.env): Config {
+  if (readMode(env) === "supplied") throw new Error("CONTEXT_MODE=supplied: in supplied mode this core has no Family of its own, only the Contexts requests supply");
   const databaseUrl = env.DATABASE_URL;
   if (!databaseUrl) throw new Error("DATABASE_URL is not set");
-  const publicUrl = publicUrlOf(env.PUBLIC_URL);
-  const pluginContainers = parsePluginUrls(env.PLUGIN_URLS);
   return {
     databaseUrl,
     ...familyIdConfigOf(env.FAMILY_ID),
     masterKeyFile: env.MASTER_KEY_FILE ?? "/var/lib/family-agenda/master-key/master.key",
     blobDirectory: env.BLOB_DIRECTORY ?? "/var/lib/family-agenda/blobs",
+    trigger: triggerConfigOf(env),
+    ...sharedConfigOf(env),
+  };
+}
+
+/** What a core reads from the environment in either mode. */
+function sharedConfigOf(env: NodeJS.ProcessEnv): Omit<Config, "databaseUrl" | "familyId" | "masterKeyFile" | "blobDirectory" | "trigger"> {
+  const publicUrl = publicUrlOf(env.PUBLIC_URL);
+  const pluginContainers = parsePluginUrls(env.PLUGIN_URLS);
+  return {
     pluginContainers,
     egressTicketKey: egressTicketKeyOf(env, pluginContainers),
     tessdataDirectory: env.TESSDATA_DIRECTORY ?? "/var/lib/family-agenda/tessdata",
     bundledTessdataDirectory: (env.BUNDLED_TESSDATA_DIRECTORY ?? "/usr/share/tesseract-ocr/5/tessdata") || null,
     port: Number(env.PORT ?? 3000),
-    trigger: triggerConfigOf(env),
     trustProxy: env.TRUST_PROXY === "true",
     publicUrl,
     identityProvider: identityProviderOf(env, publicUrl),

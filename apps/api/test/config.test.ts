@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { readConfig } from "../src/config";
+import { readConfig, readMode, readSuppliedConfig } from "../src/config";
 
 const base = { DATABASE_URL: "postgres://x" };
 const oidc = {
@@ -106,5 +106,35 @@ describe("the ticket key in the environment", () => {
     expect(readConfig({ ...base, FAMILY_ID: "0B6F3C1E-8A2D-4F5B-9C7E-1D2A3B4C5D6E" }).familyId).toBe("0b6f3c1e-8a2d-4f5b-9c7e-1d2a3b4c5d6e");
     expect(readConfig({ ...base, FAMILY_ID: "" })).not.toHaveProperty("familyId");
     expect(() => readConfig({ ...base, FAMILY_ID: "family-1" })).toThrow(/FAMILY_ID must be a UUID/);
+  });
+});
+
+describe("the mode of the core", () => {
+  const contextKey = "a-context-key-of-at-least-32-characters";
+
+  it("is fixed without CONTEXT_MODE, or with it set to fixed, and reads the Family from the environment", () => {
+    expect(readMode(base)).toBe("fixed");
+    expect(readMode({ ...base, CONTEXT_MODE: "fixed" })).toBe("fixed");
+    expect(readConfig({ ...base, CONTEXT_MODE: "fixed" }).databaseUrl).toBe("postgres://x");
+  });
+
+  it("refuses to start in fixed mode with a Context key set, and in supplied mode without one", () => {
+    expect(() => readMode({ ...base, CONTEXT_KEY: contextKey })).toThrow(/CONTEXT_KEY is set, but CONTEXT_MODE is not supplied/);
+    expect(() => readConfig({ ...base, CONTEXT_KEY: contextKey })).toThrow(/CONTEXT_MODE/);
+    expect(() => readMode({ CONTEXT_MODE: "supplied" })).toThrow(/CONTEXT_KEY must be set/);
+    expect(() => readMode({ CONTEXT_MODE: "supplied", CONTEXT_KEY: "short" })).toThrow(/at least 32 characters/);
+    expect(() => readMode({ CONTEXT_MODE: "both" })).toThrow(/CONTEXT_MODE must be fixed or supplied/);
+  });
+
+  it("reads no Family from the environment in supplied mode, and refuses one given there", () => {
+    const supplied = { CONTEXT_MODE: "supplied", CONTEXT_KEY: contextKey, PORT: "8080", TZ: "Europe/Berlin" };
+    expect(readMode(supplied)).toBe("supplied");
+    expect(readSuppliedConfig(supplied)).toMatchObject({ contextKey, port: 8080, trustProxy: false, publicUrl: null, identityProvider: null, pluginContainers: [] });
+    expect(readSuppliedConfig(supplied)).not.toHaveProperty("databaseUrl");
+    for (const variable of ["DATABASE_URL", "FAMILY_ID", "MASTER_KEY_FILE", "BLOB_DIRECTORY"]) {
+      expect(() => readSuppliedConfig({ ...supplied, [variable]: "x" })).toThrow(new RegExp(`${variable} must not be set`));
+    }
+    expect(() => readConfig({ ...base, ...supplied })).toThrow(/supplied mode/);
+    expect(() => readSuppliedConfig(base)).toThrow(/CONTEXT_MODE=supplied/);
   });
 });
