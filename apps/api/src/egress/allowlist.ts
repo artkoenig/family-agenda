@@ -32,7 +32,7 @@ export type AllowlistSources = {
 
 /**
  * What the egress proxy of container `service` allows for the plugin call `ticket` was minted for
- * (ADR-0001): the container's declared hosts and the hosts the Admin entered in host fields of that
+ * (ADR-0001, amended): the container's declared hosts and the hosts the Admin entered in host fields of that
  * one Source, as the ticket carries them; only the declared hosts for a call of no Source. Null
  * where the ticket does not hold: for a Family the Instance does not serve, or a container other
  * than the plugin's own.

@@ -3,7 +3,6 @@ import type { SourceId, SourceTypeId } from "@family-agenda/domain";
 import type { ActivityLog } from "./activity";
 import { retainedSince } from "./retention";
 import type {
-  ConfigFieldSpec,
   BlobStore,
   CatalogueRepository,
   CatalogueSpec,
@@ -26,7 +25,7 @@ import type {
 } from "./ports";
 import { enabledSourceType } from "./enabled-source-type";
 import { readStated } from "./stated-items";
-import { runContextOf } from "./sources";
+import { runContextOf, type HostFieldsOf } from "./sources";
 
 export type PollingDeps = {
   clock: Clock;
@@ -97,11 +96,11 @@ export function createSourcePolling(deps: PollingDeps) {
    * the report. Runs of one Source take turns, a poll as well as a push, each reading the Source
    * afresh, so that none starts from a Source Cursor another is about to replace.
    */
-  async function run(sourceId: SourceId, fields: ConfigFieldSpec[], ingest: Ingest, report: RunReport): Promise<void> {
+  async function run(sourceId: SourceId, sourceType: HostFieldsOf, ingest: Ingest, report: RunReport): Promise<void> {
     const previous = runs.get(sourceId) ?? Promise.resolve();
     const current = previous.then(async () => {
       const source = await sources.findById(sourceId);
-      if (source) await runNow(source, fields, ingest, report);
+      if (source) await runNow(source, sourceType, ingest, report);
     });
     const settled = current.catch(() => undefined);
     runs.set(sourceId, settled);
@@ -112,9 +111,9 @@ export function createSourcePolling(deps: PollingDeps) {
     }
   }
 
-  async function runNow(source: Source, fields: ConfigFieldSpec[], ingest: Ingest, report: RunReport): Promise<void> {
+  async function runNow(source: Source, sourceType: HostFieldsOf, ingest: Ingest, report: RunReport): Promise<void> {
     const now = clock.now();
-    const result = await ingest(await runContextOf(source, { secrets, now, timeZone, fields }), {
+    const result = await ingest(await runContextOf(source, sourceType, { secrets, now, timeZone }), {
       declare: (attributes) => sources.declareAttributes(source.id, attributes),
       archive: (externalId) => sources.archiveAttribute(source.id, externalId),
     });
@@ -196,8 +195,8 @@ function isDue(
   return !(source.lastRunAt && now - source.lastRunAt.getTime() < interval);
 }
 
-    async function findDue(enabled: Set<SourceTypeId>, now: number): Promise<{ source: Source; ingestion: PollingIngestion; fields: ConfigFieldSpec[] }[]> {
-    const due: { source: Source; ingestion: PollingIngestion; fields: ConfigFieldSpec[] }[] = [];
+    async function findDue(enabled: Set<SourceTypeId>, now: number): Promise<{ source: Source; ingestion: PollingIngestion; sourceType: HostFieldsOf }[]> {
+    const due: { source: Source; ingestion: PollingIngestion; sourceType: HostFieldsOf }[] = [];
     for (const type of enabled) {
       const loaded = await registry.load(type);
       if (!loaded.ok) continue;
@@ -208,7 +207,7 @@ function isDue(
       );
       for (const source of await sources.listOfType(type)) {
         if (isDue(source, ingestion, catalogue, entryIntervals, now)) {
-          due.push({ source, ingestion, fields: loaded.sourceType.configuration.fields });
+          due.push({ source, ingestion, sourceType: loaded.sourceType });
         }
       }
     }
@@ -229,8 +228,8 @@ function isDue(
       if (due.length === 0) return report;
       const progress = await activity.begin("polling", due.length);
       try {
-        for (const { source, ingestion, fields } of due) {
-          await run(source.id, fields, (context, attributes) => ingestion.poll(context, attributes), report);
+        for (const { source, ingestion, sourceType } of due) {
+          await run(source.id, sourceType, (context, attributes) => ingestion.poll(context, attributes), report);
           await progress.advance();
         }
       } finally {
@@ -249,10 +248,10 @@ function isDue(
       if (!source) return { ok: false, problem: "unknown-source" };
       const sourceType = await enabledSourceType(source.sourceTypeId, { registry, sourceTypes });
       if (!sourceType) return { ok: false, problem: "source-type-not-available" };
-      const { ingestion, configuration } = sourceType;
+      const { ingestion } = sourceType;
       if (ingestion.mode !== "push") return { ok: false, problem: "not-push" };
       const report: RunReport = { ran: [], failed: [], invalid: [], refused: [] };
-      await run(source.id, configuration.fields, (context, attributes) => ingestion.receive(context, payload, attributes), report);
+      await run(source.id, sourceType, (context, attributes) => ingestion.receive(context, payload, attributes), report);
       return { ok: true, report };
     },
   };

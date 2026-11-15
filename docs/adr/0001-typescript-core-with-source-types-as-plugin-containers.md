@@ -26,7 +26,7 @@ For self-hosting, the operator lists the plugins in `plugins.yml` (id, pinned im
 
 ## What a plugin can reach
 
-Plugins sit on internal networks without published ports, with no token between core and plugin. A plugin's only way out is its own egress proxy (HTTP CONNECT), which allows the declared hosts plus the hosts the Admin entered in host fields of that plugin's Sources, served to it by the core. Since plugin contract 3.0 each call for a Source carries a ticket (Family, Source, short expiry, signed with a key the core shares with the proxies) in the proxy URL it hands the plugin; the proxy refuses a connection without one (407) and allows only the host fields of that one Source, which the core reads from that Source's Family, so that one stateless plugin can serve several Families. A missing or failed proxy means no internet at all.
+Plugins sit on internal networks without published ports, with no token between core and plugin. A plugin's only way out is its own egress proxy (HTTP CONNECT), which allows the declared hosts plus the hosts the Admin entered in host fields of that plugin's Sources, served to it by the core. Since plugin contract 3.0 each call for a Source carries a ticket (Family, Source, short expiry, signed with a key the core shares with the proxies) in the proxy URL it hands the plugin; the proxy refuses a connection without one (407) and allows only the host fields of that one Source, which the ticket carries (see the amendment below), so that one stateless plugin can serve several Families. A missing or failed proxy means no internet at all.
 
 ## Considered Options
 
@@ -34,3 +34,7 @@ Plugins sit on internal networks without published ports, with no token between 
 - **The worker starting containers** through the Docker socket or a socket proxy: dynamic, but root on the host.
 - **Plugins calling the core**, or gRPC: a second direction to secure, or a toolchain every plugin author needs.
 - **A contract rule against outbound access** without a proxy: nothing would enforce it.
+
+## Amendment: the ticket carries the Source's hosts
+
+The core writes the values of a Source's host fields, a secret one by its host in the clear, into the ticket of every call for that Source, read when it mints the ticket; a call of no Source, such as for the Catalogue entries, carries none. Every ticket states its hosts, and the api takes them from the ticket instead of reading the Source from its Family's database. A ticket in flight keeps the hosts it was minted with until it expires, a little longer than its call may last: an edited host field counts from the next call on, and a Source removed meanwhile does not end it. This is the first step towards an Egress Proxy that decides from the ticket alone.
