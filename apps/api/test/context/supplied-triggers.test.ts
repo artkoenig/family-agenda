@@ -5,7 +5,7 @@ import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PGlite } from "@electric-sql/pglite";
-import { migrateFamily, migrationsFolder, postgresSchema, type FamilyId, type PostgresConnection } from "@family-agenda/adapters";
+import { migrateFamily, migrationsFolder, postgresSchema, refuseNewerMigrationHistory, refuseOldMigrationHistory, type FamilyId, type PostgresConnection } from "@family-agenda/adapters";
 import { servePlugin } from "@family-agenda/plugin-kit/server";
 import type { SourceTypeId } from "@family-agenda/domain";
 import { drizzle } from "drizzle-orm/pglite";
@@ -29,6 +29,8 @@ describe("Triggered operations of a core in supplied mode", () => {
   let clock: FakeClock;
   let databases: Map<string, InProcessPostgres>;
   let empties: Map<string, PGlite>;
+  /** Holds the migrations of the databases named here until the promise settles. */
+  let migrationsHeld: Map<string, Promise<void>>;
   let opened: string[];
   let warnings: string[];
   let families: SuppliedFamilies;
@@ -68,7 +70,14 @@ describe("Triggered operations of a core in supplied mode", () => {
     const empty = empties.get(databaseUrl);
     if (empty) {
       const db = drizzle(empty, { schema: postgresSchema });
-      return { db, migrate: (options = {}) => migrateFamily(db, migrationsFolder, options.familyId), close: () => Promise.resolve() };
+      const migrate = async (options: { familyId?: FamilyId } = {}) => {
+        await migrationsHeld.get(databaseUrl);
+        // As a Postgres connection migrates: refusing the history of another release first.
+        await refuseOldMigrationHistory(db, migrationsFolder);
+        await refuseNewerMigrationHistory(db, migrationsFolder);
+        await migrateFamily(db, migrationsFolder, options.familyId);
+      };
+      return { db, migrate, close: () => Promise.resolve() };
     }
     const database = databases.get(databaseUrl);
     if (!database) throw new Error("no such database");
@@ -104,6 +113,7 @@ describe("Triggered operations of a core in supplied mode", () => {
     clock = new FakeClock(new Date("2026-09-14T07:00:00Z"));
     databases = new Map();
     empties = new Map();
+    migrationsHeld = new Map();
     opened = [];
     warnings = [];
     const shared = await bootShared({
@@ -217,5 +227,77 @@ describe("Triggered operations of a core in supplied mode", () => {
 
   it("answers 503 for a database that cannot be reached", async () => {
     expect(await trigger("purge", { ...a, databaseUrl: "postgres://gone" })).toEqual({ status: 503, body: { error: "unavailable" } });
+  });
+
+  const held = (databaseUrl: string) => {
+    let release = () => {};
+    migrationsHeld.set(databaseUrl, new Promise<void>((resolve) => (release = resolve)));
+    return release;
+  };
+  const settled = async (promise: Promise<unknown>) => {
+    let done = false;
+    void promise.then(() => (done = true));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    return done;
+  };
+
+  it("lets a request for a Family wait while it is prepared, then serves it on the prepared database", async () => {
+    empties.set("postgres://empty", await PGlite.create());
+    const empty = contextOf("postgres://empty", randomUUID() as FamilyId);
+    const release = held("postgres://empty");
+
+    const preparing = trigger("prepare-family", empty);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const entering = trigger("enter-admin", { ...empty, publicUrl: "http://elsewhere" }, { email: "anna@example.org" });
+
+    expect(await settled(entering)).toBe(false);
+    release();
+    expect(await preparing).toEqual({ status: 200, body: { familyId: empty.familyId } });
+    expect(await entering).toEqual({ status: 200, body: { email: "anna@example.org", outcome: "first" } });
+  });
+
+  it("prepares one Family while another is being prepared", async () => {
+    empties.set("postgres://empty", await PGlite.create());
+    const empty = contextOf("postgres://empty", randomUUID() as FamilyId);
+    const release = held("postgres://empty");
+
+    const preparing = trigger("prepare-family", empty);
+    expect(await trigger("prepare-family", a)).toEqual({ status: 200, body: { familyId: a.familyId } });
+    expect(await settled(preparing)).toBe(false);
+    release();
+    expect((await preparing).status).toBe(200);
+  });
+
+  it("refuses to prepare a database a newer release migrated, changing nothing", async () => {
+    const newer = await PGlite.create();
+    empties.set("postgres://newer", newer);
+    const context = contextOf("postgres://newer", randomUUID() as FamilyId);
+    expect((await trigger("prepare-family", context)).status).toBe(200);
+    await newer.exec("insert into drizzle.__drizzle_migrations (hash, created_at) values ('of a newer release', 0)");
+
+    expect(await trigger("prepare-family", context)).toEqual({ status: 409, body: { error: "migrated-by-newer-release" } });
+    expect((await newer.query("select count(*)::int as n from drizzle.__drizzle_migrations where hash = 'of a newer release'")).rows).toEqual([{ n: 1 }]);
+  });
+
+  it("refuses to prepare a database of the data model before the rebuild, changing nothing", async () => {
+    const old = await PGlite.create();
+    empties.set("postgres://old", old);
+    await old.exec("create schema drizzle; create table drizzle.__drizzle_migrations (id serial primary key, hash text not null, created_at bigint); insert into drizzle.__drizzle_migrations (hash) values ('of the old data model')");
+
+    expect(await trigger("prepare-family", contextOf("postgres://old", randomUUID() as FamilyId))).toEqual({ status: 409, body: { error: "old-data-model" } });
+    expect((await old.query("select count(*)::int as n from information_schema.tables where table_schema = 'public'")).rows).toEqual([{ n: 0 }]);
+  });
+
+  it("answers 503 for preparing a database that cannot be reached", async () => {
+    expect(await trigger("prepare-family", { ...a, databaseUrl: "postgres://gone" })).toEqual({ status: 503, body: { error: "unavailable" } });
+  });
+
+  it("lets due work triggered for a Family during a run wait for that run, whatever else its Context says", async () => {
+    const ofA = await addSource(a, "https://a.example.org/a.ics");
+    clock.advance(60 * 60_000);
+
+    const answers = await Promise.all([trigger("due-work", a), trigger("due-work", { ...a, publicUrl: "http://elsewhere" })]);
+
+    for (const { body } of answers) expect(body).toMatchObject({ polled: { ok: true, report: { ran: [ofA] } } });
   });
 });

@@ -1,5 +1,5 @@
 import { timingSafeEqual } from "node:crypto";
-import { FamilyIdConflictError, parseFamilyId, type FamilyId } from "@family-agenda/adapters";
+import { FamilyIdConflictError, NewerMigrationHistoryError, OldMigrationHistoryError, parseFamilyId, type FamilyId } from "@family-agenda/adapters";
 import type { AdminAccess, DueWorkReport, StepOutcome } from "@family-agenda/application";
 import { serve, type ServerType } from "@hono/node-server";
 import { Hono } from "hono";
@@ -7,7 +7,7 @@ import { runDueWork, workFailures, type BackgroundWork, type WorkLog } from "./b
 import type { PreparedFamily } from "./composition-root";
 import type { TriggerConfig } from "./config";
 import { contextHeader, openContextOutcome, type OpenedContext } from "./context/context";
-import type { OpeningProblem, SuppliedFamilies } from "./context/supplied-families";
+import { databaseKeyOf, type OpeningProblem, type SuppliedFamilies } from "./context/supplied-families";
 
 /** A step of due work as JSON: its report, or the message of the error it stopped with. */
 type StepAnswer<R> = { ok: true; report: R } | { ok: false; error: string };
@@ -41,11 +41,19 @@ type OperationName = keyof TriggerAnswers;
 /** Reads the JSON body of the request; only an operation that takes one calls it. */
 type BodyReader = () => Promise<unknown>;
 type Operations = { [Name in OperationName]: (body: BodyReader) => Promise<TriggerAnswers[Name]> };
+/** The operations as served: each may also read the request, such as for the Context it carries. */
+type Served = { [Name in OperationName]: (body: BodyReader, request: Request) => Promise<TriggerAnswers[Name]> };
+
+/** Where the Triggered operations write: the worker's lines, and whether they listen. */
+export type TriggerLog = WorkLog & { info(line: string): void };
+
+/** The statuses an operation is refused with. */
+type RefusalStatus = 400 | 401 | 403 | 404 | 409 | 503;
 
 /** An operation that will not run as asked, answered with `status` and `body`; nothing has changed. */
 class Refused extends Error {
   constructor(
-    readonly status: 400 | 401 | 403 | 404 | 409 | 503,
+    readonly status: RefusalStatus,
     readonly body: Record<string, string>,
   ) {
     super(body.error);
@@ -124,14 +132,15 @@ function queued<A extends unknown[], T>(run: (...args: A) => Promise<T>): (...ar
 type FamilyWork = Omit<TriggeredWork, "prepare">;
 type FamilyOperations = Omit<Operations, "prepare-family">;
 
+const dueWorkAnswer = async (work: FamilyWork, log: WorkLog): Promise<DueWorkAnswer> => {
+  const report = await runDueWork(work, log);
+  return { polled: stepOf(report.polled), extracted: stepOf(report.extracted) };
+};
+
 /** The worker's work as named operations: the same calls, and the same log lines, as its schedules. */
-function familyOperations(work: FamilyWork, log: WorkLog): FamilyOperations {
-  const dueWork = joined(() => runDueWork(work, log));
+function familyOperations(work: FamilyWork, log: WorkLog, dueWork = joined(() => dueWorkAnswer(work, log))): FamilyOperations {
   return {
-    "due-work": async () => {
-      const report = await dueWork();
-      return { polled: stepOf(report.polled), extracted: stepOf(report.extracted) };
-    },
+    "due-work": dueWork,
     purge: () => work.retention.purge(),
     "secret-sweep": async () => ({ removed: await work.secretSweep.sweep() }),
     "enter-admin": (body) => enterAdmin(work, body),
@@ -140,7 +149,8 @@ function familyOperations(work: FamilyWork, log: WorkLog): FamilyOperations {
 }
 
 function triggeredOperations(work: TriggeredWork, log: WorkLog): Operations {
-  return { ...familyOperations(work, log), "prepare-family": queued((body: BodyReader) => prepareFamily(work, body)) };
+  const { "due-work": dueWork, purge, "secret-sweep": sweep, ...admins } = familyOperations(work, log);
+  return { "due-work": dueWork, purge, "secret-sweep": sweep, "prepare-family": queued((body: BodyReader) => prepareFamily(work, body)), ...admins };
 }
 
 /** The JSON body of a request; none when it is empty, and refused when it is no JSON. */
@@ -154,12 +164,7 @@ async function bodyOf(request: Request): Promise<unknown> {
   }
 }
 
-const operationNames: readonly OperationName[] = ["due-work", "purge", "secret-sweep", "prepare-family", "enter-admin", "reset-admin-password"];
-
-const isOperation = (name: string): name is OperationName => (operationNames as readonly string[]).includes(name);
-
-/** Runs the named operation on what the request is for, answering with its JSON or throwing `Refused`. */
-type Runner = (name: OperationName, body: BodyReader, request: Request) => Promise<unknown>;
+const isOperation = (operations: Served, name: string): name is OperationName => Object.hasOwn(operations, name);
 
 const sameToken = (given: string, expected: string) => {
   const a = Buffer.from(given);
@@ -172,8 +177,7 @@ const sameToken = (given: string, expected: string) => {
  * JSON; every request must carry `Authorization: Bearer <token>`.
  */
 export function createTriggerApp(work: TriggeredWork, options: { token: string; log: WorkLog }): Hono {
-  const operations = triggeredOperations(work, options.log);
-  return triggerApp((name, body) => operations[name](body), options);
+  return triggerApp(triggeredOperations(work, options.log), options);
 }
 
 export type SuppliedTriggerOptions = {
@@ -186,6 +190,8 @@ export type SuppliedTriggerOptions = {
   log: WorkLog;
   now?: () => number;
 };
+
+type FamilyOperationName = keyof FamilyOperations;
 
 const openingRefusals: Record<OpeningProblem, () => Refused> = {
   "family-id-differs": () => new Refused(403, { error: "family-id-differs" }),
@@ -202,15 +208,26 @@ function contextOf(request: Request, contextKey: string, now: number): OpenedCon
   throw new Refused(401, { error: "invalid-context" });
 }
 
+/** Why preparing a database is refused, by the error it stopped with; nothing has changed. */
+function preparingRefusal(error: unknown): Refused | null {
+  if (error instanceof FamilyIdConflictError) return new Refused(409, { error: "family-id-differs", familyId: error.stored });
+  if (error instanceof NewerMigrationHistoryError) return new Refused(409, { error: "migrated-by-newer-release" });
+  if (error instanceof OldMigrationHistoryError) return new Refused(409, { error: "old-data-model" });
+  return null;
+}
+
 /** In supplied mode the Family id is the Context's: a body may only confirm it. */
-async function preparedFor(families: SuppliedFamilies, context: OpenedContext, body: BodyReader): Promise<PreparedFamily> {
+async function preparedFor(families: SuppliedFamilies, context: OpenedContext, body: BodyReader, log: WorkLog): Promise<PreparedFamily> {
   const named = familyIdIn(await body());
   if (named !== undefined && named !== context.familyId) throw new Refused(400, { error: "family-id-not-the-contexts" });
   try {
     return await families.prepare(context);
   } catch (error) {
-    if (error instanceof FamilyIdConflictError) throw new Refused(409, { error: "family-id-differs", familyId: error.stored });
-    throw error;
+    const refusal = preparingRefusal(error);
+    if (refusal) throw refusal;
+    // As opening answers a database it cannot reach; the message could name it, so only the kind of error.
+    log.error(`${workFailures["prepare-family"]} the Family ${context.familyId}`, error instanceof Error ? error.name : "unknown");
+    throw new Refused(503, { error: "unavailable" });
   }
 }
 
@@ -222,37 +239,53 @@ async function preparedFor(families: SuppliedFamilies, context: OpenedContext, b
  */
 export function createSuppliedTriggerApp(options: SuppliedTriggerOptions): Hono {
   const { contextKey, families, log, now = Date.now } = options;
-  const operationsOf = new WeakMap<object, FamilyOperations>();
-  const prepare = queued((context: OpenedContext, body: BodyReader) => preparedFor(families, context, body));
-  return triggerApp(async (name, body, request) => {
-    const context = contextOf(request, contextKey, now());
-    if (name === "prepare-family") return prepare(context, body);
-    const opening = await families.serve(context, ({ application }): Promise<unknown> => {
-      let operations = operationsOf.get(application);
-      if (!operations) {
-        operations = familyOperations(application, log);
-        operationsOf.set(application, operations);
-      }
-      return operations[name](body);
-    });
-    if (opening.ok) return opening.family;
-    log.warn(`Could not open the Family ${context.familyId} for the Triggered operation ${name}: ${opening.problem}`);
-    throw openingRefusals[opening.problem]();
-  }, options);
+  // Due work under way, by database: a trigger during a run waits for it, whichever opening it came by.
+  const dueWorkRuns = new Map<string, Promise<DueWorkAnswer>>();
+  const joinedDueWork = (context: OpenedContext, work: FamilyWork) => {
+    const database = databaseKeyOf(context);
+    let running = dueWorkRuns.get(database);
+    if (!running) {
+      running = dueWorkAnswer(work, log).finally(() => dueWorkRuns.delete(database));
+      dueWorkRuns.set(database, running);
+    }
+    return running;
+  };
+  const onFamily =
+    <Name extends FamilyOperationName>(name: Name) =>
+    async (body: BodyReader, request: Request): Promise<TriggerAnswers[Name]> => {
+      const context = contextOf(request, contextKey, now());
+      const opening = await families.serve(context, ({ application }) =>
+        familyOperations(application, log, () => joinedDueWork(context, application))[name](body),
+      );
+      if (opening.ok) return opening.family;
+      log.warn(`Could not open the Family ${context.familyId} for the Triggered operation ${name}: ${opening.problem}`);
+      throw openingRefusals[opening.problem]();
+    };
+  return triggerApp(
+    {
+      "due-work": onFamily("due-work"),
+      purge: onFamily("purge"),
+      "secret-sweep": onFamily("secret-sweep"),
+      "prepare-family": (body, request) => preparedFor(families, contextOf(request, contextKey, now()), body, log),
+      "enter-admin": onFamily("enter-admin"),
+      "reset-admin-password": onFamily("reset-admin-password"),
+    },
+    options,
+  );
 }
 
-function triggerApp(run: Runner, { token, log }: { token: string; log: WorkLog }): Hono {
+function triggerApp(operations: Served, { token, log }: { token: string; log: WorkLog }): Hono {
   const app = new Hono();
   app.use("*", async (c, next) => {
     if (!sameToken(c.req.header("authorization") ?? "", `Bearer ${token}`)) return c.json({ error: "unauthorized" }, 401);
     await next();
   });
-  app.get("/operations", (c) => c.json({ operations: operationNames }));
+  app.get("/operations", (c) => c.json({ operations: Object.keys(operations) }));
   app.post("/operations/:name", async (c) => {
     const name = c.req.param("name");
-    if (!isOperation(name)) return c.json({ error: "unknown-operation" }, 404);
+    if (!isOperation(operations, name)) return c.json({ error: "unknown-operation" }, 404);
     try {
-      return c.json(await run(name, () => bodyOf(c.req.raw), c.req.raw));
+      return c.json(await operations[name](() => bodyOf(c.req.raw), c.req.raw));
     } catch (error) {
       if (error instanceof Refused) return c.json(error.body, error.status);
       log.error(workFailures[name], error);
@@ -264,7 +297,7 @@ function triggerApp(run: Runner, { token, log }: { token: string; log: WorkLog }
 }
 
 /** Listens for Triggered operations on their own port; only with a token, else says once that they are off. */
-export function serveTriggers(work: TriggeredWork, trigger: TriggerConfig, log: WorkLog & { info(line: string): void }): ServerType | null {
+export function serveTriggers(work: TriggeredWork, trigger: TriggerConfig, log: TriggerLog): ServerType | null {
   return listen((token) => createTriggerApp(work, { token, log }), trigger, log);
 }
 
@@ -272,7 +305,7 @@ export function serveTriggers(work: TriggeredWork, trigger: TriggerConfig, log: 
 export function serveSuppliedTriggers(
   options: Omit<SuppliedTriggerOptions, "token" | "log">,
   trigger: TriggerConfig,
-  log: WorkLog & { info(line: string): void },
+  log: TriggerLog,
 ): ServerType | null {
   return listen((token) => createSuppliedTriggerApp({ ...options, token, log }), trigger, log);
 }

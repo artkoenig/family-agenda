@@ -31,6 +31,8 @@ export type Opening<T> = { ok: true; family: T } | { ok: false; problem: Opening
 export type OpenedFamily = { application: Application; fetch: FamilyFetch };
 
 type Entry = {
+  /** The database it was opened on, as `databaseKeyOf` names it. */
+  database: string;
   opening: Promise<OpenedFamily>;
   lastUsed: number;
   /** Requests under way, which keep the Family open. */
@@ -49,6 +51,8 @@ export const defaultIdleMs = 5 * 60_000;
 export class SuppliedFamilies {
   readonly #options: SuppliedFamiliesOptions;
   readonly #entries = new Map<string, Entry>();
+  /** The prepares under way or waiting, by database: the last of each, which settles without failing. */
+  readonly #preparing = new Map<string, Promise<void>>();
 
   constructor(options: SuppliedFamiliesOptions) {
     this.#options = options;
@@ -62,6 +66,7 @@ export class SuppliedFamilies {
   /** Runs `fn` on the Family `context` opens, which stays open meanwhile. */
   async serve<R>(context: OpenedContext, fn: (family: OpenedFamily) => Promise<R>): Promise<Opening<R>> {
     await this.sweep();
+    await this.#afterPreparing(databaseKeyOf(context));
     const entry = this.#entryFor(context);
     entry.active += 1;
     try {
@@ -73,10 +78,19 @@ export class SuppliedFamilies {
       }
       return { ok: true, family: await fn(opened) };
     } finally {
-      entry.active -= 1;
-      entry.lastUsed = this.#now();
-      if (entry.retired && entry.active === 0) await closeEntry(entry);
+      await this.#release(entry);
     }
+  }
+
+  /** Waits until no prepare of `database` is under way or waiting: a Family is opened on the schema it left. */
+  async #afterPreparing(database: string): Promise<void> {
+    for (let preparing = this.#preparing.get(database); preparing; preparing = this.#preparing.get(database)) await preparing;
+  }
+
+  async #release(entry: Entry): Promise<void> {
+    entry.active -= 1;
+    entry.lastUsed = this.#now();
+    if (entry.retired && entry.active === 0) await closeEntry(entry);
   }
 
   /**
@@ -86,18 +100,36 @@ export class SuppliedFamilies {
    * opened anew by the next request.
    */
   async prepare(context: OpenedContext): Promise<PreparedFamily> {
-    const { shared, connectDatabase = connectPostgres } = this.#options;
-    const prepared = await prepareFamily(shared, { connectDatabase: () => connectDatabase(context.databaseUrl) }, context.familyId);
-    this.#retire(keyOf(context));
-    return prepared;
+    const database = databaseKeyOf(context);
+    // Prepares of one database take turns; those of others run meanwhile.
+    const previous = this.#preparing.get(database) ?? Promise.resolve();
+    const run = previous.then(() => this.#prepareNow(context, database));
+    const settled = run.then(
+      () => {},
+      () => {},
+    );
+    this.#preparing.set(database, settled);
+    void settled.then(() => {
+      if (this.#preparing.get(database) === settled) this.#preparing.delete(database);
+    });
+    return run;
   }
 
-  #retire(key: string): void {
-    const entry = this.#entries.get(key);
-    if (!entry) return;
-    this.#entries.delete(key);
-    entry.retired = true;
-    if (entry.active === 0) void closeEntry(entry);
+  async #prepareNow(context: OpenedContext, database: string): Promise<PreparedFamily> {
+    // No request reuses what was opened on the schema before; requests under way finish on it.
+    this.#retire(database);
+    const { shared, connectDatabase = connectPostgres } = this.#options;
+    return prepareFamily(shared, { connectDatabase: () => connectDatabase(context.databaseUrl) }, context.familyId);
+  }
+
+  /** Drops the Families opened on `database`, closing each once no request uses it. */
+  #retire(database: string): void {
+    for (const [key, entry] of this.#entries) {
+      if (entry.database !== database) continue;
+      this.#entries.delete(key);
+      entry.retired = true;
+      if (entry.active === 0) void closeEntry(entry);
+    }
   }
 
   /** Closes the Families no request has used for `idleMs`. */
@@ -123,7 +155,7 @@ export class SuppliedFamilies {
     const key = keyOf(context);
     const existing = this.#entries.get(key);
     if (existing) return existing;
-    const entry: Entry = { opening: this.#open(context), lastUsed: this.#now(), active: 0, retired: false };
+    const entry: Entry = { database: databaseKeyOf(context), opening: this.#open(context), lastUsed: this.#now(), active: 0, retired: false };
     this.#entries.set(key, entry);
     // A Family that failed to open is tried again with the next request.
     entry.opening.catch(() => {
@@ -151,6 +183,11 @@ export class SuppliedFamilies {
 function problemOf(error: unknown): OpeningProblem {
   if (error instanceof FamilyIdConflictError) return "family-id-differs";
   return error instanceof FamilyNotPreparedError ? "family-not-prepared" : "unavailable";
+}
+
+/** The database a Context names, hashed so that the key holds no password: what Preparing the Family works on. */
+export function databaseKeyOf({ databaseUrl }: Pick<OpenedContext, "databaseUrl">): string {
+  return createHash("sha256").update(databaseUrl).digest("hex");
 }
 
 /**

@@ -4,7 +4,7 @@ import { openAgendaAccess } from "@family-agenda/application";
 import { bootShared } from "../composition-root";
 import type { SuppliedConfig } from "../config";
 import { createHttpApp } from "../http/app";
-import { serveSuppliedTriggers } from "../triggered-operations";
+import { serveSuppliedTriggers, type TriggerLog } from "../triggered-operations";
 import { SuppliedFamilies } from "./supplied-families";
 import { suppliedFetch, type FamilyFetch } from "./supplied-http";
 
@@ -17,7 +17,7 @@ const sweepEveryMs = 60_000;
  * its Family. With `TRIGGER_TOKEN`, the Triggered operations listen on `TRIGGER_PORT`, each trigger
  * with the Context of its Family too; the core runs no schedule and prepares no Family of its own.
  */
-export async function serveSupplied(config: SuppliedConfig, log: { info(message: string): void; warn(message: string): void; error(message: string, error?: unknown): void }) {
+export async function serveSupplied(config: SuppliedConfig, log: TriggerLog) {
   const shared = await bootShared(config);
   const families = new SuppliedFamilies({
     shared,
