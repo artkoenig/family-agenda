@@ -72,6 +72,7 @@ import {
   SourceTypeCatalogue,
   SourceTypePage,
   SourceValues,
+  addingHref,
   sourceHref,
   sourceTypeHref,
   AgendasPage,
@@ -724,7 +725,8 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     const to =
       location ??
       (c.req.method === "GET"
-        ? new URL(c.req.url).pathname + new URL(c.req.url).search
+        ? href(prefix, new URL(c.req.url).pathname as `/${string}`) +
+          new URL(c.req.url).search
         : (c.req.header("referer") ?? href(prefix, "/admin/sources")));
     c.res = new Response(null, {
       status: 204,
@@ -1062,7 +1064,9 @@ export function createHttpApp(application: Application, options: HttpOptions) {
   app.get("/admin/sources", (c) => sourcesPage(c));
 
   // The Source Types had a page of their own before they moved onto the Sources page.
-  app.get("/admin/source-types", (c) => c.redirect("/admin/sources", 301));
+  app.get("/admin/source-types", (c) =>
+    c.redirect(href(prefix, "/admin/sources"), 301),
+  );
 
   /**
    * A Source Type's page, with a dialog over it while one of its Sources is added or set up; the
@@ -1083,7 +1087,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     ]);
     const sourceType = types.find((type) => type.id === id) ?? null;
     const displayName = sourceType?.displayName ?? ofType[0]?.displayName;
-    if (!displayName) return c.redirect("/admin/sources");
+    if (!displayName) return c.redirect(href(prefix, "/admin/sources"));
     const page = await sourceTypePageElement(
       c,
       id,
@@ -1187,7 +1191,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
       );
       if (!result.ok)
         return sourceTypePage(c, id, { problem: problemIn(c, result.problem) });
-      return c.redirect(sourceTypeHref(id), 303);
+      return seeOther(c, sourceTypeHref(id));
     });
   };
 
@@ -1223,7 +1227,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     );
     if (!result.ok)
       return sourceTypePage(c, id, { problem: problemIn(c, result.problem) });
-    return c.redirect(sourceTypeHref(id), 303);
+    return seeOther(c, sourceTypeHref(id));
   });
 
   const liveStepOf = async (
@@ -1280,9 +1284,9 @@ export function createHttpApp(application: Application, options: HttpOptions) {
   };
 
   /** Where a dialog's submit goes on: htmx is told to load that page, a plain form is redirected. */
-  const goOn = (c: Context<Env>, location: string) => {
-    if (c.req.header("hx-request") !== "true") return c.redirect(location, 303);
-    c.header("HX-Redirect", location);
+  const goOn = (c: Context<Env>, location: `/${string}`) => {
+    if (c.req.header("hx-request") !== "true") return seeOther(c, location);
+    c.header("HX-Redirect", href(prefix, location));
     return c.body(null, 204);
   };
 
@@ -1292,10 +1296,6 @@ export function createHttpApp(application: Application, options: HttpOptions) {
       ? render(c, <AddSourceDialog adding={adding} />)
       : sourceTypePage(c, adding.form.sourceTypeId, { adding });
 
-  /** The page of a Source being added in the background. */
-  const addingHref = (id: AddingId) =>
-    `/admin/sources/adding/${encodeURIComponent(id)}`;
-
   /** A Source by its id, for the page of its Source Type. */
   const sourceOf = async (id: string) =>
     (await sources.list()).find((source) => source.id === id);
@@ -1304,11 +1304,11 @@ export function createHttpApp(application: Application, options: HttpOptions) {
   app.get("/admin/sources/new", async (c) => {
     const type = c.req.query("type");
     dialogAlone(c);
-    if (type === undefined) return c.redirect("/admin/sources");
+    if (type === undefined) return c.redirect(href(prefix, "/admin/sources"));
     const form = (await sources.forms()).find(
       (candidate) => candidate.sourceTypeId === type,
     );
-    if (!form) return c.redirect(sourceTypeHref(type));
+    if (!form) return c.redirect(href(prefix, sourceTypeHref(type)));
     // Added at a catalogue entry, such as a Messenger, the Source uses that entry.
     const entry = c.req.query("entry");
     if (form.catalogue && entry !== undefined) {
@@ -1349,17 +1349,20 @@ export function createHttpApp(application: Application, options: HttpOptions) {
   app.get("/admin/sources/adding/:adding", async (c) => {
     const id = c.req.param("adding") as AddingId;
     const progress = await sources.adding(id);
-    if (!progress) return c.redirect("/admin/sources");
+    if (!progress) return c.redirect(href(prefix, "/admin/sources"));
     if (progress.status === "added") {
       await sources.forgetAdding(id);
       return c.redirect(
-        progress.setUp
-          ? `/admin/sources/${progress.id}/setup`
-          : sourceTypeHref(progress.sourceTypeId),
+        href(
+          prefix,
+          progress.setUp
+            ? `${sourceHref(progress.id)}/setup`
+            : sourceTypeHref(progress.sourceTypeId),
+        ),
       );
     }
     if (progress.status === "running")
-      return c.redirect(sourceTypeHref(progress.sourceTypeId));
+      return c.redirect(href(prefix, sourceTypeHref(progress.sourceTypeId)));
     await sources.forgetAdding(id);
     const sourceForm = (await sources.forms()).find(
       (candidate) => candidate.sourceTypeId === progress.sourceTypeId,
@@ -1394,14 +1397,17 @@ export function createHttpApp(application: Application, options: HttpOptions) {
       );
       return render(c, <AddingRow adding={{ id, progress }} form={form} />);
     }
-    c.header("HX-Redirect", progress ? addingHref(id) : "/admin/sources");
+    c.header(
+      "HX-Redirect",
+      href(prefix, progress ? addingHref(id) : "/admin/sources"),
+    );
     return c.body(null, 204);
   });
 
   // A Source with live setup steps, such as a QR code login, goes through them once added.
   app.get("/admin/sources/:id/setup", async (c) => {
     const settingUp = await sources.find(c.req.param("id") as SourceId);
-    if (!settingUp) return c.redirect("/admin/sources");
+    if (!settingUp) return c.redirect(href(prefix, "/admin/sources"));
     return sourceTypePage(c, settingUp.sourceTypeId, { settingUp });
   });
 
@@ -1474,7 +1480,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
         problem={refused?.problem}
         entered={refused?.entered}
         form={form}
-        closeHref={sourceHref(source.id)}
+        closeHref={href(prefix, sourceHref(source.id))}
         timeZone={timeZone}
         members={members}
       />,
@@ -1483,14 +1489,14 @@ export function createHttpApp(application: Application, options: HttpOptions) {
 
   app.get("/admin/sources/:id", async (c) => {
     const source = await sourceOf(c.req.param("id"));
-    if (!source) return c.redirect("/admin/sources");
+    if (!source) return c.redirect(href(prefix, "/admin/sources"));
     return sourcePage(c, source);
   });
 
   // A Fix button opens the Source's form in the dialog adding a Source uses.
   app.get("/admin/sources/:id/fix", async (c) => {
     const fixing = await sourceOf(c.req.param("id"));
-    if (!fixing) return c.redirect("/admin/sources");
+    if (!fixing) return c.redirect(href(prefix, "/admin/sources"));
     return dialogAlone(c)
       ? fixDialog(c, fixing)
       : sourcePage(c, fixing, { fixing: true });
@@ -1498,7 +1504,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
 
   app.post("/admin/sources/:id", async (c) => {
     const source = await sourceOf(c.req.param("id"));
-    if (!source) return c.redirect("/admin/sources", 303);
+    if (!source) return seeOther(c, "/admin/sources");
     const form = await c.req.parseBody({ all: true });
     // Its name is saved with the rest of its form; a name it refuses leaves everything as it was.
     if (typeof form.name === "string") {
@@ -1525,22 +1531,22 @@ export function createHttpApp(application: Application, options: HttpOptions) {
 
   app.post("/admin/sources/:id/name", async (c) => {
     const source = await sourceOf(c.req.param("id"));
-    if (!source) return c.redirect("/admin/sources", 303);
+    if (!source) return seeOther(c, "/admin/sources");
     const result = await sources.rename(
       source.id,
       field(await c.req.parseBody(), "name"),
     );
     if (!result.ok)
       return sourcePage(c, source, { problem: problemIn(c, result.problem) });
-    return c.redirect(sourceHref(source.id), 303);
+    return seeOther(c, sourceHref(source.id));
   });
 
   app.post("/admin/sources/:id/shown", async (c) => {
     const source = await sourceOf(c.req.param("id"));
-    if (!source) return c.redirect("/admin/sources", 303);
+    if (!source) return seeOther(c, "/admin/sources");
     const form = await c.req.parseBody();
     await sources.setShown(source.id, field(form, "shown") === "yes");
-    return c.redirect(sourceHref(source.id), 303);
+    return seeOther(c, sourceHref(source.id));
   });
 
   // A Source's health line, asked for again with backoff while it awaits a read, so that its page need not reload.
@@ -1608,7 +1614,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
   // Whom the Items of each of its Source Attributes concern: the Family Members ticked, or the whole Family with none.
   app.post("/admin/sources/:id/attributes", async (c) => {
     const source = await sourceOf(c.req.param("id"));
-    if (!source) return c.redirect("/admin/sources", 303);
+    if (!source) return seeOther(c, "/admin/sources");
     const form = await c.req.parseBody({ all: true });
     for (const attribute of source.attributes) {
       const chosen = form[`member.${attribute.id}`];
@@ -1622,14 +1628,14 @@ export function createHttpApp(application: Application, options: HttpOptions) {
       if (!result.ok)
         return sourcePage(c, source, { problem: problemIn(c, result.problem) });
     }
-    return c.redirect(sourceHref(source.id), 303);
+    return seeOther(c, sourceHref(source.id));
   });
 
   app.post("/admin/sources/:id/remove", async (c) => {
     const source = await sourceOf(c.req.param("id"));
-    if (!source) return c.redirect("/admin/sources", 303);
+    if (!source) return seeOther(c, "/admin/sources");
     await sources.remove(source.id);
-    return c.redirect(sourceTypeHref(source.sourceTypeId), 303);
+    return seeOther(c, sourceTypeHref(source.sourceTypeId));
   });
 
   const displayPage = async (c: Context<Env>, problem?: string) => {
@@ -1804,9 +1810,9 @@ export function createHttpApp(application: Application, options: HttpOptions) {
   app.post("/admin/items/:id/delete", async (c) => {
     await messages.deleteItem(c.req.param("id") as ItemId);
     const message = field(await c.req.parseBody(), "message");
-    return c.redirect(
+    return seeOther(
+      c,
       /^[0-9a-f-]{36}$/.test(message) ? `/admin/messages/${message}` : "/admin",
-      303,
     );
   });
 

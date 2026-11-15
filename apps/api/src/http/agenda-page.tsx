@@ -707,6 +707,7 @@ function EventRow(props: { row: TimelineEvent; day: LocalDate; members: FamilyMe
 /** Where an Event or a Task comes from: its links, and the messages it was read from, which only Admins open. */
 function Sources(props: { row: Pick<TimelineEvent, "links" | "messages"> }) {
   const { t, text, locale } = useTranslation();
+  const prefix = usePathPrefix();
   return (
     <>
       {props.row.links.map((link) => (
@@ -718,7 +719,7 @@ function Sources(props: { row: Pick<TimelineEvent, "links" | "messages"> }) {
       ))}
       {props.row.messages.map((message) => (
         <span class="fam-item__meta">
-          {text(message.source)} · {new Intl.DateTimeFormat(locale, { day: "numeric", month: "short" }).format(message.sentAt)} · <a href={`/admin/messages/${message.id}`}>{t.agenda.openMessage}</a>
+          {text(message.source)} · {new Intl.DateTimeFormat(locale, { day: "numeric", month: "short" }).format(message.sentAt)} · <a href={href(prefix, `/admin/messages/${message.id}`)}>{t.agenda.openMessage}</a>
         </span>
       ))}
     </>
@@ -952,8 +953,9 @@ function StaticTick(props: { row: TimelineTask }) {
 /** Takes the Item away from the Agenda; reading the message again would bring it back. */
 function DeleteItem(props: { messageId: string; itemId: string; title: string }) {
   const { t } = useTranslation();
+  const prefix = usePathPrefix();
   return (
-    <form method="post" action={`/admin/items/${props.itemId}/delete`}>
+    <form method="post" action={href(prefix, `/admin/items/${props.itemId}/delete`)}>
       <input type="hidden" name="message" value={props.messageId} />
       <button type="submit" class="fam-button fam-button--secondary" aria-label={`${t.message.deleteItem}: ${props.title}`}>
         {t.message.deleteItem}

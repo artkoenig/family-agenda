@@ -1518,9 +1518,10 @@ function AgendaSettingsFields(props: {
 }
 
 /** Where a Source Type's page is: its Sources, its catalogue, and enabling or disabling it. */
-export const sourceTypeHref = (id: string) =>
+export const sourceTypeHref = (id: string): `/${string}` =>
   `/admin/source-types/${encodeURIComponent(id)}`;
-export const sourceHref = (id: string) =>
+/** Where a Source's page is, with its form and the addresses its fragments and forms build on. */
+export const sourceHref = (id: string): `/${string}` =>
   `/admin/sources/${encodeURIComponent(id)}`;
 
 /**
@@ -1533,6 +1534,7 @@ export function SourcesPage(props: {
   sources: SourceSummary[];
 }) {
   const { t, text } = useTranslation();
+  const prefix = usePathPrefix();
   const s = t.sources;
   const sourcesOf = (id: string) =>
     props.sources.filter((source) => source.sourceTypeId === id);
@@ -1559,7 +1561,7 @@ export function SourcesPage(props: {
                   ? "fam-type-card"
                   : "fam-type-card fam-type-card--off"
               }
-              href={sourceTypeHref(type.id)}
+              href={href(prefix, sourceTypeHref(type.id))}
             >
               <span class="fam-type-card__name">{text(type.displayName)}</span>
               <span class="fam-type-card__description">
@@ -1581,7 +1583,10 @@ export function SourcesPage(props: {
         ))}
         {leftBehind.map((source) => (
           <li>
-            <a class="fam-type-card" href={sourceTypeHref(source.sourceTypeId)}>
+            <a
+              class="fam-type-card"
+              href={href(prefix, sourceTypeHref(source.sourceTypeId))}
+            >
               <span class="fam-type-card__name">
                 {text(source.displayName)}
               </span>
@@ -1653,22 +1658,26 @@ function sourceTypeDialog(
   },
   s: Translation["t"]["sources"],
   text: Translation["text"],
-  href: string,
+  closeHref: string,
+  prefix: string,
 ) {
   const { adding, settingUp, form } = props;
-  if (adding) return addingDialog(adding, s, text, href);
-  if (settingUp && form) return settingUpDialog(settingUp, form, s, text, href);
+  if (adding) return addingDialog(adding, s, text, closeHref, prefix);
+  if (settingUp && form)
+    return settingUpDialog(settingUp, form, s, text, closeHref);
   return undefined;
 }
 
 /** The dialog adding a Source, as it loads on its own into its Source Type's page. */
 export function AddSourceDialog(props: { adding: SourceAdding }) {
   const { t, text } = useTranslation();
+  const prefix = usePathPrefix();
   return addingDialog(
     props.adding,
     t.sources,
     text,
-    sourceTypeHref(props.adding.form.sourceTypeId),
+    href(prefix, sourceTypeHref(props.adding.form.sourceTypeId)),
+    prefix,
   );
 }
 
@@ -1676,7 +1685,8 @@ function addingDialog(
   adding: SourceAdding,
   s: Translation["t"]["sources"],
   text: Translation["text"],
-  href: string,
+  closeHref: string,
+  prefix: string,
 ) {
   const added = addedEntry(adding);
   return (
@@ -1684,9 +1694,12 @@ function addingDialog(
       id="add-source"
       eyebrow={s.addEyebrow}
       title={text(added?.displayName ?? adding.form.displayName)}
-      closeHref={href}
+      closeHref={closeHref}
     >
-      <form {...dialogForm("/admin/sources")} class="fam-dialog__form">
+      <form
+        {...dialogForm(href(prefix, "/admin/sources"))}
+        class="fam-dialog__form"
+      >
         <Problem message={adding.problem} />
         <input
           type="hidden"
@@ -1701,7 +1714,7 @@ function addingDialog(
           autofocus
         />
         <DialogFooter
-          closeHref={href}
+          closeHref={closeHref}
           submit={
             added ? s.addAccount : s.addType(text(adding.form.displayName))
           }
@@ -1889,12 +1902,16 @@ function AddSourceButton(props: {
   s: Translation["t"]["sources"];
 }) {
   const { sourceType, form, name, sourceTypeId, s } = props;
+  const prefix = usePathPrefix();
   if (!(sourceType?.enabled && form && !form.catalogue)) return null;
   return (
     <div class="fam-group__actions">
       <DialogLink
         class="fam-button fam-button--quiet fam-button--add"
-        href={`/admin/sources/new?type=${encodeURIComponent(sourceTypeId)}`}
+        href={href(
+          prefix,
+          `/admin/sources/new?type=${encodeURIComponent(sourceTypeId)}`,
+        )}
       >
         {s.addType(name)}
       </DialogLink>
@@ -2069,9 +2086,10 @@ export function SourceTypePage(props: {
   const { t, text } = useTranslation();
   const s = t.sources;
   const types = t.sourceTypes;
-  const href = sourceTypeHref(props.sourceTypeId);
+  const prefix = usePathPrefix();
+  const typeHref = href(prefix, sourceTypeHref(props.sourceTypeId));
   const name = text(props.displayName);
-  const dialog = sourceTypeDialog(props, s, text, href);
+  const dialog = sourceTypeDialog(props, s, text, typeHref, prefix);
   const { status, switchable } = sourceTypeLoadability(sourceType, s);
   return (
     <AdminLayout
@@ -2081,7 +2099,8 @@ export function SourceTypePage(props: {
       dialog={dialog}
     >
       <nav class="fam-breadcrumb" aria-label={s.breadcrumb}>
-        <a href="/admin/sources">{s.title}</a> <span aria-hidden="true">›</span>{" "}
+        <a href={href(prefix, "/admin/sources")}>{s.title}</a>{" "}
+        <span aria-hidden="true">›</span>{" "}
         <span aria-current="page">{name}</span>
       </nav>
       <SectionHeader
@@ -2098,11 +2117,11 @@ export function SourceTypePage(props: {
           switchable={switchable}
           name={name}
           sources={props.sources}
-          href={href}
+          href={typeHref}
           types={types}
         />
       ) : null}
-      <SourceTypeSources {...props} name={name} href={href} />
+      <SourceTypeSources {...props} name={name} href={typeHref} />
     </AdminLayout>
   );
 }
@@ -2229,11 +2248,12 @@ export function SourceAttributesSection(props: {
   problem: string | null;
 }) {
   const { t } = useTranslation();
+  const prefix = usePathPrefix();
   return (
     <SourceAttributesForm
       source={props.source}
       members={props.members}
-      href={sourceHref(props.source.id)}
+      href={href(prefix, sourceHref(props.source.id))}
       t={t}
       s={t.sources}
       asked={{ problem: props.problem }}
@@ -2290,12 +2310,15 @@ function SourceReadPoller(props: {
   attributesPending?: boolean;
 }) {
   const { source } = props;
+  const prefix = usePathPrefix();
   // Also while a failure is stored: after a Fix, the next read tells whether it worked.
   if (!source.health.awaitingRead) return null;
   const pending = props.attributesPending ?? attributesPendingOf(source);
-  const href = `${sourceHref(source.id)}/health${pending ? "?attributes=pending" : ""}`;
   return notReadyYet({
-    href,
+    href: href(
+      prefix,
+      `${sourceHref(source.id)}/health${pending ? "?attributes=pending" : ""}`,
+    ),
     poll: sourceReadPoll,
     waitedSeconds: props.waitedSeconds,
     silent: true,
@@ -2317,7 +2340,8 @@ export function SourceHealthFragment(props: {
   const { source, form } = props;
   const translation = useTranslation();
   const { t, text } = translation;
-  const href = sourceHref(source.id);
+  const prefix = usePathPrefix();
+  const ownHref = href(prefix, sourceHref(source.id));
   const { name } = sourceLabel(source, form, translation);
   return (
     <>
@@ -2327,7 +2351,7 @@ export function SourceHealthFragment(props: {
           health={source.health}
           entry={entryOf(form, source)}
           form={form}
-          href={href}
+          href={ownHref}
           timeZone={props.timeZone}
           s={t.sources}
           text={text}
@@ -2338,7 +2362,7 @@ export function SourceHealthFragment(props: {
           <SourceAttributesForm
             source={source}
             members={props.members}
-            href={href}
+            href={ownHref}
             t={t}
             s={t.sources}
           />
@@ -2566,7 +2590,8 @@ export function SourcePage(props: {
   const translation = useTranslation();
   const { t, text } = translation;
   const s = t.sources;
-  const href = sourceHref(source.id);
+  const prefix = usePathPrefix();
+  const ownHref = href(prefix, sourceHref(source.id));
   const { name, derived } = sourceLabel(source, form, translation);
   const suggestedSeconds = suggestedSecondsOf(form);
   const editable = editableOf(form, suggestedSeconds);
@@ -2576,7 +2601,7 @@ export function SourcePage(props: {
       <FixDialog
         source={source}
         form={form}
-        closeHref={href}
+        closeHref={ownHref}
         timeZone={props.timeZone}
         members={props.members}
       />
@@ -2589,8 +2614,9 @@ export function SourcePage(props: {
       dialog={dialog}
     >
       <nav class="fam-breadcrumb" aria-label={s.breadcrumb}>
-        <a href="/admin/sources">{s.title}</a> <span aria-hidden="true">›</span>{" "}
-        <a href={sourceTypeHref(source.sourceTypeId)}>
+        <a href={href(prefix, "/admin/sources")}>{s.title}</a>{" "}
+        <span aria-hidden="true">›</span>{" "}
+        <a href={href(prefix, sourceTypeHref(source.sourceTypeId))}>
           {text(source.displayName)}
         </a>{" "}
         <span aria-hidden="true">›</span>{" "}
@@ -2602,7 +2628,7 @@ export function SourcePage(props: {
           health={source.health}
           entry={entry}
           form={form}
-          href={href}
+          href={ownHref}
           timeZone={props.timeZone}
           s={s}
           text={text}
@@ -2617,19 +2643,19 @@ export function SourcePage(props: {
           form={form}
           members={props.members}
           editable={editable}
-          href={href}
+          href={ownHref}
           derived={derived}
           t={t}
           s={s}
         />
         <div id="source-attributes-slot" data-edit-guard="">
           {props.attributesOnDemand && props.members.length > 0 ? (
-            <AttributesLoading href={href} s={s} />
+            <AttributesLoading href={ownHref} s={s} />
           ) : (
             <SourceAttributesForm
               source={source}
               members={props.members}
-              href={href}
+              href={ownHref}
               t={t}
               s={s}
             />
@@ -2637,11 +2663,11 @@ export function SourcePage(props: {
         </div>
         <SourceTimelineSection
           source={source}
-          href={href}
+          href={ownHref}
           s={s}
           waiting={props.waiting}
         />
-        <SourceManagementSection href={href} s={s} />
+        <SourceManagementSection href={ownHref} s={s} />
       </section>
     </AdminLayout>
   );
@@ -2723,10 +2749,11 @@ function PendingValues(props: {
   form: SourceForm | undefined;
 }) {
   const { t, text } = useTranslation();
+  const prefix = usePathPrefix();
   const pending = pendingChoiceFields(props.source, rowFields(props.form));
   if (pending.length === 0) return null;
   return (
-    <LazyFragment href={`${sourceHref(props.source.id)}/values`}>
+    <LazyFragment href={href(prefix, `${sourceHref(props.source.id)}/values`)}>
       <span class="fam-row__hint">
         {t.loading.choices(
           pending.map((field) => text(field.label)).join(", "),
@@ -2746,6 +2773,7 @@ function SourceRow(props: {
   const { source, form } = props;
   const translation = useTranslation();
   const s = translation.t.sources;
+  const prefix = usePathPrefix();
   const { name, meta } = sourceLabel(source, form, translation);
   const assigned = new Set(
     source.attributes.flatMap((attribute) => attribute.concerns),
@@ -2755,7 +2783,7 @@ function SourceRow(props: {
     .map((member) => member.name);
   return (
     <li class="fam-row fam-row--link">
-      <a class="fam-row__link" href={sourceHref(source.id)}>
+      <a class="fam-row__link" href={href(prefix, sourceHref(source.id))}>
         <span class="fam-row__main">
           <span class="fam-row__label">
             {name}
@@ -2783,7 +2811,7 @@ function SourceRow(props: {
       {source.health.status === "failing" && form ? (
         <DialogLink
           class="fam-button fam-button--secondary"
-          href={`${sourceHref(source.id)}/fix`}
+          href={href(prefix, `${sourceHref(source.id)}/fix`)}
         >
           {s.fix}
         </DialogLink>
@@ -2958,6 +2986,7 @@ function AddAtEntry(props: {
 }) {
   const { form, entryId } = props;
   const { t } = useTranslation();
+  const prefix = usePathPrefix();
   const s = t.sources;
   const configKey = form.catalogue?.configKey;
   const nothingToFill = form.fields.every(
@@ -2967,7 +2996,10 @@ function AddAtEntry(props: {
     return (
       <DialogLink
         class="fam-button fam-button--quiet fam-button--add"
-        href={`/admin/sources/new?type=${encodeURIComponent(form.sourceTypeId)}&entry=${encodeURIComponent(entryId)}`}
+        href={href(
+          prefix,
+          `/admin/sources/new?type=${encodeURIComponent(form.sourceTypeId)}&entry=${encodeURIComponent(entryId)}`,
+        )}
         aria-label={s.addAccountOf(props.name)}
       >
         {s.addAccount}
@@ -2975,7 +3007,11 @@ function AddAtEntry(props: {
     );
   }
   return (
-    <form method="post" action="/admin/sources" class="fam-row__form">
+    <form
+      method="post"
+      action={href(prefix, "/admin/sources")}
+      class="fam-row__form"
+    >
       <input type="hidden" name="sourceTypeId" value={form.sourceTypeId} />
       <input type="hidden" name={`plain.${configKey}`} value={entryId} />
       <button
@@ -3012,6 +3048,7 @@ export function FixDialog(props: {
 }) {
   const { source, form } = props;
   const { t, text } = useTranslation();
+  const prefix = usePathPrefix();
   const s = t.sources;
   return (
     <Dialog
@@ -3021,7 +3058,7 @@ export function FixDialog(props: {
       closeHref={props.closeHref}
     >
       <form
-        {...dialogForm(`/admin/sources/${source.id}`)}
+        {...dialogForm(href(prefix, sourceHref(source.id)))}
         class="fam-dialog__form"
       >
         <Problem message={props.problem} />
@@ -3057,7 +3094,10 @@ function CatalogueEntries(props: {
   const usable = new Set(form?.catalogue?.entries?.map((entry) => entry.id));
   const { t, text } = useTranslation();
   const s = t.sourceTypes;
-  const base = `${sourceTypeHref(catalogue.sourceTypeId)}/catalogue`;
+  const base = href(
+    usePathPrefix(),
+    `${sourceTypeHref(catalogue.sourceTypeId)}/catalogue`,
+  );
   return (
     <section class="fam-type-section" aria-labelledby="catalogue-title">
       <h2 id="catalogue-title" class="fam-group__title">
@@ -3240,6 +3280,7 @@ function EntryInterval(props: {
  */
 function SetupSteps(props: { form: SourceForm; sourceId?: string }) {
   const { text } = useTranslation();
+  const prefix = usePathPrefix();
   if (props.form.setupSteps.length === 0) return null;
   return (
     <ol class="fam-setup-steps">
@@ -3250,7 +3291,10 @@ function SetupSteps(props: { form: SourceForm; sourceId?: string }) {
             <strong>{text(step.title)}</strong>{" "}
             <span>{text(step.description)}</span>
             {sourceId !== undefined && step.live ? (
-              <LazyFragment href={liveStepHref(sourceId, step.id)} block />
+              <LazyFragment
+                href={href(prefix, liveStepHref(sourceId, step.id))}
+                block
+              />
             ) : null}
           </li>
         );
@@ -3259,8 +3303,8 @@ function SetupSteps(props: { form: SourceForm; sourceId?: string }) {
   );
 }
 
-function liveStepHref(sourceId: string, stepId: string): string {
-  return `/admin/sources/${sourceId}/setup/${encodeURIComponent(stepId)}`;
+function liveStepHref(sourceId: string, stepId: string): `/${string}` {
+  return `${sourceHref(sourceId)}/setup/${encodeURIComponent(stepId)}`;
 }
 
 /** How often a live setup step asks its plugin again while it waits. */
@@ -3285,6 +3329,10 @@ export type Adding = {
     | { status: "failed"; plain: Record<string, unknown>; message: string };
 };
 
+/** The page of a Source being added in the background. */
+export const addingHref = (id: string): `/${string}` =>
+  `/admin/sources/adding/${encodeURIComponent(id)}`;
+
 /** When the row of a Source being added asks again: one already added goes on at once. */
 const addingTrigger = (status: "running" | "added") =>
   status === "added" ? "load" : `load delay:${addingPollSeconds}s`;
@@ -3299,7 +3347,7 @@ export function AddingRow(props: {
 }) {
   const { t, text } = useTranslation();
   const { id, progress } = props.adding;
-  const href = `/admin/sources/adding/${encodeURIComponent(id)}`;
+  const rowHref = href(usePathPrefix(), addingHref(id));
   const configKey = props.form?.catalogue?.configKey;
   const [name] = plainValues(
     props.form?.fields.filter(
@@ -3318,7 +3366,7 @@ export function AddingRow(props: {
         <span class="fam-status fam-status--problem">
           {t.sources.status.failing}
         </span>
-        <a class="fam-button fam-button--secondary" href={href}>
+        <a class="fam-button fam-button--secondary" href={rowHref}>
           {t.sources.fix}
         </a>
       </li>
@@ -3327,7 +3375,7 @@ export function AddingRow(props: {
   return (
     <li
       class="fam-row"
-      hx-get={`${href}/row`}
+      hx-get={`${rowHref}/row`}
       hx-trigger={addingTrigger(progress.status)}
       hx-swap="outerHTML"
       aria-live="polite"
@@ -3352,11 +3400,12 @@ export function AddingRow(props: {
 export function LiveStepProgress(props: { step: LiveStep }) {
   const { sourceId, stepId, progress, qrSvg } = props.step;
   const { t, text } = useTranslation();
+  const prefix = usePathPrefix();
   const s = t.sources;
   if (progress.status === "waiting") {
     return (
       <LazyFragment
-        href={liveStepHref(sourceId, stepId)}
+        href={href(prefix, liveStepHref(sourceId, stepId))}
         delaySeconds={liveStepPollSeconds}
         block
       >
@@ -3775,12 +3824,13 @@ function CatalogueSelect(props: {
     sourceTypeId,
   } = props;
   const { t, text } = useTranslation();
+  const prefix = usePathPrefix();
   return (
     <>
       {entries.length === 0 ? (
         <p class="fam-problem">
           {t.sources.noEntries((label) => (
-            <a href={sourceTypeHref(sourceTypeId)}>{label}</a>
+            <a href={href(prefix, sourceTypeHref(sourceTypeId))}>{label}</a>
           ))}
         </p>
       ) : (
@@ -3918,6 +3968,7 @@ function ChoiceLoading(props: {
 }) {
   const { field, chosen } = props;
   const { t, text } = useTranslation();
+  const prefix = usePathPrefix();
   return (
     <>
       <div id={keptId(props.id)} hidden>
@@ -3927,7 +3978,10 @@ function ChoiceLoading(props: {
         ))}
       </div>
       <LazyFragment
-        href={`${sourceHref(props.source.id)}/choices/${encodeURIComponent(field.key)}?id=${encodeURIComponent(props.id)}`}
+        href={href(
+          prefix,
+          `${sourceHref(props.source.id)}/choices/${encodeURIComponent(field.key)}?id=${encodeURIComponent(props.id)}`,
+        )}
         block
       >
         <fieldset class="fam-field" disabled aria-busy="true">
@@ -4561,6 +4615,7 @@ export function MessagePage(props: {
 }) {
   const { message } = props;
   const { t, locale } = useTranslation();
+  const prefix = usePathPrefix();
   const m = t.message;
   const sentAt = new Intl.DateTimeFormat(locale, {
     dateStyle: "full",
@@ -4604,7 +4659,10 @@ export function MessagePage(props: {
             {message.attachments.map((attachment) => (
               <li>
                 <a
-                  href={`/admin/messages/${message.id}/attachments/${attachment.position}`}
+                  href={href(
+                    prefix,
+                    `/admin/messages/${message.id}/attachments/${attachment.position}`,
+                  )}
                   download={attachment.filename}
                 >
                   {attachment.filename}
