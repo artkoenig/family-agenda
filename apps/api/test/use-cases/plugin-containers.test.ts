@@ -157,10 +157,18 @@ describe("A Source Type whose plugin runs in a container", () => {
     const egress = egressOf(state.runs[0]?.egressProxy ?? "");
     expect(egress).toEqual({
       proxy: "http://plugin-school-portal-egress:3128",
-      ticket: { familyId: instance.app.familyId, sourceTypeId: "school-portal", sourceId, hosts: null, lastsMs: expect.any(Number) as unknown },
+      ticket: { familyId: instance.app.familyId, sourceTypeId: "school-portal", sourceId, hosts: ["https://portal.example.org"], lastsMs: expect.any(Number) as unknown },
     });
     expect(egress.ticket?.lastsMs).toBeGreaterThan(200);
     expect(egress.ticket?.lastsMs).toBeLessThanOrEqual(200 + 30_000);
+  });
+
+  it("writes the host fields of its stored Source into each call's ticket as they are then, after an Admin changes one too", async () => {
+    await poll();
+    expect(await instance.app.sources.edit(sourceId, { plain: { url: "https://new-portal.example.org" }, secrets: {} })).toMatchObject({ ok: true });
+    await poll();
+
+    expect(state.runs.map((run) => egressOf(run.egressProxy).ticket?.hosts)).toEqual([["https://portal.example.org"], ["https://new-portal.example.org"]]);
   });
 
   it("receives no pushed payload for its Sources", async () => {
@@ -279,7 +287,7 @@ describe("A Source Type whose plugin receives pushed payloads", () => {
         payload: "aGVsbG8=",
       },
     ]);
-    expect(egressOf(requests[0]?.context.egressProxy ?? "").ticket).toMatchObject({ familyId: instance.app.familyId, sourceTypeId: "chat-relay", sourceId, hosts: null });
+    expect(egressOf(requests[0]?.context.egressProxy ?? "").ticket).toMatchObject({ familyId: instance.app.familyId, sourceTypeId: "chat-relay", sourceId, hosts: ["https://chat.example.org"] });
     expect(await instance.query("SELECT external_id FROM source_record")).toEqual([{ external_id: "evening" }]);
     expect((await instance.query("SELECT sync_cursor FROM source_run"))[0]?.sync_cursor).toBe("cursor-1");
   });
@@ -436,7 +444,7 @@ describe("The other functions of a plugin container", () => {
     syncCursor: null,
     now: new Date("2026-09-14T07:00:00Z"),
     timeZone: "Europe/Berlin",
-    source: { id: "source-1" as SourceId, sourceTypeId: "school-portal" as SourceTypeId, hosts: null },
+    source: { id: "source-1" as SourceId, sourceTypeId: "school-portal" as SourceTypeId, hosts: ["portal.example.org"] },
   };
   const removed: unknown[] = [];
   const catalogueProxies: string[] = [];
@@ -526,7 +534,7 @@ describe("The other functions of a plugin container", () => {
       await sourceType.catalogue?.entries();
 
       expect(catalogueProxies.map(egressOf)).toEqual([
-        { proxy: "http://plugin-school-portal-egress:3128", ticket: { familyId: "family-1", sourceTypeId: "school-portal", sourceId: null, hosts: null, lastsMs: expect.any(Number) as unknown } },
+        { proxy: "http://plugin-school-portal-egress:3128", ticket: { familyId: "family-1", sourceTypeId: "school-portal", sourceId: null, hosts: [], lastsMs: expect.any(Number) as unknown } },
       ]);
     } finally {
       await closed(server);

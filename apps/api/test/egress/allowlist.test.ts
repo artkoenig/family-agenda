@@ -24,18 +24,8 @@ describe("parsePluginEgress", () => {
 const key = "a-ticket-key-of-at-least-32-characters";
 const now = 1_000_000;
 
-/** Two Families on one Instance, each with Sources of its own; both have a Source `source-1`. */
-const families: Record<string, Record<string, { sourceTypeId: string; hosts: string[] }>> = {
-  "family-a": {
-    "source-1": {
-      sourceTypeId: "imap",
-      hosts: ["IMAP.gmx.net", "login.example.com:443", "*", "*.example.org", "https://evil.example/", "a.example/path", "b.example:0", "c.example:70000", "mail.example:993", " HTTPS://Park.WebUntis.com/WebUntis/?school=x", "webcal://cal.example:8443/feed.ics", "d.example?x#y", "https://*.example.net/", "ftp://e.example"],
-    },
-    "source-2": { sourceTypeId: "imap", hosts: ["other.example"] },
-    "source-3": { sourceTypeId: "ics", hosts: ["calendar.example"] },
-  },
-  "family-b": { "source-1": { sourceTypeId: "imap", hosts: ["mail.family-b.example"] } },
-};
+/** The host field values of a Source, as the core writes them into its ticket. */
+const sourceHosts = ["IMAP.gmx.net", "login.example.com:443", "*", "*.example.org", "https://evil.example/", "a.example/path", "b.example:0", "c.example:70000", "mail.example:993", " HTTPS://Park.WebUntis.com/WebUntis/?school=x", "webcal://cal.example:8443/feed.ics", "d.example?x#y", "https://*.example.net/", "ftp://e.example"];
 
 const deps: AllowlistDeps = {
   ticketKey: key,
@@ -43,20 +33,11 @@ const deps: AllowlistDeps = {
     ["plugin-imap", ["login.example.com:443"]],
     ["plugin-imap-helper", ["helper.example.com:443"]],
   ]),
-  family: (familyId) => {
-    const sources = families[familyId];
-    if (sources === undefined) return Promise.resolve(null);
-    return Promise.resolve({
-      hostsOf: (sourceId, sourceTypeId) => {
-        const source = sources[sourceId];
-        return Promise.resolve(source?.sourceTypeId === sourceTypeId ? source.hosts : null);
-      },
-    });
-  },
+  family: (familyId) => Promise.resolve(familyId === "family-a" || familyId === "family-b"),
   now: () => now,
 };
 
-const claims = (changes: Partial<Ticket> = {}): Ticket => ({ familyId: "family-a", sourceTypeId: "imap", sourceId: "source-1", expiresAt: now + 1, hosts: null, ...changes });
+const claims = (changes: Partial<Ticket> = {}): Ticket => ({ familyId: "family-a", sourceTypeId: "imap", sourceId: "source-1", expiresAt: now + 1, hosts: sourceHosts, ...changes });
 const ticketFor = (changes: Partial<Ticket> = {}) => mintTicket(key, claims(changes));
 
 describe("the allowlist server", () => {
@@ -69,7 +50,7 @@ describe("the allowlist server", () => {
     return ((await response.json()) as { hosts: string[] }).hosts;
   };
 
-  it("serves the declared hosts and the valid hosts of the ticket's Source, stripped of scheme and path", async () => {
+  it("serves the declared hosts and the valid hosts the ticket carries for its Source, stripped of scheme and path", async () => {
     expect(await hostsOf("plugin-imap", ticketFor())).toEqual([
       "login.example.com:443",
       "imap.gmx.net",
@@ -82,23 +63,14 @@ describe("the allowlist server", () => {
     ]);
   });
 
-  it("scopes the hosts to the one Source the ticket names, not every Source of its type", async () => {
-    expect(await hostsOf("plugin-imap", ticketFor({ sourceId: "source-2" }))).toEqual(["login.example.com:443", "other.example"]);
-  });
-
-  it("answers one plugin container for two Families from each Family's own Sources", async () => {
-    expect(await hostsOf("plugin-imap", ticketFor({ familyId: "family-b" }))).toEqual(["login.example.com:443", "mail.family-b.example"]);
-    expect(await hostsOf("plugin-imap", ticketFor({ familyId: "family-a", sourceId: "source-2" }))).toEqual(["login.example.com:443", "other.example"]);
-  });
-
-  it("serves the hosts a ticket carries for a Source that is not stored, of a known Family", async () => {
-    expect(await hostsOf("plugin-imap", ticketFor({ sourceId: "new", hosts: ["new.example:993", "*"] }))).toEqual(["login.example.com:443", "new.example:993"]);
-    expect((await get("plugin-imap", `Bearer ${ticketFor({ familyId: "family-c", hosts: ["new.example"] })}`)).status).toBe(403);
+  it("answers one plugin container for two Families, each ticket with the hosts of its own Source", async () => {
+    expect(await hostsOf("plugin-imap", ticketFor({ familyId: "family-b", hosts: ["mail.family-b.example"] }))).toEqual(["login.example.com:443", "mail.family-b.example"]);
+    expect(await hostsOf("plugin-imap", ticketFor({ sourceId: "source-2", hosts: ["other.example"] }))).toEqual(["login.example.com:443", "other.example"]);
   });
 
   it("serves only the declared hosts for a call of no Source, such as for the Catalogue entries, of a known Family", async () => {
-    expect(await hostsOf("plugin-imap", ticketFor({ sourceId: null }))).toEqual(["login.example.com:443"]);
-    expect((await get("plugin-imap", `Bearer ${ticketFor({ familyId: "family-c", sourceId: null })}`)).status).toBe(403);
+    expect(await hostsOf("plugin-imap", ticketFor({ sourceId: null, hosts: [] }))).toEqual(["login.example.com:443"]);
+    expect((await get("plugin-imap", `Bearer ${ticketFor({ familyId: "family-c", sourceId: null, hosts: [] })}`)).status).toBe(403);
   });
 
   it("rejects a request without a ticket", async () => {
@@ -111,8 +83,6 @@ describe("the allowlist server", () => {
     ["a tampered ticket", "plugin-imap", () => `${ticketFor().split(".")[0] ?? ""}.${ticketFor({ sourceId: "source-2" }).split(".")[1] ?? ""}`],
     ["a ticket signed with another key", "plugin-imap", () => mintTicket("another-ticket-key-of-at-least-32-chars", claims())],
     ["a ticket of an unknown Family", "plugin-imap", () => ticketFor({ familyId: "family-c" })],
-    ["a ticket of a Source that is not stored", "plugin-imap", () => ticketFor({ sourceId: "source-9" })],
-    ["a ticket naming another Source Type than its Source's", "plugin-ics", () => ticketFor({ sourceTypeId: "ics" })],
     ["a ticket for another container", "plugin-ics", () => ticketFor()],
     ["a ticket for a companion", "plugin-imap-helper", () => ticketFor()],
   ])("refuses %s", async (_, service, ticket) => {

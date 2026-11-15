@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { mintTicket, ticketOfProxyAuthorization, verifyTicket, type Ticket } from "../../src/egress/ticket";
 
 const key = "a-ticket-key-of-at-least-32-characters";
-const ticket: Ticket = { familyId: "family-1", sourceTypeId: "imap", sourceId: "source-1", expiresAt: 2_000, hosts: null };
+const ticket: Ticket = { familyId: "family-1", sourceTypeId: "imap", sourceId: "source-1", expiresAt: 2_000, hosts: ["imap.example.org:993"] };
 
 describe("a ticket", () => {
   it("verifies with the key it was minted with until it expires", () => {
@@ -11,13 +11,13 @@ describe("a ticket", () => {
     expect(verifyTicket(key, minted, 2_000)).toBeNull();
   });
 
-  it("carries the hosts of a Source that is not stored", () => {
-    const unstored = { ...ticket, hosts: ["imap.example.org:993"] };
-    expect(verifyTicket(key, mintTicket(key, unstored), 0)).toEqual(unstored);
+  it("is refused without its hosts: it always states them", () => {
+    const withoutHosts = { ...ticket, hosts: null } as unknown as Ticket;
+    expect(verifyTicket(key, mintTicket(key, withoutHosts), 0)).toBeNull();
   });
 
-  it("names no Source for a call of none, such as for the Catalogue entries", () => {
-    const ofNoSource = { ...ticket, sourceId: null };
+  it("names no Source and no hosts for a call of none, such as for the Catalogue entries", () => {
+    const ofNoSource = { ...ticket, sourceId: null, hosts: [] };
     expect(verifyTicket(key, mintTicket(key, ofNoSource), 0)).toEqual(ofNoSource);
   });
 

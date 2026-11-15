@@ -36,7 +36,6 @@ import {
   createAdminAccess,
   createCatalogueAccess,
   createExtraction,
-  createEgressHosts,
   createFamilyMemberAccess,
   createLanguageAccess,
   createLlmEndpointAccess,
@@ -56,7 +55,6 @@ import {
   type AdminAccess,
   type Cached,
   type CatalogueAccess,
-  type EgressHosts,
   type BlobStore,
   type ExtractionAccess,
   type Extractor,
@@ -161,8 +159,6 @@ export type Application = {
   /** Extracts Items from the raw messages that wait for it; the worker does on each tick. */
   extraction: ExtractionAccess;
   messages: MessageAccess;
-  /** The hosts in host fields of a Source, which its plugin's egress proxy allows while the plugin is called for it. */
-  egressHosts: EgressHosts;
   close(): Promise<void>;
 };
 
@@ -339,7 +335,6 @@ export async function bootApplication(config: ApplicationConfig): Promise<Applic
     activity,
   });
   const messages = createMessageAccess({ items, blobs });
-  const egressHosts = createEgressHosts({ registry, sources: sourceRepository });
   await withDatabase(postgres, async () => {
     await sourceTypes.start();
     await catalogues.start();
@@ -366,7 +361,6 @@ export async function bootApplication(config: ApplicationConfig): Promise<Applic
     singleSignOn,
     extraction,
     messages,
-    egressHosts,
     close: () => postgres.close(),
   };
 }

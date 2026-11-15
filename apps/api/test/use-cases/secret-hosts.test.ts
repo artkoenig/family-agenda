@@ -1,15 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createAllowlistApp } from "../../src/egress/allowlist-server";
 import { singleFamily } from "../../src/egress/single-family";
-import { mintTicket } from "../../src/egress/ticket";
+import { mintTicket, verifyTicket } from "../../src/egress/ticket";
 import { bootForTest, type TestInstance } from "../support/boot";
+import { testPluginControls } from "../support/test-source-plugin";
 
 const ticketKey = "a-ticket-key-of-at-least-32-characters";
 
 describe("the egress allowlist of an Instance's Sources", () => {
   let instance: TestInstance;
   beforeEach(async () => {
-    instance = await bootForTest();
+    instance = await bootForTest({ egressTicketKey: ticketKey });
     await instance.installPlugin({
       sourceTypeId: "ics",
       configuration: { version: 1, fields: [{ key: "url", label: "Address", secret: true, required: true, host: true }] },
@@ -27,10 +28,18 @@ describe("the egress allowlist of an Instance's Sources", () => {
     return added.id;
   };
 
-  /** What the proxy of the ics plugin may reach for a call with a ticket for `sourceId`, or the status of the refusal. */
-  const allowed = async (sourceId: string, familyId = instance.app.familyId) => {
+  /**
+   * What the proxy of the ics plugin may reach with the ticket of its next poll of `sourceId`, or the
+   * status of the refusal; for the ticket's claims made out to `familyId`, if given.
+   */
+  const allowed = async (sourceId: string, familyId?: string) => {
+    instance.clock.advance(60 * 60 * 1000);
+    await instance.app.polling.pollDue();
+    const tickets = testPluginControls.runs("ics").map((run) => verifyTicket(ticketKey, decodeURIComponent(new URL(run.egressProxy).password), Date.now()));
+    const minted = tickets.findLast((ticket) => ticket?.sourceId === sourceId);
+    if (!minted) throw new Error("that Source was not polled");
+    const ticket = mintTicket(ticketKey, { ...minted, familyId: familyId ?? minted.familyId });
     const app = createAllowlistApp({ ticketKey, declared: new Map([["plugin-ics", ["declared.example:443"]]]), family: singleFamily(instance.app) });
-    const ticket = mintTicket(ticketKey, { familyId, sourceTypeId: "ics", sourceId, expiresAt: Date.now() + 60_000, hosts: null });
     const response = await app.request("/egress/plugin-ics", { headers: { authorization: `Bearer ${ticket}` } });
     return response.ok ? ((await response.json()) as { hosts: string[] }).hosts : response.status;
   };
@@ -54,11 +63,8 @@ describe("the egress allowlist of an Instance's Sources", () => {
     expect(await allowed(second)).toEqual(["declared.example:443", "second.example.org"]);
   });
 
-  it("refuses a ticket of another Family, or of a removed Source", async () => {
+  it("refuses a ticket of another Family", async () => {
     const id = await add("https://first.example.org/feed");
     expect(await allowed(id, "another-family")).toBe(403);
-
-    await instance.app.sources.remove(id);
-    expect(await allowed(id)).toBe(403);
   });
 });

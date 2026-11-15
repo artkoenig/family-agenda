@@ -23,25 +23,19 @@ export function parsePluginEgress(text: string | undefined): Map<string, string[
   return declared;
 }
 
-/** What the allowlist needs of one Family. */
-export type FamilyEgress = {
-  /** The host field values of the stored Source `sourceId` of `sourceTypeId`; null for none such. */
-  hostsOf(sourceId: string, sourceTypeId: string): Promise<string[] | null>;
-};
-
 export type AllowlistSources = {
   /** The declared egress hosts per plugin container, from `PLUGIN_EGRESS`. */
   declared: Map<string, string[]>;
-  /** The Family a ticket names, through its own database; null for one the Instance does not serve. */
-  family: (familyId: string) => Promise<FamilyEgress | null>;
+  /** Whether the Instance serves the Family a ticket names. */
+  family: (familyId: string) => Promise<boolean>;
 };
 
 /**
  * What the egress proxy of container `service` allows for the plugin call `ticket` was minted for
  * (ADR-0001): the container's declared hosts and the hosts the Admin entered in host fields of that
- * one Source, read from its Family's database, or carried by the ticket for a Source that is not
- * stored; only the declared hosts for a call of no Source. Null where the ticket does not hold: for a Family the Instance does not serve, a Source it
- * does not have, or a container other than the plugin's own.
+ * one Source, as the ticket carries them; only the declared hosts for a call of no Source. Null
+ * where the ticket does not hold: for a Family the Instance does not serve, or a container other
+ * than the plugin's own.
  */
 export async function allowlistOf(
   service: string,
@@ -49,11 +43,8 @@ export async function allowlistOf(
   { declared, family }: AllowlistSources,
 ): Promise<string[] | null> {
   if (pluginServiceOf(ticket.sourceTypeId) !== service) return null;
-  const egress = await family(ticket.familyId);
-  if (egress === null) return null;
-  const hosts = ticket.hosts ?? (ticket.sourceId === null ? [] : await egress.hostsOf(ticket.sourceId, ticket.sourceTypeId));
-  if (hosts === null) return null;
-  return [...new Set([...(declared.get(service) ?? []), ...hosts.flatMap(hostFieldEntry)])];
+  if (!(await family(ticket.familyId))) return null;
+  return [...new Set([...(declared.get(service) ?? []), ...ticket.hosts.flatMap(hostFieldEntry)])];
 }
 
 /**
