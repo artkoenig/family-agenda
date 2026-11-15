@@ -224,11 +224,8 @@ export type CatalogueSpec = {
 export type CalledSource = {
   id: SourceId;
   sourceTypeId: SourceTypeId;
-  /**
-   * The values of its host fields while it is not stored: while it is being added, and once it is
-   * removed; null for a stored Source, whose hosts are read where it is stored.
-   */
-  hosts: string[] | null;
+  /** The values of its host fields, secret ones by their hosts in the clear, as they are when it is called. */
+  hosts: string[];
 };
 
 /** What a plugin is given for one run of a Source. */

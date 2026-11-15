@@ -154,7 +154,7 @@ export function createSourceAccess(deps: SourcesDeps) {
 
   const enabled = (sourceTypeId: SourceTypeId) => enabledSourceType(sourceTypeId, { registry, sourceTypes });
 
-  const contextOf = (source: Source) => runContextOf(source, { secrets, now: clock.now(), timeZone });
+  const contextOf = (source: Source, sourceType: HostFieldsOf) => runContextOf(source, sourceType, { secrets, now: clock.now(), timeZone });
 
   async function cleanup(source: Source, sourceType: LoadedSourceType | null, context: SourceRunContext, files: BlobRef[]): Promise<void> {
     await sourceType?.sourceRemoved(context);
@@ -301,7 +301,7 @@ export function createSourceAccess(deps: SourcesDeps) {
     // Built once, and only if a field's values are not kept: it reads the Source's secrets.
     let context: Promise<SourceRunContext> | undefined;
     const contextOnce = () => {
-      context ??= contextOf(source);
+      context ??= contextOf(source, sourceType);
       return context;
     };
     const choices: Record<string, PluginAnswer<KnownValue[]>> = {};
@@ -316,9 +316,9 @@ export function createSourceAccess(deps: SourcesDeps) {
 
   /** Declares and archives the Source Attributes the plugin of a Source names now; why asking it failed, or null. */
   async function askAttributesOf(source: Source): Promise<string | null> {
-    const ask = (await enabled(source.sourceTypeId))?.attributes;
-    if (!ask) return null;
-    const answer = await ask(await contextOf(source));
+    const sourceType = await enabled(source.sourceTypeId);
+    if (!sourceType?.attributes) return null;
+    const answer = await sourceType.attributes(await contextOf(source, sourceType));
     if (!answer.ok) return answer.message;
     await sources.declareAttributes(source.id, answer.value.declared);
     for (const externalId of answer.value.archived) await sources.archiveAttribute(source.id, externalId);
@@ -460,7 +460,7 @@ export function createSourceAccess(deps: SourcesDeps) {
       const sourceType = source && (await enabled(source.sourceTypeId));
       const field = sourceType?.configuration.fields.find((candidate) => candidate.choice && !candidate.setByPlugin && candidate.key === key);
       if (!source || !sourceType || !field) return null;
-      const answer = await cached(choiceKey(source, key), choicesMaxAgeMs, failedChoicesMaxAgeMs, async () => sourceType.choices(key, await contextOf(source)));
+      const answer = await cached(choiceKey(source, key), choicesMaxAgeMs, failedChoicesMaxAgeMs, async () => sourceType.choices(key, await contextOf(source, sourceType)));
       return { field, source: { id: source.id, plain: source.plain, choices: { [key]: answer } } };
     },
 
@@ -484,7 +484,7 @@ export function createSourceAccess(deps: SourcesDeps) {
       const source = await sources.findById(id);
       const sourceType = source ? await enabled(source.sourceTypeId) : null;
       if (!source || !sourceType?.setupSteps.some((step) => step.id === stepId && step.live)) return null;
-      return sourceType.setupProgress(stepId, await contextOf(source));
+      return sourceType.setupProgress(stepId, await contextOf(source, sourceType));
     },
 
     /** The forms of the enabled Source Types, for adding and editing their Sources. */
@@ -635,9 +635,8 @@ export function createSourceAccess(deps: SourcesDeps) {
       const source = await sources.findById(id);
       if (!source) return;
       const sourceType = await enabled(source.sourceTypeId);
-      const stored = await contextOf(source);
-      // Removed by the time its plugin cleans up: the ticket of the call carries its hosts.
-      const context = { ...stored, source: { ...stored.source, hosts: hostsOfSource(sourceType?.configuration.fields ?? [], source) } };
+      // Read before it is removed: the ticket of its plugin's clean-up call carries its hosts.
+      const context = await contextOf(source, sourceType ?? { configuration: { fields: [] } });
       const files = await sources.remove(id);
       await cleanup(source, sourceType, context, files);
     },
@@ -646,9 +645,16 @@ export function createSourceAccess(deps: SourcesDeps) {
 
 export type SourceAccess = ReturnType<typeof createSourceAccess>;
 
-/** What a plugin is given to run for a Source: its configuration, with the values of its secrets. */
+/** What `runContextOf` needs of a loaded Source Type: the fields of its configuration. */
+export type HostFieldsOf = { configuration: { fields: ConfigFieldSpec[] } };
+
+/**
+ * What a plugin is given to run for a Source: its configuration, with the values of its secrets,
+ * and the values of the host fields of its Source Type as they are now, for the ticket of the call.
+ */
 export async function runContextOf(
   source: Source,
+  sourceType: HostFieldsOf,
   context: { secrets: SecretStore; now: Date; timeZone: string },
 ): Promise<SourceRunContext> {
   const secretValues: Record<string, string> = {};
@@ -662,7 +668,7 @@ export async function runContextOf(
     syncCursor: source.syncCursor,
     now: context.now,
     timeZone: context.timeZone,
-    source: { id: source.id, sourceTypeId: source.sourceTypeId, hosts: null },
+    source: { id: source.id, sourceTypeId: source.sourceTypeId, hosts: hostsOfSource(sourceType.configuration.fields, source) },
   };
 }
 

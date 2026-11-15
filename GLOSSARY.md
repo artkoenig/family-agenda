@@ -137,11 +137,11 @@ The only way out to the internet for a plugin container or a Companion with egre
 _Avoid_: Firewall, gateway, sidecar
 
 **Allowlist**:
-The hosts one Egress Proxy lets through: those declared in `plugins.yml`, plus, for the plugin's own container, the values of Host Fields of the one Source its Ticket names, read from that Source's Family. The api serves it for each Ticket; a Companion's proxy has its declared hosts only.
+The hosts one Egress Proxy lets through: those declared in `plugins.yml`, plus, for the plugin's own container, the values of Host Fields of the one Source its Ticket names, as the Ticket carries them. The api serves it for each Ticket; a Companion's proxy has its declared hosts only.
 _Avoid_: Whitelist, egress rules
 
 **Ticket**:
-What the core grants one call to a plugin: the Family, the Source the call is for (none for the Catalogue entries, which reach the declared hosts only) and a short expiry, signed with a key the core shares with the Egress Proxies. It comes with the call in the proxy URL, and the plugin presents it to its Egress Proxy on every connection; without a valid one the proxy answers 407.
+What the core grants one call to a plugin: the Family, the Source the call is for with the values of its Host Fields as they are when the Ticket is minted (no Source and no hosts for the Catalogue entries, which reach the declared hosts only) and a short expiry, signed with a key the core shares with the Egress Proxies. It comes with the call in the proxy URL, and the plugin presents it to its Egress Proxy on every connection; without a valid one the proxy answers 407.
 _Avoid_: Token, egress token
 
 **Host Field**:

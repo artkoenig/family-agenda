@@ -5,7 +5,7 @@ import { mintTicket, type Ticket } from "../../src/egress/ticket";
 
 const key = "a-ticket-key-of-at-least-32-characters";
 const now = 1_000_000;
-const claims = (changes: Partial<Ticket> = {}): Ticket => ({ familyId: "family-a", sourceTypeId: "imap", sourceId: "source-1", expiresAt: now + 1, hosts: null, ...changes });
+const claims = (changes: Partial<Ticket> = {}): Ticket => ({ familyId: "family-a", sourceTypeId: "imap", sourceId: "source-1", expiresAt: now + 1, hosts: ["imap.example.org"], ...changes });
 
 describe("ticketAllowlist", () => {
   const answering = (answer: () => Response) => {
@@ -51,13 +51,12 @@ describe("ticketAllowlist", () => {
     const app = createAllowlistApp({
       ticketKey: key,
       declared: new Map([["plugin-imap", ["login.example.com:443"]]]),
-      family: (familyId) => Promise.resolve(familyId === "family-a" ? { hostsOf: (sourceId) => Promise.resolve(sourceId === "source-1" ? ["imap.example.org"] : null) } : null),
+      family: (familyId) => Promise.resolve(familyId === "family-a"),
       now: () => now,
     });
     const allowlist = ticketAllowlist({ url: "http://api:3001/egress/plugin-imap", ticketKey: key }, (url, init) => Promise.resolve(app.request(url, init)), () => now);
 
     expect(await allowlist(mintTicket(key, claims()))).toEqual(["login.example.com:443", "imap.example.org"]);
-    expect(await allowlist(mintTicket(key, claims({ sourceId: "source-2" })))).toBeNull();
     expect(await allowlist(mintTicket(key, claims({ familyId: "family-b" })))).toBeNull();
   });
 });

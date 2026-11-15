@@ -15,10 +15,10 @@ export type Ticket = {
   /** Milliseconds since the epoch. */
   expiresAt: number;
   /**
-   * The hosts of a Source that is not stored, such as one being added or one just removed; null
-   * for a stored Source, whose host fields the api reads from its Family's database.
+   * The values of the Source's host fields, secret ones by their hosts in the clear, read when the
+   * ticket is minted; none for a call of no Source.
    */
-  hosts: string[] | null;
+  hosts: string[];
 };
 
 const ticketSchema = z.object({
@@ -26,7 +26,7 @@ const ticketSchema = z.object({
   sourceTypeId: z.string().min(1),
   sourceId: z.string().min(1).nullable(),
   expiresAt: z.number(),
-  hosts: z.array(z.string()).nullable(),
+  hosts: z.array(z.string()),
 });
 
 const signatureOf = (key: string, payload: string) => createHmac("sha256", key).update(payload).digest();
@@ -89,7 +89,7 @@ export const ticketGraceMs = 30_000;
 export function egressProxyFor(
   { ticketKey, familyId, now = Date.now }: Ticketing,
   sourceTypeId: string,
-  source: { id: string; hosts: string[] | null } | null,
+  source: { id: string; hosts: string[] } | null,
   timeoutMs: number,
 ): string {
   const ticket = mintTicket(ticketKey, {
@@ -97,7 +97,7 @@ export function egressProxyFor(
     sourceTypeId,
     sourceId: source?.id ?? null,
     expiresAt: now() + timeoutMs + ticketGraceMs,
-    hosts: source?.hosts ?? null,
+    hosts: source?.hosts ?? [],
   });
   return `http://ticket:${ticket}@${proxyOf(pluginServiceOf(sourceTypeId))}:${proxyPort}`;
 }
