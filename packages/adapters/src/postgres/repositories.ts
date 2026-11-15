@@ -760,21 +760,29 @@ export class PostgresActivityRepository implements ActivityRepository {
   }
 }
 
-/** The turns of the Sources' runs, each taken and renewed in one statement. */
+/** When a turn lasting so long from the database's now expires. */
+const expiryAfter = (lastsMs: number) => sql`now() + ${lastsMs} * interval '1 millisecond'`;
+
+/** The turns of the Sources' runs, each taken and renewed in one statement, by the database's clock. */
 export class PostgresSourceRunTurns implements SourceRunTurns {
   constructor(private readonly db: Database) {}
 
-  async take(sourceId: SourceId, holder: string, now: Date, until: Date): Promise<boolean> {
+  async take(sourceId: SourceId, holder: string, lastsMs: number): Promise<boolean> {
     const taken = await this.db
       .insert(sourceRunTurns)
-      .values({ sourceId, holder, expiresAt: until })
-      .onConflictDoUpdate({ target: sourceRunTurns.sourceId, set: { holder, expiresAt: until }, setWhere: lt(sourceRunTurns.expiresAt, now) })
+      .values({ sourceId, holder, expiresAt: expiryAfter(lastsMs) })
+      .onConflictDoUpdate({ target: sourceRunTurns.sourceId, set: { holder, expiresAt: expiryAfter(lastsMs) }, setWhere: lt(sourceRunTurns.expiresAt, sql`now()`) })
       .returning({ holder: sourceRunTurns.holder });
     return taken.length > 0;
   }
 
-  async renew(sourceId: SourceId, holder: string, until: Date): Promise<void> {
-    await this.db.update(sourceRunTurns).set({ expiresAt: until }).where(and(eq(sourceRunTurns.sourceId, sourceId), eq(sourceRunTurns.holder, holder)));
+  async renew(sourceId: SourceId, holder: string, lastsMs: number): Promise<boolean> {
+    const renewed = await this.db
+      .update(sourceRunTurns)
+      .set({ expiresAt: expiryAfter(lastsMs) })
+      .where(and(eq(sourceRunTurns.sourceId, sourceId), eq(sourceRunTurns.holder, holder), gt(sourceRunTurns.expiresAt, sql`now()`)))
+      .returning({ holder: sourceRunTurns.holder });
+    return renewed.length > 0;
   }
 
   async end(sourceId: SourceId, holder: string): Promise<void> {

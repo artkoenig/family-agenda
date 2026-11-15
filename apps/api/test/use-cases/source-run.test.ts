@@ -122,4 +122,14 @@ describe("A Source's run", () => {
     expect(testPluginControls.runs("school-portal")).toHaveLength(runsBefore + 1);
     expect(reports.flatMap((report) => report.ran)).toHaveLength(1);
   });
+
+  it("leaves a due Source that another api container runs to the next round, without waiting for it", async () => {
+    await instance.query("INSERT INTO source_run_turn (source_id, holder, expires_at) SELECT id, gen_random_uuid(), now() + interval '1 hour' FROM source");
+    instance.clock.advance(10 * minutes);
+
+    expect((await instance.app.polling.pollDue()).ran).toEqual([]);
+
+    await instance.query("DELETE FROM source_run_turn");
+    expect((await instance.app.polling.pollDue()).ran).toHaveLength(1);
+  });
 });

@@ -25,6 +25,7 @@ import type {
   StoredFile,
   StoredMessage,
 } from "./ports";
+import { TurnLost } from "./ports";
 import { enabledSourceType } from "./enabled-source-type";
 import { readStated } from "./stated-items";
 import { runContextOf, type HostFieldsOf } from "./sources";
@@ -46,14 +47,23 @@ export type PollingDeps = {
   activity: ActivityLog;
   /** Who of the Family's processes runs a Source now, so that its runs take turns across them. */
   turns: SourceRunTurns;
+  /** Replaces how long turns last and are waited for, such as in a test that outlasts one. */
+  turnTimings?: Partial<TurnTimings>;
 };
 
-/** How long a run's turn lasts unless renewed: how long after a process died its runs are known to be over. */
-const turnLastsMs = 60_000;
-/** How often a run renews its turn while it lasts. */
-const turnRenewedEveryMs = 20_000;
-/** How often a run waiting for another process's run of the Source asks for the turn again. */
-const turnAskedEveryMs = 50;
+/** How the runs of a Source take turns across processes. */
+export type TurnTimings = {
+  /** How long a turn lasts unless renewed: how long after a process died its runs are known to be over. */
+  lastsMs: number;
+  /** How often a run renews its turn while it lasts. */
+  renewedEveryMs: number;
+  /** How often a pushed payload waiting for another process's run of the Source asks for the turn again. */
+  askedEveryMs: number;
+  /** How long a pushed payload waits for the turn before its run fails temporarily. */
+  waitsAtMostMs: number;
+};
+
+const defaultTurnTimings: TurnTimings = { lastsMs: 60_000, renewedEveryMs: 20_000, askedEveryMs: 50, waitsAtMostMs: 120_000 };
 
 /** What a round of runs came to, by polling or by a pushed payload. */
 export type RunReport = {
@@ -64,7 +74,11 @@ export type RunReport = {
   invalid: { sourceId: SourceId; externalId: string; problems: string[] }[];
   /** The Sources whose plugin emitted Origins naming Source Attributes it never declared, or had archived. */
   refused: { sourceId: SourceId; attributes: string[] }[];
+  /** The Sources whose run lost its turn to another process before it was recorded, so that nothing of it was. */
+  lost: SourceId[];
 };
+
+const emptyReport = (): RunReport => ({ ran: [], failed: [], invalid: [], refused: [], lost: [] });
 
 /** The refusal to report for a run, none if it refused nothing. */
 function refusalsOf(sourceId: SourceId, attributes: string[]): RunReport["refused"] {
@@ -73,21 +87,42 @@ function refusalsOf(sourceId: SourceId, attributes: string[]): RunReport["refuse
 
 export function createSourcePolling(deps: PollingDeps) {
   const { clock, timeZone, registry, sourceTypes, catalogues, sources, secrets, items, blobs, activity, turns } = deps;
+  const timings: TurnTimings = { ...defaultTurnTimings, ...deps.turnTimings };
   /** This process, as the holder of the turns its runs take. */
   const holder = randomUUID();
-  const turnEnd = () => new Date(clock.now().getTime() + turnLastsMs);
 
   /**
-   * Does the work in the Source's turn, kept in the Family's database: waits while another process
-   * runs the Source, renews the turn while the work lasts and ends it after.
+   * Takes the Source's turn, kept in the Family's database: once for a poll, which leaves a Source
+   * another process runs to the next round; for a pushed payload, again and again while another
+   * process runs it, up to `waitsAtMostMs`. Whether it got it.
    */
-  async function inTurn(sourceId: SourceId, work: () => Promise<void>): Promise<void> {
-    while (!(await turns.take(sourceId, holder, clock.now(), turnEnd()))) await sleep(turnAskedEveryMs);
+  async function takeTurn(sourceId: SourceId, waits: boolean): Promise<boolean> {
+    const since = performance.now();
+    for (;;) {
+      if (await turns.take(sourceId, holder, timings.lastsMs)) return true;
+      if (!waits || performance.now() - since >= timings.waitsAtMostMs) return false;
+      await sleep(timings.askedEveryMs);
+    }
+  }
+
+  /**
+   * Does the work in the Source's turn, renewing it while the work lasts and ending it after. The
+   * work is told whether the turn was lost meanwhile, so that it records nothing then.
+   */
+  async function inTurn(sourceId: SourceId, work: (lost: () => boolean) => Promise<void>): Promise<void> {
+    let lost = false;
     const renewal = setInterval(() => {
-      turns.renew(sourceId, holder, turnEnd()).catch(() => undefined);
-    }, turnRenewedEveryMs);
+      turns
+        .renew(sourceId, holder, timings.lastsMs)
+        .then((held) => {
+          if (!held) lost = true;
+        })
+        .catch((error: unknown) => {
+          console.error(`Renewing the turn of the run of Source ${sourceId} failed:`, error);
+        });
+    }, timings.renewedEveryMs);
     try {
-      await work();
+      await work(() => lost);
     } finally {
       clearInterval(renewal);
       await turns.end(sourceId, holder);
@@ -128,18 +163,23 @@ export function createSourcePolling(deps: PollingDeps) {
   /**
    * Runs one Source, by polling it or handing it a pushed payload, and records what it emitted into
    * the report. Runs of one Source take turns, a poll as well as a push, each reading the Source
-   * afresh, so that none starts from a Source Cursor another is about to replace. They take turns
-   * across the Family's processes too. A poll runs only if the Source, read afresh, is still due:
-   * another process may have polled it meanwhile.
+   * afresh, so that none starts from a Sync Cursor another is about to replace. They take turns
+   * across the Family's processes too (ADR-0008). A poll, given `isDueNow`, skips a Source another
+   * process runs, and runs only if the Source, read afresh, is still due: another process may have
+   * polled it meanwhile.
    */
-  async function run(sourceId: SourceId, sourceType: HostFieldsOf, ingest: Ingest, report: RunReport, stillDue: (source: Source) => boolean = () => true): Promise<void> {
+  async function run(sourceId: SourceId, sourceType: HostFieldsOf, ingest: Ingest, report: RunReport, isDueNow?: (source: Source) => boolean): Promise<void> {
     const previous = runs.get(sourceId) ?? Promise.resolve();
-    const current = previous.then(() =>
-      inTurn(sourceId, async () => {
+    const current = previous.then(async () => {
+      if (!(await takeTurn(sourceId, !isDueNow))) {
+        if (!isDueNow) report.failed.push({ sourceId, kind: "temporary", message: `another run of the Source did not end within ${timings.waitsAtMostMs / 1000} s` });
+        return;
+      }
+      await inTurn(sourceId, async (lost) => {
         const source = await sources.findById(sourceId);
-        if (source && stillDue(source)) await runNow(source, sourceType, ingest, report);
-      }),
-    );
+        if (source && (isDueNow?.(source) ?? true)) await runNow(source, sourceType, ingest, report, lost);
+      });
+    });
     const settled = current.catch(() => undefined);
     runs.set(sourceId, settled);
     try {
@@ -149,12 +189,16 @@ export function createSourcePolling(deps: PollingDeps) {
     }
   }
 
-  async function runNow(source: Source, sourceType: HostFieldsOf, ingest: Ingest, report: RunReport): Promise<void> {
+  async function runNow(source: Source, sourceType: HostFieldsOf, ingest: Ingest, report: RunReport, lost: () => boolean): Promise<void> {
     const now = clock.now();
     const result = await ingest(await runContextOf(source, sourceType, { secrets, now, timeZone }), {
       declare: (attributes) => sources.declareAttributes(source.id, attributes),
       archive: (externalId) => sources.archiveAttribute(source.id, externalId),
     });
+    if (lost()) {
+      report.lost.push(source.id);
+      return;
+    }
     if (!result.ok) {
       await sources.recordFailedRun(source.id, now, { kind: result.kind, message: result.message });
       report.failed.push({ sourceId: source.id, kind: result.kind, message: result.message });
@@ -163,7 +207,12 @@ export function createSourcePolling(deps: PollingDeps) {
     // Changed secrets are stored before the cursor advances: a refreshed token must not be lost.
     const replacedSecrets = await storeChangedSecrets(source, result.secrets ?? {});
     const origins = await buildOrigins(result.origins);
-    const { knownMessages: known, withdrawnFiles, invalid, refused } = await recordRun(source, now, result, origins);
+    const recorded = await recordRun(source, now, result, origins);
+    if (!recorded) {
+      report.lost.push(source.id);
+      return;
+    }
+    const { knownMessages: known, withdrawnFiles, invalid, refused } = recorded;
     await removeLeftovers(origins.flatMap((origin) => (origin.message && known.includes(origin.externalId) ? [origin.message] : [])), withdrawnFiles, replacedSecrets);
     report.invalid.push(...invalid.map((record) => ({ sourceId: source.id, ...record })));
     report.refused.push(...refusalsOf(source.id, refused));
@@ -177,15 +226,16 @@ export function createSourcePolling(deps: PollingDeps) {
     for (const ref of replacedSecrets) await secrets.remove(ref);
   }
 
-  /** Records a successful run with its Origins; their files go again if that fails. */
+  /** Records a successful run with its Origins, null if its turn was lost; their files go again if it is not recorded. */
   async function recordRun(source: Source, now: Date, result: Extract<SourceRunResult, { ok: true }>, origins: Awaited<ReturnType<typeof buildOrigins>>) {
     try {
       return await items.recordRun(
-        { sourceId: source.id, at: now, retainedSince: retainedSince(now), syncCursor: result.syncCursor, withdrawn: result.withdrawn, origins },
+        { sourceId: source.id, holder, at: now, retainedSince: retainedSince(now), syncCursor: result.syncCursor, withdrawn: result.withdrawn, origins },
         readStated,
       );
     } catch (error) {
       await removeOriginBlobs(origins);
+      if (error instanceof TurnLost) return null;
       throw error;
     }
   }
@@ -233,7 +283,7 @@ function isDue(
   return !(source.lastRunAt && now - source.lastRunAt.getTime() < interval);
 }
 
-  type DueSource = { source: Source; ingestion: PollingIngestion; sourceType: HostFieldsOf; isDue: (source: Source) => boolean };
+  type DueSource = { source: Source; ingestion: PollingIngestion; sourceType: HostFieldsOf; isDueNow: (source: Source) => boolean };
 
   async function findDue(enabled: Set<SourceTypeId>, now: number): Promise<DueSource[]> {
     const due: DueSource[] = [];
@@ -245,9 +295,9 @@ function isDue(
       const entryIntervals = new Map(
         catalogue ? (await catalogues.list(type)).map((record) => [record.entryId, record.pollIntervalSeconds]) : [],
       );
-      const dueNow = (source: Source) => isDue(source, ingestion, catalogue, entryIntervals, now);
+      const isDueNow = (source: Source) => isDue(source, ingestion, catalogue, entryIntervals, now);
       for (const source of await sources.listOfType(type)) {
-        if (dueNow(source)) due.push({ source, ingestion, sourceType: loaded.sourceType, isDue: dueNow });
+        if (isDueNow(source)) due.push({ source, ingestion, sourceType: loaded.sourceType, isDueNow });
       }
     }
     return due;
@@ -260,15 +310,15 @@ function isDue(
      * using a catalogue entry, such as a Messenger, is polled at the entry's interval.
      */
     async pollDue(): Promise<RunReport> {
-      const report: RunReport = { ran: [], failed: [], invalid: [], refused: [] };
+      const report = emptyReport();
       const enabled = new Set((await sourceTypes.list()).filter((type) => type.enabled).map((type) => type.id));
       const now = clock.now().getTime();
       const due = await findDue(enabled, now);
       if (due.length === 0) return report;
       const progress = await activity.begin("polling", due.length);
       try {
-        for (const { source, ingestion, sourceType, isDue: stillDue } of due) {
-          await run(source.id, sourceType, (context, attributes) => ingestion.poll(context, attributes), report, stillDue);
+        for (const { source, ingestion, sourceType, isDueNow } of due) {
+          await run(source.id, sourceType, (context, attributes) => ingestion.poll(context, attributes), report, isDueNow);
           await progress.advance();
         }
       } finally {
@@ -289,7 +339,7 @@ function isDue(
       if (!sourceType) return { ok: false, problem: "source-type-not-available" };
       const { ingestion } = sourceType;
       if (ingestion.mode !== "push") return { ok: false, problem: "not-push" };
-      const report: RunReport = { ran: [], failed: [], invalid: [], refused: [] };
+      const report = emptyReport();
       await run(source.id, sourceType, (context, attributes) => ingestion.receive(context, payload, attributes), report);
       return { ok: true, report };
     },

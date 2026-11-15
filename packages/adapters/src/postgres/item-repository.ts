@@ -13,8 +13,9 @@ import type {
   StatedItem,
   StoredMessage,
 } from "@family-agenda/application";
+import { TurnLost } from "@family-agenda/application";
 import type { BlobRef, Event, FamilyMemberId, ItemId, StatedTask, LocalDate, RawMessageId, SourceId, SourceTypeId, TimeSpan, TimetableChangeKind } from "@family-agenda/domain";
-import { and, asc, eq, gte, inArray, isNotNull, isNull, lt, lte, ne, or, sql, type SQL, type SQLWrapper } from "drizzle-orm";
+import { and, asc, eq, gt, gte, inArray, isNotNull, isNull, lt, lte, ne, or, sql, type SQL, type SQLWrapper } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { uuidPattern } from "../uuid";
 import type { Database } from "./database";
@@ -30,6 +31,7 @@ import {
   sourceRecordAttributes,
   sourceRecords,
   sourceRuns,
+  sourceRunTurns,
   sources,
   tasks,
 } from "./schema";
@@ -141,6 +143,13 @@ export class PostgresItemRepository implements ItemRepository {
 
   async recordRun(run: SourceRun, read: ReadStated): Promise<RunRecorded> {
     return this.db.transaction(async (tx) => {
+      // Holding the turn's row until the run is recorded, so that no other process takes it meanwhile.
+      const [held] = await tx
+        .select({ holder: sourceRunTurns.holder })
+        .from(sourceRunTurns)
+        .where(and(eq(sourceRunTurns.sourceId, run.sourceId), eq(sourceRunTurns.holder, run.holder), gt(sourceRunTurns.expiresAt, sql`now()`)))
+        .for("update");
+      if (!held) throw new TurnLost(run.sourceId);
       const knownMessages: string[] = [];
       const outcome: StatedOutcome = { written: [], invalid: [] };
       const known = await attributesOfSource(tx, run.sourceId);

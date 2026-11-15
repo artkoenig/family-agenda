@@ -59,6 +59,7 @@ import {
   type AdminAccess,
   type Cached,
   type CatalogueAccess,
+  type TurnTimings,
   type BlobStore,
   type ExtractionAccess,
   type Extractor,
@@ -135,6 +136,8 @@ export type FamilyConfig = DatabaseConfig & {
   identityProvider?: IdentityProviderSettings | null;
   /** Replaces the OIDC client that talks to the Identity Provider, such as with a scripted one. */
   identityProviderClient?: IdentityProviderClient;
+  /** Replaces how long the turns of Sources' runs last and are waited for (ADR-0008), such as in a test that outlasts one. */
+  sourceRunTurns?: Partial<TurnTimings>;
 };
 
 /** An Instance of exactly one Family, as the environment configures it. */
@@ -345,6 +348,7 @@ function wireFamily(
     blobs,
     activity,
     turns: new PostgresSourceRunTurns(postgres.db),
+    turnTimings: config.sourceRunTurns ?? {},
   });
   const endpoints = new PostgresLlmEndpointRepository(postgres.db);
   const llmEndpoint = createLlmEndpointAccess({

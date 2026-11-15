@@ -17,6 +17,7 @@ describe("logging what due work did", () => {
           failed: [{ sourceId: source, kind: "temporary", message: "timed out" }],
           refused: [{ sourceId: source, attributes: ["a", "b"] }],
           invalid: [{ sourceId: source, externalId: "e1", problems: ["no title", "no date"] }],
+          lost: [source],
         } },
         extracted: { ok: true, report: {
           extracted: [],
@@ -31,6 +32,7 @@ describe("logging what due work did", () => {
       "Source s1 failed (temporary): timed out",
       "Source s1 named Source Attributes it never declared or had archived, so those records are refused: a, b",
       "Source s1 states an invalid Item for e1, which is not written: no title; no date",
+      "Source s1 lost its turn to another process during its run, which is not recorded",
       "Extracting message m1 failed (unreachable): no answer",
       'An Item "" of message m1 failed a check twice and is not written: date-mismatch',
     ]);
