@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import type { FamilyId } from "@family-agenda/adapters";
-import { contextHeader, contextOfRequest, expirySkewMs, maximumContextLifetimeMs, openContext, sealContext, type Context } from "../../src/context/context";
+import { contextHeader, contextOfRequest, expirySkewMs, maximumContextLifetimeMs, openContext, openContextOutcome, sealContext, type Context } from "../../src/context/context";
 
 const key = "a-context-key-of-at-least-32-characters";
 const context: Context = {
@@ -9,8 +9,11 @@ const context: Context = {
   databaseUrl: "postgres://family:password@db:5432/family_a",
   familyKey: randomBytes(32).toString("base64url"),
   blobDirectory: "/var/lib/family-agenda/blobs",
+  timeZone: "Europe/Berlin",
+  publicUrl: "https://a.example.org/agenda",
   expiresAt: 2_000,
 };
+const identityProvider = { issuerUrl: "https://id.example.org", clientId: "family-agenda", clientSecret: "s3cret-of-a" };
 
 describe("a Context", () => {
   it("opens with the key it was sealed with until it expires, after a little skew", () => {
@@ -59,6 +62,15 @@ describe("a Context", () => {
     expect(openContext(key, text, 0)).toBeNull();
   });
 
+  it("is refused when a part is not written as its bytes are, so that no two texts open alike", () => {
+    const [version, iv, ciphertext, tag] = sealContext(key, context).split(".");
+    const parts = (changed: Record<number, string>) => [version, iv, ciphertext, tag].map((part, index) => changed[index] ?? part).join(".");
+    expect(openContext(key, parts({}), 0)).toEqual(context);
+    expect(openContext(key, parts({ 1: `${iv}A` }), 0)).toBeNull();
+    expect(openContext(key, parts({ 2: `${ciphertext}A` }), 0)).toBeNull();
+    expect(openContext(key, parts({ 3: `${tag}A` }), 0)).toBeNull();
+  });
+
   it("is refused when the sealed text is no Context", () => {
     expect(openContext(key, sealContext(key, { hello: "world" } as unknown as Context), 0)).toBeNull();
   });
@@ -68,5 +80,42 @@ describe("a Context", () => {
     expect(contextOfRequest(key, new Request("http://core/", { headers: { [contextHeader]: sealed } }), 0)).toEqual(context);
     expect(contextOfRequest(key, new Request(`http://core/?context=${sealed}`), 0)).toBeNull();
     expect(contextOfRequest(key, new Request("http://core/", { headers: { cookie: `context=${sealed}` } }), 0)).toBeNull();
+  });
+
+  it("carries the Family's time zone, public address and Identity Provider", () => {
+    const withProvider = { ...context, publicUrl: "https://a.example.org/agenda/", identityProvider };
+    const opened = openContext(key, sealContext(key, withProvider), 1_000);
+    expect(opened).toEqual({
+      ...context,
+      identityProvider: { ...identityProvider, requiredGroup: "homelab-admin", publicBaseUrl: "https://a.example.org/agenda" },
+    });
+    expect(openContext(key, sealContext(key, context), 1_000)).not.toHaveProperty("identityProvider");
+    expect(sealContext(key, withProvider)).not.toContain("s3cret");
+  });
+
+  it.each<[string, Partial<Record<keyof Context, unknown>>, RegExp]>([
+    ["without a time zone", { timeZone: undefined }, /timeZone must be/],
+    ["with a time zone that is none", { timeZone: "Mars/Olympus" }, /timeZone must be/],
+    ["with an offset for a time zone", { timeZone: "+01:00" }, /timeZone must be/],
+    ["without a public address", { publicUrl: undefined }, /publicUrl must be/],
+    ["with a public address that is no http address", { publicUrl: "ftp://a.example.org" }, /publicUrl must be/],
+    ["with a public address with a query", { publicUrl: "https://a.example.org/?x=1" }, /publicUrl must be/],
+    ["with an Identity Provider without issuer", { identityProvider: { clientId: "x", clientSecret: "y" } }, /identityProvider.issuerUrl must be set/],
+    ["with an Identity Provider without client id", { identityProvider: { ...identityProvider, clientId: "" } }, /identityProvider.clientId must be set/],
+    ["with an Identity Provider without client secret", { identityProvider: { ...identityProvider, clientSecret: undefined } }, /identityProvider.clientSecret must be set/],
+    ["with an empty required group", { identityProvider: { ...identityProvider, requiredGroup: " " } }, /identityProvider.requiredGroup must not be empty/],
+    ["with an issuer that is no http address", { identityProvider: { ...identityProvider, issuerUrl: "id.example.org" } }, /identityProvider.issuerUrl must be an http/],
+  ])("is refused %s, naming what is wrong", (_, change, problem) => {
+    const sealed = sealContext(key, { ...context, ...change } as Context);
+    expect(openContext(key, sealed, 1_000)).toBeNull();
+    const outcome = openContextOutcome(key, sealed, 1_000);
+    expect(outcome.ok).toBe(false);
+    expect(outcome.ok ? "" : outcome.problem).toMatch(problem);
+    expect(outcome.ok ? "" : outcome.problem).not.toContain("s3cret");
+  });
+
+  it("names no problem of a Context that does not open", () => {
+    expect(openContextOutcome(key, `${sealContext(key, { ...context, timeZone: "x" }).slice(0, -2)}AA`, 1_000)).toEqual({ ok: false, problem: null });
+    expect(openContextOutcome("another-context-key-of-at-least-32-chars", sealContext(key, { ...context, timeZone: "x" }), 1_000)).toEqual({ ok: false, problem: null });
   });
 });

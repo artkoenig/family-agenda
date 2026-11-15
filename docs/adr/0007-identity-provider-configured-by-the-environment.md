@@ -18,3 +18,7 @@ Because it is there before any Admin, the setup page of an empty Instance offers
 - The client secret lives in the environment of the stack tool instead of the SecretStore (ADR-0003); whoever can read the stack's variables can read it, as with `POSTGRES_PASSWORD`.
 - Changing the Identity Provider means changing the variables and restarting.
 - Migration `0004` drops the `identity_provider` table; an Instance that had it configured in the Admin area must set the variables. Its stored client secret is left to the worker's sweep.
+
+## Amendment: in supplied mode, the Context names the Identity Provider
+
+In fixed mode the environment remains where the Identity Provider comes from, as above. In supplied mode (ADR-0003) a core serves many Families, so each Family's Context carries its own: `identityProvider` with `issuerUrl`, `clientId`, `clientSecret` and `requiredGroup` (default `homelab-admin`), the redirect URI below the Context's `publicUrl`, its path prefix included. The same rules apply as to the `OIDC_*` variables: a Context with incomplete or wrong settings is refused with `400`, naming what is wrong (`identityProvider.clientSecret must be set when identityProvider.issuerUrl is`), and a Context without `identityProvider` offers no single sign-on. The environment's `OIDC_*` variables are refused in supplied mode, so that no Family gets another's Identity Provider by accident. The client secret then lives with the trusted caller that seals the Context and travels encrypted in it; it is never logged or named in a refusal.

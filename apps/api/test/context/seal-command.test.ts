@@ -9,6 +9,8 @@ const described = {
   databaseUrl: "postgres://family:password@db/family_a",
   familyKey: randomBytes(32).toString("base64url"),
   blobDirectory: "/blobs",
+  timeZone: "America/New_York",
+  publicUrl: "https://b.example.org",
 };
 
 describe("family-agenda seal-context", () => {
@@ -18,11 +20,18 @@ describe("family-agenda seal-context", () => {
     expect(openContext(key, sealContextCommand(key, JSON.stringify({ ...described, ttlSeconds: 10 }), 0), 40_000)).toBeNull();
   });
 
+  it("seals an Identity Provider with the Context", () => {
+    const identityProvider = { issuerUrl: "https://id.example.org", clientId: "x", clientSecret: "y", requiredGroup: "parents" };
+    expect(openContext(key, sealContextCommand(key, JSON.stringify({ ...described, identityProvider }), 0), 0)).toMatchObject({ identityProvider });
+  });
+
   it("refuses what the core would not open", () => {
     expect(() => sealContextCommand("", JSON.stringify(described), 0)).toThrow(/CONTEXT_KEY/);
     expect(() => sealContextCommand(key, "no json", 0)).toThrow(/Expected JSON/);
     expect(() => sealContextCommand(key, JSON.stringify({ ...described, ttlSeconds: 0 }), 0)).toThrow(/Expected JSON/);
     expect(() => sealContextCommand(key, JSON.stringify({ ...described, ttlSeconds: 86_401 }), 0)).toThrow(/Expected JSON/);
     expect(() => sealContextCommand(key, JSON.stringify({ ...described, familyKey: "short" }), 0)).toThrow(/32 bytes/);
+    expect(() => sealContextCommand(key, JSON.stringify({ ...described, timeZone: "Nowhere" }), 0)).toThrow(/timeZone must be an IANA time zone/);
+    expect(() => sealContextCommand(key, JSON.stringify({ ...described, identityProvider: { issuerUrl: "https://id.example.org", clientId: "x" } }), 0)).toThrow(/identityProvider.clientSecret must be set/);
   });
 });

@@ -1,19 +1,20 @@
 import { createHash } from "node:crypto";
 import { connectPostgres, FamilyIdConflictError, type PostgresConnection } from "@family-agenda/adapters";
 import { FamilyNotPreparedError, openPreparedFamily, type Application, type FamilyConfig, type SharedWiring } from "../composition-root";
-import type { Context } from "./context";
+import type { OpenedContext } from "./context";
 
 /** What a Family's pages answer a request with, such as its Hono app's `fetch`. */
 export type FamilyFetch = (request: Request, env?: unknown) => Response | Promise<Response>;
 
-/** What every Family gets from the environment, until a Context carries its settings too. */
-export type FamilySettings = Pick<FamilyConfig, "timeZone" | "identityProvider" | "identityProviderClient" | "sourceRunTurns">;
+/** What every Family gets alike; its time zone, public address and Identity Provider come with its Context. */
+export type FamilySettings = Pick<FamilyConfig, "identityProviderClient" | "sourceRunTurns">;
 
 export type SuppliedFamiliesOptions = {
   shared: SharedWiring;
-  settings: FamilySettings;
-  /** What answers the requests of an opened Family, its Hono app; made once per opening. */
-  serving: (application: Application) => FamilyFetch;
+  /** What every Family gets alike; nothing by default. */
+  settings?: FamilySettings;
+  /** What answers the requests of an opened Family, its Hono app below the Context's public address; made once per opening. */
+  serving: (application: Application, context: OpenedContext) => FamilyFetch;
   /** Connects to the database a Context names; to its Postgres server by default. */
   connectDatabase?: (databaseUrl: string) => PostgresConnection;
   /** How long an opened Family stays open without a request, 5 minutes by default. */
@@ -57,7 +58,7 @@ export class SuppliedFamilies {
   }
 
   /** Runs `fn` on the Family `context` opens, which stays open meanwhile. */
-  async serve<R>(context: Context, fn: (family: OpenedFamily) => Promise<R>): Promise<Opening<R>> {
+  async serve<R>(context: OpenedContext, fn: (family: OpenedFamily) => Promise<R>): Promise<Opening<R>> {
     await this.sweep();
     const entry = this.#entryFor(context);
     entry.active += 1;
@@ -94,7 +95,7 @@ export class SuppliedFamilies {
     return (this.#options.now ?? Date.now)();
   }
 
-  #entryFor(context: Context): Entry {
+  #entryFor(context: OpenedContext): Entry {
     const key = keyOf(context);
     const existing = this.#entries.get(key);
     if (existing) return existing;
@@ -107,17 +108,19 @@ export class SuppliedFamilies {
     return entry;
   }
 
-  async #open(context: Context): Promise<OpenedFamily> {
-    const { shared, settings, serving, connectDatabase = connectPostgres } = this.#options;
+  async #open(context: OpenedContext): Promise<OpenedFamily> {
+    const { shared, settings = {}, serving, connectDatabase = connectPostgres } = this.#options;
     // Read only: a Family is prepared by a Triggered operation, never by opening it.
     const application = await openPreparedFamily(shared, {
       ...settings,
+      timeZone: context.timeZone,
+      identityProvider: context.identityProvider ?? null,
       connectDatabase: () => connectDatabase(context.databaseUrl),
       familyKey: Buffer.from(context.familyKey, "base64url"),
       blobDirectory: context.blobDirectory,
       familyId: context.familyId,
     });
-    return { application, fetch: serving(application) };
+    return { application, fetch: serving(application, context) };
   }
 }
 
@@ -126,9 +129,13 @@ function problemOf(error: unknown): OpeningProblem {
   return error instanceof FamilyNotPreparedError ? "family-not-prepared" : "unavailable";
 }
 
-/** What opens a Family, hashed so that the key holds no secret; the expiry is no part of it. */
-function keyOf({ familyId, databaseUrl, familyKey, blobDirectory }: Context): string {
-  return createHash("sha256").update(JSON.stringify([familyId, databaseUrl, familyKey, blobDirectory])).digest("hex");
+/**
+ * What opens a Family and what it is wired with, hashed so that the key holds no secret; the expiry
+ * is no part of it. A Context with other settings for the same Family opens it anew.
+ */
+function keyOf({ familyId, databaseUrl, familyKey, blobDirectory, timeZone, publicUrl, identityProvider }: OpenedContext): string {
+  const provider = identityProvider === undefined ? null : [identityProvider.issuerUrl, identityProvider.clientId, identityProvider.clientSecret, identityProvider.requiredGroup];
+  return createHash("sha256").update(JSON.stringify([familyId, databaseUrl, familyKey, blobDirectory, timeZone, publicUrl, provider])).digest("hex");
 }
 
 async function closeEntry(entry: Entry): Promise<void> {

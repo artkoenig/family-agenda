@@ -67,6 +67,9 @@ const familyVariables = {
 /** What only a fixed core has: its Family, its pages port and the Triggered operations' listener. */
 type FixedOnly = keyof typeof familyVariables | "port" | "trigger";
 
+/** The settings each Family's Context carries in supplied mode (ADR-0003, ADR-0007), which supplied mode refuses in the environment. */
+const contextVariables = ["PUBLIC_URL", "OIDC_ISSUER_URL", "OIDC_CLIENT_ID", "OIDC_CLIENT_SECRET", "OIDC_REQUIRED_GROUP"] as const;
+
 
 /** The mode `CONTEXT_MODE` chooses, refusing a Context key without supplied mode and the other way round. */
 export function readMode(env: NodeJS.ProcessEnv = process.env): ContextMode {
@@ -87,7 +90,7 @@ function checkContextKey(mode: ContextMode, key: string): void {
 }
 
 /** A core in supplied mode: what it shares among the Families, and no Family of its own. */
-export type SuppliedConfig = Omit<Config, FixedOnly> & {
+export type SuppliedConfig = Omit<Config, FixedOnly | "publicUrl" | "identityProvider"> & {
   /** The key the trusted caller seals Contexts with, from `CONTEXT_KEY`. */
   contextKey: string;
   /**
@@ -102,6 +105,8 @@ export function readSuppliedConfig(env: NodeJS.ProcessEnv = process.env): Suppli
   if (readMode(env) !== "supplied") throw new Error("This configuration is for CONTEXT_MODE=supplied only");
   const given = Object.values(familyVariables).find((variable) => env[variable]);
   if (given) throw new Error(`${given} must not be set with CONTEXT_MODE=supplied: every request supplies its Family's Context`);
+  const carried = contextVariables.find((variable) => env[variable]);
+  if (carried) throw new Error(`${carried} must not be set with CONTEXT_MODE=supplied: every Context carries its Family's public address and Identity Provider`);
   const { port, ...shared } = sharedConfigOf(env);
   return { ...shared, contextKey: env.CONTEXT_KEY ?? "", callerPort: callerPortOf(env.CALLER_PORT, port) };
 }
@@ -125,12 +130,18 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): Config {
     blobDirectory: env.BLOB_DIRECTORY ?? "/var/lib/family-agenda/blobs",
     trigger: triggerConfigOf(env),
     ...sharedConfigOf(env),
+    ...addressConfigOf(env),
   };
 }
 
-/** What a core reads from the environment in either mode. */
-function sharedConfigOf(env: NodeJS.ProcessEnv): Omit<Config, Exclude<FixedOnly, "port">> {
+/** The address and Identity Provider of the one Family of a fixed core; in supplied mode, each Context carries its own. */
+function addressConfigOf(env: NodeJS.ProcessEnv): Pick<Config, "publicUrl" | "identityProvider"> {
   const publicUrl = publicUrlOf(env.PUBLIC_URL);
+  return { publicUrl, identityProvider: identityProviderOf(env, publicUrl) };
+}
+
+/** What a core reads from the environment in either mode. */
+function sharedConfigOf(env: NodeJS.ProcessEnv): Omit<Config, Exclude<FixedOnly, "port"> | "publicUrl" | "identityProvider"> {
   const pluginContainers = parsePluginUrls(env.PLUGIN_URLS);
   return {
     pluginContainers,
@@ -139,8 +150,6 @@ function sharedConfigOf(env: NodeJS.ProcessEnv): Omit<Config, Exclude<FixedOnly,
     bundledTessdataDirectory: (env.BUNDLED_TESSDATA_DIRECTORY ?? "/usr/share/tesseract-ocr/5/tessdata") || null,
     port: Number(env.PORT ?? 3000),
     trustProxy: env.TRUST_PROXY === "true",
-    publicUrl,
-    identityProvider: identityProviderOf(env, publicUrl),
     version: versionOf(env),
   };
 }
@@ -168,13 +177,23 @@ function egressTicketKeyOf(env: NodeJS.ProcessEnv, pluginContainers: PluginBindi
   return key;
 }
 
+/**
+ * `text` as a public address, `PUBLIC_URL` or the `publicUrl` of a Context: http or https without
+ * credentials, query or fragment, and without a trailing slash; its path is the path prefix. Null
+ * if it is none.
+ */
+export function parsePublicUrl(text: string): string | null {
+  if (!URL.canParse(text)) return null;
+  const url = new URL(text);
+  if (!/^https?:$/.test(url.protocol) || url.username + url.password + url.search + url.hash !== "") return null;
+  return url.origin + url.pathname.replace(/\/+$/, ""); // eslint-disable-line sonarjs/super-linear-regex -- single-char quantifier anchored at end is O(n)
+}
+
 function publicUrlOf(value: string | undefined): string | null {
   if (!value) return null;
-  if (!URL.canParse(value) || !/^https?:$/.test(new URL(value).protocol)) {
-    throw new Error("PUBLIC_URL must be an http or https address, such as http://192.168.1.10:8080 or https://home.example.org/agenda");
-  }
-  const url = new URL(value);
-  return url.origin + url.pathname.replace(/\/+$/, ""); // eslint-disable-line sonarjs/super-linear-regex -- single-char quantifier anchored at end is O(n)
+  const publicUrl = parsePublicUrl(value);
+  if (publicUrl === null) throw new Error("PUBLIC_URL must be an http or https address, such as http://192.168.1.10:8080 or https://home.example.org/agenda");
+  return publicUrl;
 }
 
 const identityProviderProblems = {
