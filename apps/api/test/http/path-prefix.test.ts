@@ -106,6 +106,9 @@ describe("an Instance below a path prefix", () => {
     const editing = await page(`/admin/agendas/${agenda.id}`);
     expect(editing).toContain(`href="http://localhost${prefix}/agendas/${agenda.id}"`);
     expect(editing).toContain(`href="http://localhost${prefix}/agendas/${agenda.id}/feed.ics"`);
+    // The origin of PUBLIC_URL carries no path, so the copied address holds the prefix exactly once.
+    const copied = /<a href="(http[^"]*)">/.exec(editing)?.[1];
+    expect(copied).toBe(`http://localhost/agenda/agendas/${agenda.id}`);
     expect(await redirected(`/admin/agendas/${agenda.id}`, { memberIds: mia.id, horizonDays: "14" })).toBe(`${prefix}/admin/agendas`);
     expect(await redirected(`/admin/agendas/${agenda.id}/remove`, {})).toBe(`${prefix}/admin/agendas`);
     expect(await redirected(`/admin/family-members/${mia.id}/remove`, {})).toBe(`${prefix}/admin/family-members`);

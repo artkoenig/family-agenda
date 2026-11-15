@@ -876,15 +876,16 @@ export function spanLabel(span: TimelineEvent["span"], { t, locale }: Translatio
 
 /** A round avatar: the photo, or the animal or else the initial on one of the eight member colours. */
 export function Avatar(props: { member: FamilyMemberSummary; size?: "sm" }) {
+  const prefix = usePathPrefix();
   const { member } = props;
   const size = props.size ? ` fam-avatar--${props.size}` : "";
   return member.hasPhoto ? (
     <span class={`fam-avatar${size}`}>
-      <img src={href(usePathPrefix(), `/family-members/${member.id}/photo`)} alt="" />
+      <img src={href(prefix, `/family-members/${member.id}/photo`)} alt="" />
     </span>
   ) : (
     <span class={`fam-avatar${size} fam-avatar--m${member.colour}`} aria-hidden="true">
-      {member.avatar ? <img class="fam-avatar__animal" src={href(usePathPrefix(), avatarUrl(member.avatar))} alt="" /> : member.initial}
+      {member.avatar ? <img class="fam-avatar__animal" src={href(prefix, avatarUrl(member.avatar))} alt="" /> : member.initial}
     </span>
   );
 }

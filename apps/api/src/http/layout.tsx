@@ -158,6 +158,7 @@ export function Layout(props: {
   manifest?: string;
   children: Child;
 }) {
+  const prefix = usePathPrefix();
   const agenda = props.surface === "agenda";
   const { language } = useTranslation();
   return (
@@ -181,10 +182,10 @@ export function Layout(props: {
           ) : null}
           <script>{raw(themeBoot)}</script>
           <title>{props.title} · Family Agenda</title>
-          <link rel="stylesheet" href={href(usePathPrefix(), "/static/tokens.css")} />
-          <link rel="stylesheet" href={href(usePathPrefix(), "/static/design.css")} />
-          <link rel="stylesheet" href={href(usePathPrefix(), "/static/avatars.css")} />
-          <script src={href(usePathPrefix(), "/static/htmx.min.js")} defer></script>
+          <link rel="stylesheet" href={href(prefix, "/static/tokens.css")} />
+          <link rel="stylesheet" href={href(prefix, "/static/design.css")} />
+          <link rel="stylesheet" href={href(prefix, "/static/avatars.css")} />
+          <script src={href(prefix, "/static/htmx.min.js")} defer></script>
         </head>
         <body class={agenda ? "fam-page fam-agenda" : "fam-page"}>
           {agenda ? (
