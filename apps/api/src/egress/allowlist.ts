@@ -1,5 +1,4 @@
 import type { Ticket } from "./ticket";
-import { pluginServiceOf } from "./wiring";
 
 /** A host and port to connect to. */
 export type HostPort = { host: string; port: number };
@@ -8,13 +7,11 @@ export type HostPort = { host: string; port: number };
 export type AllowEntry = { name: string; wildcard: boolean; port: number | null };
 
 /**
- * What the egress proxy of container `service` allows for the plugin call `ticket` was minted for
- * (ADR-0001, amended): the container's `declared` hosts and the hosts the Admin entered in host
- * fields of that one Source, as the ticket carries them; only the declared hosts for a call of no
- * Source. Null for a ticket minted for another container than the plugin's own.
+ * What a plugin's egress proxy allows for the plugin call `ticket` was minted for (ADR-0001,
+ * amended): the plugin's `declared` hosts and the hosts the Admin entered in host fields of that one
+ * Source, as the ticket carries them; only the declared hosts for a call of no Source.
  */
-export function allowlistOf(service: string, ticket: Ticket, declared: string[]): string[] | null {
-  if (pluginServiceOf(ticket.sourceTypeId) !== service) return null;
+export function allowedHostsOf(ticket: Ticket, declared: string[]): string[] {
   return [...new Set([...declared, ...ticket.hosts.flatMap(hostFieldEntry)])];
 }
 

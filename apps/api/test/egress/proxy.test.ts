@@ -4,7 +4,7 @@ import { connect, createServer as createTcpServer, type AddressInfo, type Server
 import { afterEach, describe, expect, it } from "vitest";
 import { ticketAllowlist } from "../../src/egress/proxy-allowlist";
 import { mintTicket } from "../../src/egress/ticket";
-import { createEgressProxy, isPublicAddress, targetOf, type AllowlistFetch, type EgressProxyOptions } from "../../src/egress/proxy";
+import { createEgressProxy, isPublicAddress, targetOf, type AllowlistFor, type EgressProxyOptions } from "../../src/egress/proxy";
 
 const servers: (Server | TcpServer)[] = [];
 afterEach(async () => {
@@ -43,7 +43,7 @@ async function connectThrough(proxyPort: number, authority: string, send = "", p
   return { status: head.split("\r\n")[0] ?? "", head, body };
 }
 
-async function proxy(allowlist: AllowlistFetch, options: Partial<EgressProxyOptions> = { isReachable: () => true }): Promise<number> {
+async function proxy(allowlist: AllowlistFor, options: Partial<EgressProxyOptions> = { isReachable: () => true }): Promise<number> {
   return listening(createEgressProxy({ allowlist, log: () => {}, ...options }));
 }
 
@@ -148,10 +148,10 @@ describe("the egress proxy", () => {
   });
 
   it("refuses a malformed target, a single-label name and any plain request", async () => {
-    const proxyPort = await proxy(() => ["api:3001"]);
+    const proxyPort = await proxy(() => ["db:5432"]);
 
     expect((await connectThrough(proxyPort, "no-port")).status).toBe("HTTP/1.1 400 Bad Request");
-    expect((await connectThrough(proxyPort, "api:3001")).status).toBe("HTTP/1.1 400 Bad Request");
+    expect((await connectThrough(proxyPort, "db:5432")).status).toBe("HTTP/1.1 400 Bad Request");
     const response = await new Promise<number | undefined>((resolve, reject) => {
       request({ host: "127.0.0.1", port: proxyPort, path: "http://example.org/" }, (answer) => {
         answer.resume();
@@ -171,7 +171,7 @@ describe("targetOf", () => {
     ["[::1]:8443", { host: "::1", port: 8443 }],
     ["[1.2.3.4]:8443", null],
     ["10.0.0.1:80", { host: "10.0.0.1", port: 80 }],
-    ["api:3001", null],
+    ["db:5432", null],
     ["example.org", null],
     ["example.org:0", null],
     ["example.org:70000", null],

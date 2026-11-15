@@ -8,13 +8,13 @@ import { ticketOfProxyAuthorization } from "./ticket";
  * What the proxy allows for a connection with `ticket`, the one its client presented (null for
  * none); null when the ticket is refused, or missing where one is needed.
  */
-export type AllowlistFetch = (ticket: string | null) => string[] | null;
+export type AllowlistFor = (ticket: string | null) => string[] | null;
 
 /** The addresses a host name resolves to. */
 export type Resolve = (host: string) => Promise<string[]>;
 
 export type EgressProxyOptions = {
-  allowlist: AllowlistFetch;
+  allowlist: AllowlistFor;
   resolve?: Resolve;
   /** Whether the proxy may connect to an address; by default only to public ones. */
   isReachable?: (address: string) => boolean;
@@ -100,7 +100,7 @@ async function decide(authority: string, ticket: string | null, options: Require
 }
 
 /** Why the allowlist for `ticket` keeps the proxy from connecting to `target`; null where it allows it. */
-function allowlistRefusal(target: HostPort, ticket: string | null, allowlist: AllowlistFetch): Extract<Decision, { refusal: string }> | null {
+function allowlistRefusal(target: HostPort, ticket: string | null, allowlist: AllowlistFor): Extract<Decision, { refusal: string }> | null {
   const hosts = allowlist(ticket);
   if (hosts === null) return { refusal: proxyAuthenticationRequired, why: ticket === null ? "no ticket" : "ticket refused" };
   return allows(hosts.flatMap((text) => parseEntry(text) ?? []), target) ? null : { refusal: "403 Forbidden", why: "not allowed" };

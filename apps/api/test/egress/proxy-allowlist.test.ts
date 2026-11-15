@@ -57,15 +57,17 @@ describe("staticAllowlist", () => {
 
 describe("proxySettingsOf", () => {
   it("reads the settings of a plugin's own proxy, which takes tickets, with the default port", () => {
-    expect(proxySettingsOf({ EGRESS_PLUGIN: "plugin-demo", EGRESS_HOSTS: "a.example:443", EGRESS_TICKET_KEY: "k" })).toEqual({
-      port: 3128,
-      allowlist: { service: "plugin-demo", hosts: ["a.example:443"], ticketKey: "k" },
-    });
-    expect(proxySettingsOf({ EGRESS_PLUGIN: "plugin-demo", EGRESS_TICKET_KEY: "k", PORT: "9" })).toEqual({ port: 9, allowlist: { service: "plugin-demo", hosts: [], ticketKey: "k" } });
+    const settings = proxySettingsOf({ EGRESS_PLUGIN: "plugin-imap", EGRESS_HOSTS: "a.example:443", EGRESS_TICKET_KEY: key }, () => now);
+    expect(settings).toMatchObject({ port: 3128, allowing: "a.example:443 and the hosts of each ticket for plugin-imap" });
+    expect(settings.allowlist(ticketFor({ hosts: ["mail.example"] }))).toEqual(["a.example:443", "mail.example"]);
+    expect(settings.allowlist(null)).toBeNull();
+    expect(proxySettingsOf({ EGRESS_PLUGIN: "plugin-demo", EGRESS_TICKET_KEY: "k", PORT: "9" })).toMatchObject({ port: 9, allowing: "no declared hosts and the hosts of each ticket for plugin-demo" });
   });
 
   it("reads the hosts of a companion's proxy", () => {
-    expect(proxySettingsOf({ EGRESS_HOSTS: " a.example:443 ;*.b.example:443;" })).toEqual({ port: 3128, allowlist: { hosts: ["a.example:443", "*.b.example:443"] } });
+    const settings = proxySettingsOf({ EGRESS_HOSTS: " a.example:443 ;*.b.example:443;" });
+    expect(settings).toMatchObject({ port: 3128, allowing: "a.example:443, *.b.example:443" });
+    expect(settings.allowlist(null)).toEqual(["a.example:443", "*.b.example:443"]);
   });
 
   it("requires the ticket key with the plugin, or the hosts", () => {
