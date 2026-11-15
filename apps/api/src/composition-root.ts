@@ -154,6 +154,11 @@ export type FamilyConfig = DatabaseConfig & FamilyKeyConfig & {
   identityProviderClient?: IdentityProviderClient;
   /** Replaces how long the turns of Sources' runs last and are waited for (ADR-0008), such as in a test that outlasts one. */
   sourceRunTurns?: Partial<TurnTimings>;
+  /**
+   * Leaves an OCR model in place when the Family removes its language, since other Families of the
+   * process may read with it (supplied mode); the model is deleted otherwise, as in fixed mode.
+   */
+  keepOcrModels?: boolean;
 };
 
 /** An Instance of exactly one Family, as the environment configures it. */
@@ -370,7 +375,7 @@ function wireFamily(
 
   const members = new PostgresFamilyMemberRepository(postgres.db);
   const familyMembers = createFamilyMemberAccess({ clock, members, blobs });
-  const languages = createLanguageAccess({ families, ocrModels });
+  const languages = createLanguageAccess({ families, ocrModels, keepModels: config.keepOcrModels });
 
   const items = new PostgresItemRepository(postgres.db);
   const activity = createActivityLog({ clock, activities: new PostgresActivityRepository(postgres.db) });

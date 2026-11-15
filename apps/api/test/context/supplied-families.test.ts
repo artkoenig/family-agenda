@@ -14,6 +14,7 @@ import { SuppliedFamilies } from "../../src/context/supplied-families";
 import { suppliedFetch, type FamilyFetch } from "../../src/context/supplied-http";
 import { createHttpApp } from "../../src/http/app";
 import { FakeClock } from "../support/fake-clock";
+import { FakeTessdataCatalog } from "../support/fake-tessdata-catalog";
 import { acquirePostgres, type InProcessPostgres } from "../support/in-process-postgres";
 import { photos } from "../support/photos";
 import { ScriptedIdentityProviderClient } from "../support/scripted-identity-provider";
@@ -34,6 +35,7 @@ describe("a core in supplied mode", () => {
   let a: Context;
   let b: Context;
   let provider: ScriptedIdentityProviderClient;
+  let catalog: FakeTessdataCatalog;
 
   const familyOf = async (name: string, settings: Partial<Context> = {}): Promise<Context> => {
     const database = await acquirePostgres();
@@ -96,7 +98,8 @@ describe("a core in supplied mode", () => {
     closed = [];
     seen = [];
     warnings = [];
-    const shared = await bootShared({ tessdataDirectory: join(directory, "tessdata"), bundledTessdataDirectory: null, clock: new FakeClock(new Date(now)) });
+    catalog = new FakeTessdataCatalog();
+    const shared = await bootShared({ tessdataDirectory: join(directory, "tessdata"), bundledTessdataDirectory: null, tessdataCatalog: catalog, clock: new FakeClock(new Date(now)) });
     provider = new ScriptedIdentityProviderClient();
     families = new SuppliedFamilies({
       shared,
@@ -134,6 +137,19 @@ describe("a core in supplied mode", () => {
     expect(await on(a, (application) => application.familyMembers.list())).toMatchObject([{ name: "Mia" }]);
     expect(await on(b, (application) => application.familyMembers.list())).toEqual([]);
     expect(await on(b, (application) => Promise.resolve(application.familyId))).toBe(b.familyId);
+  });
+
+  it("keeps an OCR model one Family removes for another that still reads with it, and downloads nothing it already has", async () => {
+    expect(await on(a, (application) => application.languages.addOcrLanguage("fra"))).toEqual({ ok: true });
+    catalog.fail("fra", "unreachable");
+    expect(await on(b, (application) => application.languages.addOcrLanguage("fra"))).toEqual({ ok: true });
+
+    expect(await on(a, (application) => application.languages.removeOcrLanguage("fra"))).toEqual({ ok: true });
+
+    expect(await readdir(join(directory, "tessdata"))).toContain("fra.traineddata");
+    const settings = await on(b, (application) => application.languages.current());
+    expect(settings.ocrLanguages).toContainEqual({ language: "fra", installed: true });
+    expect((await on(a, (application) => application.languages.current())).ocrLanguages.map((ocr) => ocr.language)).not.toContain("fra");
   });
 
   it.each<[string, () => Context | string | null]>([

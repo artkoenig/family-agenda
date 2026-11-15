@@ -4,6 +4,11 @@ import type { FamilyRepository, OcrModelStore } from "./ports";
 export type LanguagesDeps = {
   families: FamilyRepository;
   ocrModels: OcrModelStore;
+  /**
+   * Leaves a model in place when the Family drops its language, as where other Families share
+   * the models (supplied mode); its model is deleted otherwise.
+   */
+  keepModels?: boolean | undefined;
 };
 
 export type LanguageSettings = {
@@ -27,10 +32,10 @@ export type ChangeOcrLanguagesResult = { ok: true } | { ok: false; problem: "unk
 
 /**
  * The Family Language, and the OCR languages. A language in the list is read with, and
- * its Tesseract model comes and goes with it.
+ * its Tesseract model comes with it, and goes with it unless `keepModels`.
  */
 export function createLanguageAccess(deps: LanguagesDeps) {
-  const { families, ocrModels } = deps;
+  const { families, ocrModels, keepModels = false } = deps;
 
   const stored = () => families.languages();
 
@@ -87,14 +92,14 @@ export function createLanguageAccess(deps: LanguagesDeps) {
       return { ok: true };
     },
 
-    /** Drops a language, and its model unless it comes with the image. The last one stays. */
+    /** Drops a language, and its model unless it comes with the image or models are kept. The last one stays. */
     async removeOcrLanguage(language: string): Promise<ChangeOcrLanguagesResult> {
       const { ocrLanguages } = await stored();
       const dropped = ocrLanguages.find((ocr) => ocr === language);
       if (!dropped) return { ok: false, problem: "unknown-ocr-language" };
       if (ocrLanguages.length === 1) return { ok: false, problem: "no-ocr-language" };
       await saveOcrLanguages(ocrLanguages.filter((ocr) => ocr !== dropped));
-      await ocrModels.remove(dropped);
+      if (!keepModels) await ocrModels.remove(dropped);
       return { ok: true };
     },
 

@@ -175,6 +175,8 @@ export class SuppliedFamilies {
       familyKey: Buffer.from(context.familyKey, "base64url"),
       blobDirectory: context.blobDirectory,
       familyId: context.familyId,
+      // All Families of the core share the OCR models, so removing a language leaves its model.
+      keepOcrModels: true,
     });
     return { application, fetch: serving(application, context) };
   }
