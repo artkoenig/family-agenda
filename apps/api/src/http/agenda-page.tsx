@@ -25,12 +25,13 @@ import { href, usePathPrefix } from "./href";
 // desktop and a wall tablet, in the Family Agenda design system (`design/design.css`).
 
 /** Where the manifest of an Agenda is. */
-const manifestOf = (page: { id: string }) => `/agendas/${page.id}/manifest.webmanifest`;
+const manifestOf = (page: { id: string }): `/${string}` => `/agendas/${page.id}/manifest.webmanifest`;
 
 export function AgendaPageDocument(props: { page: AgendaPage }) {
   const { t } = useTranslation();
+  const prefix = usePathPrefix();
   return (
-    <Layout title={t.agenda.title} surface="agenda" manifest={manifestOf(props.page)}>
+    <Layout title={t.agenda.title} surface="agenda" manifest={href(prefix, manifestOf(props.page))}>
       <AgendaTimeline page={props.page} />
       <button type="button" id="back-to-today" class="fam-button fam-button--primary fam-button--pill fam-back-to-today" hidden>
         <span class="fam-back-to-today__arrow" aria-hidden="true">↑</span>
@@ -154,10 +155,11 @@ back.addEventListener("click", () => {
 export function AgendaTimeline(props: { page: AgendaPage }) {
   const { page } = props;
   const { t } = useTranslation();
+  const prefix = usePathPrefix();
   return (
     <main
       id="agenda"
-      hx-get={agendaUrl(page.id, page.showing)}
+      hx-get={href(prefix, agendaUrl(page.id, page.showing))}
       hx-trigger={`every 60s, ${activityEnded} from:body`}
       hx-swap="outerHTML"
       hx-include="#shown-from, #shown-until"
@@ -187,8 +189,9 @@ export function AgendaTimeline(props: { page: AgendaPage }) {
 
 export function TaskListDocument(props: { page: TaskListPage }) {
   const { t } = useTranslation();
+  const prefix = usePathPrefix();
   return (
-    <Layout title={t.agenda.taskList.title} surface="agenda" manifest={manifestOf(props.page)}>
+    <Layout title={t.agenda.taskList.title} surface="agenda" manifest={href(prefix, manifestOf(props.page))}>
       <TaskList page={props.page} />
       <script>{raw(agendaBar)}</script>
     </Layout>
@@ -203,6 +206,7 @@ export function TaskList(props: { page: TaskListPage }) {
   const { page } = props;
   const { t } = useTranslation();
   const l = t.agenda.taskList;
+  const prefix = usePathPrefix();
   const section = (id: string, title: string, rows: TimelineTask[], quiet?: boolean) =>
     rows.length > 0 ? (
       <section class={quiet ? "fam-tasks fam-tasks--quiet" : "fam-tasks"} aria-labelledby={id}>
@@ -218,7 +222,7 @@ export function TaskList(props: { page: TaskListPage }) {
     ) : null;
   const none = page.due.length + page.upcoming.length + page.done.length === 0;
   return (
-    <main id="agenda" hx-get={agendaUrl(page.id, page.showing)} hx-trigger={`every 60s, ${activityEnded} from:body`} hx-swap="outerHTML">
+    <main id="agenda" hx-get={href(prefix, agendaUrl(page.id, page.showing))} hx-trigger={`every 60s, ${activityEnded} from:body`} hx-swap="outerHTML">
       <AgendaBar page={page} kind={l.title} />
       {none ? (
         <section class="fam-tasks">
@@ -250,6 +254,7 @@ export function TaskList(props: { page: TaskListPage }) {
 function AgendaBar(props: { page: AgendaPage | TaskListPage; kind?: string }) {
   const { page } = props;
   const { t, locale } = useTranslation();
+  const prefix = usePathPrefix();
   const everyone = showsEveryChoice(page);
   const shown = everyone ? [] : page.choices.filter((member) => page.showing.includes(member.id));
   const sole = soleChoice(page);
@@ -289,14 +294,14 @@ function AgendaBar(props: { page: AgendaPage | TaskListPage; kind?: string }) {
               hx-target="#agenda"
               hx-swap="outerHTML swap:250ms"
             >
-              <a class="fam-filter__item fam-pillswitch" href={agendaUrl(page.id, "all")} aria-current={everyone ? "true" : undefined} title={t.agenda.all}>
+              <a class="fam-filter__item fam-pillswitch" href={href(prefix, agendaUrl(page.id, "all"))} aria-current={everyone ? "true" : undefined} title={t.agenda.all}>
                 <span class="fam-avatar fam-avatar--all" aria-hidden="true"></span>
                 <span class="fam-pillswitch__name">{t.agenda.all}</span>
               </a>
               {page.choices.map((member) => (
                 <a
                   class="fam-filter__item fam-pillswitch"
-                  href={agendaUrl(page.id, toggled(page, member.id))}
+                  href={href(prefix, agendaUrl(page.id, toggled(page, member.id)))}
                   aria-current={!everyone && page.showing.includes(member.id) ? "true" : undefined}
                   title={member.name}
                 >
@@ -381,12 +386,13 @@ export function ActivityIndicator(props: { agendaId: string; activity: CurrentAc
   const { agendaId, activity } = props;
   const { t } = useTranslation();
   const label = activity ? t.agenda.activity[activity.kind] : "";
+  const prefix = usePathPrefix();
   return (
     <div
       id="activity"
       class="fam-activity"
       role="status"
-      hx-get={`/agendas/${agendaId}/activity`}
+      hx-get={href(prefix, `/agendas/${agendaId}/activity`)}
       hx-trigger={activity ? activityPolling.busy : activityPolling.idle}
       hx-swap="outerHTML"
       hx-vals={activity ? '{"was":"busy"}' : undefined}
@@ -423,6 +429,7 @@ export function ShownDay(props: { side: "from" | "until"; date: LocalDate; oob?:
 export function AgendaDays(props: { page: AgendaPage; earlier?: boolean; later?: boolean }) {
   const { page } = props;
   const { t } = useTranslation();
+  const prefix = usePathPrefix();
   const first = page.days[0]?.date ?? page.now.date;
   const last = page.days.at(-1)?.date ?? page.now.date;
   const before = { first: addDays(first, -page.horizonDays), last: addDays(first, -1) };
@@ -434,7 +441,7 @@ export function AgendaDays(props: { page: AgendaPage; earlier?: boolean; later?:
           <button
             type="button"
             class="fam-button fam-button--secondary fam-button--pill"
-            hx-get={daysUrl(page, before, "earlier")}
+            hx-get={href(prefix, daysUrl(page, before, "earlier"))}
             hx-target="closest li"
             hx-swap="outerHTML"
           >
@@ -446,7 +453,7 @@ export function AgendaDays(props: { page: AgendaPage; earlier?: boolean; later?:
         <DayEntry page={page} day={day} />
       ))}
       {props.later ? (
-        <li class="fam-more" hx-get={daysUrl(page, after, "later")} hx-trigger="revealed" hx-swap="outerHTML">
+        <li class="fam-more" hx-get={href(prefix, daysUrl(page, after, "later"))} hx-trigger="revealed" hx-swap="outerHTML">
           {t.agenda.loadingLaterDays}
         </li>
       ) : null}
@@ -812,7 +819,8 @@ function TickForm(props: { row: TimelineTask; page: AgendaPage | TaskListPage })
   const done = row.status === "done";
   const { t } = useTranslation();
   const v = t.agenda;
-  const action = `/agendas/${page.id}/tasks/${row.itemId}/${done ? "undone" : "done"}`;
+  const prefix = usePathPrefix();
+  const action = href(prefix, `/agendas/${page.id}/tasks/${row.itemId}/${done ? "undone" : "done"}`);
   return (
     <form
       method="post"
@@ -897,7 +905,7 @@ export function agendaUrl(id: string, showing?: Showing): `/${string}` {
 }
 
 /** Where htmx loads more days of an Agenda, with the marker to go on with on the given side. */
-export function daysUrl(page: AgendaPage, days: TimelineDays, then: "earlier" | "later"): string {
+export function daysUrl(page: AgendaPage, days: TimelineDays, then: "earlier" | "later"): `/${string}` {
   const show = page.showing === "all" ? "all" : page.showing.join(",");
   return `/agendas/${page.id}/days?show=${show}&from=${days.first}&until=${days.last}&then=${then}`;
 }
