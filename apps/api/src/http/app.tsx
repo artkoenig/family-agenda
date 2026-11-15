@@ -723,7 +723,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
       location ??
       (c.req.method === "GET"
         ? new URL(c.req.url).pathname + new URL(c.req.url).search
-        : (c.req.header("referer") ?? "/admin/sources"));
+        : (c.req.header("referer") ?? href(prefix, "/admin/sources")));
     c.res = new Response(null, {
       status: 204,
       headers: { "HX-Redirect": to, "cache-control": "no-store" },
@@ -825,7 +825,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
       return adminsPage(c, {
         adding: { email, problem: problemIn(c, result.problem) },
       });
-    return c.redirect("/admin/admins", 303);
+    return c.redirect(href(prefix, "/admin/admins"), 303);
   });
 
   app.post("/admin/admins/:id/password", async (c) => {
@@ -841,7 +841,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
           problem: problemIn(c, result.problem),
         },
       });
-    return c.redirect("/admin/admins", 303);
+    return c.redirect(href(prefix, "/admin/admins"), 303);
   });
 
   function shownStatus(
@@ -920,7 +920,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
       return familyMembersPage(c, {
         adding: { name, ...looksIn(form), problem: problemIn(c, result.problem) },
       });
-    return c.redirect("/admin/family-members", 303);
+    return c.redirect(href(prefix, "/admin/family-members"), 303);
   });
 
   app.post("/admin/family-members/:id", photoUpload, async (c) => {
@@ -943,7 +943,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
         },
       });
     }
-    return c.redirect("/admin/family-members", 303);
+    return c.redirect(href(prefix, "/admin/family-members"), 303);
   });
 
   app.post("/admin/family-members/:id/remove", async (c) => {
@@ -952,7 +952,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
       (await familyMembers.list()).find((member) => member.id === id)?.name ??
       "";
     const result = await familyMembers.remove(id);
-    if (result.ok) return c.redirect("/admin/family-members", 303);
+    if (result.ok) return c.redirect(href(prefix, "/admin/family-members"), 303);
     // Say which Source Attributes keep them, each with its Source's name.
     const listed = await sources.list();
     const blocking = result.blocking.map(({ sourceId, attribute }) => {
@@ -1022,7 +1022,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
       return agendasPage(c, {
         creating: { problem: problemIn(c, result.problem) },
       });
-    return c.redirect("/admin/agendas", 303);
+    return c.redirect(href(prefix, "/admin/agendas"), 303);
   });
 
   app.post("/admin/agendas/:id", async (c) => {
@@ -1037,12 +1037,12 @@ export function createHttpApp(application: Application, options: HttpOptions) {
           problem: problemIn(c, result.problem),
         },
       });
-    return c.redirect("/admin/agendas", 303);
+    return c.redirect(href(prefix, "/admin/agendas"), 303);
   });
 
   app.post("/admin/agendas/:id/remove", async (c) => {
     await agendas.remove(c.req.param("id") as AgendaId);
-    return c.redirect("/admin/agendas", 303);
+    return c.redirect(href(prefix, "/admin/agendas"), 303);
   });
 
   // Each Source Type's card, leading to its page with its Sources.
@@ -1648,7 +1648,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
       field(await c.req.parseBody(), "language"),
     );
     if (!result.ok) return displayPage(c, problemIn(c, result.problem));
-    return c.redirect("/admin/display", 303);
+    return c.redirect(href(prefix, "/admin/display"), 303);
   });
 
   const llmEndpointPage = async (c: Context<Env>, problem?: string) => {
@@ -1668,7 +1668,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     await languages.setOcrEnabled(
       field(await c.req.parseBody(), "ocr") === "yes",
     );
-    return c.redirect("/admin/llm", 303);
+    return c.redirect(href(prefix, "/admin/llm"), 303);
   });
 
   // Adds an OCR language, downloading its model where needed; for a listed one whose model is missing, downloads it again.
@@ -1683,19 +1683,19 @@ export function createHttpApp(application: Application, options: HttpOptions) {
           : problemIn(c, result.problem);
       return llmEndpointPage(c, problem);
     }
-    return c.redirect("/admin/llm", 303);
+    return c.redirect(href(prefix, "/admin/llm"), 303);
   });
 
   app.post("/admin/llm/ocr/:language/remove", async (c) => {
     const result = await languages.removeOcrLanguage(c.req.param("language"));
     if (!result.ok) return llmEndpointPage(c, problemIn(c, result.problem));
-    return c.redirect("/admin/llm", 303);
+    return c.redirect(href(prefix, "/admin/llm"), 303);
   });
 
   app.post("/admin/llm/ocr/:language/up", async (c) => {
     const result = await languages.moveOcrLanguageUp(c.req.param("language"));
     if (!result.ok) return llmEndpointPage(c, problemIn(c, result.problem));
-    return c.redirect("/admin/llm", 303);
+    return c.redirect(href(prefix, "/admin/llm"), 303);
   });
 
   app.get("/admin/llm", (c) => llmEndpointPage(c));
@@ -1703,7 +1703,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
   app.post("/admin/llm/remove", async (c) => {
     await llmEndpoint.remove();
     llmSaved++;
-    return c.redirect("/admin/llm", 303);
+    return c.redirect(href(prefix, "/admin/llm"), 303);
   });
 
   // The saved endpoint's models and status, loaded after the AI page; `model` is the one to keep selected.
@@ -1778,7 +1778,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
       );
       return render(c, page, 400);
     }
-    return c.redirect("/admin/llm", 303);
+    return c.redirect(href(prefix, "/admin/llm"), 303);
   });
 
   // Raw messages are third parties' words: only Admins open them, never an Agenda.

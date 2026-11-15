@@ -78,6 +78,63 @@ describe("an Instance below a path prefix", () => {
     expect(cookieOf(back, "fb_session").path).toBe(prefix);
   });
 
+  it("adds, changes and removes Family Members, Admins and Agendas, all below the prefix", async () => {
+    instance = await bootHttpForTestBelow(prefix);
+    await instance.core.post("/setup", { email: "anna@example.org", password });
+    await instance.app.recoveryKit.confirm();
+    const cookie = cookieOf(await instance.post(`${prefix}/admin/sign-in`, { email: "anna@example.org", password }), "fb_session").pair;
+    const page = async (path: string) => {
+      const body = await (await instance.get(`${prefix}${path}`, { cookie })).text();
+      // Every address the page emits from the root of the Instance lies below the prefix.
+      expect(body.match(/(?:href|src|action|hx-get|hx-post)="\/(?!agenda\/)[^"]*"/g) ?? []).toEqual([]);
+      return body;
+    };
+    const redirected = async (path: string, form: Record<string, string>) =>
+      (await instance.post(`${prefix}${path}`, form, { cookie })).headers.get("location");
+
+    expect(await page("/admin/family-members/new")).toContain(`action="${prefix}/admin/family-members"`);
+    expect(await redirected("/admin/family-members", { name: "Mia" })).toBe(`${prefix}/admin/family-members`);
+    const [mia] = await instance.app.familyMembers.list();
+    if (!mia) throw new Error("Mia was not added");
+    expect(await page(`/admin/family-members/${mia.id}`)).toContain(`action="${prefix}/admin/family-members/${mia.id}"`);
+    expect(await redirected(`/admin/family-members/${mia.id}`, { name: "Mia Maria" })).toBe(`${prefix}/admin/family-members`);
+
+    expect(await page("/admin/agendas/new")).toContain(`action="${prefix}/admin/agendas"`);
+    expect(await redirected("/admin/agendas", { memberIds: mia.id, horizonDays: "7" })).toBe(`${prefix}/admin/agendas`);
+    const [agenda] = await instance.app.agendas.list();
+    if (!agenda) throw new Error("the Agenda was not created");
+    const editing = await page(`/admin/agendas/${agenda.id}`);
+    expect(editing).toContain(`href="http://localhost${prefix}/agendas/${agenda.id}"`);
+    expect(editing).toContain(`href="http://localhost${prefix}/agendas/${agenda.id}/feed.ics"`);
+    expect(await redirected(`/admin/agendas/${agenda.id}`, { memberIds: mia.id, horizonDays: "14" })).toBe(`${prefix}/admin/agendas`);
+    expect(await redirected(`/admin/agendas/${agenda.id}/remove`, {})).toBe(`${prefix}/admin/agendas`);
+    expect(await redirected(`/admin/family-members/${mia.id}/remove`, {})).toBe(`${prefix}/admin/family-members`);
+
+    expect(await page("/admin/admins/new")).toContain(`action="${prefix}/admin/admins"`);
+    expect(await redirected("/admin/admins", { email: "ben@example.org", password })).toBe(`${prefix}/admin/admins`);
+    const ben = (await instance.app.admins.listAdmins()).find((admin) => admin.email === "ben@example.org");
+    if (!ben) throw new Error("Ben was not added");
+    expect(await page(`/admin/admins/${ben.id}`)).toContain(`action="${prefix}/admin/admins/${ben.id}/password"`);
+    expect(await redirected(`/admin/admins/${ben.id}/password`, { password: "another horse battery" })).toBe(`${prefix}/admin/admins`);
+  });
+
+  it("keeps the settings pages and their background requests below the prefix", async () => {
+    instance = await bootHttpForTestBelow(prefix);
+    await instance.core.post("/setup", { email: "anna@example.org", password });
+    await instance.app.recoveryKit.confirm();
+    const cookie = cookieOf(await instance.post(`${prefix}/admin/sign-in`, { email: "anna@example.org", password }), "fb_session").pair;
+    for (const path of ["/admin", "/admin/admins", "/admin/agendas", "/admin/display", "/admin/llm", "/admin/recovery-kit"]) {
+      const body = await (await instance.get(`${prefix}${path}`, { cookie })).text();
+      expect(body.match(/(?:href|src|action|hx-get|hx-post)="\/(?!agenda\/)[^"]*"/g) ?? [], path).toEqual([]);
+    }
+    expect(await (await instance.get(`${prefix}/admin/llm`, { cookie })).text()).toContain(`hx-post="${prefix}/admin/llm/test"`);
+    const redirected = async (path: string, form: Record<string, string>) =>
+      (await instance.post(`${prefix}${path}`, form, { cookie })).headers.get("location");
+    expect(await redirected("/admin/display", { language: "de" })).toBe(`${prefix}/admin/display`);
+    expect(await redirected("/admin/llm/ocr/enabled", { ocr: "yes" })).toBe(`${prefix}/admin/llm`);
+    expect(await redirected("/admin/llm/remove", {})).toBe(`${prefix}/admin/llm`);
+  });
+
   it("answers the health check without the prefix", async () => {
     instance = await bootHttpForTestBelow(prefix);
 

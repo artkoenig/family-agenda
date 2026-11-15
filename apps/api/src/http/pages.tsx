@@ -235,13 +235,13 @@ type SectionId =
   | "recovery-kit";
 
 /** `fragment` loads a fresher summary right after the page, which does not wait for it. */
-type Summary = { text: string; tone?: "attention"; fragment?: string };
+type Summary = { text: string; tone?: "attention"; fragment?: `/${string}` };
 
 type SettingsGroup = {
   name: string;
   sections: {
     id: SectionId;
-    href: string;
+    href: `/${string}`;
     label: string;
     summary: (s: SignedInAdmin) => Summary;
   }[];
@@ -351,7 +351,7 @@ function llmSummary(
     failing || settings.ocr.missing ? { tone: "attention" as const } : {};
   const fragment =
     settings.llm && health === null
-      ? { fragment: "/admin/llm/nav-status" }
+      ? { fragment: "/admin/llm/nav-status" as const }
       : {};
   return { text, ...tone, ...fragment };
 }
@@ -402,7 +402,7 @@ function NavSummary(props: { summary: Summary }) {
     </span>
   );
   return summary.fragment ? (
-    <LazyFragment href={summary.fragment}>{text}</LazyFragment>
+    <LazyFragment href={href(usePathPrefix(), summary.fragment)}>{text}</LazyFragment>
   ) : (
     text
   );
@@ -514,7 +514,7 @@ function AdminLayout(props: {
                 return (
                   <a
                     class="fam-navitem"
-                    href={section.href}
+                    href={href(usePathPrefix(), section.href)}
                     aria-current={current === section.id ? "page" : undefined}
                   >
                     <SectionIcon id={section.id} />
@@ -543,7 +543,7 @@ function AdminLayout(props: {
                 {current !== "sources" ? (
                   <>
                     {" "}
-                    <a href="/admin/sources">{t.settings.lookAtSources}</a>
+                    <a href={href(usePathPrefix(), "/admin/sources")}>{t.settings.lookAtSources}</a>
                   </>
                 ) : null}
               </div>
@@ -787,11 +787,11 @@ export function AdminsPage(props: {
       id="edit-admin"
       eyebrow={t.admins.eyebrow}
       title={edited.email}
-      closeHref="/admin/admins"
+      closeHref={href(usePathPrefix(), "/admin/admins")}
     >
       <form
         method="post"
-        action={`/admin/admins/${edited.id}/password`}
+        action={href(usePathPrefix(), `/admin/admins/${edited.id}/password`)}
         class="fam-dialog__form"
       >
         <Problem message={editing?.problem} />
@@ -809,7 +809,7 @@ export function AdminsPage(props: {
           <small>{t.admins.passwordHint}</small>
         </div>
         <DialogFooter
-          closeHref="/admin/admins"
+          closeHref={href(usePathPrefix(), "/admin/admins")}
           submit={t.admins.resetPassword}
         />
       </form>
@@ -819,9 +819,9 @@ export function AdminsPage(props: {
       id="add-admin"
       eyebrow={t.admins.eyebrow}
       title={t.admins.dialogTitle}
-      closeHref="/admin/admins"
+      closeHref={href(usePathPrefix(), "/admin/admins")}
     >
-      <form method="post" action="/admin/admins" class="fam-dialog__form">
+      <form method="post" action={href(usePathPrefix(), "/admin/admins")} class="fam-dialog__form">
         <Problem message={adding.problem} />
         <div class="fam-field">
           <label for="email">{t.common.email}</label>
@@ -846,7 +846,7 @@ export function AdminsPage(props: {
           />
           <small>{t.admins.passwordHint}</small>
         </div>
-        <DialogFooter closeHref="/admin/admins" submit={t.admins.add} />
+        <DialogFooter closeHref={href(usePathPrefix(), "/admin/admins")} submit={t.admins.add} />
       </form>
     </Dialog>
   ) : undefined;
@@ -860,7 +860,7 @@ export function AdminsPage(props: {
       <SectionHeader
         title={t.admins.title}
         description={t.admins.description}
-        action={addButton("/admin/admins/new", t.admins.add)}
+        action={addButton(href(usePathPrefix(), "/admin/admins/new"), t.admins.add)}
       />
       <Problem message={props.problem} />
       <section class="fam-sheet">
@@ -870,7 +870,7 @@ export function AdminsPage(props: {
               <ListRow name={other.email} meta={t.admins.you} />
             ) : (
               <ListRow
-                href={`/admin/admins/${other.id}`}
+                href={href(usePathPrefix(), `/admin/admins/${other.id}`)}
                 name={other.email}
                 meta={t.admins.admin}
               />
@@ -1045,7 +1045,7 @@ function LooksFields(props: {
                 checked={props.avatar === avatar}
                 aria-label={m.animals[avatar]}
               />
-              <img src={avatarUrl(avatar)} alt="" loading="lazy" />
+              <img src={href(usePathPrefix(), avatarUrl(avatar))} alt="" loading="lazy" />
             </label>
           ))}
         </div>
@@ -1083,11 +1083,11 @@ function EditMemberDialog(props: {
       id="edit-member"
       eyebrow={m.eyebrow}
       title={edited.name}
-      closeHref="/admin/family-members"
+      closeHref={href(usePathPrefix(), "/admin/family-members")}
     >
       <form
         method="post"
-        action={`/admin/family-members/${edited.id}`}
+        action={href(usePathPrefix(), `/admin/family-members/${edited.id}`)}
         enctype="multipart/form-data"
         class="fam-dialog__form"
       >
@@ -1125,14 +1125,14 @@ function EditMemberDialog(props: {
           )}
         </div>
         <DialogFooter
-          closeHref="/admin/family-members"
+          closeHref={href(usePathPrefix(), "/admin/family-members")}
           submit={commonSave}
           remove={{ form: "remove-member", label: m.remove(edited.name) }}
         />
       </form>
       <RemoveForm
         id="remove-member"
-        action={`/admin/family-members/${edited.id}/remove`}
+        action={href(usePathPrefix(), `/admin/family-members/${edited.id}/remove`)}
       />
     </Dialog>
   );
@@ -1149,11 +1149,11 @@ function AddMemberDialog(props: {
       id="add-member"
       eyebrow={m.eyebrow}
       title={m.dialogTitle}
-      closeHref="/admin/family-members"
+      closeHref={href(usePathPrefix(), "/admin/family-members")}
     >
       <form
         method="post"
-        action="/admin/family-members"
+        action={href(usePathPrefix(), "/admin/family-members")}
         enctype="multipart/form-data"
         class="fam-dialog__form"
       >
@@ -1186,7 +1186,7 @@ function AddMemberDialog(props: {
           />
           <small>{m.photoHint}</small>
         </div>
-        <DialogFooter closeHref="/admin/family-members" submit={m.add} />
+        <DialogFooter closeHref={href(usePathPrefix(), "/admin/family-members")} submit={m.add} />
       </form>
     </Dialog>
   );
@@ -1228,7 +1228,7 @@ export function FamilyMembersPage(props: {
       <SectionHeader
         title={m.title}
         description={m.description}
-        action={addButton("/admin/family-members/new", m.add)}
+        action={addButton(href(usePathPrefix(), "/admin/family-members/new"), m.add)}
       />
       <Problem message={props.problem} />
       {props.members.length === 0 ? (
@@ -1238,7 +1238,7 @@ export function FamilyMembersPage(props: {
           <ul class="fam-rows">
             {props.members.map((member) => (
               <ListRow
-                href={`/admin/family-members/${member.id}`}
+                href={href(usePathPrefix(), `/admin/family-members/${member.id}`)}
                 lead={<Avatar member={member} size="sm" />}
                 name={member.name}
                 meta={looksOf(member, m)}
@@ -1327,17 +1327,17 @@ export function AgendasPage(props: {
   const edited = editing
     ? props.agendas.find((agenda) => agenda.id === editing.id)
     : undefined;
-  const address = edited ? `${props.origin}${agendaUrl(edited.id)}` : "";
+  const address = edited ? `${props.origin}${href(usePathPrefix(), agendaUrl(edited.id))}` : "";
   const dialog = edited ? (
     <Dialog
       id="edit-agenda"
       eyebrow={v.eyebrow}
       title={entryOf(edited)}
-      closeHref="/admin/agendas"
+      closeHref={href(usePathPrefix(), "/admin/agendas")}
     >
       <form
         method="post"
-        action={`/admin/agendas/${edited.id}`}
+        action={href(usePathPrefix(), `/admin/agendas/${edited.id}`)}
         class="fam-dialog__form"
       >
         <Problem message={editing?.problem} />
@@ -1359,14 +1359,14 @@ export function AgendasPage(props: {
           idSuffix={edited.id}
         />
         <DialogFooter
-          closeHref="/admin/agendas"
+          closeHref={href(usePathPrefix(), "/admin/agendas")}
           submit={t.common.save}
           remove={{ form: "remove-agenda", label: v.remove }}
         />
       </form>
       <RemoveForm
         id="remove-agenda"
-        action={`/admin/agendas/${edited.id}/remove`}
+        action={href(usePathPrefix(), `/admin/agendas/${edited.id}/remove`)}
       />
     </Dialog>
   ) : creating ? (
@@ -1374,12 +1374,12 @@ export function AgendasPage(props: {
       id="create-agenda"
       eyebrow={v.eyebrow}
       title={v.dialogTitle}
-      closeHref="/admin/agendas"
+      closeHref={href(usePathPrefix(), "/admin/agendas")}
     >
-      <form method="post" action="/admin/agendas" class="fam-dialog__form">
+      <form method="post" action={href(usePathPrefix(), "/admin/agendas")} class="fam-dialog__form">
         <Problem message={creating.problem} />
         <AgendaSettingsFields members={props.members} idSuffix="new" />
-        <DialogFooter closeHref="/admin/agendas" submit={v.create} />
+        <DialogFooter closeHref={href(usePathPrefix(), "/admin/agendas")} submit={v.create} />
       </form>
     </Dialog>
   ) : undefined;
@@ -1393,7 +1393,7 @@ export function AgendasPage(props: {
       <SectionHeader
         title={v.title}
         description={v.description}
-        action={addButton("/admin/agendas/new", v.create)}
+        action={addButton(href(usePathPrefix(), "/admin/agendas/new"), v.create)}
       />
       <Problem message={props.problem} />
       {props.agendas.length === 0 ? (
@@ -1408,7 +1408,7 @@ export function AgendasPage(props: {
               const names = namesOf(agenda);
               return (
                 <ListRow
-                  href={`/admin/agendas/${agenda.id}`}
+                  href={href(usePathPrefix(), `/admin/agendas/${agenda.id}`)}
                   lead={
                     shown.length > 0 ? (
                       <span class="fam-avatars">
@@ -4032,14 +4032,14 @@ export function LlmEndpointPage(props: {
         description={l.description}
       />
       <Problem message={props.problem} />
-      <form method="post" action="/admin/llm" class="fam-sheet fam-sheet__form">
+      <form method="post" action={href(usePathPrefix(), "/admin/llm")} class="fam-sheet fam-sheet__form">
         <Group title={l.connection} level={2}>
           <ConnectionFields shown={shown} endpoint={endpoint} />
         </Group>
         <OptionsGroup configured={endpoint !== null} />
       </form>
       {endpoint ? (
-        <form method="post" action="/admin/llm/remove" id="remove-llm" />
+        <form method="post" action={href(usePathPrefix(), "/admin/llm/remove")} id="remove-llm" />
       ) : null}
       {endpoint && props.waiting > 0 ? (
         <section class="fam-sheet">
@@ -4155,13 +4155,16 @@ function ConnectionFields(props: {
  * a failing request leaves the fields as they are.
  */
 function StatusLoader(props: { model: string }) {
-  const href = props.model
-    ? `/admin/llm/status?model=${encodeURIComponent(props.model)}`
-    : "/admin/llm/status";
+  const status = href(
+    usePathPrefix(),
+    props.model
+      ? `/admin/llm/status?model=${encodeURIComponent(props.model)}`
+      : "/admin/llm/status",
+  );
   return (
     <div
       id="llm-status-loader"
-      hx-get={href}
+      hx-get={status}
       hx-trigger="load"
       hx-swap="none"
       data-unless-edited="#llm-connection"
@@ -4177,7 +4180,7 @@ function TestConnectionButton() {
       <button
         type="button"
         class="fam-button"
-        hx-post="/admin/llm/test"
+        hx-post={href(usePathPrefix(), "/admin/llm/test")}
         hx-include="#baseUrl, #apiKey, #model"
         hx-target="#model-field"
         hx-swap="outerHTML"
@@ -4368,7 +4371,7 @@ function OcrSections(props: { languages: LanguageSettings }) {
             </span>
             <form
               method="post"
-              action="/admin/llm/ocr/enabled"
+              action={href(usePathPrefix(), "/admin/llm/ocr/enabled")}
               class="fam-row__form"
             >
               <input
@@ -4421,20 +4424,20 @@ function OcrLanguageList(props: { languages: LanguageSettings }) {
             </span>
             {ocr.installed ? null : (
               <OcrLanguageButton
-                action="/admin/llm/ocr"
+                action={href(usePathPrefix(), "/admin/llm/ocr")}
                 language={ocr.language}
                 label={l.downloadLanguage(ocrLanguageName(ocr.language))}
               />
             )}
             {index > 0 ? (
               <OcrLanguageButton
-                action={`/admin/llm/ocr/${ocr.language}/up`}
+                action={href(usePathPrefix(), `/admin/llm/ocr/${ocr.language}/up`)}
                 label={l.moveUp}
               />
             ) : null}
             {languages.ocrLanguages.length > 1 ? (
               <OcrLanguageButton
-                action={`/admin/llm/ocr/${ocr.language}/remove`}
+                action={href(usePathPrefix(), `/admin/llm/ocr/${ocr.language}/remove`)}
                 label={l.remove}
               />
             ) : null}
@@ -4445,7 +4448,7 @@ function OcrLanguageList(props: { languages: LanguageSettings }) {
         <p class="fam-problem">{l.missingModel}</p>
       ) : null}
       {addable.length > 0 ? (
-        <form method="post" action="/admin/llm/ocr" class="fam-inline-add">
+        <form method="post" action={href(usePathPrefix(), "/admin/llm/ocr")} class="fam-inline-add">
           <label for="add-ocr">{l.addLanguage}</label>
           <div class="fam-inline-add__controls">
             <select id="add-ocr" name="language">
@@ -4488,7 +4491,7 @@ export function DisplayPage(props: {
       <Problem message={props.problem} />
       <form
         method="post"
-        action="/admin/display"
+        action={href(usePathPrefix(), "/admin/display")}
         class="fam-sheet fam-sheet__form"
       >
         <Group title={d.familyLanguage} level={2}>
