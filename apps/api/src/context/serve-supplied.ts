@@ -19,7 +19,6 @@ export async function serveSupplied(config: SuppliedConfig, log: { info(message:
   const shared = await bootShared(config);
   const families = new SuppliedFamilies({
     shared,
-    settings: {},
     serving: (application, context) => {
       const app = createHttpApp(application, {
         trustProxy: config.trustProxy,

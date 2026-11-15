@@ -177,13 +177,23 @@ function egressTicketKeyOf(env: NodeJS.ProcessEnv, pluginContainers: PluginBindi
   return key;
 }
 
+/**
+ * `text` as a public address, `PUBLIC_URL` or the `publicUrl` of a Context: http or https without
+ * credentials, query or fragment, and without a trailing slash; its path is the path prefix. Null
+ * if it is none.
+ */
+export function parsePublicUrl(text: string): string | null {
+  if (!URL.canParse(text)) return null;
+  const url = new URL(text);
+  if (!/^https?:$/.test(url.protocol) || url.username + url.password + url.search + url.hash !== "") return null;
+  return url.origin + url.pathname.replace(/\/+$/, ""); // eslint-disable-line sonarjs/super-linear-regex -- single-char quantifier anchored at end is O(n)
+}
+
 function publicUrlOf(value: string | undefined): string | null {
   if (!value) return null;
-  if (!URL.canParse(value) || !/^https?:$/.test(new URL(value).protocol)) {
-    throw new Error("PUBLIC_URL must be an http or https address, such as http://192.168.1.10:8080 or https://home.example.org/agenda");
-  }
-  const url = new URL(value);
-  return url.origin + url.pathname.replace(/\/+$/, ""); // eslint-disable-line sonarjs/super-linear-regex -- single-char quantifier anchored at end is O(n)
+  const publicUrl = parsePublicUrl(value);
+  if (publicUrl === null) throw new Error("PUBLIC_URL must be an http or https address, such as http://192.168.1.10:8080 or https://home.example.org/agenda");
+  return publicUrl;
 }
 
 const identityProviderProblems = {

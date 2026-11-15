@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import type { FamilyId } from "@family-agenda/adapters";
-import { contextHeader, contextOfRequest, expirySkewMs, identityProviderOf, maximumContextLifetimeMs, openContext, openContextOutcome, sealContext, type Context } from "../../src/context/context";
+import { contextHeader, contextOfRequest, expirySkewMs, maximumContextLifetimeMs, openContext, openContextOutcome, sealContext, type Context } from "../../src/context/context";
 
 const key = "a-context-key-of-at-least-32-characters";
 const context: Context = {
@@ -85,9 +85,11 @@ describe("a Context", () => {
   it("carries the Family's time zone, public address and Identity Provider", () => {
     const withProvider = { ...context, publicUrl: "https://a.example.org/agenda/", identityProvider };
     const opened = openContext(key, sealContext(key, withProvider), 1_000);
-    expect(opened).toEqual({ ...withProvider, publicUrl: "https://a.example.org/agenda" });
-    expect(identityProviderOf(opened!)).toEqual({ ...identityProvider, requiredGroup: "homelab-admin", publicBaseUrl: "https://a.example.org/agenda" });
-    expect(identityProviderOf(context)).toBeNull();
+    expect(opened).toEqual({
+      ...context,
+      identityProvider: { ...identityProvider, requiredGroup: "homelab-admin", publicBaseUrl: "https://a.example.org/agenda" },
+    });
+    expect(openContext(key, sealContext(key, context), 1_000)).not.toHaveProperty("identityProvider");
     expect(sealContext(key, withProvider)).not.toContain("s3cret");
   });
 

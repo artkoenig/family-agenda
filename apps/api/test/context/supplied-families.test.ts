@@ -9,7 +9,7 @@ import { openAgendaAccess } from "@family-agenda/application";
 import type { BlobRef } from "@family-agenda/domain";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { bootShared, type Application } from "../../src/composition-root";
-import { contextHeader, expirySkewMs, sealContext, type Context } from "../../src/context/context";
+import { contextHeader, expirySkewMs, openContext, sealContext, type Context } from "../../src/context/context";
 import { SuppliedFamilies } from "../../src/context/supplied-families";
 import { suppliedFetch, type FamilyFetch } from "../../src/context/supplied-http";
 import { createHttpApp } from "../../src/http/app";
@@ -80,7 +80,9 @@ describe("a core in supplied mode", () => {
 
   /** Runs `fn` on the Application `context` opens, as a request would. */
   const on = async <R,>(context: Context, fn: (application: Application) => Promise<R>): Promise<R> => {
-    const opening = await families.serve(context, (family) => fn(family.application));
+    const sealed = openContext(contextKey, sealContext(contextKey, context), now);
+    if (sealed === null) throw new Error("the Context does not open");
+    const opening = await families.serve(sealed, (family) => fn(family.application));
     if (!opening.ok) throw new Error(opening.problem);
     return opening.family;
   };

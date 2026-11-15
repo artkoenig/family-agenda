@@ -1,7 +1,6 @@
-import type { FamilyId } from "@family-agenda/adapters";
 import { z } from "zod";
 import { minimumKeyLength } from "../config";
-import { maximumContextLifetimeMs, openContextOutcome, sealContext, type ContextIdentityProvider } from "./context";
+import { maximumContextLifetimeMs, openContextOutcome, sealUncheckedContext } from "./context";
 
 const inputSchema = z.strictObject({
   familyId: z.string(),
@@ -25,13 +24,8 @@ export function sealContextCommand(contextKey: string, input: string, now: numbe
   if (contextKey.length < minimumKeyLength) throw new Error("CONTEXT_KEY must be set, at least 32 characters long");
   const parsed = inputSchema.safeParse(parseJson(input));
   if (!parsed.success) throw new Error("Expected JSON { familyId, databaseUrl, familyKey, blobDirectory, timeZone, publicUrl, identityProvider?, ttlSeconds? }");
-  const { ttlSeconds, identityProvider, ...rest } = parsed.data;
-  const sealed = sealContext(contextKey, {
-    ...rest,
-    familyId: rest.familyId as FamilyId,
-    ...(identityProvider === undefined ? {} : { identityProvider: identityProvider as ContextIdentityProvider }),
-    expiresAt: now + ttlSeconds * 1000,
-  });
+  const { ttlSeconds, ...rest } = parsed.data;
+  const sealed = sealUncheckedContext(contextKey, { ...rest, expiresAt: now + ttlSeconds * 1000 });
   const opened = openContextOutcome(contextKey, sealed, now);
   if (!opened.ok) throw new Error(opened.problem ?? "Not a Context the core opens: the Family id must be a UUID, the family key 32 bytes in base64url");
   return sealed;
