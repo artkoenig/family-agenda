@@ -17,7 +17,9 @@ import type {
 import { fromPglite, type TestClock } from "pg-boss";
 import { PgBossWorkRunner } from "@family-agenda/adapters";
 import type { WorkLog } from "../../src/background-work";
+import type { TriggeredWork } from "../../src/triggered-operations";
 import {
+  prepareFamily,
   bootFamily,
   bootShared,
   bootWorker,
@@ -64,6 +66,8 @@ export type SecondFamily = {
 };
 
 export type TestInstance = {
+  /** What the Triggered operations act on: the booted Family's work, and Preparing the Family on its database. */
+  triggeredWork(): TriggeredWork;
   app: Application;
   clock: FakeClock;
   /** The file the master key is kept in, outside Postgres. */
@@ -151,6 +155,12 @@ export async function bootForTest(options: TestOptions = {}): Promise<TestInstan
     masterKeyFile: config.masterKeyFile,
     tessdataDirectory: config.tessdataDirectory,
     query: (sql) => postgres.query(sql),
+    triggeredWork: () => ({
+      dueWork: instance.app.dueWork,
+      retention: instance.app.retention,
+      secretSweep: instance.app.secretSweep,
+      prepare: (familyId) => prepareFamily(shared, config, familyId),
+    }),
     installPlugin,
     uninstallPlugin,
     async restart() {

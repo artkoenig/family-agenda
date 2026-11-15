@@ -1,3 +1,4 @@
+import { parseFamilyId, type FamilyId } from "@family-agenda/adapters";
 import { parseIdentityProviderSettings, type IdentityProviderSettings } from "@family-agenda/application";
 import { parsePluginUrls, type PluginBinding } from "./plugin-containers/bindings";
 import { versionOf } from "./version";
@@ -5,7 +6,7 @@ import { versionOf } from "./version";
 export type Config = {
   databaseUrl: string;
   /** The Family id to write for a database that has none yet, from `FAMILY_ID`; a random UUID if not set. */
-  familyId?: string;
+  familyId?: FamilyId;
   masterKeyFile: string;
   blobDirectory: string;
   /** Source Types whose plugins run in containers, from `PLUGIN_URLS` such as `demo=http://demo:8080`. */
@@ -65,16 +66,12 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): Config {
   };
 }
 
-const familyIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-/** Whether `value` can be a Family id: a UUID. */
-export const isFamilyId = (value: unknown): value is string => typeof value === "string" && familyIdPattern.test(value);
-
 /** The Family id `FAMILY_ID` gives a database that has none yet; none if empty. */
-function familyIdConfigOf(value: string | undefined): { familyId?: string } {
+function familyIdConfigOf(value: string | undefined): { familyId?: FamilyId } {
   if (!value) return {};
-  if (!isFamilyId(value)) throw new Error(`FAMILY_ID must be a UUID, not ${JSON.stringify(value)}`);
-  return { familyId: value.toLowerCase() };
+  const familyId = parseFamilyId(value);
+  if (familyId === null) throw new Error(`FAMILY_ID must be a UUID, not "${value}"`);
+  return { familyId };
 }
 
 function triggerConfigOf(env: NodeJS.ProcessEnv): TriggerConfig {

@@ -1,12 +1,14 @@
+import type { FamilyId } from "@family-agenda/adapters";
 import { serve } from "@hono/node-server";
 import { openAgendaAccess } from "@family-agenda/application";
-import { bootApplication } from "./composition-root";
+import { bootFamily, bootShared, prepareFamily } from "./composition-root";
 import { readConfig } from "./config";
 import { createHttpApp } from "./http/app";
 import { serveTriggers } from "./triggered-operations";
 
 const config = readConfig();
-const application = await bootApplication(config);
+const shared = await bootShared(config);
+const application = await bootFamily(shared, config);
 const server = serve(
   { fetch: createHttpApp(application, {
       trustProxy: config.trustProxy,
@@ -21,7 +23,14 @@ const server = serve(
 );
 
 // Triggered operations: the worker's work, for a scheduler of the operator's own. Not published.
-const triggers = serveTriggers(application, config.trigger, { info: console.log, warn: console.warn, error: console.error });
+const triggered = {
+  dueWork: application.dueWork,
+  retention: application.retention,
+  secretSweep: application.secretSweep,
+  // On the Family's database itself, as starting does.
+  prepare: (familyId?: FamilyId) => prepareFamily(shared, config, familyId),
+};
+const triggers = serveTriggers(triggered, config.trigger, { info: console.log, warn: console.warn, error: console.error });
 
 const shutdown = () => {
   triggers?.close();

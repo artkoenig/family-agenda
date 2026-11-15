@@ -1,16 +1,15 @@
 import { fileURLToPath } from "node:url";
 import { drizzle } from "drizzle-orm/node-postgres";
-import { migrate } from "drizzle-orm/node-postgres/migrator";
 import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
 import pg from "pg";
-import { migrateFamily } from "./family-id";
+import { migrateFamily, type FamilyId } from "./family-id";
 import { refuseNewerMigrationHistory, refuseOldMigrationHistory } from "./migration-history";
 import * as schema from "./schema";
 
 /** The schema in Postgres, through whichever driver reaches it. */
 export type Database = PgDatabase<PgQueryResultHKT, typeof schema>;
 
-export type MigrateOptions = { familyId?: string };
+export type MigrateOptions = { familyId?: FamilyId };
 
 export type PostgresConnection = {
   db: Database;
@@ -41,7 +40,7 @@ export function connectPostgres(databaseUrl: string): PostgresConnection {
         await lockClient.query("SELECT pg_advisory_lock($1)", [migrationLockKey]);
         await refuseOldMigrationHistory(db, migrationsFolder);
         await refuseNewerMigrationHistory(db, migrationsFolder);
-        await migrateFamily(db, () => migrate(db, { migrationsFolder }), options.familyId);
+        await migrateFamily(db, migrationsFolder, options.familyId);
       } finally {
         await lockClient.query("SELECT pg_advisory_unlock($1)", [migrationLockKey]);
         lockClient.release();

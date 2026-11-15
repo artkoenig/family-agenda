@@ -2,21 +2,20 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PGlite } from "@electric-sql/pglite";
-import { migrateFamily, migrationsFolder, postgresSchema, type PostgresConnection } from "@family-agenda/adapters";
+import { migrateFamily, migrationsFolder, postgresSchema, type FamilyId, type PostgresConnection } from "@family-agenda/adapters";
 import { drizzle } from "drizzle-orm/pglite";
-import { migrate } from "drizzle-orm/pglite/migrator";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { bootApplication, type Application } from "../../src/composition-root";
-import { createTriggerApp } from "../../src/triggered-operations";
+import { bootApplication, bootShared, prepareFamily, type SharedWiring } from "../../src/composition-root";
+import { createTriggerApp, type TriggeredWork } from "../../src/triggered-operations";
 import { bootForTest, type TestInstance } from "../support/boot";
 
 const token = "s3cret-token";
 const log = { warn: () => {}, error: () => {} };
-const chosen = "0b6f3c1e-8a2d-4f5b-9c7e-1d2a3b4c5d6e";
-const other = "7c1d2e3f-4a5b-4c6d-8e7f-9a0b1c2d3e4f";
+const chosen = "0b6f3c1e-8a2d-4f5b-9c7e-1d2a3b4c5d6e" as FamilyId;
+const other = "7c1d2e3f-4a5b-4c6d-8e7f-9a0b1c2d3e4f" as FamilyId;
 
-const prepareFamily = async (app: Application, body?: unknown) => {
-  const response = await createTriggerApp(app, { token, log }).request("/operations/prepare-family", {
+const triggerPrepare = async (work: TriggeredWork, body?: unknown) => {
+  const response = await createTriggerApp(work, { token, log }).request("/operations/prepare-family", {
     method: "POST",
     headers: { authorization: `Bearer ${token}` },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
@@ -40,20 +39,41 @@ describe("Preparing a Family on an empty database", () => {
     const db = drizzle(postgres, { schema: postgresSchema });
     return {
       db,
-      migrate: (options = {}) => migrateFamily(db, () => migrate(db, { migrationsFolder }), options.familyId),
+      migrate: (options = {}) => migrateFamily(db, migrationsFolder, options.familyId),
       close: () => Promise.resolve(),
     };
   };
-  const boot = (familyId?: string) =>
+  const shared = () => ({ tessdataDirectory: join(directory, "tessdata"), bundledTessdataDirectory: null });
+  const boot = (familyId?: FamilyId) =>
     bootApplication({
+      ...shared(),
       connectDatabase: connect,
       ...(familyId === undefined ? {} : { familyId }),
       masterKeyFile: join(directory, "master.key"),
       blobDirectory: join(directory, "blobs"),
-      tessdataDirectory: join(directory, "tessdata"),
-      bundledTessdataDirectory: null,
       timeZone: "Europe/Berlin",
     });
+  const notBooted = (wiring: SharedWiring): TriggeredWork => ({
+    dueWork: { run: () => Promise.reject(new Error("not booted")) },
+    retention: { purge: () => Promise.reject(new Error("not booted")) },
+    secretSweep: { sweep: () => Promise.reject(new Error("not booted")) },
+    prepare: (familyId) => prepareFamily(wiring, { connectDatabase: connect }, familyId),
+  });
+
+  it("prepares the database before any Family is booted on it, with the Family id chosen", async () => {
+    const wiring = await bootShared(shared());
+
+    expect(await prepareFamily(wiring, { connectDatabase: connect }, chosen)).toEqual({ familyId: chosen });
+    expect((await postgres.query("SELECT family_id::text AS id FROM family")).rows).toEqual([{ id: chosen }]);
+    expect((await boot()).familyId).toBe(chosen);
+  });
+
+  it("prepares it through the Triggered operation, and refuses another id after", async () => {
+    const work = notBooted(await bootShared(shared()));
+
+    expect(await triggerPrepare(work, { familyId: chosen })).toEqual({ status: 200, body: { familyId: chosen } });
+    expect(await triggerPrepare(work, { familyId: other })).toEqual({ status: 409, body: { error: "family-id-differs", familyId: chosen } });
+  });
 
   it("brings the schema up to date with the Family id chosen, and leaves the Family usable", async () => {
     const app = await boot(chosen);
@@ -94,7 +114,7 @@ describe("Preparing the Family as a Triggered operation", () => {
   it("records the Source Types seen for the first time as disabled, and answers with the Family id", async () => {
     await instance.query("DELETE FROM source_type");
 
-    const { status, body } = await prepareFamily(instance.app);
+    const { status, body } = await triggerPrepare(instance.triggeredWork());
 
     expect(status).toBe(200);
     expect(body).toEqual({ familyId: instance.app.familyId });
@@ -105,8 +125,8 @@ describe("Preparing the Family as a Triggered operation", () => {
     await instance.app.sourceTypes.enable("mailbox");
     const before = await state();
 
-    expect((await prepareFamily(instance.app)).status).toBe(200);
-    expect((await prepareFamily(instance.app, { familyId: instance.app.familyId })).status).toBe(200);
+    expect((await triggerPrepare(instance.triggeredWork())).status).toBe(200);
+    expect((await triggerPrepare(instance.triggeredWork(), { familyId: instance.app.familyId })).status).toBe(200);
 
     expect(await state()).toEqual(before);
   });
@@ -115,7 +135,7 @@ describe("Preparing the Family as a Triggered operation", () => {
     await instance.query("DELETE FROM source_type");
     const before = await state();
 
-    const { status, body } = await prepareFamily(instance.app, { familyId: other });
+    const { status, body } = await triggerPrepare(instance.triggeredWork(), { familyId: other });
 
     expect(status).toBe(409);
     expect(body).toEqual({ error: "family-id-differs", familyId: instance.app.familyId });

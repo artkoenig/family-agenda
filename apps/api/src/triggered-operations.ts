@@ -1,11 +1,11 @@
 import { timingSafeEqual } from "node:crypto";
-import { FamilyIdConflictError } from "@family-agenda/adapters";
+import { FamilyIdConflictError, parseFamilyId, type FamilyId } from "@family-agenda/adapters";
 import type { DueWorkReport, StepOutcome } from "@family-agenda/application";
 import { serve, type ServerType } from "@hono/node-server";
 import { Hono } from "hono";
 import { runDueWork, workFailures, type BackgroundWork, type WorkLog } from "./background-work";
 import type { PreparedFamily } from "./composition-root";
-import { isFamilyId, type TriggerConfig } from "./config";
+import type { TriggerConfig } from "./config";
 
 /** A step of due work as JSON: its report, or the message of the error it stopped with. */
 type StepAnswer<R> = { ok: true; report: R } | { ok: false; error: string };
@@ -23,12 +23,16 @@ export type TriggerAnswers = {
   "prepare-family": PreparedFamily;
 };
 
-/** What the Triggered operations act on: the worker's work, and preparing the Family. */
-export type TriggeredWork = BackgroundWork & { prepare(familyId?: string): Promise<PreparedFamily> };
+/**
+ * What the Triggered operations act on: the worker's work, and Preparing the Family, which works
+ * on the Family's database itself, not on a booted Family, so that it also prepares an empty one.
+ */
+export type TriggeredWork = BackgroundWork & { prepare(familyId?: FamilyId): Promise<PreparedFamily> };
 
 type OperationName = keyof TriggerAnswers;
-/** Each operation takes the JSON body of its request, if any. */
-type Operations = { [Name in OperationName]: (body: unknown) => Promise<TriggerAnswers[Name]> };
+/** Reads the JSON body of the request; only an operation that takes one calls it. */
+type BodyReader = () => Promise<unknown>;
+type Operations = { [Name in OperationName]: (body: BodyReader) => Promise<TriggerAnswers[Name]> };
 
 /** An operation that will not run as asked, answered with `status` and `body`; nothing has changed. */
 class Refused extends Error {
@@ -41,15 +45,16 @@ class Refused extends Error {
 }
 
 /** The Family id a `prepare-family` body names, if any; a body that names no UUID is refused. */
-function familyIdIn(body: unknown): string | undefined {
+function familyIdIn(body: unknown): FamilyId | undefined {
   const given = typeof body === "object" && body !== null ? (body as { familyId?: unknown }).familyId : undefined;
   if (given === undefined) return undefined;
-  if (!isFamilyId(given)) throw new Refused(400, { error: "invalid-family-id" });
-  return given.toLowerCase();
+  const familyId = parseFamilyId(given);
+  if (familyId === null) throw new Refused(400, { error: "invalid-family-id" });
+  return familyId;
 }
 
-async function prepareFamily(work: TriggeredWork, body: unknown): Promise<PreparedFamily> {
-  const familyId = familyIdIn(body);
+async function prepareFamily(work: TriggeredWork, body: BodyReader): Promise<PreparedFamily> {
+  const familyId = familyIdIn(await body());
   try {
     return await work.prepare(familyId);
   } catch (error) {
@@ -72,8 +77,12 @@ function joined<T>(run: () => Promise<T>): () => Promise<T> {
   };
 }
 
-/** Lets prepares of one `api` take turns; across containers, the migration lock serialises them. */
-function joinedPrepare(work: TriggeredWork): (body: unknown) => Promise<PreparedFamily> {
+/**
+ * Lets prepares of one `api` take turns rather than share a run as `joined` does: each may name
+ * another Family id and must get its own answer, refused or not. Across containers, the migration
+ * lock in Postgres serialises them.
+ */
+function queuedPrepare(work: TriggeredWork): (body: BodyReader) => Promise<PreparedFamily> {
   let previous: Promise<unknown> = Promise.resolve();
   return (body) => {
     const next = previous.then(() => prepareFamily(work, body));
@@ -92,7 +101,7 @@ function triggeredOperations(work: TriggeredWork, log: WorkLog): Operations {
     },
     purge: () => work.retention.purge(),
     "secret-sweep": async () => ({ removed: await work.secretSweep.sweep() }),
-    "prepare-family": joinedPrepare(work),
+    "prepare-family": queuedPrepare(work),
   };
 }
 
@@ -132,7 +141,7 @@ export function createTriggerApp(work: TriggeredWork, options: { token: string; 
     const name = c.req.param("name");
     if (!isOperation(operations, name)) return c.json({ error: "unknown-operation" }, 404);
     try {
-      return c.json(await operations[name](await bodyOf(c.req.raw)));
+      return c.json(await operations[name](() => bodyOf(c.req.raw)));
     } catch (error) {
       if (error instanceof Refused) return c.json(error.body, error.status);
       log.error(workFailures[name], error);

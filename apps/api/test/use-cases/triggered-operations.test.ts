@@ -41,7 +41,7 @@ describe("Triggering the worker's work from outside the core", () => {
   });
 
   const trigger = async (name: string) => {
-    const response = await createTriggerApp(instance.app, { token, log }).request(`/operations/${name}`, { method: "POST", headers: bearer });
+    const response = await createTriggerApp(instance.triggeredWork(), { token, log }).request(`/operations/${name}`, { method: "POST", headers: bearer });
     return { status: response.status, body: (await response.json()) as Record<string, unknown> };
   };
   const items = () => instance.query("SELECT count(*)::int AS n FROM item");
@@ -64,7 +64,7 @@ describe("Triggering the worker's work from outside the core", () => {
   it("does not run a Source twice when due work is triggered during a run", async () => {
     testPluginControls.emit("mailbox", [mail("m1", "Am Freitag, 18.09., ist der Wandertag.")]);
     instance.clock.advance(15 * minutes);
-    const app = createTriggerApp(instance.app, { token, log });
+    const app = createTriggerApp(instance.triggeredWork(), { token, log });
     const pollsBefore = testPluginControls.runs("mailbox").length;
 
     const answers = await Promise.all([1, 2].map(async () => (await app.request("/operations/due-work", { method: "POST", headers: bearer })).json()));

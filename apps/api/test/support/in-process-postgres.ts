@@ -2,7 +2,6 @@ import { readFile } from "node:fs/promises";
 import { PGlite } from "@electric-sql/pglite";
 import { migrateFamily, migrationsFolder, postgresSchema, refuseOldMigrationHistory, type PostgresConnection } from "@family-agenda/adapters";
 import { drizzle } from "drizzle-orm/pglite";
-import { migrate } from "drizzle-orm/pglite/migrator";
 import { inject } from "vitest";
 
 /** A database of its own for one test Instance, in-process: no Postgres server needed. */
@@ -30,7 +29,7 @@ export async function acquirePostgres(): Promise<InProcessPostgres> {
         db,
         migrate: async (options = {}) => {
           await refuseOldMigrationHistory(db, migrationsFolder);
-          await migrateFamily(db, () => migrate(db, { migrationsFolder }), options.familyId);
+          await migrateFamily(db, migrationsFolder, options.familyId);
         },
         close: () => Promise.resolve(),
       };
