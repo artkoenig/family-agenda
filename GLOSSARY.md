@@ -129,7 +129,7 @@ _Avoid_: Late, expired, missed
 ### Operation
 
 **Context**:
-What a core in supplied mode needs to open the Family one request is for: its Family id, its database, its family key and its blob location, and the settings that are the Family's own: its time zone, its public address (the path prefix included) and, if any, its Identity Provider, with an expiry at most a day ahead, encrypted and signed by a trusted caller in front with the Context key. It reaches the core only on the caller port; without a valid one the core refuses the request and opens nothing. It opens only a Family that is already prepared, and writes nothing.
+What a core in supplied mode needs to open the Family one request is for: its Family id, its database, its family key and its blob location, and the settings that are the Family's own: its time zone, its public address (the path prefix included) and, if any, its Identity Provider, with an expiry at most a day ahead, encrypted and signed by a trusted caller in front with the Context key. It reaches the core only on the caller port; without a valid one the core refuses the request and opens nothing. It opens only a Family that is already prepared, and writes nothing; only the Triggered operation that prepares the Family writes to its database, with the Context's Family id.
 _Avoid_: Tenant context, session, family token
 
 **Context key**:
@@ -165,7 +165,7 @@ Bringing a Family's database up to date: migrating its schema, writing its Famil
 _Avoid_: Bootstrap, setup, init
 
 **Triggered operation**:
-A piece of the `worker`'s work, such as Due work, the purge or the secret sweep, Preparing the Family, or entering an Admin and resetting an Admin's password, that something outside the core runs on request through the `api`'s own unpublished port, with the Instance's trigger token. It runs the same code as the `worker`'s schedule, as starting, or as the command line.
+A piece of the `worker`'s work, such as Due work, the purge or the secret sweep, Preparing the Family, or entering an Admin and resetting an Admin's password, that something outside the core runs on request through the `api`'s own unpublished port, with the Instance's trigger token, and in supplied mode with the Context of the Family it acts on. It runs the same code as the `worker`'s schedule, as starting, or as the command line.
 _Avoid_: Job, webhook, internal API
 
 **Companion**:
