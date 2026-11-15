@@ -2,8 +2,7 @@ import type { HealthResponse } from "@family-agenda/contracts";
 import { contextHeader, contextOfRequest } from "./context";
 import type { SuppliedFamilies } from "./supplied-families";
 
-/** What a Family's pages answer a request with, such as its Hono app's `fetch`. */
-export type FamilyFetch = (request: Request, env?: unknown) => Response | Promise<Response>;
+export type { FamilyFetch } from "./supplied-families";
 
 /** Where refusals are written: never a Context, a family key or a database password. */
 export type ContextLog = { warn(message: string): void };
@@ -11,13 +10,13 @@ export type ContextLog = { warn(message: string): void };
 export type SuppliedHttpOptions = {
   /** The key shared with the trusted caller in front (`CONTEXT_KEY`). */
   contextKey: string;
-  families: SuppliedFamilies<FamilyFetch>;
+  families: SuppliedFamilies;
   version: string;
   log: ContextLog;
   now?: () => number;
 };
 
-const refusal = (status: 401 | 403 | 503, text: string) =>
+const refusal = (status: 401 | 403 | 409 | 503, text: string) =>
   new Response(text, { status, headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" } });
 
 /**
@@ -35,14 +34,18 @@ export function suppliedFetch({ contextKey, families, version, log, now = Date.n
       log.warn("Refused a request without a valid Context");
       return refusal(401, "A valid Context is required.");
     }
-    const opening = await families.serve(context, async (fetch) => fetch(withoutContext(request), env));
+    const opening = await families.serve(context, async (family) => family.fetch(withoutContext(request), env));
     if (opening.ok) return opening.family;
     log.warn(`Could not open the Family ${context.familyId} from its Context: ${opening.problem}${nameOf(opening.error)}`);
-    return opening.problem === "family-id-differs"
-      ? refusal(403, "The Context names a database of another Family.")
-      : refusal(503, "The Family cannot be opened now.");
+    return refusalOf[opening.problem]();
   };
 }
+
+const refusalOf = {
+  "family-id-differs": () => refusal(403, "The Context names a database of another Family."),
+  "family-not-prepared": () => refusal(409, "family-not-prepared: the database the Context names holds no prepared Family."),
+  unavailable: () => refusal(503, "The Family cannot be opened now."),
+} as const;
 
 /** The request as the Family's pages see it: the Context is the caller's, and goes no further. */
 function withoutContext(request: Request): Request {

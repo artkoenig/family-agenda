@@ -9,6 +9,10 @@ import {
   EnvelopeSecretStore,
   FileBlobStore,
   holdsSecrets,
+  isSchemaCurrent,
+  migrationsFolder,
+  storedFamilyId,
+  FamilyIdConflictError,
   OpenAiCompatibleExtractor,
   PgBossWorkRunner,
   PostgresActivityRepository,
@@ -130,7 +134,7 @@ export type FamilyKeyConfig =
     }
   | {
       /** The family key a Context supplies (ADR-0003), kept in memory only; never written anywhere. */
-      masterKey: Buffer;
+      familyKey: Buffer;
     };
 
 /** What belongs to one Family: its database and what is kept outside it. */
@@ -268,6 +272,32 @@ export async function bootFamily(shared: SharedWiring, config: FamilyConfig): Pr
     return { masterKey: await familyKeyOf(postgres, config), familyId };
   });
   return wireFamily(shared, config, postgres, masterKey, familyId);
+}
+
+/** A database that holds no prepared Family: empty, or with a schema other than this version's. */
+export class FamilyNotPreparedError extends Error {
+  constructor() {
+    super("The database holds no Family prepared by this version");
+    this.name = "FamilyNotPreparedError";
+  }
+}
+
+/**
+ * Wires the Family `familyId` names on its database, as a core in supplied mode opens one from a
+ * Context (ADR-0003), without writing anything: no migration, no Family id, no blob move, no Source
+ * Types recorded. A database whose schema is not this version's, or that holds no or another Family
+ * id, is refused; Preparing the Family is a Triggered operation of its own.
+ */
+export async function openPreparedFamily(shared: SharedWiring, config: FamilyConfig & { familyId: FamilyId }): Promise<Application> {
+  const postgres = connectionOf(config);
+  const masterKey = await withDatabase(postgres, async () => {
+    if (!(await isSchemaCurrent(postgres.db, migrationsFolder))) throw new FamilyNotPreparedError();
+    const stored = await storedFamilyId(postgres.db);
+    if (stored === null) throw new FamilyNotPreparedError();
+    if (stored !== config.familyId) throw new FamilyIdConflictError(stored, config.familyId);
+    return familyKeyOf(postgres, config);
+  });
+  return wireFamily(shared, config, postgres, masterKey, config.familyId);
 }
 
 /**
@@ -469,7 +499,7 @@ function wireFamily(
 }
 
 const familyKeyOf = (postgres: PostgresConnection, config: FamilyKeyConfig): Promise<Buffer> =>
-  "masterKey" in config ? Promise.resolve(config.masterKey) : loadMasterKey(postgres, config.masterKeyFile);
+  "familyKey" in config ? Promise.resolve(config.familyKey) : loadMasterKey(postgres, config.masterKeyFile);
 
 /** Creates the master key on first start, but never a new one for secrets stored with a lost one. */
 async function loadMasterKey(postgres: PostgresConnection, file: string): Promise<Buffer> {

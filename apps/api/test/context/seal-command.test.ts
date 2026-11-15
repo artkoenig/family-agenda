@@ -15,13 +15,14 @@ describe("family-agenda seal-context", () => {
   it("seals the Context described on standard input, for 5 minutes by default", () => {
     const sealed = sealContextCommand(key, JSON.stringify(described), 1_000);
     expect(openContext(key, sealed, 1_000)).toEqual({ ...described, expiresAt: 301_000 });
-    expect(openContext(key, sealContextCommand(key, JSON.stringify({ ...described, ttlSeconds: 10 }), 0), 10_000)).toBeNull();
+    expect(openContext(key, sealContextCommand(key, JSON.stringify({ ...described, ttlSeconds: 10 }), 0), 40_000)).toBeNull();
   });
 
   it("refuses what the core would not open", () => {
     expect(() => sealContextCommand("", JSON.stringify(described), 0)).toThrow(/CONTEXT_KEY/);
     expect(() => sealContextCommand(key, "no json", 0)).toThrow(/Expected JSON/);
     expect(() => sealContextCommand(key, JSON.stringify({ ...described, ttlSeconds: 0 }), 0)).toThrow(/Expected JSON/);
+    expect(() => sealContextCommand(key, JSON.stringify({ ...described, ttlSeconds: 86_401 }), 0)).toThrow(/Expected JSON/);
     expect(() => sealContextCommand(key, JSON.stringify({ ...described, familyKey: "short" }), 0)).toThrow(/32 bytes/);
   });
 });

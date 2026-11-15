@@ -1,16 +1,19 @@
 import { createHash } from "node:crypto";
-import { connectPostgres, FamilyIdConflictError, parseFamilyId, type PostgresConnection } from "@family-agenda/adapters";
-import { bootFamily, type Application, type FamilyConfig, type SharedWiring } from "../composition-root";
+import { connectPostgres, FamilyIdConflictError, type PostgresConnection } from "@family-agenda/adapters";
+import { FamilyNotPreparedError, openPreparedFamily, type Application, type FamilyConfig, type SharedWiring } from "../composition-root";
 import type { Context } from "./context";
+
+/** What a Family's pages answer a request with, such as its Hono app's `fetch`. */
+export type FamilyFetch = (request: Request, env?: unknown) => Response | Promise<Response>;
 
 /** What every Family gets from the environment, until a Context carries its settings too. */
 export type FamilySettings = Pick<FamilyConfig, "timeZone" | "identityProvider" | "identityProviderClient" | "sourceRunTurns">;
 
-export type SuppliedFamiliesOptions<T> = {
+export type SuppliedFamiliesOptions = {
   shared: SharedWiring;
   settings: FamilySettings;
-  /** What is served for an opened Family, such as its Hono app; made once per opening. */
-  serving: (application: Application) => T;
+  /** What answers the requests of an opened Family, its Hono app; made once per opening. */
+  serving: (application: Application) => FamilyFetch;
   /** Connects to the database a Context names; to its Postgres server by default. */
   connectDatabase?: (databaseUrl: string) => PostgresConnection;
   /** How long an opened Family stays open without a request, 5 minutes by default. */
@@ -19,12 +22,15 @@ export type SuppliedFamiliesOptions<T> = {
 };
 
 /** Why a Context that opened opens no Family. */
-export type OpeningProblem = "family-id-differs" | "unavailable";
+export type OpeningProblem = "family-id-differs" | "family-not-prepared" | "unavailable";
 
 export type Opening<T> = { ok: true; family: T } | { ok: false; problem: OpeningProblem; error?: unknown };
 
-type Entry<T> = {
-  opening: Promise<{ application: Application; serving: T }>;
+/** An opened Family: its application, and what answers its requests. */
+export type OpenedFamily = { application: Application; fetch: FamilyFetch };
+
+type Entry = {
+  opening: Promise<OpenedFamily>;
   lastUsed: number;
   /** Requests under way, which keep the Family open. */
   active: number;
@@ -37,11 +43,11 @@ export const defaultIdleMs = 5 * 60_000;
  * Context, its connections and wired application, kept in memory only, keyed by a hash of what
  * opens it, and closed once no request has used it for `idleMs`.
  */
-export class SuppliedFamilies<T> {
-  readonly #options: SuppliedFamiliesOptions<T>;
-  readonly #entries = new Map<string, Entry<T>>();
+export class SuppliedFamilies {
+  readonly #options: SuppliedFamiliesOptions;
+  readonly #entries = new Map<string, Entry>();
 
-  constructor(options: SuppliedFamiliesOptions<T>) {
+  constructor(options: SuppliedFamiliesOptions) {
     this.#options = options;
   }
 
@@ -51,18 +57,18 @@ export class SuppliedFamilies<T> {
   }
 
   /** Runs `fn` on the Family `context` opens, which stays open meanwhile. */
-  async serve<R>(context: Context, fn: (family: T) => Promise<R>): Promise<Opening<R>> {
+  async serve<R>(context: Context, fn: (family: OpenedFamily) => Promise<R>): Promise<Opening<R>> {
     await this.sweep();
     const entry = this.#entryFor(context);
     entry.active += 1;
     try {
-      let opened: { serving: T };
+      let opened: OpenedFamily;
       try {
         opened = await entry.opening;
       } catch (error) {
-        return { ok: false, problem: error instanceof FamilyIdConflictError || error instanceof FamilyIdMismatch ? "family-id-differs" : "unavailable", error };
+        return { ok: false, problem: problemOf(error), error };
       }
-      return { ok: true, family: await fn(opened.serving) };
+      return { ok: true, family: await fn(opened) };
     } finally {
       entry.active -= 1;
       entry.lastUsed = this.#now();
@@ -88,11 +94,11 @@ export class SuppliedFamilies<T> {
     return (this.#options.now ?? Date.now)();
   }
 
-  #entryFor(context: Context): Entry<T> {
+  #entryFor(context: Context): Entry {
     const key = keyOf(context);
     const existing = this.#entries.get(key);
     if (existing) return existing;
-    const entry: Entry<T> = { opening: this.#open(context), lastUsed: this.#now(), active: 0 };
+    const entry: Entry = { opening: this.#open(context), lastUsed: this.#now(), active: 0 };
     this.#entries.set(key, entry);
     // A Family that failed to open is tried again with the next request.
     entry.opening.catch(() => {
@@ -101,30 +107,23 @@ export class SuppliedFamilies<T> {
     return entry;
   }
 
-  async #open(context: Context): Promise<{ application: Application; serving: T }> {
+  async #open(context: Context): Promise<OpenedFamily> {
     const { shared, settings, serving, connectDatabase = connectPostgres } = this.#options;
-    const familyId = parseFamilyId(context.familyId);
-    if (familyId === null) throw new FamilyIdMismatch();
-    const application = await bootFamily(shared, {
+    // Read only: a Family is prepared by a Triggered operation, never by opening it.
+    const application = await openPreparedFamily(shared, {
       ...settings,
       connectDatabase: () => connectDatabase(context.databaseUrl),
-      masterKey: Buffer.from(context.familyKey, "base64url"),
+      familyKey: Buffer.from(context.familyKey, "base64url"),
       blobDirectory: context.blobDirectory,
-      // Writes it to an empty database, refuses one that holds another.
-      familyId,
+      familyId: context.familyId,
     });
-    if (application.familyId !== familyId) {
-      await application.close();
-      throw new FamilyIdMismatch();
-    }
-    return { application, serving: serving(application) };
+    return { application, fetch: serving(application) };
   }
 }
 
-class FamilyIdMismatch extends Error {
-  constructor() {
-    super("The database holds another Family id than the Context");
-  }
+function problemOf(error: unknown): OpeningProblem {
+  if (error instanceof FamilyIdConflictError) return "family-id-differs";
+  return error instanceof FamilyNotPreparedError ? "family-not-prepared" : "unavailable";
 }
 
 /** What opens a Family, hashed so that the key holds no secret; the expiry is no part of it. */
@@ -132,7 +131,7 @@ function keyOf({ familyId, databaseUrl, familyKey, blobDirectory }: Context): st
   return createHash("sha256").update(JSON.stringify([familyId, databaseUrl, familyKey, blobDirectory])).digest("hex");
 }
 
-async function closeEntry<T>(entry: Entry<T>): Promise<void> {
+async function closeEntry(entry: Entry): Promise<void> {
   try {
     await (await entry.opening).application.close();
   } catch {

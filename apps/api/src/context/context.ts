@@ -1,4 +1,5 @@
 import { createCipheriv, createDecipheriv, hkdfSync, randomBytes } from "node:crypto";
+import { parseFamilyId, type FamilyId } from "@family-agenda/adapters";
 import { z } from "zod";
 
 /**
@@ -7,25 +8,33 @@ import { z } from "zod";
  */
 export type Context = {
   /** The Family id, which the database the Context names must hold. */
-  familyId: string;
+  familyId: FamilyId;
   /** The Family's database, as a Postgres connection string, password included. */
   databaseUrl: string;
   /** The family key the Family's Source credentials are stored under: 32 bytes, base64url. */
   familyKey: string;
   /** The blob directory the Family's folder lies in. */
   blobDirectory: string;
-  /** Milliseconds since the epoch; the Context is refused from then on. */
+  /**
+   * Milliseconds since the epoch; the Context is refused from then on, after a little skew, and
+   * when it lies further ahead than `maximumContextLifetimeMs`.
+   */
   expiresAt: number;
 };
+
+/** The longest a Context may last: one lasting longer is refused, as `seal-context` refuses to seal one. */
+export const maximumContextLifetimeMs = 24 * 60 * 60_000;
+
+/** How long after its expiry a Context is still taken, for clocks of the caller and the core that differ a little. */
+export const expirySkewMs = 30_000;
 
 /** The request header a Context reaches the core in; nowhere else is one read. */
 export const contextHeader = "x-family-context";
 
 const familyKeyLength = 32;
-const uuid = /^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i;
 
 const contextSchema = z.strictObject({
-  familyId: z.string().regex(uuid),
+  familyId: z.string().transform((text, context) => parseFamilyId(text) ?? (context.addIssue({ code: "custom", message: "no UUID" }), z.NEVER)),
   databaseUrl: z.string().min(1),
   familyKey: z.string().refine((text) => Buffer.from(text, "base64url").length === familyKeyLength),
   blobDirectory: z.string().min(1),
@@ -59,8 +68,13 @@ export function openContext(contextKey: string, text: string, now: number): Cont
   const sealed = partsOf(text);
   if (sealed === null) return null;
   const parsed = contextSchema.safeParse(decrypted(contextKey, sealed));
-  if (!parsed.success || parsed.data.expiresAt <= now) return null;
+  if (!parsed.success || !isLive(parsed.data.expiresAt, now)) return null;
   return parsed.data;
+}
+
+/** Whether a Context expiring at `expiresAt` is taken at `now`: not expired beyond the skew, and not lasting too long. */
+function isLive(expiresAt: number, now: number): boolean {
+  return expiresAt + expirySkewMs > now && expiresAt - now <= maximumContextLifetimeMs;
 }
 
 type Sealed = { iv: Buffer; ciphertext: Buffer; tag: Buffer };

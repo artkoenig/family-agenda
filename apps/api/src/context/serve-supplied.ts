@@ -12,12 +12,12 @@ const sweepEveryMs = 60_000;
 
 /**
  * Starts a core in supplied mode (ADR-0003): no database, master key file or blob directory of its
- * own, only the pages listener, where every request supplies the Context of its Family. The
- * Triggered operations are not offered.
+ * own, and no listener on `PORT`: only the caller port, where every request supplies the Context of
+ * its Family. The Triggered operations are not offered.
  */
 export async function serveSupplied(config: SuppliedConfig, log: { info(message: string): void; warn(message: string): void }) {
   const shared = await bootShared(config);
-  const families = new SuppliedFamilies<FamilyFetch>({
+  const families = new SuppliedFamilies({
     shared,
     // Settings of their own come with the Context later (#380); until then, the environment's for every Family.
     settings: { identityProvider: config.identityProvider },
@@ -26,23 +26,25 @@ export async function serveSupplied(config: SuppliedConfig, log: { info(message:
         trustProxy: config.trustProxy,
         version: config.version,
         ...(config.publicUrl ? { publicUrl: config.publicUrl } : {}),
+        // As on the one listener of a fixed core: Agendas open without a secret until Agenda Links are reworked (ADR-0004).
         agendaAccess: openAgendaAccess,
       });
-      return (request, env) => app.fetch(request, env as HttpBindings);
+      const fetch: FamilyFetch = (request, env) => app.fetch(request, env as HttpBindings);
+      return fetch;
     },
   });
   const sweeping = setInterval(() => void families.sweep(), sweepEveryMs);
   sweeping.unref();
   const fetch = suppliedFetch({ contextKey: config.contextKey, families, version: config.version, log });
   const { server, port } = await new Promise<{ server: ReturnType<typeof serve>; port: number }>((resolve) => {
-    const listening = serve({ fetch, port: config.port }, (info) => {
-      log.info(`Family Agenda listening on port ${info.port} in supplied mode`);
+    const listening = serve({ fetch, port: config.callerPort }, (info) => {
+      log.info(`Family Agenda listening on caller port ${info.port} in supplied mode`);
       resolve({ server: listening, port: info.port });
     });
   });
   log.info("Triggered operations are off in supplied mode");
   return {
-    /** The port the pages listener listens on. */
+    /** The caller port it listens on. */
     port,
     close: () =>
       new Promise<void>((resolve) => {

@@ -1,13 +1,15 @@
 import { randomBytes, randomUUID } from "node:crypto";
-import { mkdtemp, readdir, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { FileBlobStore, parseFamilyId, type PostgresConnection } from "@family-agenda/adapters";
+import { PGlite } from "@electric-sql/pglite";
+import { FileBlobStore, parseFamilyId, postgresSchema, type FamilyId, type PostgresConnection } from "@family-agenda/adapters";
+import { drizzle } from "drizzle-orm/pglite";
 import { openAgendaAccess } from "@family-agenda/application";
 import type { BlobRef } from "@family-agenda/domain";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { bootShared, type Application } from "../../src/composition-root";
-import { contextHeader, sealContext, type Context } from "../../src/context/context";
+import { contextHeader, expirySkewMs, sealContext, type Context } from "../../src/context/context";
 import { SuppliedFamilies } from "../../src/context/supplied-families";
 import { suppliedFetch, type FamilyFetch } from "../../src/context/supplied-http";
 import { createHttpApp } from "../../src/http/app";
@@ -26,14 +28,14 @@ describe("a core in supplied mode", () => {
   let closed: string[];
   let seen: Request[];
   let warnings: string[];
-  let families: SuppliedFamilies<FamilyFetch & { application: Application }>;
+  let families: SuppliedFamilies;
   let fetch: (request: Request) => Promise<Response>;
   let a: Context;
   let b: Context;
 
   const familyOf = async (name: string): Promise<Context> => {
     const database = await acquirePostgres();
-    const familyId = randomUUID();
+    const familyId = randomUUID() as FamilyId;
     // Databases come from one snapshot, and so with the same Family id at first.
     await database.query(`update family set family_id = '${familyId}'`);
     databases.set(`postgres://${name}`, database);
@@ -46,7 +48,16 @@ describe("a core in supplied mode", () => {
     };
   };
 
+  /** Databases that are not a test Instance's, such as an empty one. */
+  let others: Map<string, PGlite>;
+
   const connectDatabase = (databaseUrl: string): PostgresConnection => {
+    const other = others.get(databaseUrl);
+    if (other) {
+      opened.push(databaseUrl);
+      const migrate = () => Promise.reject(new Error("never migrated on opening"));
+      return { db: drizzle(other, { schema: postgresSchema }), migrate, close: () => Promise.resolve(void closed.push(databaseUrl)) };
+    }
     const database = databases.get(databaseUrl);
     if (!database) throw new Error("no such database");
     opened.push(databaseUrl);
@@ -72,13 +83,14 @@ describe("a core in supplied mode", () => {
   beforeEach(async () => {
     directory = await mkdtemp(join(tmpdir(), "family-agenda-supplied-"));
     databases = new Map();
+    others = new Map();
     now = Date.parse("2026-09-14T07:00:00Z");
     opened = [];
     closed = [];
     seen = [];
     warnings = [];
     const shared = await bootShared({ tessdataDirectory: join(directory, "tessdata"), bundledTessdataDirectory: null, clock: new FakeClock(new Date(now)) });
-    families = new SuppliedFamilies<FamilyFetch & { application: Application }>({
+    families = new SuppliedFamilies({
       shared,
       settings: { timeZone: "Europe/Berlin" },
       connectDatabase,
@@ -90,7 +102,7 @@ describe("a core in supplied mode", () => {
           seen.push(incoming);
           return app.fetch(incoming, env as never);
         };
-        return Object.assign(serve, { application });
+        return serve;
       },
     });
     fetch = suppliedFetch({ contextKey, families, version: "test", log: { warn: (message) => warnings.push(message) }, now: () => now });
@@ -101,6 +113,7 @@ describe("a core in supplied mode", () => {
   afterEach(async () => {
     await families.close();
     for (const database of databases.values()) await database.release();
+    for (const other of others.values()) await other.close();
     await rm(directory, { recursive: true, force: true });
   });
 
@@ -117,7 +130,7 @@ describe("a core in supplied mode", () => {
 
   it.each<[string, () => Context | string | null]>([
     ["without a Context", () => null],
-    ["with an expired one", () => ({ ...a, expiresAt: now })],
+    ["with an expired one", () => ({ ...a, expiresAt: now - expirySkewMs })],
     ["with an altered one", () => `${sealContext(contextKey, a).slice(0, -2)}AA`],
     ["with one sealed with another key", () => sealContext("another-context-key-of-at-least-32-chars", a)],
     ["with a Context in the query instead of its header", () => null],
@@ -176,8 +189,9 @@ describe("a core in supplied mode", () => {
     now += idleMs - 1;
     await request(b);
     expect(closed).toEqual([]);
+    // The next request after the idle time, of another Family, closes A on the core's clock.
     now += 1;
-    await families.sweep();
+    await request(b);
     expect(closed).toEqual([a.databaseUrl]);
     expect(families.size).toBe(1);
 
@@ -185,6 +199,39 @@ describe("a core in supplied mode", () => {
     expect(opened).toEqual([a.databaseUrl, b.databaseUrl, a.databaseUrl]);
     await families.close();
     expect(closed.sort()).toEqual([a.databaseUrl, a.databaseUrl, b.databaseUrl]);
+  });
+
+  it("refuses a Context naming an empty database, writing nothing to it", async () => {
+    const empty = await PGlite.create();
+    others.set("postgres://empty", empty);
+
+    const answer = await request({ ...a, databaseUrl: "postgres://empty" });
+
+    expect(answer.status).toBe(409);
+    expect(await answer.text()).toContain("family-not-prepared");
+    expect(closed).toEqual(["postgres://empty"]);
+    expect((await empty.query("select count(*)::int as n from information_schema.tables where table_schema not in ('pg_catalog', 'information_schema')")).rows).toEqual([{ n: 0 }]);
+  });
+
+  it("refuses a Context naming a database this version has not prepared, migrating nothing", async () => {
+    const behind = await PGlite.create();
+    others.set("postgres://behind", behind);
+    await behind.exec("create schema drizzle; create table drizzle.__drizzle_migrations (id serial primary key, hash text not null, created_at bigint); insert into drizzle.__drizzle_migrations (hash) values ('an older migration')");
+
+    expect((await request({ ...a, databaseUrl: "postgres://behind" })).status).toBe(409);
+    expect((await behind.query("select hash from drizzle.__drizzle_migrations")).rows).toEqual([{ hash: "an older migration" }]);
+    expect((await behind.query("select count(*)::int as n from information_schema.tables where table_schema = 'public'")).rows).toEqual([{ n: 0 }]);
+    expect(families.size).toBe(0);
+  });
+
+  it("leaves the shared blob directory as it is on opening: no blobs of the earlier layout are moved", async () => {
+    await mkdir(a.blobDirectory);
+    const stray = randomUUID();
+    await writeFile(join(a.blobDirectory, stray), "a blob of the layout before Family folders");
+
+    expect((await request(a)).status).toBe(200);
+    expect((await request({ ...a, familyId: b.familyId })).status).toBe(403);
+    expect(await readdir(a.blobDirectory)).toEqual([stray]);
   });
 
   it("hands the Family's pages the request without its Context, and answers with none", async () => {

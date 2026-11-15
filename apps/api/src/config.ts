@@ -50,8 +50,23 @@ export type TriggerConfig = {
  */
 export type ContextMode = "fixed" | "supplied";
 
-/** The shortest Context key, as for the ticket key. */
-const minimumContextKeyLength = 32;
+/**
+ * The shortest shared key, the ticket key as the Context key: the generator writes 24 random bytes
+ * as 32 characters.
+ */
+export const minimumKeyLength = 32;
+
+/** The settings of the one Family of a fixed core, by the variable each comes from; supplied mode refuses them all. */
+const familyVariables = {
+  databaseUrl: "DATABASE_URL",
+  familyId: "FAMILY_ID",
+  masterKeyFile: "MASTER_KEY_FILE",
+  blobDirectory: "BLOB_DIRECTORY",
+} as const;
+
+/** What only a fixed core has: its Family, its pages port and the Triggered operations' listener. */
+type FixedOnly = keyof typeof familyVariables | "port" | "trigger";
+
 
 /** The mode `CONTEXT_MODE` chooses, refusing a Context key without supplied mode and the other way round. */
 export function readMode(env: NodeJS.ProcessEnv = process.env): ContextMode {
@@ -68,24 +83,35 @@ function checkContextKey(mode: ContextMode, key: string): void {
     return;
   }
   if (key === "") throw new Error("CONTEXT_KEY must be set with CONTEXT_MODE=supplied");
-  if (key.length < minimumContextKeyLength) throw new Error(`CONTEXT_KEY must be at least ${minimumContextKeyLength} characters long`);
+  if (key.length < minimumKeyLength) throw new Error(`CONTEXT_KEY must be at least ${minimumKeyLength} characters long`);
 }
 
 /** A core in supplied mode: what it shares among the Families, and no Family of its own. */
-export type SuppliedConfig = Omit<Config, "databaseUrl" | "familyId" | "masterKeyFile" | "blobDirectory" | "trigger"> & {
+export type SuppliedConfig = Omit<Config, FixedOnly> & {
   /** The key the trusted caller seals Contexts with, from `CONTEXT_KEY`. */
   contextKey: string;
+  /**
+   * The caller port, from `CALLER_PORT`: the only listener, where the trusted caller alone sends
+   * requests with their Context; never published. No listener opens on `PORT`.
+   */
+  callerPort: number;
 };
-
-/** The variables that name a fixed Family, which supplied mode never falls back to. */
-const fixedFamilyVariables = ["DATABASE_URL", "FAMILY_ID", "MASTER_KEY_FILE", "BLOB_DIRECTORY"] as const;
 
 /** The configuration of a core in supplied mode (`CONTEXT_MODE=supplied`). */
 export function readSuppliedConfig(env: NodeJS.ProcessEnv = process.env): SuppliedConfig {
   if (readMode(env) !== "supplied") throw new Error("This configuration is for CONTEXT_MODE=supplied only");
-  const given = fixedFamilyVariables.find((variable) => env[variable]);
+  const given = Object.values(familyVariables).find((variable) => env[variable]);
   if (given) throw new Error(`${given} must not be set with CONTEXT_MODE=supplied: every request supplies its Family's Context`);
-  return { ...sharedConfigOf(env), contextKey: env.CONTEXT_KEY ?? "" };
+  const { port, ...shared } = sharedConfigOf(env);
+  return { ...shared, contextKey: env.CONTEXT_KEY ?? "", callerPort: callerPortOf(env.CALLER_PORT, port) };
+}
+
+/** The caller port, which supplied mode requires, apart from the pages port that browsers may reach. */
+function callerPortOf(value: string | undefined, pagesPort: number): number {
+  const port = Number(value || Number.NaN);
+  if (!Number.isInteger(port) || port < 0 || port > 65_535) throw new Error("CALLER_PORT must be set to a port with CONTEXT_MODE=supplied");
+  if (port === pagesPort) throw new Error("CALLER_PORT must differ from PORT: the caller port is never published");
+  return port;
 }
 
 export function readConfig(env: NodeJS.ProcessEnv = process.env): Config {
@@ -103,7 +129,7 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): Config {
 }
 
 /** What a core reads from the environment in either mode. */
-function sharedConfigOf(env: NodeJS.ProcessEnv): Omit<Config, "databaseUrl" | "familyId" | "masterKeyFile" | "blobDirectory" | "trigger"> {
+function sharedConfigOf(env: NodeJS.ProcessEnv): Omit<Config, Exclude<FixedOnly, "port">> {
   const publicUrl = publicUrlOf(env.PUBLIC_URL);
   const pluginContainers = parsePluginUrls(env.PLUGIN_URLS);
   return {
@@ -131,8 +157,6 @@ function triggerConfigOf(env: NodeJS.ProcessEnv): TriggerConfig {
   return { port: Number(env.TRIGGER_PORT ?? 3001), token: env.TRIGGER_TOKEN || null };
 }
 
-/** The shortest ticket key: the generator writes 24 random bytes as 32 characters. */
-const minimumTicketKeyLength = 32;
 
 function egressTicketKeyOf(env: NodeJS.ProcessEnv, pluginContainers: PluginBinding[]): string | null {
   const key = env.EGRESS_TICKET_KEY ?? "";
@@ -140,7 +164,7 @@ function egressTicketKeyOf(env: NodeJS.ProcessEnv, pluginContainers: PluginBindi
     if (pluginContainers.length > 0) throw new Error("EGRESS_TICKET_KEY must be set with PLUGIN_URLS; generating compose.plugins.yaml writes it to .env");
     return null;
   }
-  if (key.length < minimumTicketKeyLength) throw new Error(`EGRESS_TICKET_KEY must be at least ${minimumTicketKeyLength} characters long`);
+  if (key.length < minimumKeyLength) throw new Error(`EGRESS_TICKET_KEY must be at least ${minimumKeyLength} characters long`);
   return key;
 }
 
