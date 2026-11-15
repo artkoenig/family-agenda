@@ -250,3 +250,17 @@ describe("single sign-on over HTTP for known Admins only", () => {
     expect((await instance.app.admins.listAdmins()).map((admin) => admin.email)).toEqual(["anna@example.org", "ben@example.org"]);
   });
 });
+
+describe("adding an Admin over HTTP", () => {
+  it("hints at an empty password only where an Identity Provider is offered", async () => {
+    for (const [settings, hinted] of [[{ identityProvider }, true], [{}, false]] as const) {
+      const instance = await bootHttpForTest({}, { identityProviderClient: new ScriptedIdentityProviderClient(), ...settings });
+      await instance.post("/setup", { email: "anna@example.org", password });
+      await instance.app.recoveryKit.confirm();
+      const cookie = sessionCookieOf(await instance.post("/admin/sign-in", { email: "anna@example.org", password }));
+      const page = await (await instance.get("/admin/admins/new", { cookie })).text();
+      expect(page.includes("Leave it empty")).toBe(hinted);
+      await instance.close();
+    }
+  });
+});

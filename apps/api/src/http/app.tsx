@@ -808,6 +808,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
       <AdminsPage
         admin={c.get("admin")}
         admins={await admins.listAdmins()}
+        singleSignOn={singleSignOn.isOfferedAt(requestBaseOf(c))}
         {...(shown.problem ? { problem: shown.problem } : {})}
         {...(shown.adding ? { adding: shown.adding } : {})}
         {...(shown.editing ? { editing: shown.editing } : {})}

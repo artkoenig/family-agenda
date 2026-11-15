@@ -206,7 +206,7 @@ export function createAdminAccess(deps: AdminAccessDeps) {
         email: string | null;
         emailVerified: boolean;
       },
-      options: { knownAdminsOnly?: boolean } = {},
+      knownAdminsOnly = false,
     ): Promise<IdentitySignInResult> {
       const known = await admins.findByIdentitySubject(identity.subject);
       if (known)
@@ -216,7 +216,7 @@ export function createAdminAccess(deps: AdminAccessDeps) {
         return { ok: false, problem: "identity-email-unverified" };
       const sameEmail = await admins.findByEmail(email);
       if (sameEmail) return linkAndSignIn(sameEmail, identity.subject);
-      if (options.knownAdminsOnly === true)
+      if (knownAdminsOnly)
         return { ok: false, problem: "identity-unknown-admin" };
       return addAndSignIn(email, identity.subject);
     },

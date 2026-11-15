@@ -79,7 +79,7 @@ export function createSingleSignOn(deps: SingleSignOnDeps) {
       if (!identity) return { ok: false, problem: "sso-failed" };
       // Checked at every sign-in; leaving the group ends no running session.
       if (!identity.groups.includes(offered.requiredGroup)) return { ok: false, problem: "sso-not-in-group" };
-      const result = await admins.signInThroughIdentityProvider(identity, { knownAdminsOnly: offered.knownAdminsOnly === true });
+      const result = await admins.signInThroughIdentityProvider(identity, offered.knownAdminsOnly === true);
       if (result.ok) return result;
       return { ok: false, problem: identityProblems[result.problem] };
     },

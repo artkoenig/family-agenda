@@ -175,7 +175,7 @@ export const en = {
     eyebrow: "Instance",
     dialogTitle: "Add an Admin",
     passwordHint: `At least ${minimumPasswordLength} characters. Tell it to them in person.`,
-    newAdminPasswordHint: `At least ${minimumPasswordLength} characters. Tell it to them in person. Leave it empty for an Admin who signs in through the Identity Provider.`,
+    newAdminPasswordHint: `At least ${minimumPasswordLength} characters. Tell it to them in person. Leave it empty for an Admin who signs in only through the Identity Provider.`,
     you: "You",
     admin: "Admin",
     newPassword: "New password",
