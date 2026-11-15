@@ -5,6 +5,7 @@ export * from "./cached";
 export * from "./catalogues";
 export * from "./enabled-source-type";
 export * from "./enablement";
+export * from "./due-work";
 export * from "./extraction";
 export * from "./family-members";
 export * from "./languages";

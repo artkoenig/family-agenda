@@ -830,9 +830,13 @@ export interface OcrModelStore {
   remove(language: OcrLanguage): Promise<void>;
 }
 
-export interface JobQueue {
-  send(name: string, data: object): Promise<void>;
-  work(name: string, handler: (data: unknown) => Promise<void>): Promise<void>;
+/**
+ * Runs the worker's pieces of work in the Family's database: each occurrence once, however many
+ * workers share the database, and never while the previous run of the same work is still going.
+ */
+export interface WorkRunner {
+  /** Runs `run` on each occurrence of the cron expression `cron` (UTC), and once on start if `atStart`. */
+  every(name: string, cron: string, run: () => Promise<void>, options?: { atStart?: boolean }): Promise<void>;
 }
 
 /** What the worker is busy with in the background: running Sources, or extracting messages. */

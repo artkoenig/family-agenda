@@ -11,7 +11,7 @@ declare module "vitest" {
   export interface ProvidedContext {
     /** A data directory of in-process Postgres with every migration run, as `dumpDataDir` makes it. */
     postgresSnapshot: string;
-    /** Empties every table and puts back the rows the migrations insert, such as `family`. */
+    /** Drops pg-boss's schema, empties every table and puts back the rows the migrations insert, such as `family`. */
     postgresReset: string;
   }
 }
@@ -40,7 +40,8 @@ async function resetScript(postgres: PGlite): Promise<string> {
   const { rows: tables } = await postgres.query<{ name: string }>(
     "SELECT quote_ident(tablename) AS name FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename",
   );
-  const statements = [`TRUNCATE ${tables.map((table) => table.name).join(", ")} RESTART IDENTITY CASCADE`];
+  // pg-boss installs its schema on the first worker's start; the next test starts without one.
+  const statements = ["DROP SCHEMA IF EXISTS pgboss CASCADE", `TRUNCATE ${tables.map((table) => table.name).join(", ")} RESTART IDENTITY CASCADE`];
   for (const { name } of tables) {
     const { rows } = await postgres.query<{ seeded: string | null }>(`SELECT json_agg(t)::text AS seeded FROM ${name} t`);
     const seeded = rows[0]?.seeded;
