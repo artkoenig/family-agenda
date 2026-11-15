@@ -7,7 +7,7 @@ export type IdentityProviderSettings = {
   clientId: string;
   clientSecret: string;
   requiredGroup: string;
-  /** The origin the Family reaches the Instance at; the redirect URI lies below it. */
+  /** The address the Family reaches the Instance at, its path prefix included; the redirect URI lies below it. */
   publicBaseUrl: string;
 };
 
@@ -18,7 +18,7 @@ export type SingleSignOnDeps = {
   admins: AdminAccess;
 };
 
-/** Where the Identity Provider sends an Admin back to, below the public base URL. */
+/** Where the Identity Provider sends an Admin back to, below the public base URL and so below its path prefix. */
 export const singleSignOnCallbackPath = "/sso/callback";
 
 export const defaultRequiredGroup = "homelab-admin";
@@ -43,7 +43,7 @@ export function createSingleSignOn(deps: SingleSignOnDeps) {
   });
 
   return {
-    /** Whether single sign-on is offered to someone who reached the Instance at `origin`. */
+    /** Whether single sign-on is offered to someone who reached the Instance at `origin`, path prefix included. */
     isOfferedAt(origin: string): boolean {
       return at(origin) !== null;
     },
@@ -107,11 +107,11 @@ type SettingsProblem = Extract<ParsedIdentityProviderSettings, { ok: false }>["p
 const settingCheckers: {
   [K in keyof IdentityProviderSettings]: [SettingsProblem, (variables: IdentityProviderVariables) => string | null];
 } = {
-  issuerUrl: ["invalid-issuer-url", (v) => httpUrl(v.issuerUrl ?? "", { keepPath: true })],
+  issuerUrl: ["invalid-issuer-url", (v) => httpUrl(v.issuerUrl ?? "")],
   clientId: ["invalid-client-id", (v) => shortText(v.clientId ?? "")],
   clientSecret: ["client-secret-missing", (v) => (v.clientSecret ?? "").trim() || null],
   requiredGroup: ["invalid-required-group", (v) => shortText(v.requiredGroup ?? defaultRequiredGroup)],
-  publicBaseUrl: ["invalid-public-url", (v) => httpUrl(v.publicBaseUrl ?? "", { keepPath: false })],
+  publicBaseUrl: ["invalid-public-url", (v) => httpUrl(v.publicBaseUrl ?? "")],
 };
 
 /** The Identity Provider the variables configure; none when the issuer is not set. */
@@ -135,11 +135,10 @@ function isShortText(text: string): boolean {
   return text !== "" && text.length <= maximumTextLength;
 }
 
-/** An http or https URL without credentials, query or fragment; its origin, or with its path unless it is the root. */
-function httpUrl(text: string, options: { keepPath: boolean }): string | null {
+/** An http or https URL without credentials, query or fragment, with its path but no trailing slash. */
+function httpUrl(text: string): string | null {
   const url = parsedPlainUrl(text.trim());
   if (!url) return null;
-  if (!options.keepPath) return url.pathname === "/" ? url.origin : null;
   return url.href.replace(/\/+$/, ""); // eslint-disable-line sonarjs/super-linear-regex -- single-char quantifier anchored at end is O(n)
 }
 

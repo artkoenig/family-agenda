@@ -152,6 +152,10 @@ _Avoid_: Token, egress token
 A configuration field of a Source Type whose value is a host the plugin connects to, such as an IMAP server; its value joins the plugin's Allowlist. A pasted URL counts as its host: the scheme and everything from the first `/`, `?` or `#` are dropped. A secret field can be one too, such as a calendar address with a token in it: the core keeps its host in the clear, without user, password or path, as the Admin enters the value.
 _Avoid_: Server field, URL field
 
+**Path prefix**:
+The path an Instance is served below, such as `/agenda`: the path of `PUBLIC_URL`, none without one. The proxy in front removes it; the Instance puts it on every address it emits.
+_Avoid_: Base path, subpath
+
 **Recovery Kit**:
 What an Admin prints or saves at first start to recover the Instance; without it, a backup cannot restore Source credentials.
 _Avoid_: Recovery key, master key (for the document), backup code

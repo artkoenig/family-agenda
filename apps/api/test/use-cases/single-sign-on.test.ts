@@ -272,6 +272,11 @@ describe("the Identity Provider from the environment", () => {
     });
   });
 
+  it("keeps the path prefix of the public base URL, without a trailing slash", () => {
+    const parsed = parseIdentityProviderSettings({ ...variables, publicBaseUrl: `${origin}/agenda/` });
+    expect(parsed.ok && parsed.settings?.publicBaseUrl).toBe(`${origin}/agenda`);
+  });
+
   it.each([
     ["invalid-issuer-url", { issuerUrl: "id.example" }],
     ["invalid-issuer-url", { issuerUrl: "https://id.example?x=1" }],
@@ -283,7 +288,6 @@ describe("the Identity Provider from the environment", () => {
     ["client-secret-missing", { clientSecret: undefined }],
     ["invalid-required-group", { requiredGroup: " " }],
     ["invalid-public-url", { publicBaseUrl: null }],
-    ["invalid-public-url", { publicBaseUrl: `${origin}/agenda` }],
   ])("refuses %s", (problem, change) => {
     expect(parseIdentityProviderSettings({ ...variables, ...change })).toEqual({ ok: false, problem });
   });

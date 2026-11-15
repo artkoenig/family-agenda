@@ -7,13 +7,9 @@ type RequestInit = { cookie?: string; headers?: Record<string, string> };
 /** Requests to one `api` container of an Instance. */
 export type HttpClient = {
   /** Posts a multipart form, as for a file upload. */
-  request(path: string, init: RequestInit & { body: FormData }): Promise<Response>;
-  get(path: string, init?: RequestInit): Promise<Response>;
-  post(
-    path: string,
-    form: Record<string, string>,
-    init?: RequestInit,
-  ): Promise<Response>;
+  request: (path: string, init: RequestInit & { body: FormData }) => Promise<Response>;
+  get: (path: string, init?: RequestInit) => Promise<Response>;
+  post: (path: string, form: Record<string, string>, init?: RequestInit) => Promise<Response>;
 };
 
 export type HttpTestInstance = TestInstance & HttpClient & {
@@ -45,6 +41,35 @@ export async function bootHttpForTest(
       const other = createHttpApp(await instance.bootApiContainer(), { trustProxy: false, agendaAccess: openAgendaAccess, ...options });
       return clientOf({ request: (path, init) => other.request(path, init) });
     },
+  });
+}
+
+export type HttpPrefixedTestInstance = HttpTestInstance & {
+  /** Requests straight to the core, past the proxy, as the health check of the container makes them. */
+  core: HttpClient;
+};
+
+/**
+ * Boots an Instance served below `prefix` (such as `/agenda`), with `PUBLIC_URL` below it. Its
+ * requests take the paths the browser uses, prefix included; like the proxy in front, the client
+ * removes the prefix before the core sees them, and refuses a path outside it.
+ */
+export async function bootHttpForTestBelow(
+  prefix: string,
+  options: Partial<HttpOptions> = {},
+  testOptions: TestOptions = {},
+): Promise<HttpPrefixedTestInstance> {
+  const instance = await bootHttpForTest({ publicUrl: `http://localhost${prefix}`, ...options }, testOptions);
+  const core: HttpClient = { get: instance.get, post: instance.post, request: instance.request };
+  const unprefixed = (path: string) => {
+    if (!path.startsWith(`${prefix}/`)) throw new Error(`${path} lies outside the prefix ${prefix}`);
+    return path.slice(prefix.length);
+  };
+  return Object.assign(instance, {
+    core,
+    get: (path: string, init?: RequestInit) => core.get(unprefixed(path), init),
+    post: (path: string, form: Record<string, string>, init?: RequestInit) => core.post(unprefixed(path), form, init),
+    request: (path: string, init: RequestInit & { body: FormData }) => core.request(unprefixed(path), init),
   });
 }
 

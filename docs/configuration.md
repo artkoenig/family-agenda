@@ -10,7 +10,7 @@ How to configure the containers, the address the Family opens, and single sign-o
 |---|---|---|
 | `FAMILY_AGENDA_VERSION` | the release of your `compose.yaml` | Which release to run: a version such as `0.3.1`, `latest` for the newest release, `main` for the main branch (no guarantee that it keeps your data). Leave it unset unless you want to differ from your `compose.yaml` |
 | `PORT` | `8080` | Host port of the `api` |
-| `PUBLIC_URL` | `http://<MDNS_NAME>:<PORT>` | Address the Family opens. Agenda addresses and ICS links are built from it |
+| `PUBLIC_URL` | `http://<MDNS_NAME>:<PORT>` | Address the Family opens. Agenda addresses and ICS links are built from it. A path, such as `https://home.example.org/agenda`, is the path prefix (see below) |
 | `TRUST_PROXY` | `false` | `true` behind your own HTTPS reverse proxy (see below) |
 | `MDNS_NAME` | `family-agenda.local` | Name the `mdns` service announces (Linux host only) |
 | `POSTGRES_PASSWORD` | `family_agenda` | Change it if the port of Postgres is ever exposed |
@@ -67,6 +67,12 @@ What the generated file does:
 - **Own name or HTTPS**: put a reverse proxy in front (Caddy, nginx, Tailscale serve, ...), set `PUBLIC_URL` to the address the Family uses and `TRUST_PROXY=true`.
 - **Short LAN names** (for example `agenda.home`): add a DNS rewrite to the host's IP in your DNS server (AdGuard, Pi-hole, router). Avoid `.lan`, some routers answer it themselves. Let the proxy redirect that name to the public URL, or set `PUBLIC_URL` to it.
 
+### Below a path prefix
+
+To serve the Instance below a path such as `/agenda`, set `PUBLIC_URL` with that path (`https://home.example.org/agenda`) and let the proxy remove the prefix before it passes a request on. The `api` itself still listens at the root; its health check (`/api/health`) answers there, without the prefix. Session and SSO cookies are limited to the prefix, and the SSO redirect URI lies below it. A `PUBLIC_URL` without a path means no prefix.
+
+Not every page writes its addresses below the prefix yet: setting up the first Admin, signing in and out and SSO do; the other pages follow.
+
 `PUBLIC_URL` is the address shown and copied from the Agendas page and used in ICS feeds. Calendar apps need to reach it, and some do not follow an HTTP to HTTPS redirect, so point `PUBLIC_URL` at the final address where you can.
 
 ### `TRUST_PROXY`
@@ -99,7 +105,7 @@ Set these variables (ADR-0007) and restart. Wrong or missing ones stop the Insta
 | `OIDC_CLIENT_ID` | Client ID |
 | `OIDC_CLIENT_SECRET` | Client secret |
 | `OIDC_REQUIRED_GROUP` | Group whose members may sign in. Default `homelab-admin` |
-| `PUBLIC_URL` | Required. Origin only, no path; the SSO button appears only there |
+| `PUBLIC_URL` | Required. The SSO button appears only there; a path in it, the path prefix, is part of the redirect URI |
 
 Behind HTTPS also set `TRUST_PROXY=true` (see above).
 

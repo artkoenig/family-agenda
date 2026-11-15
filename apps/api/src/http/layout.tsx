@@ -3,6 +3,7 @@ import type { Child } from "hono/jsx";
 import { raw } from "hono/html";
 import { editGuards, lazyFragmentErrors } from "./lazy-fragment";
 import { useTranslation } from "./i18n/translation";
+import { href } from "./href";
 
 /**
  * Opens a dialog the server rendered open as a modal one, so that the page behind it is inert
@@ -180,10 +181,10 @@ export function Layout(props: {
           ) : null}
           <script>{raw(themeBoot)}</script>
           <title>{props.title} · Family Agenda</title>
-          <link rel="stylesheet" href="/static/tokens.css" />
-          <link rel="stylesheet" href="/static/design.css" />
-          <link rel="stylesheet" href="/static/avatars.css" />
-          <script src="/static/htmx.min.js" defer></script>
+          <link rel="stylesheet" href={href("/static/tokens.css")} />
+          <link rel="stylesheet" href={href("/static/design.css")} />
+          <link rel="stylesheet" href={href("/static/avatars.css")} />
+          <script src={href("/static/htmx.min.js")} defer></script>
         </head>
         <body class={agenda ? "fam-page fam-agenda" : "fam-page"}>
           {agenda ? (
