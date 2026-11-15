@@ -50,6 +50,7 @@ export const workFailures = {
   "due-work": "Running due Sources and Extraction failed:",
   purge: "Purging messages past their retention failed:",
   "secret-sweep": "Removing secrets nothing refers to failed:",
+  "prepare-family": "Preparing the Family failed:",
 } as const;
 
 /** Runs due work once and logs what failed, as the worker's schedule and a trigger both do. */

@@ -1,18 +1,23 @@
 import { fileURLToPath } from "node:url";
 import { drizzle } from "drizzle-orm/node-postgres";
-import { migrate } from "drizzle-orm/node-postgres/migrator";
 import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
 import pg from "pg";
+import { migrateFamily, type FamilyId } from "./family-id";
 import { refuseNewerMigrationHistory, refuseOldMigrationHistory } from "./migration-history";
 import * as schema from "./schema";
 
 /** The schema in Postgres, through whichever driver reaches it. */
 export type Database = PgDatabase<PgQueryResultHKT, typeof schema>;
 
+export type MigrateOptions = { familyId?: FamilyId };
+
 export type PostgresConnection = {
   db: Database;
-  /** Brings the schema up to date, one connection at a time. */
-  migrate(): Promise<void>;
+  /**
+   * Brings the schema up to date, one connection at a time, and writes a given Family id while the
+   * database has none (`migrateFamily`); a different one already there is refused.
+   */
+  migrate(options?: MigrateOptions): Promise<void>;
   close(): Promise<void>;
 };
 
@@ -29,13 +34,13 @@ export function connectPostgres(databaseUrl: string): PostgresConnection {
   const db = drizzle(pool, { schema });
   return {
     db,
-    async migrate() {
+    async migrate(options = {}) {
       const lockClient = await pool.connect();
       try {
         await lockClient.query("SELECT pg_advisory_lock($1)", [migrationLockKey]);
         await refuseOldMigrationHistory(db, migrationsFolder);
         await refuseNewerMigrationHistory(db, migrationsFolder);
-        await migrate(db, { migrationsFolder });
+        await migrateFamily(db, migrationsFolder, options.familyId);
       } finally {
         await lockClient.query("SELECT pg_advisory_unlock($1)", [migrationLockKey]);
         lockClient.release();
@@ -45,6 +50,6 @@ export function connectPostgres(databaseUrl: string): PostgresConnection {
   };
 }
 
-export async function runMigrations(connection: PostgresConnection): Promise<void> {
-  await connection.migrate();
+export async function runMigrations(connection: PostgresConnection, options: MigrateOptions = {}): Promise<void> {
+  await connection.migrate(options);
 }

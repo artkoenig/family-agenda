@@ -17,3 +17,7 @@ Postgres dumps get copied, attached to bug reports and uploaded as backups, so S
 ## Amendment: the Family id (plugin contract 3.0)
 
 A Family is named by one identifier, its Family id: a random UUID made with the `family` row and kept in its `family_id` column. It names the Family only outside its database: the ticket of a plugin call carries it (ADR-0001); since the Egress Proxy decides from the ticket alone, nothing checks it there yet. Inside the database nothing changes: there is still no `families` table, no other table carries a `family_id` column, and no query filters by Family. Today an Instance answers only for its own Family id; when one Instance serves several Families, each in its own database, the same id is how a request from a shared stateless plugin's Egress Proxy says which database to ask.
+
+## Amendment: the Family id is chosen or drawn once
+
+The Family id is drawn at random when a Family is first prepared, unless the operator gives one before it exists (`FAMILY_ID`, or the body of the Triggered operation `prepare-family`). It is written in the same transaction as the migrations that create the `family` row, so a failed start leaves no random id behind. Once a database holds an id, it never changes: Preparing the Family with a different one is refused before anything changes. Preparing works on the Family's database, not on a booted Family, so that an Instance of several Families can prepare an empty database for a new one.

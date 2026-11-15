@@ -31,6 +31,7 @@ import {
   SystemClock,
   TessdataDirectory,
   tessdataFastCatalog,
+  type FamilyId,
   type PostgresConnection,
   type TessdataCatalog,
 } from "@family-agenda/adapters";
@@ -123,6 +124,8 @@ export type SharedConfig = {
 
 /** What belongs to one Family: its database and what is kept outside it. */
 export type FamilyConfig = DatabaseConfig & {
+  /** The Family id to write for a database that has none yet (`FAMILY_ID`); a random UUID if left out. */
+  familyId?: FamilyId;
   /** Where the master key is kept, outside Postgres; created on first start. */
   masterKeyFile: string;
   /** Where files such as photos are kept, outside Postgres. */
@@ -154,6 +157,9 @@ export type SharedWiring = {
   textExtractor: TextExtractor;
   ocrModels: TessdataDirectory;
 };
+
+/** What preparing the Family did: the Family id it has. */
+export type PreparedFamily = { familyId: string };
 
 export type Application = {
   /** What names the Family outside its database, such as in the ticket of a plugin call. */
@@ -238,20 +244,46 @@ export async function bootApplication(config: ApplicationConfig): Promise<Applic
   return bootFamily(await bootShared(config), config);
 }
 
-/** Wires one Family's use cases to its database, stores and cache, on the wiring the process shares. */
+const connectionOf = (config: DatabaseConfig): PostgresConnection =>
+  "connectDatabase" in config ? config.connectDatabase() : connectPostgres(config.databaseUrl);
+
+/**
+ * Wires one Family's use cases to its database, stores and cache, on the wiring the process shares,
+ * after Preparing the Family, as the Triggered operation `prepare-family` does.
+ */
 export async function bootFamily(shared: SharedWiring, config: FamilyConfig): Promise<Application> {
-  const postgres = "connectDatabase" in config ? config.connectDatabase() : connectPostgres(config.databaseUrl);
+  const postgres = connectionOf(config);
   const { masterKey, familyId } = await withDatabase(postgres, async () => {
-    await runMigrations(postgres);
-    const masterKey = await loadMasterKey(postgres, config.masterKeyFile);
-    return { masterKey, familyId: await new PostgresFamilyRepository(postgres.db).familyId() };
+    // The Family id is read only once the Family is prepared: it never changes after.
+    const { familyId } = await prepareOn(shared, postgres, config.familyId);
+    return { masterKey: await loadMasterKey(postgres, config.masterKeyFile), familyId };
   });
-  const application = wireFamily(shared, config, postgres, masterKey, familyId);
-  await withDatabase(postgres, async () => {
-    await application.sourceTypes.start();
-    await application.catalogues.start();
-  });
-  return application;
+  return wireFamily(shared, config, postgres, masterKey, familyId);
+}
+
+/**
+ * Preparing the Family on its database, booted or not, even empty: brings the schema up to date,
+ * writes a given Family id while there is none and refuses a different one, records the Source
+ * Types seen for the first time as disabled and migrates the configuration of the Sources of
+ * enabled ones. Running it again changes nothing.
+ */
+export async function prepareFamily(shared: SharedWiring, database: DatabaseConfig, familyId?: FamilyId): Promise<PreparedFamily> {
+  const postgres = connectionOf(database);
+  try {
+    return await prepareOn(shared, postgres, familyId);
+  } finally {
+    await postgres.close();
+  }
+}
+
+async function prepareOn(shared: SharedWiring, postgres: PostgresConnection, familyId: FamilyId | undefined): Promise<PreparedFamily> {
+  await runMigrations(postgres, familyId === undefined ? {} : { familyId });
+  const prepared = { familyId: await new PostgresFamilyRepository(postgres.db).familyId() };
+  const registry = shared.plugins.forFamily(prepared.familyId);
+  const sourceTypes = new PostgresSourceTypeRepository(postgres.db);
+  await createSourceTypeAccess({ registry, sourceTypes, sources: new PostgresSourceRepository(postgres.db), clock: shared.clock }).start();
+  await createCatalogueAccess({ cached: createCache(shared.clock), registry, sourceTypes, catalogues: new PostgresCatalogueRepository(postgres.db) }).start();
+  return prepared;
 }
 
 function wireFamily(
