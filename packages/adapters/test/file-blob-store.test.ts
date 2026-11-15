@@ -1,12 +1,18 @@
-import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { BlobRef } from "@family-agenda/domain";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { FileBlobStore } from "../src";
+import { FileBlobStore, parseFamilyId, type FamilyId } from "../src";
 
-const familyId = "0b6f3c1e-8a2d-4f5b-9c7e-1d2a3b4c5d6e";
-const otherFamilyId = "7c1d2e3f-4a5b-4c6d-8e7f-9a0b1c2d3e4f";
+const familyIdOf = (value: string): FamilyId =>
+  parseFamilyId(value) ??
+  (() => {
+    throw new Error(`no Family id: ${value}`);
+  })();
+
+const familyId = familyIdOf("0b6f3c1e-8a2d-4f5b-9c7e-1d2a3b4c5d6e");
+const otherFamilyId = familyIdOf("7c1d2e3f-4a5b-4c6d-8e7f-9a0b1c2d3e4f");
 const looseRef = "11111111-2222-4333-8444-555555555555" as BlobRef;
 
 describe("the blob volume", () => {
@@ -26,6 +32,15 @@ describe("the blob volume", () => {
     expect(await readdir(join(directory, familyId))).toEqual([ref]);
   });
 
+  it.skipIf(process.platform === "win32")(
+    "keeps the Family's folder to its owner",
+    async () => {
+      await store.put(new Uint8Array([1]));
+
+      expect((await stat(join(directory, familyId))).mode & 0o777).toBe(0o700);
+    },
+  );
+
   it("keeps the blobs of two Families on one directory apart", async () => {
     const other = new FileBlobStore(directory, otherFamilyId);
     const ref = await store.put(new Uint8Array([1]));
@@ -38,7 +53,9 @@ describe("the blob volume", () => {
   });
 
   it("has no blob for a reference that is unknown or not one", async () => {
-    expect(await store.get("00000000-0000-4000-8000-000000000000" as BlobRef)).toBeNull();
+    expect(
+      await store.get("00000000-0000-4000-8000-000000000000" as BlobRef),
+    ).toBeNull();
     expect(await store.get("../etc/passwd" as BlobRef)).toBeNull();
   });
 
@@ -59,7 +76,9 @@ describe("the blob volume", () => {
     await store.remove("../outside" as BlobRef);
 
     expect(await store.get(ref)).toBeNull();
-    expect((await readdir(directory)).sort()).toEqual([familyId, "outside"].sort());
+    expect((await readdir(directory)).sort()).toEqual(
+      [familyId, "outside"].sort(),
+    );
   });
 
   describe("moving the blobs of the layout before Family folders", () => {
@@ -72,7 +91,25 @@ describe("the blob volume", () => {
       await store.adoptTopLevelBlobs();
 
       expect(await store.get(looseRef)).toEqual(new Uint8Array([7]));
-      expect((await readdir(directory)).sort()).toEqual([familyId, "22222222-3333-4444-8555-666666666666", "notes.txt"].sort());
+      expect((await readdir(directory)).sort()).toEqual(
+        [familyId, "22222222-3333-4444-8555-666666666666", "notes.txt"].sort(),
+      );
+    });
+
+    it("skips a blob another start moved first", async () => {
+      const refs = [
+        "11111111-2222-4333-8444-000000000001",
+        "11111111-2222-4333-8444-000000000002",
+        "11111111-2222-4333-8444-000000000003",
+      ];
+      for (const ref of refs) await writeFile(join(directory, ref), ref);
+
+      await Promise.all([
+        store.adoptTopLevelBlobs(),
+        new FileBlobStore(directory, familyId).adoptTopLevelBlobs(),
+      ]);
+
+      expect((await readdir(join(directory, familyId))).sort()).toEqual(refs);
     });
 
     it("changes nothing when run twice", async () => {

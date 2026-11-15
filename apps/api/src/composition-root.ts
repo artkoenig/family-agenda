@@ -269,7 +269,7 @@ export async function bootFamily(shared: SharedWiring, config: FamilyConfig): Pr
  */
 export async function prepareFamily(
   shared: SharedWiring,
-  database: DatabaseConfig & Partial<Pick<FamilyConfig, "blobDirectory" | "blobStore">>,
+  database: DatabaseConfig & BlobConfig,
   familyId?: FamilyId,
 ): Promise<PreparedFamily> {
   const postgres = connectionOf(database);
@@ -280,8 +280,11 @@ export async function prepareFamily(
   }
 }
 
+/** Where a Family's blobs are kept, as far as Preparing the Family needs to know. */
+type BlobConfig = Partial<Pick<FamilyConfig, "blobDirectory" | "blobStore">>;
+
 /** The blob directory the Family's blobs are kept in as files, unless another BlobStore replaces it. */
-const ownBlobDirectory = (config: Partial<Pick<FamilyConfig, "blobDirectory" | "blobStore">>): string | undefined =>
+const ownBlobDirectory = (config: BlobConfig): string | undefined =>
   config.blobStore === undefined ? config.blobDirectory : undefined;
 
 async function prepareOn(
@@ -289,7 +292,7 @@ async function prepareOn(
   postgres: PostgresConnection,
   familyId: FamilyId | undefined,
   blobDirectory: string | undefined,
-): Promise<PreparedFamily> {
+): Promise<PreparedFamily & { familyId: FamilyId }> {
   await runMigrations(postgres, familyId === undefined ? {} : { familyId });
   const prepared = { familyId: await new PostgresFamilyRepository(postgres.db).familyId() };
   // Blobs of the layout before Family folders move into the Family's folder (docs/upgrading.md).
@@ -306,7 +309,7 @@ function wireFamily(
   config: FamilyConfig,
   postgres: PostgresConnection,
   masterKey: Buffer,
-  familyId: string,
+  familyId: FamilyId,
 ): Application {
   const { clock, extractor, textExtractor, ocrModels } = shared;
   const timeZone = config.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
