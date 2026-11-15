@@ -255,7 +255,7 @@ export async function bootFamily(shared: SharedWiring, config: FamilyConfig): Pr
   const postgres = connectionOf(config);
   const { masterKey, familyId } = await withDatabase(postgres, async () => {
     // The Family id is read only once the Family is prepared: it never changes after.
-    const { familyId } = await prepareOn(shared, postgres, config.familyId);
+    const { familyId } = await prepareOn(shared, postgres, config.familyId, ownBlobDirectory(config));
     return { masterKey: await loadMasterKey(postgres, config.masterKeyFile), familyId };
   });
   return wireFamily(shared, config, postgres, masterKey, familyId);
@@ -263,22 +263,37 @@ export async function bootFamily(shared: SharedWiring, config: FamilyConfig): Pr
 
 /**
  * Preparing the Family on its database, booted or not, even empty: brings the schema up to date,
- * writes a given Family id while there is none and refuses a different one, records the Source
+ * writes a given Family id while there is none and refuses a different one, moves blobs of the old layout into the Family's folder, records the Source
  * Types seen for the first time as disabled and migrates the configuration of the Sources of
  * enabled ones. Running it again changes nothing.
  */
-export async function prepareFamily(shared: SharedWiring, database: DatabaseConfig, familyId?: FamilyId): Promise<PreparedFamily> {
+export async function prepareFamily(
+  shared: SharedWiring,
+  database: DatabaseConfig & Partial<Pick<FamilyConfig, "blobDirectory" | "blobStore">>,
+  familyId?: FamilyId,
+): Promise<PreparedFamily> {
   const postgres = connectionOf(database);
   try {
-    return await prepareOn(shared, postgres, familyId);
+    return await prepareOn(shared, postgres, familyId, ownBlobDirectory(database));
   } finally {
     await postgres.close();
   }
 }
 
-async function prepareOn(shared: SharedWiring, postgres: PostgresConnection, familyId: FamilyId | undefined): Promise<PreparedFamily> {
+/** The blob directory the Family's blobs are kept in as files, unless another BlobStore replaces it. */
+const ownBlobDirectory = (config: Partial<Pick<FamilyConfig, "blobDirectory" | "blobStore">>): string | undefined =>
+  config.blobStore === undefined ? config.blobDirectory : undefined;
+
+async function prepareOn(
+  shared: SharedWiring,
+  postgres: PostgresConnection,
+  familyId: FamilyId | undefined,
+  blobDirectory: string | undefined,
+): Promise<PreparedFamily> {
   await runMigrations(postgres, familyId === undefined ? {} : { familyId });
   const prepared = { familyId: await new PostgresFamilyRepository(postgres.db).familyId() };
+  // Blobs of the layout before Family folders move into the Family's folder (docs/upgrading.md).
+  if (blobDirectory !== undefined) await new FileBlobStore(blobDirectory, prepared.familyId).adoptTopLevelBlobs();
   const registry = shared.plugins.forFamily(prepared.familyId);
   const sourceTypes = new PostgresSourceTypeRepository(postgres.db);
   await createSourceTypeAccess({ registry, sourceTypes, sources: new PostgresSourceRepository(postgres.db), clock: shared.clock }).start();
@@ -296,7 +311,7 @@ function wireFamily(
   const { clock, extractor, textExtractor, ocrModels } = shared;
   const timeZone = config.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
   const secrets = config.secretStore ?? new EnvelopeSecretStore(postgres.db, masterKey);
-  const blobs = config.blobStore ?? new FileBlobStore(config.blobDirectory);
+  const blobs = config.blobStore ?? new FileBlobStore(config.blobDirectory, familyId);
   const registry = shared.plugins.forFamily(familyId);
   const families = new PostgresFamilyRepository(postgres.db);
 
