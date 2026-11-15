@@ -1,6 +1,7 @@
 import { openAgendaAccess } from "@family-agenda/application";
+import type { Application } from "../../src/composition-root";
 import { createHttpApp, type HttpOptions } from "../../src/http/app";
-import { bootForTest, type OtherFamily, type TestInstance, type TestOptions } from "./boot";
+import { bootForTest, type SecondFamily, type TestInstance, type TestOptions } from "./boot";
 
 type RequestInit = { cookie?: string; headers?: Record<string, string> };
 
@@ -15,8 +16,8 @@ export type HttpClient = {
 export type HttpTestInstance = TestInstance & HttpClient & {
   /** Boots a second `api` container against the same database, and drives its Hono app. */
   bootHttpApiContainer(): Promise<HttpClient>;
-  /** Boots a second Family in the same core, with a database of its own, and drives its Hono app. */
-  bootHttpOtherFamily(): Promise<HttpClient & OtherFamily>;
+  /** Boots a second Family in the same process, with a database of its own, and drives its Hono app. */
+  bootHttpSecondFamily(): Promise<HttpClient & SecondFamily>;
 };
 
 /** Boots an Instance and drives its Hono app with in-process requests. */
@@ -25,14 +26,15 @@ export async function bootHttpForTest(
   testOptions: TestOptions = {},
 ): Promise<HttpTestInstance> {
   const instance = await bootForTest(testOptions);
+  const httpAppOf = (app: Application) => createHttpApp(app, { trustProxy: false, agendaAccess: openAgendaAccess, ...options });
   // The app of the Instance as it runs now, booted again after a restart.
   let booted = instance.app;
-  let current = createHttpApp(booted, { trustProxy: false, agendaAccess: openAgendaAccess, ...options });
+  let current = httpAppOf(booted);
   const http = {
     request: (path: string, init: Parameters<typeof current.request>[1]) => {
       if (instance.app !== booted) {
         booted = instance.app;
-        current = createHttpApp(booted, { trustProxy: false, agendaAccess: openAgendaAccess, ...options });
+        current = httpAppOf(booted);
       }
       return current.request(path, init);
     },
@@ -40,12 +42,12 @@ export async function bootHttpForTest(
   // The same object, so that `app` stays the one running after a restart.
   return Object.assign(instance, clientOf(http), {
     bootHttpApiContainer: async () => {
-      const other = createHttpApp(await instance.bootApiContainer(), { trustProxy: false, agendaAccess: openAgendaAccess, ...options });
+      const other = httpAppOf(await instance.bootApiContainer());
       return clientOf({ request: (path, init) => other.request(path, init) });
     },
-    bootHttpOtherFamily: async () => {
-      const family = await instance.bootOtherFamily();
-      const other = createHttpApp(family.app, { trustProxy: false, agendaAccess: openAgendaAccess, ...options });
+    bootHttpSecondFamily: async () => {
+      const family = await instance.bootSecondFamily();
+      const other = httpAppOf(family.app);
       return { ...family, ...clientOf({ request: (path, init) => other.request(path, init) }) };
     },
   });

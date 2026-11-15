@@ -4,15 +4,15 @@ import type { SourceTypeId } from "@family-agenda/domain";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { verifyTicket } from "../../src/egress/ticket";
 import { PluginContainers } from "../../src/plugin-containers/registry";
-import { bootForTest, type OtherFamily, type TestInstance } from "../support/boot";
+import { bootForTest, type SecondFamily, type TestInstance } from "../support/boot";
 import { bootHttpForTest, type HttpTestInstance } from "../support/http";
 
 describe("two Families in one process", () => {
   let instance: TestInstance;
-  let other: OtherFamily;
+  let other: SecondFamily;
   beforeEach(async () => {
     instance = await bootForTest();
-    other = await instance.bootOtherFamily();
+    other = await instance.bootSecondFamily();
   });
   afterEach(async () => {
     await instance.close();
@@ -42,7 +42,7 @@ describe("two Families in one process", () => {
   });
 });
 
-describe("two Families in one core over HTTP", () => {
+describe("two Families in one process over HTTP", () => {
   let instance: HttpTestInstance;
   beforeEach(async () => {
     instance = await bootHttpForTest();
@@ -52,7 +52,7 @@ describe("two Families in one core over HTTP", () => {
   });
 
   it("serves each Family from its own database", async () => {
-    const other = await instance.bootHttpOtherFamily();
+    const other = await instance.bootHttpSecondFamily();
 
     const created = await instance.post("/setup", { email: "anna@example.org", password: "correct horse battery" });
     expect(created.status).toBe(303);
@@ -92,13 +92,17 @@ describe("the plugin bindings a process shares", () => {
     try {
       const shared = await PluginContainers.connect(
         [{ sourceTypeId: "school-portal" as SourceTypeId, url: `http://127.0.0.1:${(server.address() as AddressInfo).port}` }],
-        { ticketing: { ticketKey, familyId: "unknown" } },
+        { ticketing: { ticketKey } },
       );
       for (const familyId of ["family-a", "family-b"]) {
         const loaded = await shared.forFamily(familyId).load("school-portal" as SourceTypeId);
         if (!loaded.ok) throw new Error("not loaded");
         await loaded.sourceType.catalogue?.entries();
       }
+
+      const unticketed = await shared.load("school-portal" as SourceTypeId);
+      if (!unticketed.ok) throw new Error("not loaded");
+      await expect(unticketed.sourceType.catalogue?.entries()).rejects.toThrow(/forFamily/);
 
       const familiesOf = proxies.map((proxy) => verifyTicket(ticketKey, decodeURIComponent(new URL(proxy).password), Date.now())?.familyId);
       expect(familiesOf).toEqual(["family-a", "family-b"]);

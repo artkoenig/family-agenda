@@ -54,8 +54,8 @@ export type TestOptions = {
   sourcePlugins?: TestPluginPackage[];
 };
 
-/** A second Family served by the same process, against a database and stores of its own. */
-export type OtherFamily = {
+/** A second Family the same process serves, against a database and stores of its own. */
+export type SecondFamily = {
   app: Application;
   /** Runs SQL against this Family's database. */
   query(sql: string): Promise<Record<string, unknown>[]>;
@@ -94,7 +94,7 @@ export type TestInstance = {
    * and Clock, against a database, master key file and blob directory of its own; it is closed with
    * the Instance.
    */
-  bootOtherFamily(): Promise<OtherFamily>;
+  bootSecondFamily(): Promise<SecondFamily>;
   close(): Promise<void>;
 };
 
@@ -170,12 +170,12 @@ export async function bootForTest(options: TestOptions = {}): Promise<TestInstan
       otherContainers.push(worker);
       return worker;
     },
-    async bootOtherFamily() {
+    async bootSecondFamily() {
       const database = await acquirePostgres();
       otherDatabases.push(database);
       // Databases come from one snapshot, and so with the same Family id at first.
       await database.query("update family set family_id = gen_random_uuid()");
-      const directory = await mkdtemp(join(keyDirectory, "other-family-"));
+      const directory = await mkdtemp(join(keyDirectory, "second-family-"));
       const app = await bootFamily(shared, {
         connectDatabase: () => database.connect(),
         masterKeyFile: join(directory, "master.key"),

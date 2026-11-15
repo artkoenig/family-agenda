@@ -109,7 +109,7 @@ export type SharedConfig = {
   pluginContainerOptions?: Omit<PluginContainerOptions, "ticketing">;
   /**
    * The key the tickets of plugin calls are signed with, shared with the egress proxies
-   * (`EGRESS_TICKET_KEY`); without one, a random key no proxy shares.
+   * (`EGRESS_TICKET_KEY`); without it, a random key that no proxy knows, so every ticket is refused.
    */
   egressTicketKey?: string | null;
   clock?: Clock;
@@ -207,8 +207,8 @@ export async function bootShared(config: SharedConfig): Promise<SharedWiring> {
   await ocrModels.linkBundled();
   const plugins = await PluginContainers.connect(config.pluginContainers ?? [], {
     ...config.pluginContainerOptions,
-    // Every Family's calls carry its own id (`forFamily`); this one is never ticketed.
-    ticketing: { ticketKey: config.egressTicketKey ?? randomBytes(32).toString("base64url"), familyId: "unknown" },
+    // No Family id: each Family's calls are ticketed for it alone, through `forFamily`.
+    ticketing: { ticketKey: config.egressTicketKey ?? randomBytes(32).toString("base64url") },
   });
   return {
     clock: config.clock ?? new SystemClock(),
