@@ -101,6 +101,7 @@ export function FirstAdminPage(props: {
   /** Whether the first Admin may come from the Identity Provider instead. */
   singleSignOn?: boolean;
 }) {
+  const prefix = usePathPrefix();
   const { t } = useTranslation();
   return (
     <EntrancePage
@@ -108,7 +109,7 @@ export function FirstAdminPage(props: {
       intro={t.setup.intro}
       problem={props.problem}
     >
-      <form method="post" action={href(usePathPrefix(), "/setup")} class="fam-sheet__form">
+      <form method="post" action={href(prefix, "/setup")} class="fam-sheet__form">
         <div class="fam-group__fields">
           <div class="fam-field">
             <label for="email">{t.common.email}</label>
@@ -146,7 +147,7 @@ export function FirstAdminPage(props: {
             {t.setup.submit}
           </button>
           {props.singleSignOn ? (
-            <a href={href(usePathPrefix(), "/sso/start")} class="fam-button">
+            <a href={href(prefix, "/sso/start")} class="fam-button">
               {t.signIn.singleSignOn}
             </a>
           ) : null}
@@ -161,10 +162,11 @@ export function SignInPage(props: {
   problem?: string;
   singleSignOn?: boolean;
 }) {
+  const prefix = usePathPrefix();
   const { t } = useTranslation();
   return (
     <EntrancePage title={t.signIn.title} problem={props.problem}>
-      <form method="post" action={href(usePathPrefix(), "/admin/sign-in")} class="fam-sheet__form">
+      <form method="post" action={href(prefix, "/admin/sign-in")} class="fam-sheet__form">
         <div class="fam-group__fields">
           <div class="fam-field">
             <label for="email">{t.common.email}</label>
@@ -194,7 +196,7 @@ export function SignInPage(props: {
             {t.signIn.submit}
           </button>
           {props.singleSignOn ? (
-            <a href={href(usePathPrefix(), "/sso/start")} class="fam-button">
+            <a href={href(prefix, "/sso/start")} class="fam-button">
               {t.signIn.singleSignOn}
             </a>
           ) : null}
@@ -235,13 +237,13 @@ type SectionId =
   | "recovery-kit";
 
 /** `fragment` loads a fresher summary right after the page, which does not wait for it. */
-type Summary = { text: string; tone?: "attention"; fragment?: string };
+type Summary = { text: string; tone?: "attention"; fragment?: `/${string}` };
 
 type SettingsGroup = {
   name: string;
   sections: {
     id: SectionId;
-    href: string;
+    href: `/${string}`;
     label: string;
     summary: (s: SignedInAdmin) => Summary;
   }[];
@@ -351,7 +353,7 @@ function llmSummary(
     failing || settings.ocr.missing ? { tone: "attention" as const } : {};
   const fragment =
     settings.llm && health === null
-      ? { fragment: "/admin/llm/nav-status" }
+      ? { fragment: "/admin/llm/nav-status" as const }
       : {};
   return { text, ...tone, ...fragment };
 }
@@ -389,6 +391,7 @@ export function LlmNavSummary(props: {
 }
 
 function NavSummary(props: { summary: Summary }) {
+  const prefix = usePathPrefix();
   const { summary } = props;
   const text = (
     <span
@@ -402,7 +405,7 @@ function NavSummary(props: { summary: Summary }) {
     </span>
   );
   return summary.fragment ? (
-    <LazyFragment href={summary.fragment}>{text}</LazyFragment>
+    <LazyFragment href={href(prefix, summary.fragment)}>{text}</LazyFragment>
   ) : (
     text
   );
@@ -485,6 +488,7 @@ function AdminLayout(props: {
   dialog?: Child;
   children: Child;
 }) {
+  const prefix = usePathPrefix();
   const { admin, current } = props;
   const translation = useTranslation();
   const { t } = translation;
@@ -492,12 +496,12 @@ function AdminLayout(props: {
     <Layout title={props.title}>
       <header class="fam-settings__header">
         <div class="fam-settings__brand">
-          <a href={href(usePathPrefix(), "/admin")}>Family Agenda</a>
+          <a href={href(prefix, "/admin")}>Family Agenda</a>
           <span>{t.settings.title}</span>
         </div>
         <div class="fam-settings__account">
           <span class="fam-settings__who">{admin.email}</span>
-          <form method="post" action={href(usePathPrefix(), "/admin/sign-out")}>
+          <form method="post" action={href(prefix, "/admin/sign-out")}>
             <button type="submit" class="fam-button fam-button--quiet">
               {t.settings.signOut}
             </button>
@@ -514,7 +518,7 @@ function AdminLayout(props: {
                 return (
                   <a
                     class="fam-navitem"
-                    href={section.href}
+                    href={href(prefix, section.href)}
                     aria-current={current === section.id ? "page" : undefined}
                   >
                     <SectionIcon id={section.id} />
@@ -543,7 +547,7 @@ function AdminLayout(props: {
                 {current !== "sources" ? (
                   <>
                     {" "}
-                    <a href="/admin/sources">{t.settings.lookAtSources}</a>
+                    <a href={href(prefix, "/admin/sources")}>{t.settings.lookAtSources}</a>
                   </>
                 ) : null}
               </div>
@@ -775,6 +779,7 @@ export function AdminsPage(props: {
   /** The dialog of another Admin, open with why a new password was refused. */
   editing?: { id: AdminId; problem?: string };
 }) {
+  const prefix = usePathPrefix();
   const { adding, editing } = props;
   const { t } = useTranslation();
   const edited = editing
@@ -787,11 +792,11 @@ export function AdminsPage(props: {
       id="edit-admin"
       eyebrow={t.admins.eyebrow}
       title={edited.email}
-      closeHref="/admin/admins"
+      closeHref={href(prefix, "/admin/admins")}
     >
       <form
         method="post"
-        action={`/admin/admins/${edited.id}/password`}
+        action={href(prefix, `/admin/admins/${edited.id}/password`)}
         class="fam-dialog__form"
       >
         <Problem message={editing?.problem} />
@@ -809,7 +814,7 @@ export function AdminsPage(props: {
           <small>{t.admins.passwordHint}</small>
         </div>
         <DialogFooter
-          closeHref="/admin/admins"
+          closeHref={href(prefix, "/admin/admins")}
           submit={t.admins.resetPassword}
         />
       </form>
@@ -819,9 +824,9 @@ export function AdminsPage(props: {
       id="add-admin"
       eyebrow={t.admins.eyebrow}
       title={t.admins.dialogTitle}
-      closeHref="/admin/admins"
+      closeHref={href(prefix, "/admin/admins")}
     >
-      <form method="post" action="/admin/admins" class="fam-dialog__form">
+      <form method="post" action={href(prefix, "/admin/admins")} class="fam-dialog__form">
         <Problem message={adding.problem} />
         <div class="fam-field">
           <label for="email">{t.common.email}</label>
@@ -846,7 +851,7 @@ export function AdminsPage(props: {
           />
           <small>{t.admins.passwordHint}</small>
         </div>
-        <DialogFooter closeHref="/admin/admins" submit={t.admins.add} />
+        <DialogFooter closeHref={href(prefix, "/admin/admins")} submit={t.admins.add} />
       </form>
     </Dialog>
   ) : undefined;
@@ -860,7 +865,7 @@ export function AdminsPage(props: {
       <SectionHeader
         title={t.admins.title}
         description={t.admins.description}
-        action={addButton("/admin/admins/new", t.admins.add)}
+        action={addButton(href(prefix, "/admin/admins/new"), t.admins.add)}
       />
       <Problem message={props.problem} />
       <section class="fam-sheet">
@@ -870,7 +875,7 @@ export function AdminsPage(props: {
               <ListRow name={other.email} meta={t.admins.you} />
             ) : (
               <ListRow
-                href={`/admin/admins/${other.id}`}
+                href={href(prefix, `/admin/admins/${other.id}`)}
                 name={other.email}
                 meta={t.admins.admin}
               />
@@ -896,6 +901,7 @@ export function RecoveryKitPage(props: {
   confirmed: boolean;
   problem?: string | undefined;
 }) {
+  const prefix = usePathPrefix();
   const { t } = useTranslation();
   const k = t.recoveryKit;
   return (
@@ -949,7 +955,7 @@ export function RecoveryKitPage(props: {
             </button>
             <a
               class="fam-button fam-button--quiet"
-              href={href(usePathPrefix(), "/admin/recovery-kit/download")}
+              href={href(prefix, "/admin/recovery-kit/download")}
             >
               {k.download}
             </a>
@@ -958,7 +964,7 @@ export function RecoveryKitPage(props: {
         {props.confirmed ? null : (
           <form
             method="post"
-            action={href(usePathPrefix(), "/admin/recovery-kit/confirm")}
+            action={href(prefix, "/admin/recovery-kit/confirm")}
             class="fam-sheet__form"
           >
             <Group title={k.confirmTitle} level={2}>
@@ -1003,6 +1009,7 @@ function LooksFields(props: {
   avatar: MemberAvatar | null;
   m: Catalogue["members"];
 }) {
+  const prefix = usePathPrefix();
   const { m } = props;
   const initial = initialOf(props.name);
   return (
@@ -1045,7 +1052,7 @@ function LooksFields(props: {
                 checked={props.avatar === avatar}
                 aria-label={m.animals[avatar]}
               />
-              <img src={avatarUrl(avatar)} alt="" loading="lazy" />
+              <img src={href(prefix, avatarUrl(avatar))} alt="" loading="lazy" />
             </label>
           ))}
         </div>
@@ -1077,17 +1084,18 @@ function EditMemberDialog(props: {
   m: Catalogue["members"];
   commonSave: string;
 }) {
+  const prefix = usePathPrefix();
   const { edited, editing, m, commonSave } = props;
   return (
     <Dialog
       id="edit-member"
       eyebrow={m.eyebrow}
       title={edited.name}
-      closeHref="/admin/family-members"
+      closeHref={href(prefix, "/admin/family-members")}
     >
       <form
         method="post"
-        action={`/admin/family-members/${edited.id}`}
+        action={href(prefix, `/admin/family-members/${edited.id}`)}
         enctype="multipart/form-data"
         class="fam-dialog__form"
       >
@@ -1125,14 +1133,14 @@ function EditMemberDialog(props: {
           )}
         </div>
         <DialogFooter
-          closeHref="/admin/family-members"
+          closeHref={href(prefix, "/admin/family-members")}
           submit={commonSave}
           remove={{ form: "remove-member", label: m.remove(edited.name) }}
         />
       </form>
       <RemoveForm
         id="remove-member"
-        action={`/admin/family-members/${edited.id}/remove`}
+        action={href(prefix, `/admin/family-members/${edited.id}/remove`)}
       />
     </Dialog>
   );
@@ -1143,17 +1151,18 @@ function AddMemberDialog(props: {
   newColour: MemberColour;
   m: Catalogue["members"];
 }) {
+  const prefix = usePathPrefix();
   const { adding, m } = props;
   return (
     <Dialog
       id="add-member"
       eyebrow={m.eyebrow}
       title={m.dialogTitle}
-      closeHref="/admin/family-members"
+      closeHref={href(prefix, "/admin/family-members")}
     >
       <form
         method="post"
-        action="/admin/family-members"
+        action={href(prefix, "/admin/family-members")}
         enctype="multipart/form-data"
         class="fam-dialog__form"
       >
@@ -1186,7 +1195,7 @@ function AddMemberDialog(props: {
           />
           <small>{m.photoHint}</small>
         </div>
-        <DialogFooter closeHref="/admin/family-members" submit={m.add} />
+        <DialogFooter closeHref={href(prefix, "/admin/family-members")} submit={m.add} />
       </form>
     </Dialog>
   );
@@ -1201,6 +1210,7 @@ export function FamilyMembersPage(props: {
   /** A Family Member's dialog, open with why a change was refused. */
   editing?: { id: FamilyMemberId; problem?: string } | undefined;
 }) {
+  const prefix = usePathPrefix();
   const { adding, editing } = props;
   const { t } = useTranslation();
   const m = t.members;
@@ -1228,7 +1238,7 @@ export function FamilyMembersPage(props: {
       <SectionHeader
         title={m.title}
         description={m.description}
-        action={addButton("/admin/family-members/new", m.add)}
+        action={addButton(href(prefix, "/admin/family-members/new"), m.add)}
       />
       <Problem message={props.problem} />
       {props.members.length === 0 ? (
@@ -1238,7 +1248,7 @@ export function FamilyMembersPage(props: {
           <ul class="fam-rows">
             {props.members.map((member) => (
               <ListRow
-                href={`/admin/family-members/${member.id}`}
+                href={href(prefix, `/admin/family-members/${member.id}`)}
                 lead={<Avatar member={member} size="sm" />}
                 name={member.name}
                 meta={looksOf(member, m)}
@@ -1308,6 +1318,7 @@ export function AgendasPage(props: {
   /** An Agenda's dialog, open with why a change was refused. */
   editing?: { id: AgendaId; problem?: string };
 }) {
+  const prefix = usePathPrefix();
   const memberOf = (id: string) =>
     props.members.find((member) => member.id === id);
   const { creating, editing } = props;
@@ -1327,17 +1338,17 @@ export function AgendasPage(props: {
   const edited = editing
     ? props.agendas.find((agenda) => agenda.id === editing.id)
     : undefined;
-  const address = edited ? `${props.origin}${agendaUrl(edited.id)}` : "";
+  const address = edited ? `${props.origin}${href(prefix, agendaUrl(edited.id))}` : "";
   const dialog = edited ? (
     <Dialog
       id="edit-agenda"
       eyebrow={v.eyebrow}
       title={entryOf(edited)}
-      closeHref="/admin/agendas"
+      closeHref={href(prefix, "/admin/agendas")}
     >
       <form
         method="post"
-        action={`/admin/agendas/${edited.id}`}
+        action={href(prefix, `/admin/agendas/${edited.id}`)}
         class="fam-dialog__form"
       >
         <Problem message={editing?.problem} />
@@ -1359,14 +1370,14 @@ export function AgendasPage(props: {
           idSuffix={edited.id}
         />
         <DialogFooter
-          closeHref="/admin/agendas"
+          closeHref={href(prefix, "/admin/agendas")}
           submit={t.common.save}
           remove={{ form: "remove-agenda", label: v.remove }}
         />
       </form>
       <RemoveForm
         id="remove-agenda"
-        action={`/admin/agendas/${edited.id}/remove`}
+        action={href(prefix, `/admin/agendas/${edited.id}/remove`)}
       />
     </Dialog>
   ) : creating ? (
@@ -1374,12 +1385,12 @@ export function AgendasPage(props: {
       id="create-agenda"
       eyebrow={v.eyebrow}
       title={v.dialogTitle}
-      closeHref="/admin/agendas"
+      closeHref={href(prefix, "/admin/agendas")}
     >
-      <form method="post" action="/admin/agendas" class="fam-dialog__form">
+      <form method="post" action={href(prefix, "/admin/agendas")} class="fam-dialog__form">
         <Problem message={creating.problem} />
         <AgendaSettingsFields members={props.members} idSuffix="new" />
-        <DialogFooter closeHref="/admin/agendas" submit={v.create} />
+        <DialogFooter closeHref={href(prefix, "/admin/agendas")} submit={v.create} />
       </form>
     </Dialog>
   ) : undefined;
@@ -1393,7 +1404,7 @@ export function AgendasPage(props: {
       <SectionHeader
         title={v.title}
         description={v.description}
-        action={addButton("/admin/agendas/new", v.create)}
+        action={addButton(href(prefix, "/admin/agendas/new"), v.create)}
       />
       <Problem message={props.problem} />
       {props.agendas.length === 0 ? (
@@ -1408,7 +1419,7 @@ export function AgendasPage(props: {
               const names = namesOf(agenda);
               return (
                 <ListRow
-                  href={`/admin/agendas/${agenda.id}`}
+                  href={href(prefix, `/admin/agendas/${agenda.id}`)}
                   lead={
                     shown.length > 0 ? (
                       <span class="fam-avatars">
@@ -4019,6 +4030,7 @@ export function LlmEndpointPage(props: {
   entered?: { baseUrl: string; model: string };
   problem?: string;
 }) {
+  const prefix = usePathPrefix();
   const { endpoint } = props;
   const shown = props.entered ?? endpoint;
   const { t } = useTranslation();
@@ -4032,14 +4044,14 @@ export function LlmEndpointPage(props: {
         description={l.description}
       />
       <Problem message={props.problem} />
-      <form method="post" action="/admin/llm" class="fam-sheet fam-sheet__form">
+      <form method="post" action={href(prefix, "/admin/llm")} class="fam-sheet fam-sheet__form">
         <Group title={l.connection} level={2}>
           <ConnectionFields shown={shown} endpoint={endpoint} />
         </Group>
         <OptionsGroup configured={endpoint !== null} />
       </form>
       {endpoint ? (
-        <form method="post" action="/admin/llm/remove" id="remove-llm" />
+        <form method="post" action={href(prefix, "/admin/llm/remove")} id="remove-llm" />
       ) : null}
       {endpoint && props.waiting > 0 ? (
         <section class="fam-sheet">
@@ -4155,13 +4167,16 @@ function ConnectionFields(props: {
  * a failing request leaves the fields as they are.
  */
 function StatusLoader(props: { model: string }) {
-  const href = props.model
-    ? `/admin/llm/status?model=${encodeURIComponent(props.model)}`
-    : "/admin/llm/status";
+  const status = href(
+    usePathPrefix(),
+    props.model
+      ? `/admin/llm/status?model=${encodeURIComponent(props.model)}`
+      : "/admin/llm/status",
+  );
   return (
     <div
       id="llm-status-loader"
-      hx-get={href}
+      hx-get={status}
       hx-trigger="load"
       hx-swap="none"
       data-unless-edited="#llm-connection"
@@ -4171,13 +4186,14 @@ function StatusLoader(props: { model: string }) {
 
 /** Asks the entered URL with the entered API key, swapping in the model field with what it answered. */
 function TestConnectionButton() {
+  const prefix = usePathPrefix();
   const { t } = useTranslation();
   return (
     <div class="fam-field">
       <button
         type="button"
         class="fam-button"
-        hx-post="/admin/llm/test"
+        hx-post={href(prefix, "/admin/llm/test")}
         hx-include="#baseUrl, #apiKey, #model"
         hx-target="#model-field"
         hx-swap="outerHTML"
@@ -4352,6 +4368,7 @@ function OcrLanguageButton(props: {
 
 /** The OCR section: its switch, and while it is on the languages with their models. */
 function OcrSections(props: { languages: LanguageSettings }) {
+  const prefix = usePathPrefix();
   const { languages } = props;
   const { t } = useTranslation();
   const l = t.ocr;
@@ -4368,7 +4385,7 @@ function OcrSections(props: { languages: LanguageSettings }) {
             </span>
             <form
               method="post"
-              action="/admin/llm/ocr/enabled"
+              action={href(prefix, "/admin/llm/ocr/enabled")}
               class="fam-row__form"
             >
               <input
@@ -4396,6 +4413,7 @@ function OcrSections(props: { languages: LanguageSettings }) {
 
 /** The OCR languages in the order Tesseract tries them, with what adds, orders and removes them. */
 function OcrLanguageList(props: { languages: LanguageSettings }) {
+  const prefix = usePathPrefix();
   const { languages } = props;
   const { t, locale, ocrLanguageName } = useTranslation();
   const l = t.ocr;
@@ -4421,20 +4439,20 @@ function OcrLanguageList(props: { languages: LanguageSettings }) {
             </span>
             {ocr.installed ? null : (
               <OcrLanguageButton
-                action="/admin/llm/ocr"
+                action={href(prefix, "/admin/llm/ocr")}
                 language={ocr.language}
                 label={l.downloadLanguage(ocrLanguageName(ocr.language))}
               />
             )}
             {index > 0 ? (
               <OcrLanguageButton
-                action={`/admin/llm/ocr/${ocr.language}/up`}
+                action={href(prefix, `/admin/llm/ocr/${ocr.language}/up`)}
                 label={l.moveUp}
               />
             ) : null}
             {languages.ocrLanguages.length > 1 ? (
               <OcrLanguageButton
-                action={`/admin/llm/ocr/${ocr.language}/remove`}
+                action={href(prefix, `/admin/llm/ocr/${ocr.language}/remove`)}
                 label={l.remove}
               />
             ) : null}
@@ -4445,7 +4463,7 @@ function OcrLanguageList(props: { languages: LanguageSettings }) {
         <p class="fam-problem">{l.missingModel}</p>
       ) : null}
       {addable.length > 0 ? (
-        <form method="post" action="/admin/llm/ocr" class="fam-inline-add">
+        <form method="post" action={href(prefix, "/admin/llm/ocr")} class="fam-inline-add">
           <label for="add-ocr">{l.addLanguage}</label>
           <div class="fam-inline-add__controls">
             <select id="add-ocr" name="language">
@@ -4480,6 +4498,7 @@ export function DisplayPage(props: {
   family: FamilyLanguage;
   problem?: string;
 }) {
+  const prefix = usePathPrefix();
   const { t } = useTranslation();
   const d = t.display;
   return (
@@ -4488,7 +4507,7 @@ export function DisplayPage(props: {
       <Problem message={props.problem} />
       <form
         method="post"
-        action="/admin/display"
+        action={href(prefix, "/admin/display")}
         class="fam-sheet fam-sheet__form"
       >
         <Group title={d.familyLanguage} level={2}>

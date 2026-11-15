@@ -27,7 +27,7 @@ export const avatarImages: Record<string, Uint8Array<ArrayBuffer>> = Object.from
   }),
 );
 
-export function avatarUrl(avatar: MemberAvatar): string {
+export function avatarUrl(avatar: MemberAvatar): `/${string}` {
   return `/static/avatars/${avatar}.svg`;
 }
 
