@@ -10,7 +10,7 @@ const compose = parse(readFileSync(fileURLToPath(new URL("../../../../compose.ya
 
 describe("the port of triggered operations", () => {
   it("is not published by the compose file, which publishes only the pages", () => {
-    const { triggerPort, port } = readConfig({ DATABASE_URL: "postgres://x" });
+    const { trigger: { port: triggerPort }, port } = readConfig({ DATABASE_URL: "postgres://x" });
     const published = Object.values(compose.services).flatMap((service) => service.ports ?? []);
 
     expect(published).toEqual([`\${PORT:-8080}:${port}`]);

@@ -149,8 +149,8 @@ describe("generatePluginsCompose", () => {
     expect(compose.services["plugin-a-b-egress"]).toBeUndefined();
   });
 
-  it("adds a password to .env for each new database and the ticket key, and keeps those already there", () => {
-    const secrets = ["PLUGIN_MATRIX_SYNAPSE_DATABASE_PASSWORD", "EGRESS_TICKET_KEY"];
+  it("adds a password to .env for each new database, the ticket key and the trigger token, and keeps those already there", () => {
+    const secrets = ["PLUGIN_MATRIX_SYNAPSE_DATABASE_PASSWORD", "EGRESS_TICKET_KEY", "TRIGGER_TOKEN"];
     const lines = secrets.map((variable) => `${variable}=secret\n`).join("");
     expect(generated(matrix).dotEnv).toBe(lines);
     expect(generated(matrix, "PORT=8080").dotEnv).toBe(`PORT=8080\n${lines}`);

@@ -1,4 +1,4 @@
-import { pluginServiceOf, proxyOf, proxyPort, ticketKeyVariable } from "../egress/wiring";
+import { pluginServiceOf, proxyOf, proxyPort, ticketKeyVariable, triggerTokenVariable } from "../egress/wiring";
 import type { Plugin, PluginsFile } from "./schema";
 
 type Service = Record<string, unknown>;
@@ -28,8 +28,11 @@ export function proxiedContainersOf(plugin: Plugin): ProxiedContainer[] {
 /** The proxied containers of the whole file. */
 export const allProxiedContainersOf = (file: PluginsFile) => file.plugins.flatMap(proxiedContainersOf);
 
-/** The `.env` variable of the ticket key, which the generator fills like a database password, if there are plugins. */
-export const ticketKeyVariablesOf = (file: PluginsFile) => (file.plugins.length > 0 ? [ticketKeyVariable] : []);
+/**
+ * The `.env` variables of the ticket key and the trigger token, which the generator fills like a
+ * database password, if there are plugins.
+ */
+export const ticketKeyVariablesOf = (file: PluginsFile) => (file.plugins.length > 0 ? [ticketKeyVariable, triggerTokenVariable] : []);
 
 /**
  * The image the egress proxies run: the core image of the release that generates the file, as

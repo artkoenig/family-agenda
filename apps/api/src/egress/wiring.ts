@@ -15,3 +15,9 @@ export const proxyOf = (service: string) => `${service}-egress`;
 /** The `.env` variable holding the key the core signs the tickets of plugin calls with, which the proxies check. */
 export const ticketKeyVariable = "EGRESS_TICKET_KEY";
 
+
+/**
+ * The `.env` variable holding the token the Triggered operations require, generated with the ticket
+ * key: plugin containers share a network with the `api`, so its unpublished port is no protection.
+ */
+export const triggerTokenVariable = "TRIGGER_TOKEN";

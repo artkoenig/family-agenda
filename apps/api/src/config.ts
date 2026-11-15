@@ -18,10 +18,8 @@ export type Config = {
   /** Where the image keeps the Tesseract models it ships; empty for none. */
   bundledTessdataDirectory: string | null;
   port: number;
-  /** The port of triggered operations, from `TRIGGER_PORT`; never published by the compose file. */
-  triggerPort: number;
-  /** The token a trigger must carry, from `TRIGGER_TOKEN`; null to rely on the port being unpublished. */
-  triggerToken: string | null;
+  /** The Triggered operations' listener, never published by the compose file. */
+  trigger: TriggerConfig;
   trustProxy: boolean;
   /**
    * The address the Family reaches the Instance at, such as `http://192.168.1.10:8080`, without a
@@ -33,6 +31,13 @@ export type Config = {
   identityProvider: IdentityProviderSettings | null;
   /** The release the image was built from, such as `0.3.1` or `main-1a2b3c4`; `dev` for a build from the working tree. */
   version: string;
+};
+
+export type TriggerConfig = {
+  /** From `TRIGGER_PORT`, 3001 by default. */
+  port: number;
+  /** The Bearer token every trigger must carry, from `TRIGGER_TOKEN`; null leaves the listener off. */
+  token: string | null;
 };
 
 export function readConfig(env: NodeJS.ProcessEnv = process.env): Config {
@@ -49,7 +54,7 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): Config {
     tessdataDirectory: env.TESSDATA_DIRECTORY ?? "/var/lib/family-agenda/tessdata",
     bundledTessdataDirectory: (env.BUNDLED_TESSDATA_DIRECTORY ?? "/usr/share/tesseract-ocr/5/tessdata") || null,
     port: Number(env.PORT ?? 3000),
-    ...triggerSettingsOf(env),
+    trigger: triggerConfigOf(env),
     trustProxy: env.TRUST_PROXY === "true",
     publicUrl,
     identityProvider: identityProviderOf(env, publicUrl),
@@ -57,8 +62,8 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): Config {
   };
 }
 
-function triggerSettingsOf(env: NodeJS.ProcessEnv): Pick<Config, "triggerPort" | "triggerToken"> {
-  return { triggerPort: Number(env.TRIGGER_PORT ?? 3001), triggerToken: env.TRIGGER_TOKEN || null };
+function triggerConfigOf(env: NodeJS.ProcessEnv): TriggerConfig {
+  return { port: Number(env.TRIGGER_PORT ?? 3001), token: env.TRIGGER_TOKEN || null };
 }
 
 /** The shortest ticket key: the generator writes 24 random bytes as 32 characters. */
