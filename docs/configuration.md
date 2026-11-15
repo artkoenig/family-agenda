@@ -15,6 +15,7 @@ How to configure the containers, the address the Family opens, and single sign-o
 | `MDNS_NAME` | `family-agenda.local` | Name the `mdns` service announces (Linux host only) |
 | `POSTGRES_PASSWORD` | `family_agenda` | Change it if the port of Postgres is ever exposed |
 | `TZ` | `Europe/Berlin` | Decides where an Agenda's days start |
+| `TRIGGER_TOKEN` | empty | Token the [triggered operations](#triggered-operations) require as `Authorization: Bearer <token>`; empty for none |
 | `PLUGIN_URLS` | empty | Plugin containers (ADR-0001): `id=url` pairs separated by commas, such as `school-portal=http://school-portal:8080`. The core polls each over REST; one that does not answer shows as "Not reachable" in the Admin area. Set by `compose.plugins.yaml` (see [Plugins](#plugins)); by hand only without one |
 
 Data lives in named volumes (`postgres-data`, `master-key`, `blobs`, ...). How to back them up, restore and upgrade is in [upgrading.md](upgrading.md). Keep the Recovery Kit, without it Source credentials cannot be restored (ADR-0003).
@@ -60,6 +61,23 @@ What the generated file does:
   - A plugin's own proxy lets a connection through only with the ticket of a call of the core (plugin contract 3.0). Each call for a Source, and the call for the Catalogue entries, hands the plugin a proxy URL, `http://ticket:<ticket>@plugin-<id>-egress:3128`; the ticket names the Family and the Source (none for the Catalogue entries), expires shortly after the call's timeout, and is signed with `EGRESS_TICKET_KEY`, which the proxy shares. A connection without it, such as through the bare `HTTPS_PROXY`, or with an expired or forged one, or one minted for another plugin, gets `407`. For a valid one the proxy decides alone, asking nobody: it lets through the plugin's declared hosts plus the hosts an Admin entered in host fields of that one Source, as the ticket carries them, if the ticket names one (such as an IMAP server, or the host of a secret calendar address), on any port unless the value names one. A host field value must be a host name with an optional port (a pasted URL counts as its host; no wildcard); otherwise it is ignored. A change to a host field reaches a call under way when its ticket expires, at most the call's timeout plus 30 seconds later; a change to the declared hosts in `plugins.yml` takes effect when you generate the file again and the proxy restarts. Any other host gets `403`, as does one resolving to an internal address; one that does not resolve gets `502`.
   - A companion's proxy allows its declared hosts, which it has in its own environment (`EGRESS_HOSTS`); the core never calls a companion.
 - For a companion with `database: true`: a role and database `plugin_<id>_<name>` (UTF8, C collation; only a newly created database gets these, an existing one keeps its own) on the Instance's Postgres, created or updated by a one-shot `plugin-<id>-<name>-database` service before the companion starts, which also revokes access to it and to the core's database from every other role; a random password added to `.env` as `PLUGIN_<ID>_<NAME>_DATABASE_PASSWORD`; and `DATABASE_URL` in the companion's environment. Postgres joins a separate internal network `plugin-<id>-database` with that companion only.
+
+## Triggered operations
+
+The `worker` runs the Family's background work from its schedules. The same operations are offered on an interface of their own, so that a scheduler of your own (cron, a home automation, ...) can run them instead of, or besides, the `worker`. On an Instance with its one Family they act on that Family.
+
+The `api` serves them on port `3001` (`TRIGGER_PORT` inside the container), which `compose.yaml` does not publish; the port that serves the pages (`3000`, published as `PORT`) offers none of them. Reach it from a container on the Instance's network, such as `docker compose exec api node -e "fetch('http://localhost:3001/operations/due-work', { method: 'POST' }).then(async (r) => console.log(await r.text()))"`, or publish it yourself in a `compose.override.yaml` bound to `127.0.0.1` only.
+
+| Request | Does | Answers |
+|---|---|---|
+| `GET /operations` | lists the operations | `{ "operations": ["due-work", "purge", "secret-sweep"] }` |
+| `POST /operations/due-work` | polls the due Sources, then extracts the messages they and earlier runs brought in (Extraction runs even when polling fails) | `{ "polled": …, "extracted": … }`, each `{ "ok": true, "report": … }` with what ran and what failed, or `{ "ok": false, "error": "<message>" }` |
+| `POST /operations/purge` | deletes the text and attachments of messages past their retention | `{ "purged": <messages>, "deleted": <rows deleted> }` |
+| `POST /operations/secret-sweep` | removes secrets nothing refers to (older than an hour) | `{ "removed": <secrets> }` |
+
+Each operation calls exactly what the `worker`'s schedule calls (`due-work` every minute, `purge` hourly, `secret-sweep` at start and nightly). A `due-work` trigger that arrives while one is under way in the same `api` waits for that run and gets its answer; across containers, and alongside the `worker`, runs of one Source take turns in the database, so no Source runs twice at once. An unknown operation answers `404`, one that fails `500` (the `api` log has the error).
+
+Access: the interface relies on its port being unpublished. Containers on a network shared with the `api` can still reach it, and plugin containers share one with it each (see [Plugins](#plugins)); set `TRIGGER_TOKEN` to require `Authorization: Bearer <token>` on every request, otherwise the answer is `401`.
 
 ## Address of the Instance
 

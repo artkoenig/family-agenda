@@ -18,6 +18,10 @@ export type Config = {
   /** Where the image keeps the Tesseract models it ships; empty for none. */
   bundledTessdataDirectory: string | null;
   port: number;
+  /** The port of triggered operations, from `TRIGGER_PORT`; never published by the compose file. */
+  triggerPort: number;
+  /** The token a trigger must carry, from `TRIGGER_TOKEN`; null to rely on the port being unpublished. */
+  triggerToken: string | null;
   trustProxy: boolean;
   /**
    * The address the Family reaches the Instance at, such as `http://192.168.1.10:8080`, without a
@@ -45,11 +49,16 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): Config {
     tessdataDirectory: env.TESSDATA_DIRECTORY ?? "/var/lib/family-agenda/tessdata",
     bundledTessdataDirectory: (env.BUNDLED_TESSDATA_DIRECTORY ?? "/usr/share/tesseract-ocr/5/tessdata") || null,
     port: Number(env.PORT ?? 3000),
+    ...triggerSettingsOf(env),
     trustProxy: env.TRUST_PROXY === "true",
     publicUrl,
     identityProvider: identityProviderOf(env, publicUrl),
     version: versionOf(env),
   };
+}
+
+function triggerSettingsOf(env: NodeJS.ProcessEnv): Pick<Config, "triggerPort" | "triggerToken"> {
+  return { triggerPort: Number(env.TRIGGER_PORT ?? 3001), triggerToken: env.TRIGGER_TOKEN || null };
 }
 
 /** The shortest ticket key: the generator writes 24 random bytes as 32 characters. */

@@ -3,6 +3,7 @@ import { openAgendaAccess } from "@family-agenda/application";
 import { bootApplication } from "./composition-root";
 import { readConfig } from "./config";
 import { createHttpApp } from "./http/app";
+import { createTriggerApp } from "./triggered-operations";
 
 const config = readConfig();
 const application = await bootApplication(config);
@@ -19,7 +20,16 @@ const server = serve(
   },
 );
 
+// Triggered operations: the worker's work, for a scheduler of the operator's own. Not published.
+const triggers = serve(
+  { fetch: createTriggerApp(application, { token: config.triggerToken }).fetch, port: config.triggerPort },
+  (info) => {
+    console.log(`Triggered operations listening on port ${info.port}`);
+  },
+);
+
 const shutdown = () => {
+  triggers.close();
   server.close(() => {
     void application.close().then(() => process.exit(0));
   });
