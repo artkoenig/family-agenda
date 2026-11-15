@@ -101,4 +101,10 @@ describe("the ticket key in the environment", () => {
   it("is refused when it is short", () => {
     expect(() => readConfig({ ...base, EGRESS_TICKET_KEY: key.slice(1) })).toThrow(/at least 32 characters/);
   });
+
+  it("takes the Family id from FAMILY_ID, a UUID, and none when it is empty", () => {
+    expect(readConfig({ ...base, FAMILY_ID: "0B6F3C1E-8A2D-4F5B-9C7E-1D2A3B4C5D6E" }).familyId).toBe("0b6f3c1e-8a2d-4f5b-9c7e-1d2a3b4c5d6e");
+    expect(readConfig({ ...base, FAMILY_ID: "" })).not.toHaveProperty("familyId");
+    expect(() => readConfig({ ...base, FAMILY_ID: "family-1" })).toThrow(/FAMILY_ID must be a UUID/);
+  });
 });

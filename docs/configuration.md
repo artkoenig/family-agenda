@@ -16,6 +16,7 @@ How to configure the containers, the address the Family opens, and single sign-o
 | `POSTGRES_PASSWORD` | `family_agenda` | Change it if the port of Postgres is ever exposed |
 | `TZ` | `Europe/Berlin` | Decides where an Agenda's days start |
 | `TRIGGER_TOKEN` | generated with `compose.plugins.yaml` | Token the [Triggered operations](#triggered-operations) require as `Authorization: Bearer <token>`. Empty, the `api` does not offer them |
+| `FAMILY_ID` | empty | The [Family id](#preparing-the-family) a new database gets on the first start, a UUID; empty, a random one. A database that already holds another one is refused at start |
 | `TRIGGER_PORT` | `3001` | Port of the Triggered operations inside the `api` container; not published |
 | `PLUGIN_URLS` | empty | Plugin containers (ADR-0001): `id=url` pairs separated by commas, such as `school-portal=http://school-portal:8080`. The core polls each over REST; one that does not answer shows as "Not reachable" in the Admin area. Set by `compose.plugins.yaml` (see [Plugins](#plugins)); by hand only without one |
 
@@ -65,7 +66,7 @@ What the generated file does:
 
 ## Triggered operations
 
-The `worker` runs the Family's Due work, the purge and the secret sweep from its schedules. The same operations are offered as Triggered operations on an interface of their own, so that a scheduler of your own (cron, a home automation, ...) can run them instead of, or besides, the `worker`. On an Instance with its one Family they act on that Family.
+The `worker` runs the Family's Due work, the purge and the secret sweep from its schedules, and the `api` and `worker` prepare the Family when they start. The same operations are offered as Triggered operations on an interface of their own, so that a scheduler of your own (cron, a home automation, ...) can run them instead of, or besides, the `worker`. On an Instance with its one Family they act on that Family.
 
 The `api` serves them on port `3001` (`TRIGGER_PORT`), which `compose.yaml` does not publish; the port that serves the pages offers none of them. It does so only while `TRIGGER_TOKEN` is set, and every request must carry `Authorization: Bearer <TRIGGER_TOKEN>`, otherwise the answer is `401`. Without a token the `api` logs once that Triggered operations are off. Generating `compose.plugins.yaml` adds a random `TRIGGER_TOKEN` to `.env` the first time, next to `EGRESS_TICKET_KEY`; without plugins, set one yourself (32 random characters or more). The token is required because the port being unpublished is no protection on its own: every plugin container shares a network with the `api`.
 
@@ -73,12 +74,21 @@ Reach the port from a container on the Instance's network, such as `docker compo
 
 | Request | Does | Answers |
 |---|---|---|
-| `GET /operations` | lists the operations | `{ "operations": ["due-work", "purge", "secret-sweep"] }` |
+| `GET /operations` | lists the operations | `{ "operations": ["due-work", "purge", "secret-sweep", "prepare-family"] }` |
 | `POST /operations/due-work` | Due work: polls the due Sources, then extracts the messages they and earlier runs brought in (Extraction runs even when polling fails) | `{ "polled": …, "extracted": … }`, each `{ "ok": true, "report": … }` with what ran and what failed, or `{ "ok": false, "error": "<message>" }` |
 | `POST /operations/purge` | deletes the text and attachments of messages past their retention | `{ "purged": <messages>, "deleted": <rows deleted> }` |
 | `POST /operations/secret-sweep` | removes secrets nothing refers to (older than an hour) | `{ "removed": <secrets> }` |
+| `POST /operations/prepare-family` | prepares the Family as starting does (see below); the body may name the Family id, `{ "familyId": "<uuid>" }` | `{ "familyId": "<uuid>" }`; `409` `{ "error": "family-id-differs", "familyId": "<the one it holds>" }` when the database holds another, `400` for a body that is no JSON or an id that is no UUID |
 
 Each operation calls exactly what the `worker`'s schedule calls (`due-work` every minute, `purge` hourly, `secret-sweep` at start and nightly), and writes the same lines to the `api` log as the `worker` writes to its own. A `due-work` trigger that arrives while one is under way in the same `api` waits for that run and gets its answer; across containers, and alongside the `worker`, runs of one Source take turns in the database, so no Source runs twice at once. An unknown operation answers `404`, one that fails `500` (the `api` log has the error).
+
+### Preparing the Family
+
+Preparing the Family brings its database schema up to date, makes sure it has its Family id, records the Source Types seen for the first time as disabled, and migrates the configuration of the Sources of enabled Source Types. The `api` and the `worker` do it every time they start, as the Triggered operation `prepare-family` does; running it again changes nothing. Containers starting together take turns: the schema is migrated, and the Family id written, under one lock in Postgres.
+
+- **Family id.** A database that has none yet, an empty one, gets the id named, from `FAMILY_ID` at start or from the body of `prepare-family`, or a random UUID without one. A database that holds another id is refused before anything changes: the `api` and `worker` do not start, the operation answers `409`. To make an empty database usable with an id of your choosing, set `FAMILY_ID` before the first start. Since the `api` prepares its Family when it starts, the operation itself always finds a prepared database: it writes no new id, it confirms the one you name.
+- **Versions.** A database from before the rebuild of the data model, or one a newer release migrated, is refused as at start ([upgrading.md](upgrading.md)).
+- **After an upgrade**, the containers prepare the Family when they start again; `prepare-family` does the same for a scheduler or script of your own, such as to check the Family id it acts on.
 
 ## Address of the Instance
 

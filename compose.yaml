@@ -32,6 +32,9 @@ x-app: &app
     # not published, only while this is set; each request needs `Authorization: Bearer <token>`.
     # Generating compose.plugins.yaml adds one to .env.
     TRIGGER_TOKEN: ${TRIGGER_TOKEN:-}
+    # The Family id a new database gets when the Instance starts the first time; a random UUID
+    # while empty. A database that holds another one is refused.
+    FAMILY_ID: ${FAMILY_ID:-}
   volumes:
     # The master key that Source credentials are encrypted with; never in Postgres (ADR-0003).
     - master-key:/var/lib/family-agenda/master-key

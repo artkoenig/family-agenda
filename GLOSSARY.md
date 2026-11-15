@@ -11,7 +11,7 @@ The household the system serves, owning all Sources and Items; each Instance ser
 _Avoid_: Account, tenant, user group
 
 **Family id**:
-The one identifier of a Family, a random UUID made when the Family is set up; it names the Family outside its database, such as in a Ticket.
+The one identifier of a Family, a UUID written when the Family is first prepared, the one the operator chose or a random one; it names the Family outside its database, such as in a Ticket. It never changes afterwards.
 _Avoid_: Public id, tenant id
 
 **Family Language**:
@@ -136,8 +136,12 @@ _Avoid_: Server, deployment, tenant
 One run of the Family's background work: the Sources whose polling interval has passed, then Extraction of the messages they and earlier runs brought in. The `worker` runs it every minute; it is also a Triggered operation.
 _Avoid_: Polling job, sync
 
+**Preparing the Family**:
+Bringing a Family's database up to date: migrating its schema, writing its Family id while it has none, recording the Source Types seen for the first time as disabled, and migrating the configuration of the Sources of enabled ones. The `api` and `worker` do it when they start; it is also a Triggered operation, and running it again changes nothing.
+_Avoid_: Bootstrap, setup, init
+
 **Triggered operation**:
-A piece of the `worker`'s work, such as Due work, the purge or the secret sweep, that something outside the core runs on request through the `api`'s own unpublished port, with the Instance's trigger token. It runs the same code as the `worker`'s schedule.
+A piece of the `worker`'s work, such as Due work, the purge or the secret sweep, or Preparing the Family, that something outside the core runs on request through the `api`'s own unpublished port, with the Instance's trigger token. It runs the same code as the `worker`'s schedule, or as starting.
 _Avoid_: Job, webhook, internal API
 
 **Companion**:

@@ -9,7 +9,7 @@ How to back up an Instance, move it to another release, switch between `latest` 
 
 Every GitHub Release has an **Upgrading** section that is written from the changes since the release before it:
 
-- **Data is kept.** The database is migrated when the Instance starts, if the release has new migrations.
+- **Data is kept.** The database is migrated when the Instance starts, if the release has new migrations ([Preparing the Family](configuration.md#preparing-the-family)).
 - **This migration removes data**, with the name of the migration file. Make a backup first and read the release.
 - **Start over required.** The data model changed in a way that cannot be migrated, or Source Types moved from in-process plugins to plugin containers listed in `plugins.yml`. See [Start over](#start-over).
 - **Postgres major upgrade: dump and restore required.** The Postgres version of the compose file changed. See [Restore](#restore).

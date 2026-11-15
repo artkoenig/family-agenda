@@ -1,9 +1,11 @@
 import { timingSafeEqual } from "node:crypto";
+import { FamilyIdConflictError } from "@family-agenda/adapters";
 import type { DueWorkReport, StepOutcome } from "@family-agenda/application";
 import { serve, type ServerType } from "@hono/node-server";
 import { Hono } from "hono";
 import { runDueWork, workFailures, type BackgroundWork, type WorkLog } from "./background-work";
-import type { TriggerConfig } from "./config";
+import type { PreparedFamily } from "./composition-root";
+import { isFamilyId, type TriggerConfig } from "./config";
 
 /** A step of due work as JSON: its report, or the message of the error it stopped with. */
 type StepAnswer<R> = { ok: true; report: R } | { ok: false; error: string };
@@ -18,10 +20,43 @@ export type TriggerAnswers = {
   "due-work": DueWorkAnswer;
   purge: { purged: number; deleted: number };
   "secret-sweep": { removed: number };
+  "prepare-family": PreparedFamily;
 };
 
+/** What the Triggered operations act on: the worker's work, and preparing the Family. */
+export type TriggeredWork = BackgroundWork & { prepare(familyId?: string): Promise<PreparedFamily> };
+
 type OperationName = keyof TriggerAnswers;
-type Operations = { [Name in OperationName]: () => Promise<TriggerAnswers[Name]> };
+/** Each operation takes the JSON body of its request, if any. */
+type Operations = { [Name in OperationName]: (body: unknown) => Promise<TriggerAnswers[Name]> };
+
+/** An operation that will not run as asked, answered with `status` and `body`; nothing has changed. */
+class Refused extends Error {
+  constructor(
+    readonly status: 400 | 409,
+    readonly body: Record<string, string>,
+  ) {
+    super(body.error);
+  }
+}
+
+/** The Family id a `prepare-family` body names, if any; a body that names no UUID is refused. */
+function familyIdIn(body: unknown): string | undefined {
+  const given = typeof body === "object" && body !== null ? (body as { familyId?: unknown }).familyId : undefined;
+  if (given === undefined) return undefined;
+  if (!isFamilyId(given)) throw new Refused(400, { error: "invalid-family-id" });
+  return given.toLowerCase();
+}
+
+async function prepareFamily(work: TriggeredWork, body: unknown): Promise<PreparedFamily> {
+  const familyId = familyIdIn(body);
+  try {
+    return await work.prepare(familyId);
+  } catch (error) {
+    if (error instanceof FamilyIdConflictError) throw new Refused(409, { error: "family-id-differs", familyId: error.stored });
+    throw error;
+  }
+}
 
 const stepOf = <R>(outcome: StepOutcome<R>): StepAnswer<R> =>
   outcome.ok ? outcome : { ok: false, error: outcome.error instanceof Error ? outcome.error.message : String(outcome.error) };
@@ -37,8 +72,18 @@ function joined<T>(run: () => Promise<T>): () => Promise<T> {
   };
 }
 
+/** Lets prepares of one `api` take turns; across containers, the migration lock serialises them. */
+function joinedPrepare(work: TriggeredWork): (body: unknown) => Promise<PreparedFamily> {
+  let previous: Promise<unknown> = Promise.resolve();
+  return (body) => {
+    const next = previous.then(() => prepareFamily(work, body));
+    previous = next.catch(() => {});
+    return next;
+  };
+}
+
 /** The worker's work as named operations: the same calls, and the same log lines, as its schedules. */
-function triggeredOperations(work: BackgroundWork, log: WorkLog): Operations {
+function triggeredOperations(work: TriggeredWork, log: WorkLog): Operations {
   const dueWork = joined(() => runDueWork(work, log));
   return {
     "due-work": async () => {
@@ -47,7 +92,19 @@ function triggeredOperations(work: BackgroundWork, log: WorkLog): Operations {
     },
     purge: () => work.retention.purge(),
     "secret-sweep": async () => ({ removed: await work.secretSweep.sweep() }),
+    "prepare-family": joinedPrepare(work),
   };
+}
+
+/** The JSON body of a request; none when it is empty, and refused when it is no JSON. */
+async function bodyOf(request: Request): Promise<unknown> {
+  const text = await request.text();
+  if (text.trim() === "") return undefined;
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    throw new Refused(400, { error: "invalid-body" });
+  }
 }
 
 const isOperation = (operations: Operations, name: string): name is OperationName => Object.hasOwn(operations, name);
@@ -62,7 +119,7 @@ const sameToken = (given: string, expected: string) => {
  * The interface of Triggered operations: `POST /operations/<name>` runs one and answers with its
  * JSON; every request must carry `Authorization: Bearer <token>`.
  */
-export function createTriggerApp(work: BackgroundWork, options: { token: string; log: WorkLog }): Hono {
+export function createTriggerApp(work: TriggeredWork, options: { token: string; log: WorkLog }): Hono {
   const { token, log } = options;
   const operations = triggeredOperations(work, log);
   const app = new Hono();
@@ -75,8 +132,9 @@ export function createTriggerApp(work: BackgroundWork, options: { token: string;
     const name = c.req.param("name");
     if (!isOperation(operations, name)) return c.json({ error: "unknown-operation" }, 404);
     try {
-      return c.json(await operations[name]());
+      return c.json(await operations[name](await bodyOf(c.req.raw)));
     } catch (error) {
+      if (error instanceof Refused) return c.json(error.body, error.status);
       log.error(workFailures[name], error);
       return c.json({ error: "failed" }, 500);
     }
@@ -86,7 +144,7 @@ export function createTriggerApp(work: BackgroundWork, options: { token: string;
 }
 
 /** Listens for Triggered operations on their own port; only with a token, else says once that they are off. */
-export function serveTriggers(work: BackgroundWork, trigger: TriggerConfig, log: WorkLog & { info(line: string): void }): ServerType | null {
+export function serveTriggers(work: TriggeredWork, trigger: TriggerConfig, log: WorkLog & { info(line: string): void }): ServerType | null {
   if (trigger.token === null) {
     log.info("Triggered operations are off: TRIGGER_TOKEN is not set");
     return null;

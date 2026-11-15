@@ -123,6 +123,8 @@ export type SharedConfig = {
 
 /** What belongs to one Family: its database and what is kept outside it. */
 export type FamilyConfig = DatabaseConfig & {
+  /** The Family id to write for a database that has none yet (`FAMILY_ID`); a random UUID if left out. */
+  familyId?: string;
   /** Where the master key is kept, outside Postgres; created on first start. */
   masterKeyFile: string;
   /** Where files such as photos are kept, outside Postgres. */
@@ -154,6 +156,9 @@ export type SharedWiring = {
   textExtractor: TextExtractor;
   ocrModels: TessdataDirectory;
 };
+
+/** What preparing the Family did: the Family id it has. */
+export type PreparedFamily = { familyId: string };
 
 export type Application = {
   /** What names the Family outside its database, such as in the ticket of a plugin call. */
@@ -189,6 +194,12 @@ export type Application = {
   /** Extracts Items from the raw messages that wait for it, as part of due work. */
   extraction: ExtractionAccess;
   messages: MessageAccess;
+  /**
+   * Prepares the Family again, as starting does: brings the schema up to date, writes a given
+   * Family id while there is none and refuses a different one, records new Source Types and
+   * migrates the configuration of the Sources of enabled ones. Running it again changes nothing.
+   */
+  prepare(familyId?: string): Promise<PreparedFamily>;
   close(): Promise<void>;
 };
 
@@ -238,20 +249,28 @@ export async function bootApplication(config: ApplicationConfig): Promise<Applic
   return bootFamily(await bootShared(config), config);
 }
 
-/** Wires one Family's use cases to its database, stores and cache, on the wiring the process shares. */
+/**
+ * Wires one Family's use cases to its database, stores and cache, on the wiring the process shares,
+ * after preparing the Family: the same operation as the Triggered operation `prepare-family`.
+ */
 export async function bootFamily(shared: SharedWiring, config: FamilyConfig): Promise<Application> {
   const postgres = "connectDatabase" in config ? config.connectDatabase() : connectPostgres(config.databaseUrl);
   const { masterKey, familyId } = await withDatabase(postgres, async () => {
-    await runMigrations(postgres);
+    await runMigrations(postgres, familyIdOf(config.familyId));
     const masterKey = await loadMasterKey(postgres, config.masterKeyFile);
     return { masterKey, familyId: await new PostgresFamilyRepository(postgres.db).familyId() };
   });
   const application = wireFamily(shared, config, postgres, masterKey, familyId);
-  await withDatabase(postgres, async () => {
-    await application.sourceTypes.start();
-    await application.catalogues.start();
-  });
+  await withDatabase(postgres, () => prepareSourceTypes(application));
   return application;
+}
+
+const familyIdOf = (familyId: string | undefined) => (familyId === undefined ? {} : { familyId });
+
+/** Records the Source Types seen for the first time and migrates the Sources of enabled ones. */
+async function prepareSourceTypes(application: Pick<Application, "sourceTypes" | "catalogues">): Promise<void> {
+  await application.sourceTypes.start();
+  await application.catalogues.start();
 }
 
 function wireFamily(
@@ -405,6 +424,11 @@ function wireFamily(
     singleSignOn,
     extraction,
     messages,
+    async prepare(given) {
+      await runMigrations(postgres, familyIdOf(given));
+      await prepareSourceTypes({ sourceTypes, catalogues });
+      return { familyId: await families.familyId() };
+    },
     close: () => postgres.close(),
   };
 }
