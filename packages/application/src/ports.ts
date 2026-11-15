@@ -847,3 +847,28 @@ export interface ActivityRepository {
   save(activity: BackgroundActivity): Promise<void>;
   clear(): Promise<void>;
 }
+
+/** Identifies a Source being added in the background. */
+export type AddingId = string & { readonly __brand: "AddingId" };
+
+/** How a Source added in the background is coming along. */
+export type AddingProgress =
+  | { status: "running"; sourceTypeId: string; plain: PlainConfig }
+  | { status: "added"; sourceTypeId: string; id: SourceId; setUp: boolean; plain: PlainConfig }
+  /** Its plugin could not prepare it; what was entered, without secrets, for the form to show again. */
+  | { status: "failed"; sourceTypeId: string; message: string; plain: PlainConfig; pollIntervalSeconds: number | null };
+
+/** A Source being added in the background, as any core of the Family reads it. */
+export type SourceAdding = { id: AddingId; startedAt: Date; progress: AddingProgress };
+
+/** The Sources being added in the background, kept in the Family's database so that every core knows them. */
+export interface SourceAddingRepository {
+  /** Stores an adding, or replaces its progress. */
+  save(adding: SourceAdding): Promise<void>;
+  find(id: AddingId): Promise<SourceAdding | null>;
+  /** Those of a Source Type, oldest first. */
+  listOfType(sourceTypeId: string): Promise<SourceAdding[]>;
+  remove(id: AddingId): Promise<void>;
+  /** Forgets those started before `startedBefore`. */
+  removeStartedBefore(startedBefore: Date): Promise<void>;
+}

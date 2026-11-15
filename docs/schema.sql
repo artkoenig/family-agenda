@@ -96,6 +96,18 @@ CREATE TABLE background_activity (
   CONSTRAINT background_activity_progress CHECK (0 <= done AND done <= total)
 );
 
+-- A Source being added in the background, so that every api core can tell how far it got. Kept
+-- for ten minutes after it started; a running one is read as failed once it is older than the
+-- longest a preparation may take, as when its core stopped.
+CREATE TABLE source_adding (
+  id              UUID PRIMARY KEY,
+  position        BIGINT NOT NULL GENERATED ALWAYS AS IDENTITY,
+  source_type_id  TEXT NOT NULL,
+  progress        JSONB NOT NULL,             -- its status and what was entered, without secrets
+  started_at      TIMESTAMPTZ NOT NULL
+);
+CREATE INDEX source_adding_source_type_idx ON source_adding (source_type_id, position);
+
 -- ---------------------------------------------------------------------------------------------
 -- Family Members
 -- ---------------------------------------------------------------------------------------------

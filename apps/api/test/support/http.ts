@@ -4,7 +4,8 @@ import { bootForTest, type TestInstance, type TestOptions } from "./boot";
 
 type RequestInit = { cookie?: string; headers?: Record<string, string> };
 
-export type HttpTestInstance = TestInstance & {
+/** Requests to one core of an Instance. */
+export type HttpClient = {
   /** Posts a multipart form, as for a file upload. */
   request(path: string, init: RequestInit & { body: FormData }): Promise<Response>;
   get(path: string, init?: RequestInit): Promise<Response>;
@@ -13,6 +14,11 @@ export type HttpTestInstance = TestInstance & {
     form: Record<string, string>,
     init?: RequestInit,
   ): Promise<Response>;
+};
+
+export type HttpTestInstance = TestInstance & HttpClient & {
+  /** Boots a second core against the same database, as a second `api` container, and drives its Hono app. */
+  bootAnotherHttpCore(): Promise<HttpClient>;
 };
 
 /** Boots an Instance and drives its Hono app with in-process requests. */
@@ -33,12 +39,21 @@ export async function bootHttpForTest(
       return current.request(path, init);
     },
   };
+  // The same object, so that `app` stays the one running after a restart.
+  return Object.assign(instance, clientOf(http), {
+    bootAnotherHttpCore: async () => {
+      const other = createHttpApp(await instance.bootAnotherCore(), { trustProxy: false, agendaAccess: openAgendaAccess, ...options });
+      return clientOf({ request: (path, init) => other.request(path, init) });
+    },
+  });
+}
+
+function clientOf(http: { request: (path: string, init: { method?: string; body?: FormData | URLSearchParams; headers?: Record<string, string> }) => Response | Promise<Response> }): HttpClient {
   const headersFor = (init?: RequestInit) => ({
     ...(init?.cookie ? { cookie: init.cookie } : {}),
     ...init?.headers,
   });
-  // The same object, so that `app` stays the one running after a restart.
-  return Object.assign(instance, {
+  return {
     get: async (path, init) => http.request(path, { headers: headersFor(init) }),
     request: async (path, init) =>
       http.request(path, {
@@ -56,7 +71,7 @@ export async function bootHttpForTest(
           ...headersFor(init),
         },
       }),
-  } satisfies Pick<HttpTestInstance, "get" | "request" | "post">);
+  };
 }
 
 /** The `name=value` pair of the session cookie a response sets, to send back. */

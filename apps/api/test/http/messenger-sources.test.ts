@@ -273,6 +273,39 @@ describe("Sources of a Source Type with a catalogue and a live setup step", () =
     expect((await instance.get(adding, { cookie })).headers.get("location")).toBe("/admin/sources");
   });
 
+  it("shows the progress and the outcome of an adding started through one core through another on the same database", async () => {
+    await instance.app.catalogues.enable("bridged", "whatsapp", { riskAcknowledged: true });
+    const other = await instance.bootAnotherHttpCore();
+    const release = testPluginControls.holdAdding("bridged");
+    const { adding } = await addHeld();
+
+    expect(await (await other.get(`${adding}/row`, { cookie })).text()).toContain("fam-spinner");
+    expect(await (await other.get("/admin/source-types/bridged", { cookie })).text()).toContain(`${adding}/row`);
+    release();
+    await vi.waitFor(async () => {
+      expect((await other.get(`${adding}/row`, { cookie })).headers.get("HX-Redirect")).toBe(adding);
+    });
+    const [source] = await instance.app.sources.list();
+    expect((await other.get(adding, { cookie })).headers.get("location")).toBe(`/admin/sources/${source!.id}/setup`);
+    expect((await instance.get(adding, { cookie })).headers.get("location"), "forgotten by every core").toBe("/admin/sources");
+  });
+
+  it("reports an adding as failed once it ran longer than a preparation may take, as when its core died", async () => {
+    await instance.app.catalogues.enable("bridged", "whatsapp", { riskAcknowledged: true });
+    const other = await instance.bootAnotherHttpCore();
+    const release = testPluginControls.holdAdding("bridged");
+    const { adding } = await addHeld();
+
+    instance.clock.advance(5_000);
+    expect(await (await other.get(`${adding}/row`, { cookie })).text()).toContain("fam-spinner");
+    instance.clock.advance(5 * 60_000);
+    expect(await (await other.get(`${adding}/row`, { cookie })).text()).not.toContain("fam-spinner");
+    const refused = await other.get(adding, { cookie });
+    expect(refused.status).toBe(400);
+    expect(await refused.text()).toContain("The Source could not be set up");
+    release();
+  });
+
   it("allow-lists chats with one checkbox each, and clears them all", async () => {
     await instance.app.catalogues.enable("bridged", "whatsapp", { riskAcknowledged: true });
     const added = await instance.app.sources.add({ sourceTypeId: "bridged", plain: { messenger: "whatsapp" }, secrets: {} });

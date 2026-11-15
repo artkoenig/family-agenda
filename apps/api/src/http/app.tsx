@@ -1095,11 +1095,12 @@ export function createHttpApp(application: Application, options: HttpOptions) {
       settingUp?: SourceSummary;
     },
   ) {
-    const [form, members, recordedEntryIds] = await Promise.all([
+    const [form, members, recordedEntryIds, addings] = await Promise.all([
       // Without the catalogue's entries, which load after the page.
       sources.formOf(id, false),
       familyMembers.list(),
       catalogues.recordedEntryIds(id),
+      sources.addingsOf(id),
     ]);
     return (
       <SourceTypePage
@@ -1114,7 +1115,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
         timeZone={timeZone}
         {...(shown.problem ? { problem: shown.problem } : {})}
         {...(shown.adding ? { adding: shown.adding } : {})}
-        addings={sources.addingsOf(id)}
+        addings={addings}
         {...(shown.settingUp ? { settingUp: shown.settingUp } : {})}
       />
     );
@@ -1335,10 +1336,10 @@ export function createHttpApp(application: Application, options: HttpOptions) {
   // A Source added in the background: once its plugin prepared it, where it goes on; once it failed, its form again.
   app.get("/admin/sources/adding/:adding", async (c) => {
     const id = c.req.param("adding") as AddingId;
-    const progress = sources.adding(id);
+    const progress = await sources.adding(id);
     if (!progress) return c.redirect("/admin/sources");
     if (progress.status === "added") {
-      sources.forgetAdding(id);
+      await sources.forgetAdding(id);
       return c.redirect(
         progress.setUp
           ? `/admin/sources/${progress.id}/setup`
@@ -1347,7 +1348,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     }
     if (progress.status === "running")
       return c.redirect(sourceTypeHref(progress.sourceTypeId));
-    sources.forgetAdding(id);
+    await sources.forgetAdding(id);
     const sourceForm = (await sources.forms()).find(
       (candidate) => candidate.sourceTypeId === progress.sourceTypeId,
     );
@@ -1374,7 +1375,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
   // A row of a Source being added, asked for every few seconds; once it is no longer, the page goes on.
   app.get("/admin/sources/adding/:adding/row", async (c) => {
     const id = c.req.param("adding") as AddingId;
-    const progress = sources.adding(id);
+    const progress = await sources.adding(id);
     if (progress?.status === "running" || progress?.status === "failed") {
       const form = (await sources.forms()).find(
         (candidate) => candidate.sourceTypeId === progress.sourceTypeId,
