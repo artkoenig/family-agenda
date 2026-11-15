@@ -6,7 +6,7 @@ status: proposed
 
 Family Members have no accounts. An Agenda opens only through its Agenda Link, a secret, revocable URL that an Admin creates and can rotate, whichever way the request reached the Instance: home network, reverse proxy, tunnel or a provider's hosting. The home network is not an access control, so an Instance works the same self-hosted and hosted as a service. How Agenda Links are reworked is decided separately.
 
-An Agenda Link is built from `PUBLIC_URL`, so an Instance served below a Path prefix gives every Agenda an address below that prefix (`https://home.example.org/agenda/agendas/<id>`), as are the Admin area and its cookies.
+An Agenda Link is built from `PUBLIC_URL`, so below a Path prefix every Agenda lies below that prefix, and so do the Admin area and its cookies.
 
 The Admin area is the one place with accounts. Admins sign in with an email and a password (Argon2id), or through one OpenID Connect Identity Provider (issuer, client, required group), for households that already run one. The operator configures it in the environment (ADR-0007). Password sign-in is rate-limited per account and per client.
 
