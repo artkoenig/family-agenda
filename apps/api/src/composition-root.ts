@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import { endpoints } from "@family-agenda/plugin-contract";
 import { mkdir } from "node:fs/promises";
 import {
   Argon2idPasswordHasher,
@@ -20,6 +21,7 @@ import {
   PostgresLlmEndpointRepository,
   OidcIdentityProviderClient,
   PostgresSignInFailureLog,
+  PostgresSourceAddingRepository,
   PostgresSourceRepository,
   PostgresSourceTypeRepository,
   PostgresAgendaRepository,
@@ -162,6 +164,14 @@ export type Application = {
   close(): Promise<void>;
 };
 
+/** What storing a Source its plugin prepared may take, on top of the plugin's answer. */
+const storingPreparedMs = 60_000;
+
+/** The longest preparing a Source being added may take: its plugin's answer, then storing it. */
+function preparationMaxMsOf(options: ApplicationConfig["pluginContainerOptions"]): number {
+  return (options?.timeoutsMs?.sourceAdded ?? endpoints.sourceAdded.timeoutMs) + storingPreparedMs;
+}
+
 function resolveDefaults(config: ApplicationConfig): {
   clock: Clock;
   timeZone: string;
@@ -287,6 +297,8 @@ export async function bootApplication(config: ApplicationConfig): Promise<Applic
     sourceTypes: sourceTypeRepository,
     catalogues: catalogueRepository,
     sources: sourceRepository,
+    addings: new PostgresSourceAddingRepository(postgres.db),
+    preparationMaxMs: preparationMaxMsOf(config.pluginContainerOptions),
     secrets,
     blobs,
   });

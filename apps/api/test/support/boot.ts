@@ -66,6 +66,11 @@ export type TestInstance = {
    * containers, as an update would.
    */
   restart(): Promise<void>;
+  /**
+   * Boots a second `api` container against the same database, master key file, plugin containers and
+   * Clock; it is closed with the Instance.
+   */
+  bootApiContainer(): Promise<Application>;
   close(): Promise<void>;
 };
 
@@ -110,6 +115,7 @@ export async function bootForTest(options: TestOptions = {}): Promise<TestInstan
     ...applicationOptions,
   };
 
+  const otherContainers: Application[] = [];
   const instance: TestInstance = {
     app: await bootApplication(config),
     clock,
@@ -125,7 +131,13 @@ export async function bootForTest(options: TestOptions = {}): Promise<TestInstan
       instance.app = { ...stopped, close: () => Promise.resolve() };
       instance.app = await bootApplication(config);
     },
+    async bootApiContainer() {
+      const container = await bootApplication(config);
+      otherContainers.push(container);
+      return container;
+    },
     async close() {
+      for (const container of otherContainers) await container.close();
       await instance.app.close();
       await postgres.release();
       await Promise.all(servers.map((server) => new Promise((resolve) => server.close(resolve))));

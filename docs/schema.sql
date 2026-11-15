@@ -96,6 +96,17 @@ CREATE TABLE background_activity (
   CONSTRAINT background_activity_progress CHECK (0 <= done AND done <= total)
 );
 
+-- A Source being added in the background, so that every api container can tell how far it got.
+-- Kept for ten minutes after it started, or for the longest a preparation may take if that is
+-- longer; a running one is read as failed once it is older than that longest preparation, as when
+-- the api container preparing it stopped.
+CREATE TABLE source_adding (
+  id          UUID PRIMARY KEY,
+  position    BIGINT NOT NULL GENERATED ALWAYS AS IDENTITY,
+  progress    JSONB NOT NULL,                 -- its status, Source Type and what was entered, without secrets
+  started_at  TIMESTAMPTZ NOT NULL
+);
+
 -- ---------------------------------------------------------------------------------------------
 -- Family Members
 -- ---------------------------------------------------------------------------------------------

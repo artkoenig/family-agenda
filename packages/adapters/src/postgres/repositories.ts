@@ -1,6 +1,10 @@
 import type {
   ActivityKind,
   ActivityRepository,
+  AddingId,
+  AddingProgress,
+  SourceAdding,
+  SourceAddingRepository,
   AdminRepository,
   AdminSession,
   AdminSessionRepository,
@@ -52,6 +56,7 @@ import {
   admins,
   adminSessions,
   backgroundActivities,
+  sourceAddings,
   catalogueEntries,
   family,
   familyMembers,
@@ -751,4 +756,41 @@ export class PostgresActivityRepository implements ActivityRepository {
   async clear(): Promise<void> {
     await this.db.delete(backgroundActivities);
   }
+}
+
+export class PostgresSourceAddingRepository implements SourceAddingRepository {
+  constructor(private readonly db: Database) {}
+
+  async start(adding: SourceAdding): Promise<void> {
+    await this.db.insert(sourceAddings).values(adding);
+  }
+
+  async end(id: AddingId, progress: AddingProgress): Promise<void> {
+    await this.db
+      .update(sourceAddings)
+      .set({ progress })
+      .where(and(eq(sourceAddings.id, id), sql`${sourceAddings.progress}->>'status' = 'running'`));
+  }
+
+  async find(id: AddingId): Promise<SourceAdding | null> {
+    const [row] = await this.db.select().from(sourceAddings).where(eq(sourceAddings.id, id));
+    return row ? addingOf(row) : null;
+  }
+
+  async listOfType(sourceTypeId: string): Promise<SourceAdding[]> {
+    const rows = await this.db.select().from(sourceAddings).where(sql`${sourceAddings.progress}->>'sourceTypeId' = ${sourceTypeId}`).orderBy(asc(sourceAddings.position));
+    return rows.map(addingOf);
+  }
+
+  async remove(id: AddingId): Promise<void> {
+    await this.db.delete(sourceAddings).where(eq(sourceAddings.id, id));
+  }
+
+  async removeStartedBefore(startedBefore: Date): Promise<void> {
+    await this.db.delete(sourceAddings).where(lt(sourceAddings.startedAt, startedBefore));
+  }
+}
+
+function addingOf(row: typeof sourceAddings.$inferSelect): SourceAdding {
+  return { id: row.id as AddingId, startedAt: row.startedAt, progress: row.progress };
 }

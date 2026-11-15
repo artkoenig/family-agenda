@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { parseName, textIn, type BlobRef, type FamilyMemberId, type MultilingualText, type SourceAttributeId, type SourceId, type SourceTypeId } from "@family-agenda/domain";
 import type {
+  AddingId,
+  AddingProgress,
   BlobStore,
   CatalogueRepository,
   Clock,
@@ -16,6 +18,8 @@ import type {
   SetupStepSpec,
   Source,
   SourceAttribute,
+  SourceAdding,
+  SourceAddingRepository,
   SourceRepository,
   SourceRunContext,
   SourceTypeRegistry,
@@ -38,6 +42,13 @@ export type SourcesDeps = {
   sourceTypes: SourceTypeRepository;
   catalogues: CatalogueRepository;
   sources: SourceRepository;
+  /** The Sources being added in the background, shared by every `api` container of the Family. */
+  addings: SourceAddingRepository;
+  /**
+   * The longest a plugin may take to prepare a Source being added; one still running after that
+   * is reported as failed, as when the `api` container preparing it stopped.
+   */
+  preparationMaxMs: number;
   secrets: SecretStore;
   blobs: BlobStore;
   /** The IANA time zone the Family lives in, for the plugin's runs. */
@@ -110,22 +121,20 @@ export type SourceProblem =
   /** `fields` are the keys that are missing, unknown, or given as plain instead of secret. */
   | { ok: false; problem: "invalid-config"; fields: string[] };
 
-/** Identifies a Source being added in the background. */
-export type AddingId = string & { readonly __brand: "AddingId" };
-
 /** Added already, as `add` answers, or still being prepared in the background. */
 export type StartAddingResult = Exclude<AddSourceResult, { ok: true }> | { ok: true; adding: AddingId };
-
-/** How a Source added in the background is coming along. */
-export type AddingProgress =
-  | { status: "running"; sourceTypeId: string; plain: PlainConfig }
-  | { status: "added"; sourceTypeId: string; id: SourceId; setUp: boolean; plain: PlainConfig }
-  /** Its plugin could not prepare it; what was entered, without secrets, for the form to show again. */
-  | { status: "failed"; sourceTypeId: string; message: string; plain: PlainConfig; pollIntervalSeconds: number | null };
 
 /** How long an adding that ended is remembered. */
 const addingsKeptMs = 10 * 60_000;
 
+/** As a running adding reads once it is older than the longest a preparation may take. */
+function abandonedAdding(adding: SourceAdding, now: Date, preparationMaxMs: number): AddingProgress {
+  const { progress } = adding;
+  if (progress.status !== "running" || now.getTime() - adding.startedAt.getTime() <= preparationMaxMs) return progress;
+  return failedAdding({ ...progress, secrets: {} }, `it was not prepared within ${preparationMaxMs / 1000} s`);
+}
+
+/** The progress of an adding that failed, with what was entered but its secrets. */
 function failedAdding(input: SourceInput & { sourceTypeId: string }, message: string): AddingProgress {
   return { status: "failed", sourceTypeId: input.sourceTypeId, message, plain: input.plain, pollIntervalSeconds: input.pollIntervalSeconds ?? null };
 }
@@ -149,7 +158,7 @@ export type EditSourceResult =
   | SourceProblem;
 
 export function createSourceAccess(deps: SourcesDeps) {
-  const { clock, members, registry, sourceTypes, catalogues, sources, secrets, blobs, timeZone } = deps;
+  const { clock, members, registry, sourceTypes, catalogues, sources, addings, preparationMaxMs, secrets, blobs, timeZone } = deps;
   const cached = deps.cached ?? createCache(clock);
 
   const enabled = (sourceTypeId: SourceTypeId) => enabledSourceType(sourceTypeId, { registry, sourceTypes });
@@ -398,16 +407,8 @@ export function createSourceAccess(deps: SourcesDeps) {
     return { ok: true, id, setUp: sourceType.setupSteps.some((step) => step.live) };
   }
 
-  /** The Sources added in the background, by the id their adding was started with. */
-  const addings = new Map<AddingId, { startedAt: number; progress: AddingProgress }>();
-
-  /** Forgets addings that ended long ago, so that the map does not grow. */
-  function pruneAddings() {
-    const now = clock.now().getTime();
-    for (const [id, { startedAt, progress }] of addings) {
-      if (progress.status !== "running" && now - startedAt > addingsKeptMs) addings.delete(id);
-    }
-  }
+  /** How an adding reads now, a running one whose `api` container stopped as failed. */
+  const progressOf = (adding: SourceAdding) => abandonedAdding(adding, clock.now(), preparationMaxMs);
 
   /** The form of an enabled Source Type, for adding and editing its Sources. */
   async function formOf(id: SourceTypeId, withEntries = true): Promise<SourceForm | undefined> {
@@ -518,37 +519,40 @@ export function createSourceAccess(deps: SourcesDeps) {
     async startAdding(input: SourceInput & { sourceTypeId: string }): Promise<StartAddingResult> {
       const checked = await checkedAdding(input);
       if ("problem" in checked) return checked;
-      const completing = completeAdding(input, checked.sourceType);
-      pruneAddings();
+      const startedAt = clock.now();
+      // Those that ended long ago, and those whose `api` container stopped, so that the table does not grow.
+      await addings.removeStartedBefore(new Date(startedAt.getTime() - Math.max(addingsKeptMs, preparationMaxMs)));
       const id = randomUUID() as AddingId;
-      const startedAt = clock.now().getTime();
-      addings.set(id, { startedAt, progress: { status: "running", sourceTypeId: input.sourceTypeId, plain: input.plain } });
-      completing.then(
-        (result) => addings.set(id, { startedAt, progress: addingProgressOf(input, result) }),
-        (error: unknown) => addings.set(id, { startedAt, progress: failedAdding(input, error instanceof Error ? error.message : String(error)) }),
-      );
+      await addings.start({ id, startedAt, progress: { status: "running", sourceTypeId: input.sourceTypeId, plain: input.plain } });
+      const ended = (progress: AddingProgress) => addings.end(id, progress);
+      completeAdding(input, checked.sourceType)
+        .then(
+          (result) => ended(addingProgressOf(input, result)),
+          (error: unknown) => ended(failedAdding(input, error instanceof Error ? error.message : String(error))),
+        )
+        // Its row then reads as failed once it is older than a preparation may take.
+        .catch((error: unknown) => {
+          console.error(`Storing how adding a Source of type "${input.sourceTypeId}" ended failed:`, error);
+        });
       return { ok: true, adding: id };
     },
 
     /** How a Source added in the background is coming along; null for one not known (any more). */
-    adding(id: AddingId): AddingProgress | null {
-      return addings.get(id)?.progress ?? null;
+    async adding(id: AddingId): Promise<AddingProgress | null> {
+      const adding = await addings.find(id);
+      return adding && progressOf(adding);
     },
 
     /** The Sources of a Source Type still being prepared in the background, whose preparing failed, or with setup steps to go on to, oldest first. */
-    addingsOf(sourceTypeId: string): { id: AddingId; progress: AddingProgress }[] {
-      const listed: { id: AddingId; progress: AddingProgress }[] = [];
-      for (const [id, { progress }] of addings) {
-        // One added with live setup steps stays listed until an Admin goes on to them.
-        const shown = progress.status !== "added" || progress.setUp;
-        if (progress.sourceTypeId === sourceTypeId && shown) listed.push({ id, progress });
-      }
-      return listed;
+    async addingsOf(sourceTypeId: string): Promise<{ id: AddingId; progress: AddingProgress }[]> {
+      const listed = (await addings.listOfType(sourceTypeId)).map((adding) => ({ id: adding.id, progress: progressOf(adding) }));
+      // One added with live setup steps stays listed until an Admin goes on to them.
+      return listed.filter(({ progress }) => progress.status !== "added" || progress.setUp);
     },
 
     /** Forgets a Source added in the background, such as one whose failure an Admin saw. */
-    forgetAdding(id: AddingId): void {
-      addings.delete(id);
+    forgetAdding(id: AddingId): Promise<void> {
+      return addings.remove(id);
     },
 
     /**

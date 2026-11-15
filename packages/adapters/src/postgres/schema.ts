@@ -1,4 +1,4 @@
-import type { ActivityKind } from "@family-agenda/application";
+import type { ActivityKind, AddingProgress } from "@family-agenda/application";
 import { memberAvatars, statedItemKinds, familyLanguages, horizonDaysRange, itemKinds, photoTypes, agendaLayouts, timetableChangeKinds, type RunError } from "@family-agenda/domain";
 import { sql, type SQL } from "drizzle-orm";
 import {
@@ -575,6 +575,22 @@ export const lessons = pgTable(
     ),
     index("lesson_starts_at_idx").on(table.startsAt, table.endsAt),
   ],
+);
+
+/**
+ * The Sources being added in the background, so that every `api` container can tell how far they
+ * got. Each is kept for ten minutes after it started, or for the longest a preparation may take if
+ * that is longer.
+ */
+export const sourceAddings = pgTable(
+  "source_adding",
+  {
+    id: uuid("id").primaryKey(),
+    position: bigint("position", { mode: "number" }).notNull().generatedAlwaysAsIdentity(),
+    /** As far as it got, with its Source Type and what was entered but its secrets. */
+    progress: jsonb("progress").$type<AddingProgress>().notNull(),
+    startedAt: timestamptz("started_at").notNull(),
+  },
 );
 
 /** The Family's one LLM endpoint; its API key is in the SecretStore. */
