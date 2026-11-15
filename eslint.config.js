@@ -1,7 +1,7 @@
 import js from "@eslint/js";
 import tseslint from "typescript-eslint";
 import sonarjs from "eslint-plugin-sonarjs";
-import { addressAttributes, redirectHeaders } from "./apps/api/src/http/addresses.ts";
+import { addressAttributes, redirectHeaders } from "./apps/api/src/http/addresses.js";
 
 // Every rule from the sonarjs recommended set, disabled (used to exclude tests below).
 const sonarjsOff = Object.fromEntries(Object.keys(sonarjs.configs.recommended.rules).map((rule) => [rule, "off"]));

@@ -1,11 +1,12 @@
 /**
  * Where an address leaves the core, named once for the lint rule that keeps literal root paths out
- * of them (`eslint.config.js`) and the test that crawls an Instance below a path prefix. Plain data
- * only: `eslint.config.js` imports this file as it is.
+ * of them (`eslint.config.js`) and the test that crawls an Instance below a path prefix. Plain
+ * JavaScript, so that `eslint.config.js` imports it on every Node the repo supports; its types are
+ * in `addresses.d.ts`.
  */
 
 /** The attributes of the markup that name an address. */
-export const addressAttributes = [
+export const addressAttributes = Object.freeze([
   "href",
   "src",
   "action",
@@ -18,7 +19,7 @@ export const addressAttributes = [
   "hx-delete",
   "hx-push-url",
   "hx-replace-url",
-] as const;
+]);
 
 /** The response headers that send the browser to an address, in lower case. */
-export const redirectHeaders = ["location", "hx-redirect", "hx-location", "hx-push-url", "hx-replace-url"] as const;
+export const redirectHeaders = Object.freeze(["location", "hx-redirect", "hx-location", "hx-push-url", "hx-replace-url"]);
