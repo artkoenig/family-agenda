@@ -79,8 +79,8 @@ Reach the port from a container on the Instance's network, such as `docker compo
 | `POST /operations/purge` | deletes the text and attachments of messages past their retention | `{ "purged": <messages>, "deleted": <rows deleted> }` |
 | `POST /operations/secret-sweep` | removes secrets nothing refers to (older than an hour) | `{ "removed": <secrets> }` |
 | `POST /operations/prepare-family` | prepares the Family as starting does (see below); the body may name the Family id, `{ "familyId": "<uuid>" }` | `{ "familyId": "<uuid>" }`; `409` `{ "error": "family-id-differs", "familyId": "<the one it holds>" }` when the database holds another, `400` for a body that is no JSON or an id that is no UUID |
-| `POST /operations/enter-admin` | enters an Admin by email address, without a password (see [Admins without signing in](#admins-without-signing-in)); the body is `{ "email": "<address>" }` | `{ "email": "<address>", "entered": true }`; `"entered": false` when an Admin already has that address, which changes nothing; `400` `{ "error": "invalid-email" }` for an address that is no email address |
-| `POST /operations/reset-admin-password` | gives the Admin with that email a new random password and ends their sessions; the body is `{ "email": "<address>" }` | `{ "email": "<address>", "newPassword": "<password>" }`, the only place the password appears; `404` `{ "error": "unknown-admin" }` when no Admin has it, `400` without an email |
+| `POST /operations/enter-admin` | enters an Admin by email address, without a password (see [Admins without signing in](#admins-without-signing-in)); the body is `{ "email": "<address>" }` | `{ "email": "<address>", "outcome": "first" }` for the Family's first Admin, `"added"` for one more, `"exists"` when an Admin already has that address, which changes nothing; `400` `{ "error": "invalid-email" }` for an address that is no email address |
+| `POST /operations/reset-admin-password` | gives the Admin with that email a new random password and ends their sessions; the body is `{ "email": "<address>" }` | `{ "email": "<address>", "newPassword": "<password>" }`, the only place the password appears; `404` `{ "error": "unknown-admin" }` when no Admin has it, `400` `{ "error": "invalid-email" }` for an address that is no email address |
 
 Each operation calls exactly what the `worker`'s schedule calls (`due-work` every minute, `purge` hourly, `secret-sweep` at start and nightly), and writes the same lines to the `api` log as the `worker` writes to its own. A `due-work` trigger that arrives while one is under way in the same `api` waits for that run and gets its answer; across containers, and alongside the `worker`, runs of one Source take turns in the database, so no Source runs twice at once. An unknown operation answers `404`, one that fails `500` (the `api` log has the error).
 
@@ -174,7 +174,7 @@ Sessions are cookies bound to **one host**. The SSO button and the SSO session e
 
 ### Locked out
 
-- Password sign-in still works. Forgotten: another Admin, `reset-admin-password` or the CLI can set a new one (ADR-0004; [Admins without signing in](#admins-without-signing-in)).
+- Password sign-in still works. Forgotten: another Admin can set a new one, or the operator resets it (ADR-0004; [`reset-admin-password`](#admins-without-signing-in)).
 - Identity Provider down: use the password.
 - Wrong settings: fix or unset the `OIDC_*` variables and restart.
 

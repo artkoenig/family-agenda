@@ -81,11 +81,11 @@ describe("managing Admins", () => {
     expect((await signIn("anna@example.org", password)).ok).toBe(false);
     expect((await signIn("anna@example.org", issued.newPassword)).ok).toBe(true);
     expect(await instance.app.admins.issueNewPassword({ email: "nobody@example.org" })).toEqual({ ok: false, problem: "unknown-admin" });
-    expect(await instance.app.admins.issueNewPassword({ email: "not an email" })).toEqual({ ok: false, problem: "unknown-admin" });
+    expect(await instance.app.admins.issueNewPassword({ email: "not an email" })).toEqual({ ok: false, problem: "invalid-email" });
   });
 
   it("enters an Admin by email without a password, who cannot sign in with any password", async () => {
-    expect(await instance.app.admins.enterAdmin({ email: " Ben@Example.org " })).toEqual({ ok: true, email: "ben@example.org", entered: true });
+    expect(await instance.app.admins.enterAdmin({ email: " Ben@Example.org " })).toEqual({ ok: true, email: "ben@example.org", outcome: "added" });
 
     expect((await instance.app.admins.listAdmins()).map((admin) => admin.email)).toEqual(["anna@example.org", "ben@example.org"]);
     expect((await signIn("ben@example.org", "")).ok).toBe(false);
@@ -93,7 +93,7 @@ describe("managing Admins", () => {
   });
 
   it("changes nothing for an email an Admin already has, and says so", async () => {
-    expect(await instance.app.admins.enterAdmin({ email: "ANNA@example.org" })).toEqual({ ok: true, email: "anna@example.org", entered: false });
+    expect(await instance.app.admins.enterAdmin({ email: "ANNA@example.org" })).toEqual({ ok: true, email: "anna@example.org", outcome: "exists" });
 
     expect((await instance.app.admins.listAdmins()).length).toBe(1);
     expect((await signIn("anna@example.org", password)).ok).toBe(true);
@@ -117,7 +117,7 @@ describe("entering the first Admin", () => {
   it("makes the first Admin of a Family without Admins, which closes the setup", async () => {
     expect(await instance.app.admins.needsFirstAdmin()).toBe(true);
 
-    expect(await instance.app.admins.enterAdmin({ email: "anna@example.org" })).toEqual({ ok: true, email: "anna@example.org", entered: true });
+    expect(await instance.app.admins.enterAdmin({ email: "anna@example.org" })).toEqual({ ok: true, email: "anna@example.org", outcome: "first" });
 
     expect(await instance.app.admins.needsFirstAdmin()).toBe(false);
   });

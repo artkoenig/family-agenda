@@ -56,12 +56,12 @@ export type PasswordResetResult =
   | { ok: false; problem: "password-too-short" | "own-account" | "unknown-admin" };
 
 export type EnterAdminResult =
-  | { ok: true; email: Email; entered: boolean }
+  | { ok: true; email: Email; outcome: "first" | "added" | "exists" }
   | { ok: false; problem: "invalid-email" };
 
 export type IssuedPasswordResult =
   | { ok: true; email: Email; newPassword: string }
-  | { ok: false; problem: "unknown-admin" };
+  | { ok: false; problem: "invalid-email" | "unknown-admin" };
 
 /** 16 characters once encoded, above the shortest acceptable password. */
 const issuedPasswordBytes = 12;
@@ -253,8 +253,8 @@ export function createAdminAccess(deps: AdminAccessDeps) {
       if (!email) return { ok: false, problem: "invalid-email" };
       const admin: Admin = { id: randomUUID() as AdminId, email, passwordHash: null, identitySubject: null, createdAt: clock.now() };
       // The first Admin, or else one more; neither when an Admin already has the email.
-      const entered = (await admins.addFirst(admin)) || (await admins.add(admin));
-      return { ok: true, email, entered };
+      if (await admins.addFirst(admin)) return { ok: true, email, outcome: "first" };
+      return { ok: true, email, outcome: (await admins.add(admin)) ? "added" : "exists" };
     },
 
     /**
@@ -263,7 +263,8 @@ export function createAdminAccess(deps: AdminAccessDeps) {
      */
     async issueNewPassword(input: { email: string }): Promise<IssuedPasswordResult> {
       const email = parseEmail(input.email);
-      const admin = email && (await admins.findByEmail(email));
+      if (!email) return { ok: false, problem: "invalid-email" };
+      const admin = await admins.findByEmail(email);
       if (!admin) return { ok: false, problem: "unknown-admin" };
       const newPassword = randomBytes(issuedPasswordBytes).toString("base64url");
       await setPassword(admin, newPassword);

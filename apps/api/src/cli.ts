@@ -17,15 +17,18 @@ try {
     if (!result.ok) {
       console.error(`${email} is not a valid email address.`);
       process.exitCode = 1;
-    } else if (result.entered) {
-      console.log(`Entered the Admin ${result.email}, without a password.`);
+    } else if (result.outcome !== "exists") {
+      console.log(`Entered the ${result.outcome === "first" ? "first " : ""}Admin ${result.email}, without a password.`);
       console.log("Sign in through the Identity Provider with this verified email, or reset the password.");
     } else {
       console.log(`An Admin with the email ${result.email} exists already; nothing changed.`);
     }
   } else {
     const result = await application.admins.issueNewPassword({ email });
-    if (!result.ok) {
+    if (!result.ok && result.problem === "invalid-email") {
+      console.error(`${email} is not a valid email address.`);
+      process.exitCode = 1;
+    } else if (!result.ok) {
       console.error(`No Admin with the email ${email}.`);
       process.exitCode = 1;
     } else {

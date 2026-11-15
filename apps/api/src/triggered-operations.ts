@@ -21,7 +21,7 @@ export type TriggerAnswers = {
   purge: { purged: number; deleted: number };
   "secret-sweep": { removed: number };
   "prepare-family": PreparedFamily;
-  "enter-admin": { email: string; entered: boolean };
+  "enter-admin": { email: string; outcome: "first" | "added" | "exists" };
   "reset-admin-password": { email: string; newPassword: string };
 };
 
@@ -80,13 +80,13 @@ async function emailIn(body: BodyReader): Promise<string> {
 async function enterAdmin(work: TriggeredWork, body: BodyReader): Promise<TriggerAnswers["enter-admin"]> {
   const result = await work.admins.enterAdmin({ email: await emailIn(body) });
   if (!result.ok) throw new Refused(400, { error: result.problem });
-  return { email: result.email, entered: result.entered };
+  return { email: result.email, outcome: result.outcome };
 }
 
 /** The new password is in the answer alone, never in a log line. */
 async function resetAdminPassword(work: TriggeredWork, body: BodyReader): Promise<TriggerAnswers["reset-admin-password"]> {
   const result = await work.admins.issueNewPassword({ email: await emailIn(body) });
-  if (!result.ok) throw new Refused(404, { error: result.problem });
+  if (!result.ok) throw new Refused(result.problem === "invalid-email" ? 400 : 404, { error: result.problem });
   return { email: result.email, newPassword: result.newPassword };
 }
 

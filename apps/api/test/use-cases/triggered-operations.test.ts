@@ -127,7 +127,7 @@ describe("Triggering the Admins' operations from outside the core", () => {
 
     const response = await trigger("enter-admin", { email: "anna@example.org" });
 
-    expect(await response.json()).toEqual({ email: "anna@example.org", entered: true });
+    expect(await response.json()).toEqual({ email: "anna@example.org", outcome: "first" });
     expect((await pages.request("/setup")).status).toBe(404);
   });
 

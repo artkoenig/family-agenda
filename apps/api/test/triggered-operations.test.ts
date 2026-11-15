@@ -26,7 +26,7 @@ const fakeWork = (overrides: Partial<Overrides> = {}): TriggeredWork => ({
   retention: { purge: overrides.purge ?? (() => Promise.resolve({ purged: 2, deleted: 3 })) },
   secretSweep: { sweep: overrides.sweep ?? (() => Promise.resolve(4)) },
   admins: {
-    enterAdmin: overrides.enterAdmin ?? (({ email }) => Promise.resolve({ ok: true, email: email as Email, entered: true })),
+    enterAdmin: overrides.enterAdmin ?? (({ email }) => Promise.resolve({ ok: true, email: email as Email, outcome: "first" })),
     issueNewPassword: overrides.issueNewPassword ?? (({ email }) => Promise.resolve({ ok: true, email: email as Email, newPassword: "fresh-password-1" })),
   },
 });
@@ -169,13 +169,13 @@ describe("triggered operations", () => {
 
   it("enters an Admin by the email a body names, and says whether it changed anything", async () => {
     const given: string[] = [];
-    const app = appOf(fakeWork({ enterAdmin: ({ email }) => (given.push(email), Promise.resolve({ ok: true, email: "anna@example.org" as Email, entered: given.length === 1 })) }));
+    const app = appOf(fakeWork({ enterAdmin: ({ email }) => (given.push(email), Promise.resolve({ ok: true, email: "anna@example.org" as Email, outcome: given.length === 1 ? "first" : "exists" })) }));
 
     const first = await trigger(app, "enter-admin", bearer, JSON.stringify({ email: "Anna@example.org" }));
     const again = await trigger(app, "enter-admin", bearer, JSON.stringify({ email: "anna@example.org" }));
 
-    expect([first.status, await first.json()]).toEqual([200, { email: "anna@example.org", entered: true }]);
-    expect([again.status, await again.json()]).toEqual([200, { email: "anna@example.org", entered: false }]);
+    expect([first.status, await first.json()]).toEqual([200, { email: "anna@example.org", outcome: "first" }]);
+    expect([again.status, await again.json()]).toEqual([200, { email: "anna@example.org", outcome: "exists" }]);
     expect(given).toEqual(["Anna@example.org", "anna@example.org"]);
   });
 
@@ -207,6 +207,14 @@ describe("triggered operations", () => {
 
     expect([unknown.status, await unknown.json()]).toEqual([404, { error: "unknown-admin" }]);
     expect([missing.status, await missing.json()]).toEqual([400, { error: "invalid-email" }]);
+  });
+
+  it("refuses a password reset for an address that is no email address", async () => {
+    const app = appOf(fakeWork({ issueNewPassword: () => Promise.resolve({ ok: false, problem: "invalid-email" }) }));
+
+    const response = await trigger(app, "reset-admin-password", bearer, JSON.stringify({ email: "nope" }));
+
+    expect([response.status, await response.json()]).toEqual([400, { error: "invalid-email" }]);
   });
 
   it("knows no other operation, nor one inherited from Object", async () => {
