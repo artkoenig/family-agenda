@@ -55,6 +55,17 @@ export type PasswordResetResult =
   | { ok: true }
   | { ok: false; problem: "password-too-short" | "own-account" | "unknown-admin" };
 
+export type EnterAdminResult =
+  | { ok: true; email: Email; entered: boolean }
+  | { ok: false; problem: "invalid-email" };
+
+export type IssuedPasswordResult =
+  | { ok: true; email: Email; newPassword: string }
+  | { ok: false; problem: "unknown-admin" };
+
+/** 16 characters once encoded, above the shortest acceptable password. */
+const issuedPasswordBytes = 12;
+
 export function createAdminAccess(deps: AdminAccessDeps) {
   const { clock, passwordHasher, families, admins, sessions, signInFailures } = deps;
   // Verified against when an email is unknown, so that the answer takes as long as for a known one.
@@ -232,15 +243,31 @@ export function createAdminAccess(deps: AdminAccessDeps) {
       return setPassword(admin, input.newPassword);
     },
 
-    /** For the CLI inside the container, which needs no signed-in Admin. */
-    async resetPasswordByEmail(input: {
-      email: string;
-      newPassword: string;
-    }): Promise<PasswordResetResult> {
+    /**
+     * Enters an Admin by email address, without a password, for an operator who is not signed in:
+     * the first Admin on a Family without one. The Admin signs in through the Identity Provider,
+     * which links the identity by this verified email, or gets a password through a reset.
+     */
+    async enterAdmin(input: { email: string }): Promise<EnterAdminResult> {
+      const email = parseEmail(input.email);
+      if (!email) return { ok: false, problem: "invalid-email" };
+      const admin: Admin = { id: randomUUID() as AdminId, email, passwordHash: null, identitySubject: null, createdAt: clock.now() };
+      // The first Admin, or else one more; neither when an Admin already has the email.
+      const entered = (await admins.addFirst(admin)) || (await admins.add(admin));
+      return { ok: true, email, entered };
+    },
+
+    /**
+     * Gives an Admin a new random password and ends their sessions, for an operator who is not
+     * signed in (the CLI and the Triggered operation). Only the answer carries the password.
+     */
+    async issueNewPassword(input: { email: string }): Promise<IssuedPasswordResult> {
       const email = parseEmail(input.email);
       const admin = email && (await admins.findByEmail(email));
       if (!admin) return { ok: false, problem: "unknown-admin" };
-      return setPassword(admin, input.newPassword);
+      const newPassword = randomBytes(issuedPasswordBytes).toString("base64url");
+      await setPassword(admin, newPassword);
+      return { ok: true, email: admin.email, newPassword };
     },
 
     /** The Admin a session token belongs to, or null if it is unknown or expired. */

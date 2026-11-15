@@ -1,25 +1,37 @@
-import { randomBytes } from "node:crypto";
 import { bootApplication } from "./composition-root";
 import { readConfig } from "./config";
 
-const usage = "Usage: family-agenda reset-admin-password <email>";
+const usage = "Usage: family-agenda enter-admin <email> | reset-admin-password <email>";
 
 const [command, email] = process.argv.slice(2);
-if (command !== "reset-admin-password" || !email) {
+if ((command !== "enter-admin" && command !== "reset-admin-password") || !email) {
   console.error(usage);
   process.exit(2);
 }
 
+// The same calls as the Triggered operations `enter-admin` and `reset-admin-password`.
 const application = await bootApplication(readConfig());
 try {
-  const newPassword = randomBytes(12).toString("base64url");
-  const result = await application.admins.resetPasswordByEmail({ email, newPassword });
-  if (!result.ok) {
-    console.error(`No Admin with the email ${email}.`);
-    process.exitCode = 1;
+  if (command === "enter-admin") {
+    const result = await application.admins.enterAdmin({ email });
+    if (!result.ok) {
+      console.error(`${email} is not a valid email address.`);
+      process.exitCode = 1;
+    } else if (result.entered) {
+      console.log(`Entered the Admin ${result.email}, without a password.`);
+      console.log("Sign in through the Identity Provider with this verified email, or reset the password.");
+    } else {
+      console.log(`An Admin with the email ${result.email} exists already; nothing changed.`);
+    }
   } else {
-    console.log(`New password for ${email}: ${newPassword}`);
-    console.log("The Admin's sessions have ended. Sign in with this password.");
+    const result = await application.admins.issueNewPassword({ email });
+    if (!result.ok) {
+      console.error(`No Admin with the email ${email}.`);
+      process.exitCode = 1;
+    } else {
+      console.log(`New password for ${result.email}: ${result.newPassword}`);
+      console.log("The Admin's sessions have ended. Sign in with this password.");
+    }
   }
 } finally {
   await application.close();

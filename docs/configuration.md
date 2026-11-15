@@ -74,13 +74,27 @@ Reach the port from a container on the Instance's network, such as `docker compo
 
 | Request | Does | Answers |
 |---|---|---|
-| `GET /operations` | lists the operations | `{ "operations": ["due-work", "purge", "secret-sweep", "prepare-family"] }` |
+| `GET /operations` | lists the operations | `{ "operations": ["due-work", "purge", "secret-sweep", "prepare-family", "enter-admin", "reset-admin-password"] }` |
 | `POST /operations/due-work` | Due work: polls the due Sources, then extracts the messages they and earlier runs brought in (Extraction runs even when polling fails) | `{ "polled": …, "extracted": … }`, each `{ "ok": true, "report": … }` with what ran and what failed, or `{ "ok": false, "error": "<message>" }` |
 | `POST /operations/purge` | deletes the text and attachments of messages past their retention | `{ "purged": <messages>, "deleted": <rows deleted> }` |
 | `POST /operations/secret-sweep` | removes secrets nothing refers to (older than an hour) | `{ "removed": <secrets> }` |
 | `POST /operations/prepare-family` | prepares the Family as starting does (see below); the body may name the Family id, `{ "familyId": "<uuid>" }` | `{ "familyId": "<uuid>" }`; `409` `{ "error": "family-id-differs", "familyId": "<the one it holds>" }` when the database holds another, `400` for a body that is no JSON or an id that is no UUID |
+| `POST /operations/enter-admin` | enters an Admin by email address, without a password (see [Admins without signing in](#admins-without-signing-in)); the body is `{ "email": "<address>" }` | `{ "email": "<address>", "entered": true }`; `"entered": false` when an Admin already has that address, which changes nothing; `400` `{ "error": "invalid-email" }` for an address that is no email address |
+| `POST /operations/reset-admin-password` | gives the Admin with that email a new random password and ends their sessions; the body is `{ "email": "<address>" }` | `{ "email": "<address>", "newPassword": "<password>" }`, the only place the password appears; `404` `{ "error": "unknown-admin" }` when no Admin has it, `400` without an email |
 
 Each operation calls exactly what the `worker`'s schedule calls (`due-work` every minute, `purge` hourly, `secret-sweep` at start and nightly), and writes the same lines to the `api` log as the `worker` writes to its own. A `due-work` trigger that arrives while one is under way in the same `api` waits for that run and gets its answer; across containers, and alongside the `worker`, runs of one Source take turns in the database, so no Source runs twice at once. An unknown operation answers `404`, one that fails `500` (the `api` log has the error).
+
+### Admins without signing in
+
+Two operations act on the Admins for an operator who does not sign in to the Family, each both a Triggered operation and a command in the `api` container:
+
+```sh
+docker compose exec api family-agenda enter-admin anna@example.org
+docker compose exec api family-agenda reset-admin-password anna@example.org
+```
+
+- **Entering an Admin** adds one with that email address and no password. On a Family without Admins it is the first one, and the setup page is gone afterwards, as after any first Admin. The Admin then signs in through the Identity Provider, which links its identity to the Admin with the same verified email address (see [Who becomes an Admin](#who-becomes-an-admin)), or gets a password through the reset; until then no password signs them in. An address an Admin already has changes nothing, and the answer says so.
+- **Resetting a password** gives the Admin a new random password, shown once in the answer or the command's output and never logged, and ends their sessions.
 
 ### Preparing the Family
 
@@ -160,7 +174,7 @@ Sessions are cookies bound to **one host**. The SSO button and the SSO session e
 
 ### Locked out
 
-- Password sign-in still works. Forgotten: another Admin or the CLI can set a new one (ADR-0004).
+- Password sign-in still works. Forgotten: another Admin, `reset-admin-password` or the CLI can set a new one (ADR-0004; [Admins without signing in](#admins-without-signing-in)).
 - Identity Provider down: use the password.
 - Wrong settings: fix or unset the `OIDC_*` variables and restart.
 

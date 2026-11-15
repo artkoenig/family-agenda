@@ -58,6 +58,10 @@ describe("Preparing a Family on an empty database", () => {
     retention: { purge: () => Promise.reject(new Error("not booted")) },
     secretSweep: { sweep: () => Promise.reject(new Error("not booted")) },
     prepare: (familyId) => prepareFamily(wiring, { connectDatabase: connect }, familyId),
+    admins: {
+      enterAdmin: () => Promise.reject(new Error("not booted")),
+      issueNewPassword: () => Promise.reject(new Error("not booted")),
+    },
   });
 
   it("prepares the database before any Family is booted on it, with the Family id chosen", async () => {

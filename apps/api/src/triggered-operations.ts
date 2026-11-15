@@ -1,6 +1,6 @@
 import { timingSafeEqual } from "node:crypto";
 import { FamilyIdConflictError, parseFamilyId, type FamilyId } from "@family-agenda/adapters";
-import type { DueWorkReport, StepOutcome } from "@family-agenda/application";
+import type { AdminAccess, DueWorkReport, StepOutcome } from "@family-agenda/application";
 import { serve, type ServerType } from "@hono/node-server";
 import { Hono } from "hono";
 import { runDueWork, workFailures, type BackgroundWork, type WorkLog } from "./background-work";
@@ -21,13 +21,19 @@ export type TriggerAnswers = {
   purge: { purged: number; deleted: number };
   "secret-sweep": { removed: number };
   "prepare-family": PreparedFamily;
+  "enter-admin": { email: string; entered: boolean };
+  "reset-admin-password": { email: string; newPassword: string };
 };
 
 /**
- * What the Triggered operations act on: the worker's work, and Preparing the Family, which works
- * on the Family's database itself, not on a booted Family, so that it also prepares an empty one.
+ * What the Triggered operations act on: the worker's work; Preparing the Family, which works on
+ * the Family's database itself, not on a booted Family, so that it also prepares an empty one;
+ * and the Admins, for an operator who is not signed in.
  */
-export type TriggeredWork = BackgroundWork & { prepare(familyId?: FamilyId): Promise<PreparedFamily> };
+export type TriggeredWork = BackgroundWork & {
+  prepare(familyId?: FamilyId): Promise<PreparedFamily>;
+  admins: Pick<AdminAccess, "enterAdmin" | "issueNewPassword">;
+};
 
 type OperationName = keyof TriggerAnswers;
 /** Reads the JSON body of the request; only an operation that takes one calls it. */
@@ -37,7 +43,7 @@ type Operations = { [Name in OperationName]: (body: BodyReader) => Promise<Trigg
 /** An operation that will not run as asked, answered with `status` and `body`; nothing has changed. */
 class Refused extends Error {
   constructor(
-    readonly status: 400 | 409,
+    readonly status: 400 | 404 | 409,
     readonly body: Record<string, string>,
   ) {
     super(body.error);
@@ -61,6 +67,27 @@ async function prepareFamily(work: TriggeredWork, body: BodyReader): Promise<Pre
     if (error instanceof FamilyIdConflictError) throw new Refused(409, { error: "family-id-differs", familyId: error.stored });
     throw error;
   }
+}
+
+/** The email address a body names, as given; a body that names no text is refused. */
+async function emailIn(body: BodyReader): Promise<string> {
+  const given: unknown = await body();
+  const email = typeof given === "object" && given !== null ? (given as { email?: unknown }).email : undefined;
+  if (typeof email !== "string") throw new Refused(400, { error: "invalid-email" });
+  return email;
+}
+
+async function enterAdmin(work: TriggeredWork, body: BodyReader): Promise<TriggerAnswers["enter-admin"]> {
+  const result = await work.admins.enterAdmin({ email: await emailIn(body) });
+  if (!result.ok) throw new Refused(400, { error: result.problem });
+  return { email: result.email, entered: result.entered };
+}
+
+/** The new password is in the answer alone, never in a log line. */
+async function resetAdminPassword(work: TriggeredWork, body: BodyReader): Promise<TriggerAnswers["reset-admin-password"]> {
+  const result = await work.admins.issueNewPassword({ email: await emailIn(body) });
+  if (!result.ok) throw new Refused(404, { error: result.problem });
+  return { email: result.email, newPassword: result.newPassword };
 }
 
 const stepOf = <R>(outcome: StepOutcome<R>): StepAnswer<R> =>
@@ -102,6 +129,8 @@ function triggeredOperations(work: TriggeredWork, log: WorkLog): Operations {
     purge: () => work.retention.purge(),
     "secret-sweep": async () => ({ removed: await work.secretSweep.sweep() }),
     "prepare-family": queuedPrepare(work),
+    "enter-admin": (body) => enterAdmin(work, body),
+    "reset-admin-password": (body) => resetAdminPassword(work, body),
   };
 }
 

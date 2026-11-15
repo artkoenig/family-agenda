@@ -1,4 +1,5 @@
 import type { DueWorkReport } from "@family-agenda/application";
+import type { Email } from "@family-agenda/domain";
 import { describe, expect, it } from "vitest";
 import { FamilyIdConflictError } from "@family-agenda/adapters";
 import type { WorkLog } from "../src/background-work";
@@ -15,6 +16,8 @@ type Overrides = {
   purge: () => Promise<{ purged: number; deleted: number }>;
   sweep: () => Promise<number>;
   prepare: (familyId?: string) => Promise<{ familyId: string }>;
+  enterAdmin: TriggeredWork["admins"]["enterAdmin"];
+  issueNewPassword: TriggeredWork["admins"]["issueNewPassword"];
 };
 const familyId = "0b6f3c1e-8a2d-4f5b-9c7e-1d2a3b4c5d6e";
 const fakeWork = (overrides: Partial<Overrides> = {}): TriggeredWork => ({
@@ -22,6 +25,10 @@ const fakeWork = (overrides: Partial<Overrides> = {}): TriggeredWork => ({
   dueWork: { run: overrides.run ?? (() => Promise.resolve(emptyReport)) },
   retention: { purge: overrides.purge ?? (() => Promise.resolve({ purged: 2, deleted: 3 })) },
   secretSweep: { sweep: overrides.sweep ?? (() => Promise.resolve(4)) },
+  admins: {
+    enterAdmin: overrides.enterAdmin ?? (({ email }) => Promise.resolve({ ok: true, email: email as Email, entered: true })),
+    issueNewPassword: overrides.issueNewPassword ?? (({ email }) => Promise.resolve({ ok: true, email: email as Email, newPassword: "fresh-password-1" })),
+  },
 });
 
 const token = "s3cret-token";
@@ -35,7 +42,7 @@ describe("triggered operations", () => {
   it("lists the operations it offers", async () => {
     const response = await appOf(fakeWork()).request("/operations", { headers: bearer });
 
-    expect(await response.json()).toEqual({ operations: ["due-work", "purge", "secret-sweep", "prepare-family"] });
+    expect(await response.json()).toEqual({ operations: ["due-work", "purge", "secret-sweep", "prepare-family", "enter-admin", "reset-admin-password"] });
   });
 
   it("answers the purge and the sweep with what they did", async () => {
@@ -158,6 +165,48 @@ describe("triggered operations", () => {
 
     expect(statuses).toEqual([500, 200]);
     expect(steps).toEqual(["start 1", "end 1", "start 2", "end 2"]);
+  });
+
+  it("enters an Admin by the email a body names, and says whether it changed anything", async () => {
+    const given: string[] = [];
+    const app = appOf(fakeWork({ enterAdmin: ({ email }) => (given.push(email), Promise.resolve({ ok: true, email: "anna@example.org" as Email, entered: given.length === 1 })) }));
+
+    const first = await trigger(app, "enter-admin", bearer, JSON.stringify({ email: "Anna@example.org" }));
+    const again = await trigger(app, "enter-admin", bearer, JSON.stringify({ email: "anna@example.org" }));
+
+    expect([first.status, await first.json()]).toEqual([200, { email: "anna@example.org", entered: true }]);
+    expect([again.status, await again.json()]).toEqual([200, { email: "anna@example.org", entered: false }]);
+    expect(given).toEqual(["Anna@example.org", "anna@example.org"]);
+  });
+
+  it("refuses to enter an Admin without an email, or with one that is no email address", async () => {
+    const app = appOf(fakeWork({ enterAdmin: () => Promise.resolve({ ok: false, problem: "invalid-email" }) }));
+
+    for (const body of [undefined, "{}", JSON.stringify({ email: 7 }), JSON.stringify({ email: "nope" })]) {
+      const response = await trigger(app, "enter-admin", bearer, body);
+      expect([response.status, await response.json()]).toEqual([400, { error: "invalid-email" }]);
+    }
+  });
+
+  it("resets an Admin's password, answering with the new one and logging nothing", async () => {
+    const lines: unknown[] = [];
+    const log: WorkLog = { warn: (...args) => void lines.push(args), error: (...args) => void lines.push(args) };
+    const app = appOf(fakeWork(), log);
+
+    const response = await trigger(app, "reset-admin-password", bearer, JSON.stringify({ email: "anna@example.org" }));
+
+    expect([response.status, await response.json()]).toEqual([200, { email: "anna@example.org", newPassword: "fresh-password-1" }]);
+    expect(lines).toEqual([]);
+  });
+
+  it("answers 404 for a password reset of no Admin, and 400 without an email", async () => {
+    const app = appOf(fakeWork({ issueNewPassword: () => Promise.resolve({ ok: false, problem: "unknown-admin" }) }));
+
+    const unknown = await trigger(app, "reset-admin-password", bearer, JSON.stringify({ email: "nobody@example.org" }));
+    const missing = await trigger(app, "reset-admin-password", bearer, "{}");
+
+    expect([unknown.status, await unknown.json()]).toEqual([404, { error: "unknown-admin" }]);
+    expect([missing.status, await missing.json()]).toEqual([400, { error: "invalid-email" }]);
   });
 
   it("knows no other operation, nor one inherited from Object", async () => {

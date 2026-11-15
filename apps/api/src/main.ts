@@ -29,6 +29,7 @@ const triggered = {
   secretSweep: application.secretSweep,
   // On the Family's database itself, as starting does.
   prepare: (familyId?: FamilyId) => prepareFamily(shared, config, familyId),
+  admins: application.admins,
 };
 const triggers = serveTriggers(triggered, config.trigger, { info: console.log, warn: console.warn, error: console.error });
 

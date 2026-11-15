@@ -27,7 +27,7 @@ A person in the Family whom Items can concern, child or adult.
 _Avoid_: User, profile, kid
 
 **Admin**:
-A parent who signs in with their own account, by password or through the Identity Provider, to manage settings and Sources, and to delete Items that should not be there. One who signs in only through the Identity Provider has no password until another Admin or the CLI sets one.
+A parent who signs in with their own account, by password or through the Identity Provider, to manage settings and Sources, and to delete Items that should not be there. One who signs in only through the Identity Provider, or whom an operator entered by email address, has no password until another Admin or a password reset sets one.
 _Avoid_: Owner, superuser, parent account
 
 **Agenda**:
@@ -141,7 +141,7 @@ Bringing a Family's database up to date: migrating its schema, writing its Famil
 _Avoid_: Bootstrap, setup, init
 
 **Triggered operation**:
-A piece of the `worker`'s work, such as Due work, the purge or the secret sweep, or Preparing the Family, that something outside the core runs on request through the `api`'s own unpublished port, with the Instance's trigger token. It runs the same code as the `worker`'s schedule, or as starting.
+A piece of the `worker`'s work, such as Due work, the purge or the secret sweep, Preparing the Family, or entering an Admin and resetting an Admin's password, that something outside the core runs on request through the `api`'s own unpublished port, with the Instance's trigger token. It runs the same code as the `worker`'s schedule, as starting, or as the command line.
 _Avoid_: Job, webhook, internal API
 
 **Companion**:
