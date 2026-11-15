@@ -94,7 +94,7 @@ import {
   AgendaTimeline,
   agendaUrl,
 } from "./agenda-page";
-import { href, pathPrefixOf, PathPrefixContext } from "./href";
+import { href, pathPrefixOf, PathPrefixContext, stylesheetBelow } from "./href";
 
 export type HttpOptions = {
   /** Whether a reverse proxy in front sets `X-Forwarded-For` and `X-Forwarded-Proto`. */
@@ -153,13 +153,13 @@ const stylesheets = {
 };
 
 /**
- * The stylesheets as served below `prefix`: the fonts `tokens.css` names from the root of the
- * Instance and the animals of `avatars.css` move below it with the pages.
+ * The stylesheets as served below `prefix`: the addresses they name from the root of the Instance,
+ * such as the fonts of `tokens.css` and the animals of `avatars.css`, move below it with the pages.
  */
-const stylesheetsBelow = (prefix: string): Record<string, Uint8Array<ArrayBuffer>> => {
-  const encode = (css: string) => new TextEncoder().encode(css);
+const servedStylesheets = (prefix: string): Record<string, Uint8Array<ArrayBuffer>> => {
+  const encode = (css: string) => new TextEncoder().encode(stylesheetBelow(prefix, css));
   return {
-    "tokens.css": encode(stylesheets["tokens.css"].replaceAll('url("/static/', `url("${href(prefix, "/static/")}`)),
+    "tokens.css": encode(stylesheets["tokens.css"]),
     "design.css": encode(stylesheets["design.css"]),
     "avatars.css": avatarStylesheet(prefix),
   };
@@ -207,7 +207,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
   const prefix = pathPrefixOf(options.publicUrl);
   /** Sends the browser on to `path` below the prefix after a form was posted. */
   const seeOther = (c: Context, path: `/${string}`) => c.redirect(href(prefix, path), 303);
-  const stylesheetsHere = stylesheetsBelow(prefix);
+  const stylesheetFiles = servedStylesheets(prefix);
   /** A page or fragment rendered in the request's Translation, its addresses below the path prefix. */
   const render = (
     c: Context<Env>,
@@ -276,7 +276,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
   );
 
   app.get("/static/:file{[a-z]+\\.css}", (c) => {
-    const css = stylesheetsHere[c.req.param("file")];
+    const css = stylesheetFiles[c.req.param("file")];
     if (!css) return c.notFound();
     return c.body(css, 200, {
       "content-type": "text/css; charset=utf-8",
@@ -412,15 +412,17 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     );
   });
 
-  // What puts an Agenda on a home screen as an app that opens fullscreen. Its addresses come from the path
-  // it was asked at, so that they stay right whatever address an Agenda is opened at.
+  // What puts an Agenda on a home screen as an app that opens fullscreen. Its addresses are the Agenda's
+  // own below the path prefix, whatever filter or days it was opened with.
   app.get("/agendas/:id/manifest.webmanifest", async (c) => {
     const page = await agendas.open(c.req.param("id") as AgendaId, {
       access: options.agendaAccess,
     });
     if (!page) return c.notFound();
     const name = page.layout === "task_list" ? "Todos" : "Agenda";
-    const address = href(prefix, c.req.path.replace(/\/manifest\.webmanifest$/, "") as `/${string}`);
+    const address = href(prefix, agendaUrl(page.id));
+    const icon192 = href(prefix, iconUrl("icon-192.png"));
+    const icon512 = href(prefix, iconUrl("icon-512.png"));
     return c.body(
       JSON.stringify({
         id: address,
@@ -432,17 +434,17 @@ export function createHttpApp(application: Application, options: HttpOptions) {
         background_color: "#faf6f0",
         theme_color: "#faf6f0",
         icons: [
-          { src: href(prefix, iconUrl("icon-192.png")), sizes: "192x192", type: "image/png" },
-          { src: href(prefix, iconUrl("icon-512.png")), sizes: "512x512", type: "image/png" },
+          { src: icon192, sizes: "192x192", type: "image/png" },
+          { src: icon512, sizes: "512x512", type: "image/png" },
           // Full-bleed art with the content inside the safe zone: Android masks it to its own shape instead of putting it on white.
           {
-            src: href(prefix, iconUrl("icon-192.png")),
+            src: icon192,
             sizes: "192x192",
             type: "image/png",
             purpose: "maskable",
           },
           {
-            src: href(prefix, iconUrl("icon-512.png")),
+            src: icon512,
             sizes: "512x512",
             type: "image/png",
             purpose: "maskable",

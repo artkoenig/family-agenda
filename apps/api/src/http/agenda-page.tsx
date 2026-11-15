@@ -819,7 +819,8 @@ function TickForm(props: { row: TimelineTask; page: AgendaPage | TaskListPage })
   const done = row.status === "done";
   const { t } = useTranslation();
   const v = t.agenda;
-  const action = href(usePathPrefix(), `/agendas/${page.id}/tasks/${row.itemId}/${done ? "undone" : "done"}`);
+  const prefix = usePathPrefix();
+  const action = href(prefix, `/agendas/${page.id}/tasks/${row.itemId}/${done ? "undone" : "done"}`);
   return (
     <form
       method="post"

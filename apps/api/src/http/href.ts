@@ -27,3 +27,11 @@ export function href(prefix: string, path: `/${string}`): string {
   // The root itself is the prefix, so that a cookie for it covers the prefix exactly.
   return path === "/" && prefix !== "" ? prefix : prefix + path;
 }
+
+/**
+ * A stylesheet with every address it names from the root of the Instance (`url(/static/…)`, quoted
+ * or not, and `@import "/static/…"`) moved below the path prefix; unchanged without one.
+ */
+export function stylesheetBelow(prefix: string, css: string): string {
+  return css.replace(/(url\(\s*["']?|@import\s+["'])\/static\//g, (_, lead: string) => `${lead}${href(prefix, "/static/")}`);
+}

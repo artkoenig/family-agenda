@@ -102,9 +102,12 @@ describe("an Agenda below a path prefix", () => {
     for (const path of statics) expect((await instance.get(path)).status, path).toBe(200);
 
     // A stylesheet's own addresses resolve against where it was loaded from, below the prefix.
-    for (const sheet of ["tokens.css", "avatars.css"]) {
+    for (const sheet of ["tokens.css", "design.css", "avatars.css"]) {
       const base = `http://localhost${prefix}/static/${sheet}`;
       const css = await (await instance.get(`${prefix}/static/${sheet}`)).text();
+      // No address from the root of the Instance is left, however it is quoted.
+      expect(css.match(/(?:url\(\s*["']?|@import\s+(?:url\(\s*)?["']?)\/static\//g) ?? [], sheet).toEqual([]);
+      if (sheet === "design.css") continue;
       const urls = [...css.matchAll(/url\("?([^")]+)"?\)/g)].map((match) => new URL(match[1] ?? "", base).pathname);
       expect(urls.length).toBeGreaterThan(0);
       for (const path of urls) {
@@ -112,5 +115,13 @@ describe("an Agenda below a path prefix", () => {
         expect((await instance.get(path)).status, path).toBe(200);
       }
     }
+  });
+
+  it("loads the stylesheets, fonts and scripts of the Admin area below the prefix", async () => {
+    const page = await (await instance.get(`${prefix}/admin/sign-in`)).text();
+    expect(outside(page)).toEqual([]);
+    const statics = [...page.matchAll(/(?:href|src)="([^"]*\/static\/[^"]*)"/g)].map((match) => match[1] ?? "");
+    expect(statics).toEqual(expect.arrayContaining([`${prefix}/static/tokens.css`, `${prefix}/static/htmx.min.js`]));
+    for (const path of statics) expect((await instance.get(path)).status, path).toBe(200);
   });
 });
