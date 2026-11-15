@@ -114,7 +114,17 @@ Preparing the Family brings its database schema up to date, makes sure it has it
 
 To serve the Instance below a path such as `/agenda`, set `PUBLIC_URL` with that path (`https://home.example.org/agenda`) and let the proxy remove the prefix before it passes a request on. The `api` itself still listens at the root; its health check (`/api/health`) answers there, without the prefix. Session and SSO cookies are limited to the prefix, and the SSO redirect URI lies below it. A `PUBLIC_URL` without a path means no prefix.
 
-Not every page writes its addresses below the prefix yet: setting up the first Admin, signing in and out and SSO do; the other pages follow.
+Every page, form, background request, redirect and file the Instance serves then lies below the prefix: the Admin area at `https://home.example.org/agenda/admin`, an Agenda Link at `https://home.example.org/agenda/agendas/<id>`. The proxy must strip exactly the prefix; with Caddy, for example:
+
+```
+home.example.org {
+	handle_path /agenda/* {
+		reverse_proxy family-agenda:8080
+	}
+}
+```
+
+With nginx, `location /agenda/ { proxy_pass http://family-agenda:8080/; }` does the same (the trailing slash of `proxy_pass` removes the prefix). Set `TRUST_PROXY=true` as for any proxy. These match `/agenda/` and below; redirect the bare `/agenda` to `/agenda/` in the proxy if the Family may type it.
 
 `PUBLIC_URL` is the address shown and copied from the Agendas page and used in ICS feeds. Calendar apps need to reach it, and some do not follow an HTTP to HTTPS redirect, so point `PUBLIC_URL` at the final address where you can.
 
