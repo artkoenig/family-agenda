@@ -177,7 +177,7 @@ export function Layout(props: {
               <meta name="theme-color" content="#1c1814" media="(prefers-color-scheme: dark)" />
               <meta name="apple-mobile-web-app-capable" content="yes" />
               <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-              <link rel="apple-touch-icon" href={iconUrl("apple-touch-icon.png")} />
+              <link rel="apple-touch-icon" href={href(prefix, iconUrl("apple-touch-icon.png"))} />
             </>
           ) : null}
           <script>{raw(themeBoot)}</script>

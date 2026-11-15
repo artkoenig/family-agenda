@@ -146,11 +146,23 @@ const htmx = readFileSync(
 
 const resolve = createRequire(import.meta.url).resolve;
 
-/** The design system's stylesheets (`design/`), served as they are. */
-const stylesheets: Record<string, Uint8Array<ArrayBuffer>> = {
-  "tokens.css": readFileSync(new URL("./design/tokens.css", import.meta.url)),
-  "design.css": readFileSync(new URL("./design/design.css", import.meta.url)),
-  "avatars.css": avatarStylesheet,
+/** The design system's stylesheets (`design/`), by file name. */
+const stylesheets = {
+  "tokens.css": readFileSync(new URL("./design/tokens.css", import.meta.url), "utf8"),
+  "design.css": readFileSync(new URL("./design/design.css", import.meta.url), "utf8"),
+};
+
+/**
+ * The stylesheets as served below `prefix`: the fonts `tokens.css` names from the root of the
+ * Instance and the animals of `avatars.css` move below it with the pages.
+ */
+const stylesheetsBelow = (prefix: string): Record<string, Uint8Array<ArrayBuffer>> => {
+  const encode = (css: string) => new TextEncoder().encode(css);
+  return {
+    "tokens.css": encode(stylesheets["tokens.css"].replaceAll('url("/static/', `url("${href(prefix, "/static/")}`)),
+    "design.css": encode(stylesheets["design.css"]),
+    "avatars.css": avatarStylesheet(prefix),
+  };
 };
 
 /** The font files `tokens.css` names, from their packages: the Instance serves them itself, as it runs offline. */
@@ -195,6 +207,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
   const prefix = pathPrefixOf(options.publicUrl);
   /** Sends the browser on to `path` below the prefix after a form was posted. */
   const seeOther = (c: Context, path: `/${string}`) => c.redirect(href(prefix, path), 303);
+  const stylesheetsHere = stylesheetsBelow(prefix);
   /** A page or fragment rendered in the request's Translation, its addresses below the path prefix. */
   const render = (
     c: Context<Env>,
@@ -263,7 +276,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
   );
 
   app.get("/static/:file{[a-z]+\\.css}", (c) => {
-    const css = stylesheets[c.req.param("file")];
+    const css = stylesheetsHere[c.req.param("file")];
     if (!css) return c.notFound();
     return c.body(css, 200, {
       "content-type": "text/css; charset=utf-8",
@@ -407,7 +420,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     });
     if (!page) return c.notFound();
     const name = page.layout === "task_list" ? "Todos" : "Agenda";
-    const address = c.req.path.replace(/\/manifest\.webmanifest$/, "");
+    const address = href(prefix, c.req.path.replace(/\/manifest\.webmanifest$/, "") as `/${string}`);
     return c.body(
       JSON.stringify({
         id: address,
@@ -419,17 +432,17 @@ export function createHttpApp(application: Application, options: HttpOptions) {
         background_color: "#faf6f0",
         theme_color: "#faf6f0",
         icons: [
-          { src: iconUrl("icon-192.png"), sizes: "192x192", type: "image/png" },
-          { src: iconUrl("icon-512.png"), sizes: "512x512", type: "image/png" },
+          { src: href(prefix, iconUrl("icon-192.png")), sizes: "192x192", type: "image/png" },
+          { src: href(prefix, iconUrl("icon-512.png")), sizes: "512x512", type: "image/png" },
           // Full-bleed art with the content inside the safe zone: Android masks it to its own shape instead of putting it on white.
           {
-            src: iconUrl("icon-192.png"),
+            src: href(prefix, iconUrl("icon-192.png")),
             sizes: "192x192",
             type: "image/png",
             purpose: "maskable",
           },
           {
-            src: iconUrl("icon-512.png"),
+            src: href(prefix, iconUrl("icon-512.png")),
             sizes: "512x512",
             type: "image/png",
             purpose: "maskable",
@@ -505,7 +518,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     );
     if (!result.ok) return c.notFound();
     if (c.req.header("hx-request") !== "true")
-      return c.redirect(agendaUrl(id), 303);
+      return seeOther(c, agendaUrl(id));
     // htmx swaps the timeline or the Task List as it was, the days scrolled to and the quick filter included.
     const form = await c.req.parseBody();
     const days = timelineDaysOf(
@@ -536,7 +549,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
       access: options.agendaAccess,
     });
     if (!feed) return c.notFound();
-    const agendaLink = `${originOf(c)}${agendaUrl(feed.id)}`;
+    const agendaLink = `${originOf(c)}${href(prefix, agendaUrl(feed.id))}`;
     return c.body(icsFeed(feed, agendaLink), 200, {
       "content-type": "text/calendar; charset=utf-8",
       "cache-control": "no-store",

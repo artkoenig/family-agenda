@@ -1,6 +1,7 @@
 import { createRequire } from "node:module";
 import { readFileSync } from "node:fs";
 import { memberAvatars, type MemberAvatar } from "@family-agenda/domain";
+import { href } from "./href";
 
 // The animals come from Fluent Emoji (flat), MIT licensed by Microsoft, as Iconify packages them. The
 // Instance serves them itself, as it runs offline.
@@ -33,13 +34,15 @@ export function avatarUrl(avatar: MemberAvatar): `/${string}` {
 
 /**
  * The rules that show the chosen animal in the preview of a Family Member's dialog, one per animal, as
- * a stylesheet cannot name an image after the value of the radio button that is checked.
+ * a stylesheet cannot name an image after the value of the radio button that is checked. The images
+ * lie below the path prefix.
  */
-export const avatarStylesheet = new TextEncoder().encode(
-  memberAvatars
+export const avatarStylesheet = (prefix: string): Uint8Array<ArrayBuffer> =>
+  new TextEncoder().encode(
+    memberAvatars
     .map(
       (avatar) =>
-        `.fam-looks:has(input[name="avatar"][value="${avatar}"]:checked) .fam-looks__preview { background-image: url(${avatarUrl(avatar)}); }`,
+        `.fam-looks:has(input[name="avatar"][value="${avatar}"]:checked) .fam-looks__preview { background-image: url(${href(prefix, avatarUrl(avatar))}); }`,
     )
     .join("\n") + "\n",
 );
