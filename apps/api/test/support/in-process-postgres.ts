@@ -10,6 +10,8 @@ export type InProcessPostgres = {
   /** Connects the Application to it; closing that connection leaves the database as it is. */
   connect(): PostgresConnection;
   query(sql: string): Promise<Record<string, unknown>[]>;
+  /** The database itself, for pg-boss to run against. */
+  pglite: PGlite;
   /** Hands the database back, emptied, for the next test of the file. */
   release(): Promise<void>;
 };
@@ -33,6 +35,7 @@ export async function acquirePostgres(): Promise<InProcessPostgres> {
         close: () => Promise.resolve(),
       };
     },
+    pglite: postgres,
     async query(sql) {
       return (await postgres.query<Record<string, unknown>>(sql)).rows;
     },

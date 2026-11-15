@@ -10,7 +10,7 @@ import {
   FileBlobStore,
   holdsSecrets,
   OpenAiCompatibleExtractor,
-  PgBossJobQueue,
+  PgBossWorkSchedule,
   PostgresActivityRepository,
   PostgresAdminRepository,
   PostgresAdminSessionRepository,
@@ -46,6 +46,7 @@ import {
   createRecoveryKitAccess,
   createRetention,
   createSecretSweep,
+  createDueWork,
   createCache,
   createSourceAccess,
   createSourceHealth,
@@ -63,7 +64,6 @@ import {
   type FamilyMemberAccess,
   type Clock,
   type LanguageAccess,
-  type JobQueue,
   type IdentityProviderClient,
   type IdentityProviderSettings,
   type LlmEndpointAccess,
@@ -73,6 +73,7 @@ import {
   type SecretStore,
   type Retention,
   type SecretSweep,
+  type DueWork,
   type SourceAccess,
   type SourcePolling,
   type SourceTypeAccess,
@@ -80,6 +81,7 @@ import {
   type TaskAccess,
   type AgendaAccess,
 } from "@family-agenda/application";
+import { scheduleWork, type WorkLog } from "./scheduled-work";
 import type { PluginBinding } from "./plugin-containers/bindings";
 import { PluginContainers } from "./plugin-containers/registry";
 import type { PluginContainerOptions } from "./plugin-containers/transport";
@@ -137,9 +139,9 @@ export type Application = {
   cached: Cached;
   admins: AdminAccess;
   secrets: SecretStore;
-  /** Removes the secrets nothing refers to any more; the worker does when it starts. */
+  /** Removes the secrets nothing refers to any more, once; the worker does when it starts. */
   secretSweep: SecretSweep;
-  /** Deletes messages' text and attachments after their retention; the worker does it in the background. */
+  /** Deletes messages' text and attachments after their retention, once; the worker does once an hour. */
   retention: Retention;
   recoveryKit: RecoveryKitAccess;
   familyMembers: FamilyMemberAccess;
@@ -153,12 +155,14 @@ export type Application = {
   catalogues: CatalogueAccess;
   sources: SourceAccess;
   /** Which Family Members the Items of a Source's Origins concern. */
-  /** Runs the Sources that are due; the worker does on each tick. */
+  /** Runs the Sources that are due, or one Source now. */
   polling: SourcePolling;
+  /** Runs the due Sources, then Extraction, once; the worker does once a minute. */
+  dueWork: DueWork;
   llmEndpoint: LlmEndpointAccess;
   /** Signing in through the Identity Provider, alongside the password. */
   singleSignOn: SingleSignOn;
-  /** Extracts Items from the raw messages that wait for it; the worker does on each tick. */
+  /** Extracts Items from the raw messages that wait for it, as part of due work. */
   extraction: ExtractionAccess;
   messages: MessageAccess;
   close(): Promise<void>;
@@ -369,6 +373,7 @@ export async function bootApplication(config: ApplicationConfig): Promise<Applic
     catalogues,
     sources,
     polling,
+    dueWork: createDueWork({ polling, extraction }),
     llmEndpoint,
     singleSignOn,
     extraction,
@@ -390,19 +395,29 @@ async function loadMasterKey(postgres: PostgresConnection, file: string): Promis
   return createMasterKey(file);
 }
 
-export type Worker = Application & { jobs: JobQueue };
+export type WorkerConfig = ApplicationConfig & {
+  /** Replaces pg-boss on `databaseUrl`, such as with pg-boss on an in-process database. */
+  workSchedule?: PgBossWorkSchedule;
+  /** Where failures and refusals are written; the console by default. */
+  log?: WorkLog;
+};
 
-/** The same Application, plus the job queue whose jobs the worker runs. */
-export async function bootWorker(config: ApplicationConfig & { databaseUrl: string }): Promise<Worker> {
+/** The same Application, taking its work from pg-boss schedules in the Family's database. */
+export async function bootWorker(config: WorkerConfig): Promise<Application> {
+  const schedule = config.workSchedule ?? pgBossOn(config);
   const application = await bootApplication(config);
-  const jobs = new PgBossJobQueue(config.databaseUrl);
-  await jobs.start();
+  await schedule.start();
+  await scheduleWork(application, schedule, config.log ?? console);
   return {
     ...application,
-    jobs,
     async close() {
-      await jobs.stop();
+      await schedule.stop();
       await application.close();
     },
   };
+}
+
+function pgBossOn(config: DatabaseConfig): PgBossWorkSchedule {
+  if (!("databaseUrl" in config)) throw new Error("The worker needs a databaseUrl for pg-boss, or a workSchedule.");
+  return new PgBossWorkSchedule({ connectionString: config.databaseUrl });
 }

@@ -14,8 +14,12 @@ import type {
   SecretStore,
   TextExtractor,
 } from "@family-agenda/application";
+import { fromPglite, type TestClock } from "pg-boss";
+import { PgBossWorkSchedule } from "@family-agenda/adapters";
+import type { WorkLog } from "../../src/scheduled-work";
 import {
   bootApplication,
+  bootWorker,
   type Application,
   type ApplicationConfig,
 } from "../../src/composition-root";
@@ -71,6 +75,11 @@ export type TestInstance = {
    * Clock; it is closed with the Instance.
    */
   bootApiContainer(): Promise<Application>;
+  /**
+   * Boots a `worker` container against the same database, its pg-boss schedules on `schedules`
+   * and logging to `log`; it is closed with the Instance.
+   */
+  bootWorker(schedules: TestClock, log: WorkLog): Promise<Application>;
   close(): Promise<void>;
 };
 
@@ -135,6 +144,12 @@ export async function bootForTest(options: TestOptions = {}): Promise<TestInstan
       const container = await bootApplication(config);
       otherContainers.push(container);
       return container;
+    },
+    async bootWorker(schedules, log) {
+      const workSchedule = new PgBossWorkSchedule({ db: fromPglite(postgres.pglite), backend: "pglite", clock: schedules });
+      const worker = await bootWorker({ ...config, workSchedule, log });
+      otherContainers.push(worker);
+      return worker;
     },
     async close() {
       for (const container of otherContainers) await container.close();

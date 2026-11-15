@@ -4,7 +4,7 @@ export * from "./file-blob-store";
 export * from "./file-master-key";
 export * from "./oidc-identity-provider-client";
 export * from "./openai-compatible-extractor";
-export * from "./pg-boss-job-queue";
+export * from "./pg-boss-work-schedule";
 export * from "./postgres/database";
 export * from "./postgres/migration-history";
 export * from "./postgres/envelope-secret-store";
