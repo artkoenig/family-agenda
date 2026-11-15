@@ -21,3 +21,7 @@ A Family is named by one identifier, its Family id: a random UUID made with the 
 ## Amendment: the Family id is chosen or drawn once
 
 The Family id is drawn at random when a Family is first prepared, unless the operator gives one before it exists (`FAMILY_ID`, or the body of the Triggered operation `prepare-family`). It is written in the same transaction as the migrations that create the `family` row, so a failed start leaves no random id behind. Once a database holds an id, it never changes: Preparing the Family with a different one is refused before anything changes. Preparing works on the Family's database, not on a booted Family, so that an Instance of several Families can prepare an empty database for a new one.
+
+## Amendment: a folder per Family in the blob volume
+
+The file-based BlobStore keeps a Family's blobs at `<blob directory>/<family id>/<blob reference>`, in a folder readable by its owner only, so that several Families can share one blob volume without seeing each other's files. A blob is written once under its final name: its reference is random and handed out only after the write, so nothing reads it half-written. Preparing the Family moves the blobs of the earlier layout, files named by a blob reference in the top level of the volume, into the Family's folder; running it again finishes an interrupted move.

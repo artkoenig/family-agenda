@@ -72,6 +72,8 @@ export type TestInstance = {
   clock: FakeClock;
   /** The file the master key is kept in, outside Postgres. */
   masterKeyFile: string;
+  /** The `blobs` volume, holding a folder of blobs per Family unless a BlobStore replaces it. */
+  blobDirectory: string;
   /** The `tessdata` volume, holding links to the bundled `deu`, `eng` and `osd` models at first. */
   tessdataDirectory: string;
   /** Runs SQL against the Instance's database, to look at what it stores. */
@@ -153,6 +155,7 @@ export async function bootForTest(options: TestOptions = {}): Promise<TestInstan
     app: await bootFamily(shared, config),
     clock,
     masterKeyFile: config.masterKeyFile,
+    blobDirectory: config.blobDirectory,
     tessdataDirectory: config.tessdataDirectory,
     query: (sql) => postgres.query(sql),
     triggeredWork: () => ({

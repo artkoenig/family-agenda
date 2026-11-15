@@ -137,7 +137,7 @@ One run of the Family's background work: the Sources whose polling interval has 
 _Avoid_: Polling job, sync
 
 **Preparing the Family**:
-Bringing a Family's database up to date: migrating its schema, writing its Family id while it has none, recording the Source Types seen for the first time as disabled, and migrating the configuration of the Sources of enabled ones. The `api` and `worker` do it when they start; it is also a Triggered operation, and running it again changes nothing.
+Bringing a Family's database up to date: migrating its schema, writing its Family id while it has none, moving blobs of the earlier layout into the Family's folder of the blob volume, recording the Source Types seen for the first time as disabled, and migrating the configuration of the Sources of enabled ones. The `api` and `worker` do it when they start; it is also a Triggered operation, and running it again changes nothing.
 _Avoid_: Bootstrap, setup, init
 
 **Triggered operation**:

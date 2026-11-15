@@ -47,6 +47,8 @@ Do this before every upgrade, and before switching between `main` and a release.
    docker compose start api worker mdns
    ```
 
+Inside the `blobs` volume, each Family's files, such as photos and message attachments, are kept in a folder named by its Family id: `<family id>/<blob reference>`. Releases before kept them in the top level of the volume; on start, the Instance moves them into its Family's folder, and finishes a move that was interrupted when it starts again. The commands above copy and restore the whole volume, so they stay the same.
+
 Keep your **Recovery Kit**. Without it the Source credentials in a restored backup cannot be read (ADR-0003). The `master-key` volume is not part of the commands above on purpose. If you copy it as well, store that copy apart from the other backup files, because together they open every stored credential.
 
 Keep the backup files somewhere other than the host that runs the Instance.

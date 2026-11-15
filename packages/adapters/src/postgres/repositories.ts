@@ -1,3 +1,4 @@
+import { parseFamilyId, type FamilyId } from "./family-id";
 import type {
   ActivityKind,
   ActivityRepository,
@@ -83,10 +84,11 @@ const setupLockKey = 7_342_002;
 export class PostgresFamilyRepository implements FamilyRepository {
   constructor(private readonly db: Database) {}
 
-  async familyId(): Promise<string> {
+  async familyId(): Promise<FamilyId> {
     const [row] = await this.db.select({ familyId: family.familyId }).from(family);
-    if (!row) throw new Error("the family row is missing");
-    return row.familyId;
+    const familyId = parseFamilyId(row?.familyId);
+    if (!familyId) throw new Error("the family row is missing");
+    return familyId;
   }
 
   async recoveryKitConfirmed(): Promise<boolean> {
