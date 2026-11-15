@@ -27,6 +27,12 @@ describe("the Identity Provider in the environment", () => {
     expect(readConfig({ ...oidc, OIDC_REQUIRED_GROUP: "" }).identityProvider?.requiredGroup).toBe("homelab-admin");
   });
 
+  it("lets only known Admins sign in with OIDC_KNOWN_ADMINS_ONLY=true, and refuses another value", () => {
+    expect(readConfig({ ...oidc, OIDC_KNOWN_ADMINS_ONLY: "true" }).identityProvider?.knownAdminsOnly).toBe(true);
+    expect(readConfig({ ...oidc, OIDC_KNOWN_ADMINS_ONLY: "false" }).identityProvider?.knownAdminsOnly).toBeUndefined();
+    expect(() => readConfig({ ...oidc, OIDC_KNOWN_ADMINS_ONLY: "1" })).toThrow(/OIDC_KNOWN_ADMINS_ONLY must be true or false/);
+  });
+
   it("refuses to start with a variable missing, naming it", () => {
     expect(() => readConfig({ ...oidc, PUBLIC_URL: undefined })).toThrow(/PUBLIC_URL must be set/);
     expect(() => readConfig({ ...oidc, OIDC_CLIENT_SECRET: undefined })).toThrow(/OIDC_CLIENT_SECRET/);
@@ -137,7 +143,7 @@ describe("the mode of the core", () => {
     expect(() => readSuppliedConfig({ ...supplied, CALLER_PORT: undefined })).toThrow(/CALLER_PORT must be set/);
     expect(() => readSuppliedConfig({ ...supplied, CALLER_PORT: "http" })).toThrow(/CALLER_PORT must be set/);
     expect(() => readSuppliedConfig({ ...supplied, CALLER_PORT: "8080" })).toThrow(/CALLER_PORT must differ from PORT/);
-    for (const variable of ["PUBLIC_URL", "OIDC_ISSUER_URL", "OIDC_CLIENT_ID", "OIDC_CLIENT_SECRET", "OIDC_REQUIRED_GROUP"]) {
+    for (const variable of ["PUBLIC_URL", "OIDC_ISSUER_URL", "OIDC_CLIENT_ID", "OIDC_CLIENT_SECRET", "OIDC_REQUIRED_GROUP", "OIDC_KNOWN_ADMINS_ONLY"]) {
       expect(() => readSuppliedConfig({ ...supplied, [variable]: "https://x.example.org" })).toThrow(new RegExp(`${variable} must not be set with CONTEXT_MODE=supplied: every Context`));
     }
     for (const variable of ["DATABASE_URL", "FAMILY_ID", "MASTER_KEY_FILE", "BLOB_DIRECTORY"]) {

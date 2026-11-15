@@ -197,7 +197,7 @@ export function databaseKeyOf({ databaseUrl }: Pick<OpenedContext, "databaseUrl"
  * is no part of it. A Context with other settings for the same Family opens it anew.
  */
 function keyOf({ familyId, databaseUrl, familyKey, blobDirectory, timeZone, publicUrl, identityProvider }: OpenedContext): string {
-  const provider = identityProvider === undefined ? null : [identityProvider.issuerUrl, identityProvider.clientId, identityProvider.clientSecret, identityProvider.requiredGroup];
+  const provider = identityProvider === undefined ? null : [identityProvider.issuerUrl, identityProvider.clientId, identityProvider.clientSecret, identityProvider.requiredGroup, identityProvider.knownAdminsOnly === true];
   return createHash("sha256").update(JSON.stringify([familyId, databaseUrl, familyKey, blobDirectory, timeZone, publicUrl, provider])).digest("hex");
 }
 

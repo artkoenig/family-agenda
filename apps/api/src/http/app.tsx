@@ -323,7 +323,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     }),
   );
 
-  // Until the first Admin exists, every page leads to creating one, by password or through the Identity Provider; afterwards that page is gone.
+  // Until the first Admin exists, every page leads to creating one, by password or through the Identity Provider unless only known Admins may sign in; afterwards that page is gone.
   app.use(async (c, next) => {
     const onSetup = c.req.path === "/setup";
     const needed = await admins.needsFirstAdmin();
@@ -347,7 +347,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
       c,
       <FirstAdminPage
         language={c.get("translation").language}
-        singleSignOn={singleSignOn.isOfferedAt(requestBaseOf(c))}
+        singleSignOn={singleSignOn.makesFirstAdminAt(requestBaseOf(c))}
       />,
     ),
   );
@@ -370,7 +370,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
           language={c.get("translation").language}
           email={email}
           problem={problemIn(c, result.problem)}
-          singleSignOn={singleSignOn.isOfferedAt(requestBaseOf(c))}
+          singleSignOn={singleSignOn.makesFirstAdminAt(requestBaseOf(c))}
         />
       );
       return render(c, page, 400);
@@ -612,7 +612,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     if (!result.ok) {
       const problem = problemIn(c, result.problem);
       const page = first ? (
-        <FirstAdminPage language={c.get("translation").language} problem={problem} singleSignOn />
+        <FirstAdminPage language={c.get("translation").language} problem={problem} singleSignOn={singleSignOn.makesFirstAdminAt(base)} />
       ) : (
         <SignInPage problem={problem} singleSignOn />
       );
@@ -808,6 +808,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
       <AdminsPage
         admin={c.get("admin")}
         admins={await admins.listAdmins()}
+        singleSignOn={singleSignOn.isOfferedAt(requestBaseOf(c))}
         {...(shown.problem ? { problem: shown.problem } : {})}
         {...(shown.adding ? { adding: shown.adding } : {})}
         {...(shown.editing ? { editing: shown.editing } : {})}

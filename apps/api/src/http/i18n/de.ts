@@ -73,6 +73,8 @@ export const de: Catalogue = {
       "Dein Konto beim Identity Provider gehört nicht zur Gruppe, die sich hier anmelden darf.",
     "sso-email-unverified":
       "Der Identity Provider hat keine E-Mail-Adresse für dein Konto bestätigt.",
+    "sso-unknown-admin":
+      "Hier hat kein Admin die E-Mail-Adresse, die der Identity Provider für dein Konto bestätigt hat. Ein Admin kann dich mit dieser Adresse hinzufügen.",
     "sso-conflict":
       "Ein Admin mit dieser E-Mail-Adresse ist bereits mit einem anderen Konto beim Identity Provider verknüpft.",
     "invalid-interval": `Das Abrufintervall muss zwischen ${pollIntervalRange.minSeconds / 60} Minute und ${pollIntervalRange.maxSeconds / 86_400} Tagen liegen.`,
@@ -157,6 +159,7 @@ export const de: Catalogue = {
     eyebrow: "Instanz",
     dialogTitle: "Einen Admin hinzufügen",
     passwordHint: `Mindestens ${minimumPasswordLength} Zeichen. Sag es der Person persönlich.`,
+    newAdminPasswordHint: `Mindestens ${minimumPasswordLength} Zeichen. Sag es der Person persönlich. Lass es leer für einen Admin, der sich nur über den Identity Provider anmeldet.`,
     you: "Du",
     admin: "Admin",
     newPassword: "Neues Passwort",

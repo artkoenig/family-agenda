@@ -112,7 +112,7 @@ Preparing the Family brings its database schema up to date, makes sure it has it
 For a provider serving many Families, not for a home Instance. With `CONTEXT_MODE=supplied` the core has no Family of its own: every request carries the **Context** of the Family it is for, and the core opens that Family's database, reads its Source credentials with its family key and keeps its blobs in its folder of the blob location (ADR-0003). Any core can then serve any Family, and one core several, each in its own database.
 
 - **Setting it.** `CONTEXT_MODE=supplied`, `CONTEXT_KEY`, 32 random characters or more, which only the core and the trusted caller in front of it hold, and `CALLER_PORT`, other than `PORT`. The core then opens no listener on `PORT`, only on `CALLER_PORT`. The core refuses to start in supplied mode without `CONTEXT_KEY`, with `CONTEXT_KEY` but without `CONTEXT_MODE=supplied`, and with `DATABASE_URL`, `FAMILY_ID`, `MASTER_KEY_FILE` or `BLOB_DIRECTORY` set: it never falls back to a fixed Family. The `worker` and the `family-agenda` Admin commands run in fixed mode only: a core in supplied mode runs no schedule and prepares no Family when it starts (see [Triggered operations in supplied mode](#triggered-operations-in-supplied-mode)). `PUBLIC_URL` and the `OIDC_*` variables are refused too: each Family's Context carries its own time zone, public address and Identity Provider instead. `TZ` only sets the time zone of the core's own log.
-- **The Context.** JSON with the Family id (a UUID), the database (a Postgres URL), the family key (32 random bytes in base64url, which stands in for the master key file), the blob location (a directory; the Family's blobs lie in its folder `<directory>/<family id>`), the Family's time zone (`timeZone`, required, an IANA name such as `Europe/Berlin`, as `TZ` in fixed mode), its public address (`publicUrl`, required, as `PUBLIC_URL`: its path is the Family's path prefix, which the caller removes from a request before it passes it on, and the core emits every link, redirect, cookie, web manifest, Agenda feed and the SSO redirect URI below it) and, optionally, its Identity Provider (`identityProvider`: `issuerUrl`, `clientId`, `clientSecret`, `requiredGroup`, as the `OIDC_*` variables; without it, no SSO), plus an expiry, encrypted and signed with AES-256-GCM under a key derived from `CONTEXT_KEY`. Seal one with `family-agenda seal-context`, which reads it from standard input so that no secret appears in a process list, for 5 minutes unless `ttlSeconds` says otherwise, at most a day:
+- **The Context.** JSON with the Family id (a UUID), the database (a Postgres URL), the family key (32 random bytes in base64url, which stands in for the master key file), the blob location (a directory; the Family's blobs lie in its folder `<directory>/<family id>`), the Family's time zone (`timeZone`, required, an IANA name such as `Europe/Berlin`, as `TZ` in fixed mode), its public address (`publicUrl`, required, as `PUBLIC_URL`: its path is the Family's path prefix, which the caller removes from a request before it passes it on, and the core emits every link, redirect, cookie, web manifest, Agenda feed and the SSO redirect URI below it) and, optionally, its Identity Provider (`identityProvider`: `issuerUrl`, `clientId`, `clientSecret`, `requiredGroup`, `knownAdminsOnly` (a boolean), as the `OIDC_*` variables; without it, no SSO), plus an expiry, encrypted and signed with AES-256-GCM under a key derived from `CONTEXT_KEY`. Seal one with `family-agenda seal-context`, which reads it from standard input so that no secret appears in a process list, for 5 minutes unless `ttlSeconds` says otherwise, at most a day:
 
   ```sh
   echo '{"familyId":"…","databaseUrl":"postgres://…","familyKey":"…","blobDirectory":"/var/lib/blobs","timeZone":"Europe/Berlin","publicUrl":"https://agenda.example.org/family-a","ttlSeconds":300}' \
@@ -192,11 +192,12 @@ Set these variables (ADR-0007) and restart. Wrong or missing ones stop the Insta
 | `OIDC_CLIENT_ID` | Client ID |
 | `OIDC_CLIENT_SECRET` | Client secret |
 | `OIDC_REQUIRED_GROUP` | Group whose members may sign in. Default `homelab-admin` |
+| `OIDC_KNOWN_ADMINS_ONLY` | `true`: only an existing Admin signs in, none is made from a sign-in (see [Who becomes an Admin](#who-becomes-an-admin)). Default `false` |
 | `PUBLIC_URL` | Required. The SSO button appears only there; a path in it, the path prefix, is part of the redirect URI |
 
 Behind HTTPS also set `TRUST_PROXY=true` (see above).
 
-On an Instance without Admins the setup page offers SSO too: the first one in the group who signs in becomes the first Admin, without a password.
+On an Instance without Admins the setup page offers SSO too: the first one in the group who signs in becomes the first Admin, without a password. Not with `OIDC_KNOWN_ADMINS_ONLY=true`.
 
 The Instance must reach the Identity Provider (discovery, keys, token endpoint). Outbound only.
 
@@ -205,6 +206,8 @@ The Instance must reach the Identity Provider (discovery, keys, token endpoint).
 - Same `sub` as a stored Admin: signs in.
 - Otherwise, an existing Admin with the same verified email is linked.
 - Otherwise a new Admin without a password is created. It sees only the Recovery Kit until that is confirmed.
+
+With `OIDC_KNOWN_ADMINS_ONLY=true` (in a Context, `identityProvider.knownAdminsOnly: true`) the last step is gone: someone in the group whose verified email belongs to no Admin is refused, told that no Admin here has that address, and no Admin is made, not even the first. Use it for one Identity Provider shared by several Families, where everyone in its group could otherwise become an Admin of any Family. Who is an Admin is then decided in the Family alone: its first Admin is entered by email address ([`enter-admin`](#admins-without-signing-in)) or set up with a password, and its Admins add more in the Admin area, by email address with the password left empty for one who signs in only through the Identity Provider.
 
 The group is checked at every sign-in. Leaving it does not end running sessions (14 days).
 

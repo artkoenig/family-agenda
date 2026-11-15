@@ -772,6 +772,8 @@ const addButton = (href: string, label: string) => (
 
 export function AdminsPage(props: {
   admin: SignedInAdmin;
+  /** Whether an Identity Provider is offered, so that an Admin without a password can sign in. */
+  singleSignOn?: boolean;
   admins: AdminSummary[];
   problem?: string;
   /** The add dialog, open with what was entered and why it was refused. */
@@ -845,11 +847,10 @@ export function AdminsPage(props: {
             id="password"
             name="password"
             type="password"
-            required
             minlength={minimumPasswordLength}
             autocomplete="new-password"
           />
-          <small>{t.admins.passwordHint}</small>
+          <small>{props.singleSignOn ? t.admins.newAdminPasswordHint : t.admins.passwordHint}</small>
         </div>
         <DialogFooter closeHref={href(prefix, "/admin/admins")} submit={t.admins.add} />
       </form>
