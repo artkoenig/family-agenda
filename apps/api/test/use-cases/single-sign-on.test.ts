@@ -42,7 +42,7 @@ describe("Admins signing in through an Identity Provider", () => {
     const begun = await sso().begin(origin);
     if (!begun) throw new Error("sign-in not offered");
     return sso().complete({
-      origin,
+      baseUrl: origin,
       query: provider.returnWith(begun.pending, identity),
       pending: begun.pending,
     });
@@ -207,7 +207,7 @@ describe("Admins signing in through an Identity Provider", () => {
       if (!begun || !other) throw new Error("sign-in not offered");
 
       const result = await sso().complete({
-        origin,
+        baseUrl: origin,
         query: provider.returnWith(other.pending, anna),
         pending: begun.pending,
       });
@@ -220,7 +220,7 @@ describe("Admins signing in through an Identity Provider", () => {
       if (!begun) throw new Error("sign-in not offered");
 
       const result = await sso().complete({
-        origin: "http://family-agenda.local",
+        baseUrl: "http://family-agenda.local",
         query: provider.returnWith(begun.pending, anna),
         pending: begun.pending,
       });
@@ -270,6 +270,11 @@ describe("the Identity Provider from the environment", () => {
         publicBaseUrl: origin,
       },
     });
+  });
+
+  it("keeps an issuer with a trailing slash as before, without the slash", () => {
+    const parsed = parseIdentityProviderSettings({ ...variables, issuerUrl: "https://id.example.ts.net/" });
+    expect(parsed.ok && parsed.settings?.issuerUrl).toBe("https://id.example.ts.net");
   });
 
   it("keeps the path prefix of the public base URL, without a trailing slash", () => {

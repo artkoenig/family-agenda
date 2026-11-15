@@ -33,8 +33,8 @@ export type SingleSignOnSignInResult =
 export function createSingleSignOn(deps: SingleSignOnDeps) {
   const { settings, client, admins } = deps;
 
-  const at = (origin: string): IdentityProviderSettings | null =>
-    settings !== null && settings.publicBaseUrl === origin ? settings : null;
+  const at = (baseUrl: string): IdentityProviderSettings | null =>
+    settings !== null && settings.publicBaseUrl === baseUrl ? settings : null;
 
   const connectionOf = (offered: IdentityProviderSettings) => ({
     issuerUrl: offered.issuerUrl,
@@ -43,14 +43,14 @@ export function createSingleSignOn(deps: SingleSignOnDeps) {
   });
 
   return {
-    /** Whether single sign-on is offered to someone who reached the Instance at `origin`, path prefix included. */
-    isOfferedAt(origin: string): boolean {
-      return at(origin) !== null;
+    /** Whether single sign-on is offered to someone who reached the Instance at `baseUrl`, path prefix included. */
+    isOfferedAt(baseUrl: string): boolean {
+      return at(baseUrl) !== null;
     },
 
-    /** Where to send an Admin to sign in, with what to remember until they return; null if it is not offered at `origin`. */
-    async begin(origin: string): Promise<{ authorizationUrl: string; pending: PendingSignIn } | null> {
-      const offered = at(origin);
+    /** Where to send an Admin to sign in, with what to remember until they return; null if it is not offered at `baseUrl`. */
+    async begin(baseUrl: string): Promise<{ authorizationUrl: string; pending: PendingSignIn } | null> {
+      const offered = at(baseUrl);
       if (!offered) return null;
       return client.begin(connectionOf(offered), offered.publicBaseUrl + singleSignOnCallbackPath);
     },
@@ -59,8 +59,8 @@ export function createSingleSignOn(deps: SingleSignOnDeps) {
      * Signs in the Admin the provider sent back, if they belong to the required group; on an
      * Instance without Admins yet, they become its first.
      */
-    async complete(input: { origin: string; query: string; pending: PendingSignIn }): Promise<SingleSignOnSignInResult> {
-      const offered = at(input.origin);
+    async complete(input: { baseUrl: string; query: string; pending: PendingSignIn }): Promise<SingleSignOnSignInResult> {
+      const offered = at(input.baseUrl);
       if (!offered) return { ok: false, problem: "sso-failed" };
       const redirectUri = offered.publicBaseUrl + singleSignOnCallbackPath;
       const identity = await client.complete(connectionOf(offered), redirectUri, redirectUri + input.query, input.pending);
@@ -135,7 +135,7 @@ function isShortText(text: string): boolean {
   return text !== "" && text.length <= maximumTextLength;
 }
 
-/** An http or https URL without credentials, query or fragment, with its path but no trailing slash. */
+/** An http or https URL without credentials, query or fragment, with its path but without a trailing slash. */
 function httpUrl(text: string): string | null {
   const url = parsedPlainUrl(text.trim());
   if (!url) return null;
