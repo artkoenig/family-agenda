@@ -5,6 +5,21 @@ import sonarjs from "eslint-plugin-sonarjs";
 // Every rule from the sonarjs recommended set, disabled (used to exclude tests below).
 const sonarjsOff = Object.fromEntries(Object.keys(sonarjs.configs.recommended.rules).map((rule) => [rule, "off"]));
 
+// A root path written as it is (`"/admin"`, `` `/agendas/${id}` ``), not as an argument of `href`.
+const rootPath = [
+  'Literal[value=/^\\//]:not(CallExpression[callee.name="href"] Literal)',
+  'TemplateLiteral[quasis.0.value.raw=/^\\//]:not(CallExpression[callee.name="href"] TemplateLiteral)',
+];
+const message = "Build the address with `href(prefix, path)` so that it lies below the path prefix.";
+/** Where an address leaves the core: an attribute that names one, a redirect, its headers and a cookie path. */
+const outsideThePrefix = [
+  'JSXAttribute[name.name=/^(href|src|action|formaction|poster|hx-(get|post|put|patch|delete|push-url|replace-url))$/]',
+  'CallExpression[callee.property.name="redirect"]',
+  'CallExpression[callee.property.name="header"][arguments.0.value=/^(location|hx-redirect|hx-location|hx-push-url)$/i]',
+  'Property[key.value=/^(location|hx-redirect|hx-location|hx-push-url)$/i]',
+  'CallExpression[callee.name=/^(setCookie|deleteCookie|setSignedCookie)$/] Property[key.name="path"]',
+].flatMap((where) => rootPath.map((path) => ({ selector: `${where} ${path}`, message })));
+
 export default tseslint.config(
   { ignores: ["**/node_modules/", "packages/adapters/drizzle/", ".stryker-tmp/", ".previews/"] },
   js.configs.recommended,
@@ -39,6 +54,14 @@ export default tseslint.config(
     files: ["**/test/**"],
     rules: { "@typescript-eslint/no-non-null-assertion": "off" },
   },
+  {
+    // The path prefix (ADR-0004, docs/configuration.md): every address the web app emits is built with
+    // `href(prefix, path)`, so that it lies below the prefix. A literal root path in a link, form,
+    // background request, redirect or cookie would not; it fails here. Literals given to `href` are fine.
+    files: ["apps/api/src/**"],
+    rules: { "no-restricted-syntax": ["error", ...outsideThePrefix] },
+  },
+
   {
     files: ["**/*.js", "**/*.cjs", "**/*.mjs"],
     extends: [tseslint.configs.disableTypeChecked],
