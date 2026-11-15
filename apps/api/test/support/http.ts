@@ -1,6 +1,6 @@
 import { openAgendaAccess } from "@family-agenda/application";
 import { createHttpApp, type HttpOptions } from "../../src/http/app";
-import { bootForTest, type TestInstance, type TestOptions } from "./boot";
+import { bootForTest, type OtherFamily, type TestInstance, type TestOptions } from "./boot";
 
 type RequestInit = { cookie?: string; headers?: Record<string, string> };
 
@@ -15,6 +15,8 @@ export type HttpClient = {
 export type HttpTestInstance = TestInstance & HttpClient & {
   /** Boots a second `api` container against the same database, and drives its Hono app. */
   bootHttpApiContainer(): Promise<HttpClient>;
+  /** Boots a second Family in the same core, with a database of its own, and drives its Hono app. */
+  bootHttpOtherFamily(): Promise<HttpClient & OtherFamily>;
 };
 
 /** Boots an Instance and drives its Hono app with in-process requests. */
@@ -40,6 +42,11 @@ export async function bootHttpForTest(
     bootHttpApiContainer: async () => {
       const other = createHttpApp(await instance.bootApiContainer(), { trustProxy: false, agendaAccess: openAgendaAccess, ...options });
       return clientOf({ request: (path, init) => other.request(path, init) });
+    },
+    bootHttpOtherFamily: async () => {
+      const family = await instance.bootOtherFamily();
+      const other = createHttpApp(family.app, { trustProxy: false, agendaAccess: openAgendaAccess, ...options });
+      return { ...family, ...clientOf({ request: (path, init) => other.request(path, init) }) };
     },
   });
 }

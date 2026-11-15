@@ -70,12 +70,25 @@ export class PluginContainers implements SourceTypeRegistry {
     });
   }
 
-  async load(id: SourceTypeId): Promise<{ ok: true; sourceType: LoadedSourceType } | { ok: false }> {
+  load(id: SourceTypeId): Promise<{ ok: true; sourceType: LoadedSourceType } | { ok: false }> {
+    return this.loadFor(id, this.ticketing);
+  }
+
+  /**
+   * The same Source Types, for one Family: the bindings and descriptions are the process's, but the
+   * tickets of its plugin calls carry that Family's id.
+   */
+  forFamily(familyId: string): SourceTypeRegistry {
+    const ticketing = { ...this.ticketing, familyId };
+    return { installed: () => this.installed(), load: (id) => this.loadFor(id, ticketing) };
+  }
+
+  private async loadFor(id: SourceTypeId, ticketing: Ticketing): Promise<{ ok: true; sourceType: LoadedSourceType } | { ok: false }> {
     const binding = this.bindings.find((candidate) => candidate.sourceTypeId === id);
     if (!binding) return { ok: false };
     const { description, problem } = await this.fresh(binding);
     if (description === null || problem !== null) return { ok: false };
-    const egressProxyOf = (source: CalledSource | null, name: EndpointName) => egressProxyFor(this.ticketing, id, source, this.timeoutOf(name));
+    const egressProxyOf = (source: CalledSource | null, name: EndpointName) => egressProxyFor(ticketing, id, source, this.timeoutOf(name));
     return { ok: true, sourceType: loadedSourceType(description, (name, body) => callPlugin(binding.url, name, body, this.options), egressProxyOf) };
   }
 

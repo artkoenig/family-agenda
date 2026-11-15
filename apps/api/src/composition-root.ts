@@ -95,11 +95,8 @@ export type DatabaseConfig =
       connectDatabase: () => PostgresConnection;
     };
 
-export type ApplicationConfig = DatabaseConfig & {
-  /** Where the master key is kept, outside Postgres; created on first start. */
-  masterKeyFile: string;
-  /** Where files such as photos are kept, outside Postgres. */
-  blobDirectory: string;
+/** What a process shares among the Families it serves. */
+export type SharedConfig = {
   /** The `tessdata` volume of Tesseract models, bundled and downloaded. */
   tessdataDirectory: string;
   /** Where the image keeps the Tesseract models it ships, linked into the volume on start. */
@@ -115,20 +112,43 @@ export type ApplicationConfig = DatabaseConfig & {
    * (`EGRESS_TICKET_KEY`); without one, a random key no proxy shares.
    */
   egressTicketKey?: string | null;
-  /** The IANA time zone the Family lives in; by default the one of the process (`TZ`). */
-  timeZone?: string;
   clock?: Clock;
-  secretStore?: SecretStore;
-  /** Replaces the BlobStore in the blob directory, such as with an in-memory one. */
-  blobStore?: BlobStore;
   /** Replaces the OpenAI-compatible Extractor, such as with a scripted one. */
   extractor?: Extractor;
   /** Replaces the poppler and Tesseract command-line tools, such as with a fake. */
   textExtractor?: TextExtractor;
+};
+
+/** What belongs to one Family: its database and what is kept outside it. */
+export type FamilyConfig = DatabaseConfig & {
+  /** Where the master key is kept, outside Postgres; created on first start. */
+  masterKeyFile: string;
+  /** Where files such as photos are kept, outside Postgres. */
+  blobDirectory: string;
+  /** The IANA time zone the Family lives in; by default the one of the process (`TZ`). */
+  timeZone?: string;
+  secretStore?: SecretStore;
+  /** Replaces the BlobStore in the blob directory, such as with an in-memory one. */
+  blobStore?: BlobStore;
   /** The one Identity Provider Admins may sign in through, from the environment (ADR-0007); none if left out. */
   identityProvider?: IdentityProviderSettings | null;
   /** Replaces the OIDC client that talks to the Identity Provider, such as with a scripted one. */
   identityProviderClient?: IdentityProviderClient;
+};
+
+/** An Instance of exactly one Family, as the environment configures it. */
+export type ApplicationConfig = SharedConfig & FamilyConfig;
+
+/** The wiring a process shares among its Families: plugin bindings, extractors, OCR models and the clock. */
+export type SharedWiring = {
+  clock: Clock;
+  /** The bound Source Types and their descriptions; `forFamily` tickets their calls for one Family. */
+  plugins: PluginContainers;
+  /** The longest preparing a Source being added may take. */
+  preparationMaxMs: number;
+  extractor: Extractor;
+  textExtractor: TextExtractor;
+  ocrModels: TessdataDirectory;
 };
 
 export type Application = {
@@ -176,29 +196,27 @@ function preparationMaxMsOf(options: ApplicationConfig["pluginContainerOptions"]
   return (options?.timeoutsMs?.sourceAdded ?? endpoints.sourceAdded.timeoutMs) + storingPreparedMs;
 }
 
-function resolveDefaults(config: ApplicationConfig): {
-  clock: Clock;
-  timeZone: string;
-  extractor: Extractor;
-  textExtractor: TextExtractor;
-} {
+/** Wires what a process shares among its Families, once when it starts. */
+export async function bootShared(config: SharedConfig): Promise<SharedWiring> {
+  const ocrModels = new TessdataDirectory({
+    directory: config.tessdataDirectory,
+    bundledDirectory: config.bundledTessdataDirectory,
+    catalog: config.tessdataCatalog ?? tessdataFastCatalog(),
+  });
+  await mkdir(config.tessdataDirectory, { recursive: true });
+  await ocrModels.linkBundled();
+  const plugins = await PluginContainers.connect(config.pluginContainers ?? [], {
+    ...config.pluginContainerOptions,
+    // Every Family's calls carry its own id (`forFamily`); this one is never ticketed.
+    ticketing: { ticketKey: config.egressTicketKey ?? randomBytes(32).toString("base64url"), familyId: "unknown" },
+  });
   return {
     clock: config.clock ?? new SystemClock(),
-    timeZone: config.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
+    plugins,
+    preparationMaxMs: preparationMaxMsOf(config.pluginContainerOptions),
     extractor: config.extractor ?? new OpenAiCompatibleExtractor(),
     textExtractor: config.textExtractor ?? new CommandLineTextExtractor({ tessdataDirectory: config.tessdataDirectory }),
-  };
-}
-
-function resolveStores(
-  config: ApplicationConfig,
-  postgres: PostgresConnection,
-  masterKey: Buffer,
-): { secrets: SecretStore; blobs: BlobStore; tessdataCatalog: TessdataCatalog } {
-  return {
-    secrets: config.secretStore ?? new EnvelopeSecretStore(postgres.db, masterKey),
-    blobs: config.blobStore ?? new FileBlobStore(config.blobDirectory),
-    tessdataCatalog: config.tessdataCatalog ?? tessdataFastCatalog(),
+    ocrModels,
   };
 }
 
@@ -211,16 +229,39 @@ async function withDatabase<T>(postgres: PostgresConnection, fn: () => Promise<T
   }
 }
 
-/** Wires the use cases to their adapters. Shared by `api`, `worker` and the CLI. */
+/** Wires the use cases to their adapters, for an Instance of one Family. Shared by `api`, `worker` and the CLI. */
 export async function bootApplication(config: ApplicationConfig): Promise<Application> {
-  const postgres = "connectDatabase" in config ? config.connectDatabase() : connectPostgres(config.databaseUrl);
-  const masterKey = await withDatabase(postgres, async () => {
-    await runMigrations(postgres);
-    return await loadMasterKey(postgres, config.masterKeyFile);
-  });
+  return bootFamily(await bootShared(config), config);
+}
 
-  const { clock, timeZone, extractor, textExtractor } = resolveDefaults(config);
-  const { secrets, blobs, tessdataCatalog } = resolveStores(config, postgres, masterKey);
+/** Wires one Family's use cases to its database, stores and cache, on the wiring the process shares. */
+export async function bootFamily(shared: SharedWiring, config: FamilyConfig): Promise<Application> {
+  const postgres = "connectDatabase" in config ? config.connectDatabase() : connectPostgres(config.databaseUrl);
+  const { masterKey, familyId } = await withDatabase(postgres, async () => {
+    await runMigrations(postgres);
+    const masterKey = await loadMasterKey(postgres, config.masterKeyFile);
+    return { masterKey, familyId: await new PostgresFamilyRepository(postgres.db).familyId() };
+  });
+  const application = wireFamily(shared, config, postgres, masterKey, familyId);
+  await withDatabase(postgres, async () => {
+    await application.sourceTypes.start();
+    await application.catalogues.start();
+  });
+  return application;
+}
+
+function wireFamily(
+  shared: SharedWiring,
+  config: FamilyConfig,
+  postgres: PostgresConnection,
+  masterKey: Buffer,
+  familyId: string,
+): Application {
+  const { clock, extractor, textExtractor, ocrModels } = shared;
+  const timeZone = config.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const secrets = config.secretStore ?? new EnvelopeSecretStore(postgres.db, masterKey);
+  const blobs = config.blobStore ?? new FileBlobStore(config.blobDirectory);
+  const registry = shared.plugins.forFamily(familyId);
   const families = new PostgresFamilyRepository(postgres.db);
 
   const admins = createAdminAccess({
@@ -236,25 +277,10 @@ export async function bootApplication(config: ApplicationConfig): Promise<Applic
 
   const members = new PostgresFamilyMemberRepository(postgres.db);
   const familyMembers = createFamilyMemberAccess({ clock, members, blobs });
-
-  const ocrModels = new TessdataDirectory({
-    directory: config.tessdataDirectory,
-    bundledDirectory: config.bundledTessdataDirectory,
-    catalog: tessdataCatalog,
-  });
-  await withDatabase(postgres, async () => {
-    await mkdir(config.tessdataDirectory, { recursive: true });
-    await ocrModels.linkBundled();
-  });
   const languages = createLanguageAccess({ families, ocrModels });
 
   const items = new PostgresItemRepository(postgres.db);
   const activity = createActivityLog({ clock, activities: new PostgresActivityRepository(postgres.db) });
-  const familyId = await withDatabase(postgres, () => families.familyId());
-  const registry = await PluginContainers.connect(config.pluginContainers ?? [], {
-    ...config.pluginContainerOptions,
-    ticketing: { ticketKey: config.egressTicketKey ?? randomBytes(32).toString("base64url"), familyId },
-  });
   const sourceTypeRepository = new PostgresSourceTypeRepository(postgres.db);
   const sourceRepository = new PostgresSourceRepository(postgres.db);
   const sourceHealth = createSourceHealth({
@@ -283,7 +309,7 @@ export async function bootApplication(config: ApplicationConfig): Promise<Applic
     sources: sourceRepository,
     clock,
   });
-  // Slow plugin and LLM answers, kept briefly for all use cases and pages.
+  // Slow plugin and LLM answers, kept briefly for all use cases and pages of this Family alone.
   const cached = createCache(clock);
   const catalogueRepository = new PostgresCatalogueRepository(postgres.db);
   const catalogues = createCatalogueAccess({
@@ -302,7 +328,7 @@ export async function bootApplication(config: ApplicationConfig): Promise<Applic
     catalogues: catalogueRepository,
     sources: sourceRepository,
     addings: new PostgresSourceAddingRepository(postgres.db),
-    preparationMaxMs: preparationMaxMsOf(config.pluginContainerOptions),
+    preparationMaxMs: shared.preparationMaxMs,
     secrets,
     blobs,
   });
@@ -351,11 +377,6 @@ export async function bootApplication(config: ApplicationConfig): Promise<Applic
     activity,
   });
   const messages = createMessageAccess({ items, blobs });
-  await withDatabase(postgres, async () => {
-    await sourceTypes.start();
-    await catalogues.start();
-  });
-
   return {
     familyId,
     timeZone,
