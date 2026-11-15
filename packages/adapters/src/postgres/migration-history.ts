@@ -56,6 +56,16 @@ export async function refuseNewerMigrationHistory(db: Queryable, migrationsFolde
   if (applied > known) throw new NewerMigrationHistoryError(applied, known);
 }
 
+/**
+ * Whether the database has applied exactly the migrations this version has, read without changing
+ * anything: false for an empty database, one behind or one a newer version migrated.
+ */
+export async function isSchemaCurrent(db: Queryable, migrationsFolder: string): Promise<boolean> {
+  const applied = await appliedMigrations(db);
+  const known = readMigrationFiles({ migrationsFolder }).map((migration) => migration.hash);
+  return applied.length === known.length && applied.every((hash, index) => hash === known[index]);
+}
+
 /** The hashes of the migrations a database has applied, oldest first; none if it never migrated. */
 async function appliedMigrations(db: Queryable): Promise<string[]> {
   const { rows } = (await db.execute(sql`SELECT to_regclass('drizzle.__drizzle_migrations') IS NOT NULL AS present`)) as {

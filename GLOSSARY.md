@@ -7,7 +7,7 @@ Gathers family-relevant information from many channels into one overview of who 
 ### People
 
 **Family**:
-The household the system serves, owning all Sources and Items; each Instance serves exactly one.
+The household the system serves, owning all Sources and Items; each Instance in fixed mode serves exactly one, and a core in supplied mode serves the one whose Context a request carries.
 _Avoid_: Account, tenant, user group
 
 **Family id**:
@@ -128,8 +128,32 @@ _Avoid_: Late, expired, missed
 
 ### Operation
 
+**Context**:
+What a core in supplied mode needs to open the Family one request is for: its Family id, its database, its family key and its blob location, with an expiry at most a day ahead, encrypted and signed by a trusted caller in front with the Context key. It reaches the core only on the caller port; without a valid one the core refuses the request and opens nothing. It opens only a Family that is already prepared, and writes nothing.
+_Avoid_: Tenant context, session, family token
+
+**Context key**:
+The key a trusted caller and the cores in supplied mode share, and nobody else; Contexts are sealed and opened with a key derived from it.
+_Avoid_: Shared secret, gateway key
+
+**Family key**:
+The key a Family's Source credentials are stored under, which a Context carries; in supplied mode it takes the place of the master key file of a fixed core.
+_Avoid_: Tenant key
+
+**Blob location**:
+The blob directory a Context names; the Family's blobs lie in its folder there, `<blob location>/<Family id>`, so that Families can share one.
+_Avoid_: Bucket, blob path
+
+**Fixed mode**:
+How a core runs by default: it serves the one Family its environment names, and reads no Context.
+_Avoid_: Single-tenant mode
+
+**Supplied mode**:
+How a core runs with `CONTEXT_MODE=supplied`: it has no Family of its own and serves, on its caller port, the Family whose Context each request carries; any core can serve any Family, and one several.
+_Avoid_: Multi-tenant mode, gateway mode
+
 **Instance**:
-One installation of Family Agenda with its own database, serving exactly one Family.
+One installation of Family Agenda with its own database, serving exactly one Family in fixed mode; in supplied mode its cores serve several Families, each in its own database, by the Context of each request.
 _Avoid_: Server, deployment, tenant
 
 **Due work**:

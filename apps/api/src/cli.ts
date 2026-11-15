@@ -1,9 +1,16 @@
 import { bootApplication } from "./composition-root";
+import { text } from "node:stream/consumers";
 import { readConfig } from "./config";
+import { sealContextCommand } from "./context/seal-command";
 
-const usage = "Usage: family-agenda enter-admin <email> | reset-admin-password <email>";
+const usage = "Usage: family-agenda enter-admin <email> | reset-admin-password <email> | seal-context < context.json";
 
 const [command, email] = process.argv.slice(2);
+if (command === "seal-context") {
+  // For the trusted caller in front of a core in supplied mode, and for trying one by hand (docs/configuration.md).
+  process.stdout.write(`${sealContextCommand(process.env.CONTEXT_KEY ?? "", await text(process.stdin), Date.now())}\n`);
+  process.exit(0);
+}
 if ((command !== "enter-admin" && command !== "reset-admin-password") || !email) {
   console.error(usage);
   process.exit(2);

@@ -30,7 +30,8 @@ export { schema as postgresSchema };
 const migrationLockKey = 7_342_001;
 
 export function connectPostgres(databaseUrl: string): PostgresConnection {
-  const pool = new pg.Pool({ connectionString: databaseUrl });
+  // Idle connections close after ten seconds, also for a Family a core in supplied mode opened (ADR-0003).
+  const pool = new pg.Pool({ connectionString: databaseUrl, idleTimeoutMillis: 10_000 });
   const db = drizzle(pool, { schema });
   return {
     db,
