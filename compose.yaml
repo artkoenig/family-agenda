@@ -77,6 +77,28 @@ services:
     depends_on:
       - api
 
+  # Optional Identity Provider for households without one (ADR-0009), started only with
+  # `docker compose --profile idp up`. Its own database `logto` lives on the Postgres above, which
+  # `db seed` creates on the first start and leaves alone after. Sign-in pages on port
+  # LOGTO_PORT; the admin console (3002) is published to this host only, see docs/configuration.md.
+  logto:
+    image: ghcr.io/logto-io/logto:1.46.0
+    profiles: [idp]
+    restart: unless-stopped
+    entrypoint: ["sh", "-c", "npm run cli db seed -- --swe && npm start"]
+    environment:
+      DB_URL: postgres://family_agenda:${POSTGRES_PASSWORD:-family_agenda}@postgres:5432/logto
+      # The address browsers reach the sign-in pages at; the issuer is <LOGTO_ENDPOINT>/oidc.
+      ENDPOINT: ${LOGTO_ENDPOINT:-http://localhost:3001}
+      ADMIN_ENDPOINT: ${LOGTO_ADMIN_ENDPOINT:-http://localhost:3002}
+      TRUST_PROXY_HEADER: ${TRUST_PROXY:-false}
+    ports:
+      - "${LOGTO_PORT:-3001}:3001"
+      - "127.0.0.1:${LOGTO_ADMIN_PORT:-3002}:3002"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   postgres:
     image: postgres:17@sha256:ff87138949ad9a46f32ff23bd6852b52ce024a13dffe9b4087be98292cdd3b4f
     restart: unless-stopped

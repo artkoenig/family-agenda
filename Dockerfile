@@ -17,6 +17,8 @@ RUN pnpm install --frozen-lockfile --prod \
   && chmod +x /usr/local/bin/family-agenda \
   && printf '#!/bin/sh\ncd /app/apps/api && exec node --import tsx src/plugins-cli.ts "$@"\n' > /usr/local/bin/plugins \
   && chmod +x /usr/local/bin/plugins \
+  && printf '#!/bin/sh\ncd /app && exec node --import tsx tools/logto-setup/src/main.ts "$@"\n' > /usr/local/bin/logto-setup \
+  && chmod +x /usr/local/bin/logto-setup \
   && mkdir -p /var/lib/family-agenda/master-key /var/lib/family-agenda/blobs /var/lib/family-agenda/tessdata \
   && chown node:node /var/lib/family-agenda/master-key /var/lib/family-agenda/blobs /var/lib/family-agenda/tessdata \
   && chmod 700 /var/lib/family-agenda/master-key /var/lib/family-agenda/blobs

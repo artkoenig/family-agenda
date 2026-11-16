@@ -198,6 +198,21 @@ The return address comes from the Context, never from the browser, so the callba
 
 The Instance must reach the Identity Provider (discovery, keys, token endpoint). Outbound only.
 
+### With the bundled Logto
+
+Compose ships an optional [Logto](https://logto.io) 1.46.0 as Identity Provider, in the profile `idp`. It uses its own database `logto` on the existing Postgres, which it creates at first start. Idle with one signed-in Admin it takes about 305 MiB RAM (`docker stats`), besides Postgres.
+
+1. Set `LOGTO_ENDPOINT` to the address of Logto's sign-in, port `LOGTO_PORT` (default 3001). Browsers **and** the api container must reach it there, as the issuer is `<LOGTO_ENDPOINT>/oidc`; behind HTTPS also `TRUST_PROXY=true`. Start it: `docker compose --profile idp up -d`.
+2. The admin console listens only on `127.0.0.1:3002` (`LOGTO_ADMIN_PORT`); from elsewhere use an SSH tunnel (`ssh -L 3002:localhost:3002 <host>`). Open it, create the console administrator, then by hand: **Applications → Create → Machine-to-machine**, assign the role **Logto Management API access**, and note its App ID and App secret. Logto offers no way to create this app without the console.
+3. Run the setup with `LOGTO_M2M_APP_ID`, `LOGTO_M2M_APP_SECRET`, `LOGTO_ENDPOINT`, `PUBLIC_URL` (or, in supplied mode, `OIDC_CALLBACK_URL`), `FIRST_ADMIN_USERNAME` and `FIRST_ADMIN_EMAIL` set, exported in the shell and passed through, for example `docker compose run --rm -e LOGTO_M2M_APP_ID -e LOGTO_M2M_APP_SECRET -e FIRST_ADMIN_USERNAME -e FIRST_ADMIN_EMAIL api logto-setup` (add `-e SMTP_HOST` and the like as needed; `LOGTO_ENDPOINT` and `PUBLIC_URL` too when they are not already in the api's environment), or `pnpm logto-setup` from a checkout (then `LOGTO_API_ENDPOINT=http://localhost:3001`; inside Compose it defaults to `http://logto:3001`).
+4. Put the printed `OIDC_*` values into `.env` and restart the api. Sign in with the first Admin and the one-time password it printed.
+
+The setup can run again at any time; it creates nothing twice. It creates the Traditional web app "Family Agenda" with the redirect URI, the role `OIDC_REQUIRED_GROUP` (default `homelab-admin`), turns self-registration off, applies the Family Agenda branding and `deploy/idp/logto-sign-in.css`, puts roles and custom data in the ID token, and creates the first Admin with the role, printing a one-time password only on the run that created them. More Admins: create users in the console and assign the role. It prints `OIDC_GROUPS_CLAIM=roles`.
+
+**Forgotten passwords.** With `SMTP_HOST` and `SMTP_FROM` set (`SMTP_PORT` default 587, 465 for TLS; `SMTP_USER`, `SMTP_PASSWORD` optional), the setup configures Logto's SMTP connector and the sign-in page offers a reset by email code. Without SMTP there is no reset link: someone with the console resets the password under **User management**.
+
+**Supplied mode.** Logto holds every Family's Admins. Set `CONTEXT_MODE=supplied` and `OIDC_CALLBACK_URL` for the setup; it then registers that URI and prints `OIDC_FAMILY_ID_CLAIM=custom_data.familyId` instead of the role. Give each Admin their Family's id as custom data, `{"familyId": "<id>"}`, in the console (user → **Custom data**) or with `PATCH /api/users/{id}/custom-data`. The core asks for the scope `custom_data`; the claim reaches the ID token because the setup enables it as an extended claim.
+
 ### Who is an Admin
 
 Whoever signs in with a verified email and `OIDC_REQUIRED_GROUP` in the groups claim. Family Agenda stores no Admins, only sessions (the IdP's `sub` and email). Anyone else is refused with a message naming why. A session lasts 12 hours and is not refreshed; after that the browser goes through the Identity Provider again, which checks the group again. `OIDC_KNOWN_ADMINS_ONLY` is gone: the core refuses to start with it set.

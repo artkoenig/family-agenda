@@ -1,0 +1,7 @@
+{
+  "name": "@family-agenda/logto-setup",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Sets up the optional Logto container (Compose profile `idp`) through its Management API, repeatably (ADR-0009)."
+}
