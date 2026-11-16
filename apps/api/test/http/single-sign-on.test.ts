@@ -4,34 +4,43 @@ import {
   sessionCookieOf,
   type HttpTestInstance,
 } from "../support/http";
-import { ScriptedIdentityProviderClient } from "../support/scripted-identity-provider";
+import { FakeIdentityProvider, type IdTokenClaims } from "../../../../packages/adapters/test/support/fake-identity-provider";
 
 const password = "correct horse battery";
-const identityProvider = {
-  issuerUrl: "https://id.example.ts.net",
+/** The Identity Provider settings of an Instance that signs in through `provider`. */
+const identityProviderOf = (provider: FakeIdentityProvider) => ({
+  issuerUrl: provider.issuer,
   clientId: "family-agenda",
   clientSecret: "s3cret",
   requiredGroup: "homelab-admin",
   publicBaseUrl: "http://localhost",
-};
+});
 /** The session cookie a response sets among others. */
 const sessionOf = (response: Response) =>
   /fb_session=[^;]+/.exec(response.headers.get("set-cookie") ?? "")?.[0] ?? "";
 
-const anna = {
-  subject: "sub-anna",
+const anna: IdTokenClaims = {
+  sub: "sub-anna",
   email: "anna@example.org",
-  emailVerified: true,
+  email_verified: true,
   groups: ["homelab-admin"],
+};
+
+/** The path and query of where the Identity Provider sends the browser back to. */
+const pathOf = (url: string) => {
+  const parsed = new URL(url);
+  return `${parsed.pathname}${parsed.search}`;
 };
 
 describe("single sign-on over HTTP", () => {
   let instance: HttpTestInstance;
-  let provider: ScriptedIdentityProviderClient;
+  let provider: FakeIdentityProvider;
+  let identityProvider: ReturnType<typeof identityProviderOf>;
   let cookie: string;
   beforeEach(async () => {
-    provider = new ScriptedIdentityProviderClient();
-    instance = await bootHttpForTest({}, { identityProviderClient: provider, identityProvider });
+    provider = await FakeIdentityProvider.start();
+    identityProvider = identityProviderOf(provider);
+    instance = await bootHttpForTest({}, { identityProvider });
     await instance.post("/setup", { email: "anna@example.org", password });
     await instance.app.recoveryKit.confirm();
     cookie = sessionCookieOf(
@@ -43,6 +52,7 @@ describe("single sign-on over HTTP", () => {
   });
   afterEach(async () => {
     await instance.close();
+    await provider.stop();
   });
 
   /** Starts a sign-in and returns the callback path the Identity Provider would send the browser back to. */
@@ -58,16 +68,13 @@ describe("single sign-on over HTTP", () => {
       ) ?? "";
     const pending = JSON.parse(
       decodeURIComponent(ssoCookie.split("=").slice(1).join("=")),
-    ) as {
-      state: string;
-      nonce: string;
-      codeVerifier: string;
-    };
+    ) as { state: string };
     expect(pending.state).toBe(state);
+    provider.claims = identity;
     return {
       start,
       ssoCookie,
-      callback: `/sso/callback${provider.returnWith(pending, identity)}`,
+      callback: pathOf(await provider.authorize(start.headers.get("location") ?? "")),
     };
   };
 
@@ -87,7 +94,7 @@ describe("single sign-on over HTTP", () => {
 
   it("offers no button, start or callback without an Identity Provider", async () => {
     await instance.close();
-    instance = await bootHttpForTest({}, { identityProviderClient: provider });
+    instance = await bootHttpForTest({});
     await instance.post("/setup", { email: "anna@example.org", password });
 
     expect(await (await instance.get("/admin/sign-in")).text()).not.toContain("/sso/start");
@@ -114,7 +121,7 @@ describe("single sign-on over HTTP", () => {
     const { start, ssoCookie, callback } = await startSignIn();
     expect(start.status).toBe(303);
     expect(start.headers.get("location")).toContain(
-      "https://id.example.ts.net/authorize",
+      `${provider.issuer}/authorize`,
     );
 
     const response = await instance.get(callback, { cookie: ssoCookie });
@@ -172,7 +179,7 @@ describe("single sign-on over HTTP", () => {
   describe("on an Instance without Admins", () => {
     beforeEach(async () => {
       await instance.close();
-      instance = await bootHttpForTest({}, { identityProviderClient: provider, identityProvider });
+      instance = await bootHttpForTest({}, { identityProvider });
     });
 
     it("offers the Identity Provider on the setup page", async () => {
@@ -206,20 +213,21 @@ describe("single sign-on over HTTP", () => {
 
 describe("single sign-on over HTTP for known Admins only", () => {
   let instance: HttpTestInstance;
-  let provider: ScriptedIdentityProviderClient;
+  let provider: FakeIdentityProvider;
   beforeEach(async () => {
-    provider = new ScriptedIdentityProviderClient();
-    instance = await bootHttpForTest({}, { identityProviderClient: provider, identityProvider: { ...identityProvider, knownAdminsOnly: true } });
+    provider = await FakeIdentityProvider.start();
+    instance = await bootHttpForTest({}, { identityProvider: { ...identityProviderOf(provider), knownAdminsOnly: true } });
   });
   afterEach(async () => {
     await instance.close();
+    await provider.stop();
   });
 
-  const callbackFor = async (identity: typeof anna) => {
+  const callbackFor = async (identity: IdTokenClaims) => {
     const start = await instance.get("/sso/start");
     const ssoCookie = start.headers.get("set-cookie")?.split(";")[0] ?? "";
-    const pending = JSON.parse(decodeURIComponent(ssoCookie.split("=").slice(1).join("="))) as { state: string; nonce: string; codeVerifier: string };
-    return instance.get(`/sso/callback${provider.returnWith(pending, identity)}`, { cookie: ssoCookie });
+    provider.claims = identity;
+    return instance.get(pathOf(await provider.authorize(start.headers.get("location") ?? "")), { cookie: ssoCookie });
   };
 
   it("offers no Identity Provider on the setup page, and makes no first Admin from a sign-in", async () => {
@@ -240,8 +248,8 @@ describe("single sign-on over HTTP for known Admins only", () => {
     const cookie = sessionCookieOf(await instance.post("/admin/sign-in", { email: "anna@example.org", password }));
     expect((await instance.post("/admin/admins", { email: "ben@example.org", password: "" }, { cookie })).status).toBe(303);
 
-    const ben = await callbackFor({ ...anna, subject: "sub-ben", email: "ben@example.org" });
-    const carla = await callbackFor({ ...anna, subject: "sub-carla", email: "carla@example.org" });
+    const ben = await callbackFor({ ...anna, sub: "sub-ben", email: "ben@example.org" });
+    const carla = await callbackFor({ ...anna, sub: "sub-carla", email: "carla@example.org" });
 
     expect(ben.status).toBe(303);
     expect(ben.headers.get("location")).toBe("/admin");
@@ -253,8 +261,9 @@ describe("single sign-on over HTTP for known Admins only", () => {
 
 describe("adding an Admin over HTTP", () => {
   it("hints at an empty password only where an Identity Provider is offered", async () => {
-    for (const [settings, hinted] of [[{ identityProvider }, true], [{}, false]] as const) {
-      const instance = await bootHttpForTest({}, { identityProviderClient: new ScriptedIdentityProviderClient(), ...settings });
+    const provider = await FakeIdentityProvider.start();
+    for (const [settings, hinted] of [[{ identityProvider: identityProviderOf(provider) }, true], [{}, false]] as const) {
+      const instance = await bootHttpForTest({}, settings);
       await instance.post("/setup", { email: "anna@example.org", password });
       await instance.app.recoveryKit.confirm();
       const cookie = sessionCookieOf(await instance.post("/admin/sign-in", { email: "anna@example.org", password }));
@@ -262,5 +271,6 @@ describe("adding an Admin over HTTP", () => {
       expect(page.includes("Leave it empty")).toBe(hinted);
       await instance.close();
     }
+    await provider.stop();
   });
 });
