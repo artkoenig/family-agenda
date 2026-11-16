@@ -4,7 +4,7 @@ import { serve, type ServerType } from "@hono/node-server";
 import { Hono } from "hono";
 import { runDueWork, workFailures, type BackgroundWork, type WorkLog } from "./background-work";
 import type { TriggerConfig } from "./config";
-import { contextHeader, openContextOutcome, type OpenedContext } from "./context/context";
+import { contextHeader, openContextOutcome, type Context } from "./context/context";
 import { databaseKeyOf, type OpeningProblem, type SuppliedFamilies } from "./context/supplied-families";
 
 /** A step of due work as JSON: its report, or the message of the error it stopped with. */
@@ -114,7 +114,7 @@ const openingRefusals: Record<OpeningProblem, () => Refused> = {
 };
 
 /** The Context a trigger carries, opened; refused without a valid one, as a page request is. */
-function contextOf(request: Request, contextKey: string, now: number): OpenedContext {
+function contextOf(request: Request, contextKey: string, now: number): Context {
   const text = request.headers.get(contextHeader);
   const outcome = text === null ? { ok: false as const, problem: null } : openContextOutcome(contextKey, text, now);
   if (outcome.ok) return outcome.context;
@@ -131,7 +131,7 @@ export function createSuppliedTriggerApp(options: SuppliedTriggerOptions): Hono 
   const { contextKey, families, log, now = Date.now } = options;
   // Due work under way, by database: a trigger during a run waits for it, whichever opening it came by.
   const dueWorkRuns = new Map<string, Promise<DueWorkAnswer>>();
-  const joinedDueWork = (context: OpenedContext, work: TriggeredWork) => {
+  const joinedDueWork = (context: Context, work: TriggeredWork) => {
     const database = databaseKeyOf(context);
     let running = dueWorkRuns.get(database);
     if (!running) {

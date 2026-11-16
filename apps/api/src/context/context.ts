@@ -1,6 +1,5 @@
 import { createCipheriv, createDecipheriv, hkdfSync, randomBytes } from "node:crypto";
 import { parseFamilyId, type FamilyId } from "@family-agenda/adapters";
-import { parseIdentityProviderSettings, type IdentityProviderSettings } from "@family-agenda/application";
 import { z } from "zod";
 import { parsePublicUrl } from "../config";
 
@@ -25,31 +24,11 @@ export type Context = {
    * address, cookie, the web manifest, the Agenda feed and the single sign-on redirect URI below it.
    */
   publicUrl: string;
-  /** The Identity Provider the Family's Admins may sign in through (ADR-0007); none offers no single sign-on. */
-  identityProvider?: ContextIdentityProvider;
   /**
    * Milliseconds since the epoch; the Context is refused from then on, after a little skew, and
    * when it lies further ahead than `maximumContextLifetimeMs`.
    */
   expiresAt: number;
-};
-
-/**
- * A Context as the core opened it: its Identity Provider parsed once, with the settings single
- * sign-on needs and the redirect URI below `publicUrl`.
- */
-export type OpenedContext = Omit<Context, "identityProvider"> & { identityProvider?: IdentityProviderSettings };
-
-/** The Identity Provider of a Context, as the `OIDC_*` variables give it in fixed mode; the redirect URI lies below `publicUrl`. */
-export type ContextIdentityProvider = {
-  issuerUrl: string;
-  clientId: string;
-  /** A secret: never logged, and part of no message. */
-  clientSecret: string;
-  /** `homelab-admin` when not given. */
-  requiredGroup?: string;
-  /** `groups` when not given; with Logto, `roles`. */
-  groupsClaim?: string;
 };
 
 /** The longest a Context may last: one lasting longer is refused, as `seal-context` refuses to seal one. */
@@ -69,13 +48,8 @@ const publicUrlProblem = "publicUrl must be an http or https address without cre
 const problems = {
   timeZone: "timeZone must be an IANA time zone, such as Europe/Berlin",
   publicUrl: publicUrlProblem,
-  "missing-issuer-url": "identityProvider.issuerUrl must be set",
-  "invalid-issuer-url": "identityProvider.issuerUrl must be an http or https address without query, such as https://id.example.ts.net",
-  "invalid-client-id": "identityProvider.clientId must be set when identityProvider.issuerUrl is",
-  "client-secret-missing": "identityProvider.clientSecret must be set when identityProvider.issuerUrl is",
-  "invalid-required-group": "identityProvider.requiredGroup must not be empty",
-  "invalid-groups-claim": "identityProvider.groupsClaim must be a claim name such as groups or roles",
-  "invalid-public-url": publicUrlProblem,
+  identityProvider:
+    "identityProvider must not be set: in supplied mode the one Identity Provider comes from the core's OIDC_* variables, and the Family claim decides who signs in (ADR-0009)",
 } as const;
 
 /** Whether `text` names an IANA time zone, not an offset such as `+01:00`. */
@@ -91,8 +65,6 @@ function isTimeZone(text: string): boolean {
 
 const custom = (context: z.RefinementCtx, message: string) => (context.addIssue({ code: "custom", message }), z.NEVER);
 
-const optionalText = z.string().optional();
-
 const contextSchema = z
   .strictObject({
     familyId: z.string().transform((text, context) => parseFamilyId(text) ?? custom(context, "no UUID")),
@@ -101,18 +73,14 @@ const contextSchema = z
     blobDirectory: z.string().min(1),
     timeZone: z.string({ error: problems.timeZone }).refine(isTimeZone, problems.timeZone),
     publicUrl: z.string({ error: problems.publicUrl }).transform((text, context) => parsePublicUrl(text) ?? custom(context, problems.publicUrl)),
-    identityProvider: z
-      .strictObject({ issuerUrl: optionalText, clientId: optionalText, clientSecret: optionalText, requiredGroup: optionalText, groupsClaim: optionalText }, { error: problems["missing-issuer-url"] })
-      .optional(),
+    // Named when refused, so that a caller still sealing one learns where the Identity Provider went.
+    identityProvider: z.unknown().refine((value) => value === undefined, problems.identityProvider).optional(),
     expiresAt: z.number(),
   })
-  // The Identity Provider, checked as the `OIDC_*` variables are, its redirect URI below `publicUrl`.
-  .transform(({ identityProvider, ...rest }, refinement): OpenedContext => {
-    if (identityProvider === undefined) return rest;
-    const parsed = parseIdentityProviderSettings({ ...identityProvider, publicBaseUrl: rest.publicUrl });
-    if (!parsed.ok) return custom(refinement, problems[parsed.problem]);
-    // No settings without an issuer, which an `identityProvider` given must name.
-    return parsed.settings === null ? custom(refinement, problems["missing-issuer-url"]) : { ...rest, identityProvider: parsed.settings };
+  // Nothing of it is kept: it was refused unless absent.
+  .transform((parsed): Context => {
+    delete parsed.identityProvider;
+    return parsed;
   });
 
 const version = "v1";
@@ -146,17 +114,17 @@ export function sealUncheckedContext(contextKey: string, context: Record<string,
  * The Context `text` carries, or null if it was not sealed with `contextKey`, was altered, is no
  * Context or has expired by `now`. Says nothing about why: a refusal is a refusal.
  */
-export function openContext(contextKey: string, text: string, now: number): OpenedContext | null {
+export function openContext(contextKey: string, text: string, now: number): Context | null {
   const outcome = openContextOutcome(contextKey, text, now);
   return outcome.ok ? outcome.context : null;
 }
 
 /**
  * As `openContext`, naming what is wrong with a Context that was sealed with `contextKey` but
- * carries settings the core refuses, such as incomplete Identity Provider settings: only the
+ * carries settings the core refuses, such as an `identityProvider` or a wrong time zone: only the
  * trusted caller can seal one, and only it learns why. Of any other refusal it names nothing.
  */
-export function openContextOutcome(contextKey: string, text: string, now: number): { ok: true; context: OpenedContext } | { ok: false; problem: string | null } {
+export function openContextOutcome(contextKey: string, text: string, now: number): { ok: true; context: Context } | { ok: false; problem: string | null } {
   const sealed = partsOf(text);
   if (sealed === null) return { ok: false, problem: null };
   const parsed = contextSchema.safeParse(decrypted(contextKey, sealed));
@@ -208,7 +176,7 @@ function decrypted(contextKey: string, { iv, ciphertext, tag }: Sealed): unknown
 }
 
 /** The Context of a request, from its header alone, or null for none that opens. */
-export function contextOfRequest(contextKey: string, request: Request, now: number): OpenedContext | null {
+export function contextOfRequest(contextKey: string, request: Request, now: number): Context | null {
   const text = request.headers.get(contextHeader);
   return text === null ? null : openContext(contextKey, text, now);
 }

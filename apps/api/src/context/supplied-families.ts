@@ -1,20 +1,28 @@
 import { createHash } from "node:crypto";
+import type { IdentityProviderSettings } from "@family-agenda/application";
 import { connectPostgres, FamilyIdConflictError, NewerMigrationHistoryError, OldMigrationHistoryError, type PostgresConnection } from "@family-agenda/adapters";
 import { checkPreparedSchema, FamilyNotPreparedError, openPreparedFamily, prepareFamily, type Application, type FamilyConfig, type SharedWiring } from "../composition-root";
-import type { OpenedContext } from "./context";
+import type { SuppliedIdentityProvider } from "../config";
+import type { Context } from "./context";
 
 /** What a Family's pages answer a request with, such as its Hono app's `fetch`. */
 export type FamilyFetch = (request: Request, env?: unknown) => Response | Promise<Response>;
 
-/** What every Family gets alike; its time zone, public address and Identity Provider come with its Context. */
+/** What every Family gets alike; its time zone and public address come with its Context. */
 export type FamilySettings = Pick<FamilyConfig, "identityProviderClient" | "sourceRunTurns">;
 
 export type SuppliedFamiliesOptions = {
   shared: SharedWiring;
   /** What every Family gets alike; nothing by default. */
   settings?: FamilySettings;
+  /**
+   * The one Identity Provider of the deployment (ADR-0009): each Family signs in through it, its
+   * redirect URI below the Context's `publicUrl`, admitting only tokens whose Family claim names
+   * the Context's Family. None offers no single sign-on, as in tests that need none.
+   */
+  identityProvider?: SuppliedIdentityProvider;
   /** What answers the requests of an opened Family, its Hono app below the Context's public address; made once per opening. */
-  serving: (application: Application, context: OpenedContext) => FamilyFetch;
+  serving: (application: Application, context: Context) => FamilyFetch;
   /** Connects to the database a Context names; to its Postgres server by default. */
   connectDatabase?: (databaseUrl: string) => PostgresConnection;
   /** How long a request waits for its Family to be prepared before it is answered `migrating`, 20 seconds by default. */
@@ -114,7 +122,7 @@ export class SuppliedFamilies {
    * many requests open it; a request waits for that up to `preparingWaitMs`, and is then answered
    * `migrating` while the preparing goes on.
    */
-  async serve<R>(context: OpenedContext, fn: (family: OpenedFamily) => Promise<R>): Promise<Opening<R>> {
+  async serve<R>(context: Context, fn: (family: OpenedFamily) => Promise<R>): Promise<Opening<R>> {
     await this.sweep();
     const waiting = waitingFor(this.#options.preparingWaitMs ?? defaultPreparingWaitMs);
     try {
@@ -126,7 +134,7 @@ export class SuppliedFamilies {
   }
 
   /** Prepares the database `context` names, which opening found not prepared, then serves the request on it. */
-  async #servePrepared<R>(context: OpenedContext, fn: (family: OpenedFamily) => Promise<R>, waiting: Waiting): Promise<Opening<R>> {
+  async #servePrepared<R>(context: Context, fn: (family: OpenedFamily) => Promise<R>, waiting: Waiting): Promise<Opening<R>> {
     const refused = await waiting.within(this.#prepared(context));
     if (refused === late) return { ok: false, problem: "migrating" };
     if (refused !== null) return refused;
@@ -136,7 +144,7 @@ export class SuppliedFamilies {
     return second.ok || second.problem !== "not-prepared" ? second : { ok: false, problem: "unavailable", error: second.error };
   }
 
-  async #serveOpened<R>(context: OpenedContext, fn: (family: OpenedFamily) => Promise<R>, waiting: Waiting): Promise<Tried<R>> {
+  async #serveOpened<R>(context: Context, fn: (family: OpenedFamily) => Promise<R>, waiting: Waiting): Promise<Tried<R>> {
     // A Family is opened on the schema a prepare under way leaves.
     const preparing = this.#preparing.get(databaseKeyOf(context));
     if (preparing && (await waiting.within(preparing)) === late) return { ok: false, problem: "migrating" };
@@ -190,7 +198,7 @@ export class SuppliedFamilies {
    * for the same prepare: nothing is prepared twice. Its blobs stay where they are: the blob
    * location is shared, and only the Family's own folder is its.
    */
-  #prepared(context: OpenedContext): Promise<Refused | null> {
+  #prepared(context: Context): Promise<Refused | null> {
     const database = databaseKeyOf(context);
     const under = this.#preparing.get(database);
     if (under) return under;
@@ -223,7 +231,7 @@ export class SuppliedFamilies {
     return (this.#options.now ?? Date.now)();
   }
 
-  #entryFor(context: OpenedContext): Entry {
+  #entryFor(context: Context): Entry {
     const key = keyOf(context);
     const existing = this.#entries.get(key);
     if (existing) return existing;
@@ -237,14 +245,14 @@ export class SuppliedFamilies {
     return entry;
   }
 
-  async #open(context: OpenedContext): Promise<Opened> {
-    const { shared, settings = {}, serving, connectDatabase = connectPostgres } = this.#options;
+  async #open(context: Context): Promise<Opened> {
+    const { shared, settings = {}, identityProvider, serving, connectDatabase = connectPostgres } = this.#options;
     const postgres = connectDatabase(context.databaseUrl);
     // Refuses a database not prepared by this release before it writes anything, for `serve` to prepare it.
     const application = await openPreparedFamily(shared, {
       ...settings,
       timeZone: context.timeZone,
-      identityProvider: context.identityProvider ?? null,
+      identityProvider: identityProviderOf(identityProvider, context),
       connectDatabase: () => postgres,
       familyKey: Buffer.from(context.familyKey, "base64url"),
       blobDirectory: context.blobDirectory,
@@ -254,6 +262,13 @@ export class SuppliedFamilies {
     });
     return { family: { application, fetch: serving(application, context) }, checkSchema: () => checkPreparedSchema(postgres) };
   }
+}
+
+/** The Identity Provider as one Family signs in through it: below its address, for its Family alone. */
+function identityProviderOf(provider: SuppliedIdentityProvider | undefined, context: Context): IdentityProviderSettings | null {
+  if (provider === undefined) return null;
+  const { familyIdClaim, ...connection } = provider;
+  return { ...connection, publicBaseUrl: context.publicUrl, family: { claim: familyIdClaim, familyId: context.familyId } };
 }
 
 /** What a failed opening, or a failed check of an opened Family, answers. */
@@ -269,7 +284,7 @@ function refusalOf(error: unknown): OpeningProblem {
 }
 
 /** The database a Context names, hashed so that the key holds no password: what Preparing the Family and due work go by. */
-export function databaseKeyOf({ databaseUrl }: Pick<OpenedContext, "databaseUrl">): string {
+export function databaseKeyOf({ databaseUrl }: Pick<Context, "databaseUrl">): string {
   return createHash("sha256").update(databaseUrl).digest("hex");
 }
 
@@ -277,9 +292,8 @@ export function databaseKeyOf({ databaseUrl }: Pick<OpenedContext, "databaseUrl"
  * What opens a Family and what it is wired with, hashed so that the key holds no secret; the expiry
  * is no part of it. A Context with other settings for the same Family opens it anew.
  */
-function keyOf({ familyId, databaseUrl, familyKey, blobDirectory, timeZone, publicUrl, identityProvider }: OpenedContext): string {
-  const provider = identityProvider === undefined ? null : [identityProvider.issuerUrl, identityProvider.clientId, identityProvider.clientSecret, identityProvider.requiredGroup, identityProvider.groupsClaim];
-  return createHash("sha256").update(JSON.stringify([familyId, databaseUrl, familyKey, blobDirectory, timeZone, publicUrl, provider])).digest("hex");
+function keyOf({ familyId, databaseUrl, familyKey, blobDirectory, timeZone, publicUrl }: Context): string {
+  return createHash("sha256").update(JSON.stringify([familyId, databaseUrl, familyKey, blobDirectory, timeZone, publicUrl])).digest("hex");
 }
 
 async function closeEntry(entry: Entry): Promise<void> {

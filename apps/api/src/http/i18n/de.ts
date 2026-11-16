@@ -63,6 +63,10 @@ export const de: Catalogue = {
       "Die Anmeldung über den Identity Provider hat nicht geklappt. Versuche es noch einmal.",
     "sso-not-in-group":
       "Dein Konto beim Identity Provider gehört nicht zur Gruppe oder Rolle, die Family Agenda verwalten darf. Bitte die Person, die den Identity Provider betreibt, dich hinzuzufügen.",
+    "sso-no-family":
+      "Dein Konto beim Identity Provider gehört zu keiner Familie. Bitte die Person, die den Identity Provider betreibt, es dieser Familie zuzuordnen.",
+    "sso-other-family":
+      "Dein Konto beim Identity Provider gehört zu einer anderen Familie, nicht zu dieser. Melde dich unter der Adresse deiner eigenen Familie an.",
     "sso-email-unverified":
       "Der Identity Provider hat keine E-Mail-Adresse für dein Konto bestätigt.",
     "invalid-interval": `Das Abrufintervall muss zwischen ${pollIntervalRange.minSeconds / 60} Minute und ${pollIntervalRange.maxSeconds / 86_400} Tagen liegen.`,

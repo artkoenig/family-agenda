@@ -10,6 +10,8 @@ const oidc = {
   OIDC_CLIENT_SECRET: "s3cret",
 };
 
+const suppliedOidc = { OIDC_ISSUER_URL: "https://id.example.ts.net", OIDC_CLIENT_ID: "family-agenda", OIDC_CLIENT_SECRET: "s3cret" };
+
 describe("the Identity Provider in the environment", () => {
   it("is none without OIDC_ISSUER_URL", () => {
     expect(readConfig(base).identityProvider).toBeNull();
@@ -32,6 +34,27 @@ describe("the Identity Provider in the environment", () => {
     expect(readConfig({ ...oidc, OIDC_GROUPS_CLAIM: "roles" }).identityProvider?.groupsClaim).toBe("roles");
     expect(readConfig({ ...oidc, OIDC_GROUPS_CLAIM: "" }).identityProvider?.groupsClaim).toBe("groups");
     expect(() => readConfig({ ...oidc, OIDC_GROUPS_CLAIM: "groups roles" })).toThrow(/OIDC_GROUPS_CLAIM must be a claim name/);
+  });
+
+  it("serves every Family in supplied mode, required, with the Family claim family_id by default", () => {
+    const supplied = { CONTEXT_MODE: "supplied", CONTEXT_KEY: "a-context-key-of-at-least-32-characters", CALLER_PORT: "3002", ...suppliedOidc };
+    expect(readSuppliedConfig(supplied).identityProvider).toEqual({
+      issuerUrl: "https://id.example.ts.net",
+      clientId: "family-agenda",
+      clientSecret: "s3cret",
+      requiredGroup: "homelab-admin",
+      groupsClaim: "groups",
+      familyIdClaim: "family_id",
+    });
+    expect(readSuppliedConfig({ ...supplied, OIDC_FAMILY_ID_CLAIM: "custom_data.familyId" }).identityProvider.familyIdClaim).toBe("custom_data.familyId");
+    expect(() => readSuppliedConfig({ ...supplied, OIDC_FAMILY_ID_CLAIM: "custom_data..familyId" })).toThrow(/OIDC_FAMILY_ID_CLAIM must be a claim name or a dotted path/);
+    expect(() => readSuppliedConfig({ ...supplied, OIDC_ISSUER_URL: undefined })).toThrow(/OIDC_ISSUER_URL must be set with CONTEXT_MODE=supplied/);
+    expect(() => readSuppliedConfig({ ...supplied, OIDC_CLIENT_ID: undefined })).toThrow(/OIDC_CLIENT_ID must be set/);
+    expect(() => readSuppliedConfig({ ...supplied, OIDC_CLIENT_SECRET: undefined })).toThrow(/OIDC_CLIENT_SECRET must be set/);
+  });
+
+  it("refuses OIDC_FAMILY_ID_CLAIM in fixed mode, where the group decides", () => {
+    expect(() => readConfig({ ...oidc, OIDC_FAMILY_ID_CLAIM: "family_id" })).toThrow(/OIDC_FAMILY_ID_CLAIM is set, but CONTEXT_MODE is not supplied/);
   });
 
   it("refuses to start with OIDC_KNOWN_ADMINS_ONLY, which is no longer known", () => {
@@ -139,18 +162,18 @@ describe("the mode of the core", () => {
   });
 
   it("reads no Family from the environment in supplied mode, and refuses one given there", () => {
-    const supplied = { CONTEXT_MODE: "supplied", CONTEXT_KEY: contextKey, PORT: "8080", CALLER_PORT: "3002", TZ: "Europe/Berlin" };
+    const supplied = { CONTEXT_MODE: "supplied", CONTEXT_KEY: contextKey, PORT: "8080", CALLER_PORT: "3002", TZ: "Europe/Berlin", ...suppliedOidc };
     expect(readMode(supplied)).toBe("supplied");
     expect(readSuppliedConfig(supplied)).toMatchObject({ contextKey, callerPort: 3002, trustProxy: false, pluginContainers: [] });
     expect(readSuppliedConfig(supplied)).not.toHaveProperty("publicUrl");
-    expect(readSuppliedConfig(supplied)).not.toHaveProperty("identityProvider");
     expect(readSuppliedConfig(supplied)).not.toHaveProperty("databaseUrl");
     expect(readSuppliedConfig(supplied)).not.toHaveProperty("port");
     expect(() => readSuppliedConfig({ ...supplied, CALLER_PORT: undefined })).toThrow(/CALLER_PORT must be set/);
     expect(() => readSuppliedConfig({ ...supplied, CALLER_PORT: "http" })).toThrow(/CALLER_PORT must be set/);
     expect(() => readSuppliedConfig({ ...supplied, CALLER_PORT: "8080" })).toThrow(/CALLER_PORT must differ from PORT/);
-    for (const variable of ["PUBLIC_URL", "OIDC_ISSUER_URL", "OIDC_CLIENT_ID", "OIDC_CLIENT_SECRET", "OIDC_REQUIRED_GROUP", "OIDC_GROUPS_CLAIM"]) {
-      expect(() => readSuppliedConfig({ ...supplied, [variable]: "https://x.example.org" })).toThrow(new RegExp(`${variable} must not be set with CONTEXT_MODE=supplied: every Context`));
+    expect(() => readSuppliedConfig({ ...supplied, PUBLIC_URL: "https://x.example.org" })).toThrow(/PUBLIC_URL must not be set with CONTEXT_MODE=supplied: every Context/);
+    for (const variable of ["OIDC_REQUIRED_GROUP", "OIDC_GROUPS_CLAIM"]) {
+      expect(() => readSuppliedConfig({ ...supplied, [variable]: "roles" })).toThrow(new RegExp(`${variable} must not be set with CONTEXT_MODE=supplied: the claim OIDC_FAMILY_ID_CLAIM names decides`));
     }
     for (const variable of ["DATABASE_URL", "FAMILY_ID", "MASTER_KEY_FILE", "BLOB_DIRECTORY"]) {
       expect(() => readSuppliedConfig({ ...supplied, [variable]: "x" })).toThrow(new RegExp(`${variable} must not be set`));
