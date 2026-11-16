@@ -1,14 +1,14 @@
 import { afterEach, describe, expect, it, onTestFinished } from "vitest";
-import { bootHttpForTestBelow, type HttpPrefixedTestInstance } from "../support/http";
+import { bootHttpForTestBelow, signedInCookie, type HttpPrefixedTestInstance } from "../support/http";
 import { FakeIdentityProvider } from "../../../../packages/adapters/test/support/fake-identity-provider";
 
-const password = "correct horse battery";
 const prefix = "/agenda";
 const identityProvider = {
   issuerUrl: "https://id.example.ts.net",
   clientId: "family-agenda",
   clientSecret: "s3cret",
   requiredGroup: "homelab-admin",
+  groupsClaim: "groups",
   publicBaseUrl: `http://localhost${prefix}`,
 };
 
@@ -24,47 +24,37 @@ describe("an Instance below a path prefix", () => {
     await instance.close();
   });
 
-  it("sets up the first Admin, signs in and out, all below the prefix", async () => {
+  it("sends a browser to sign in, and signs out, all below the prefix", async () => {
     instance = await bootHttpForTestBelow(prefix);
 
     const first = await instance.get(`${prefix}/admin`);
-    expect(first.headers.get("location")).toBe(`${prefix}/setup`);
-    const setup = await (await instance.get(`${prefix}/setup`)).text();
-    expect(setup).toContain(`action="${prefix}/setup"`);
-    expect(setup).toContain(`href="${prefix}/static/design.css"`);
+    expect(first.headers.get("location")).toBe(`${prefix}/admin/sign-in`);
+    const signInPage = await (await instance.get(`${prefix}/admin/sign-in`)).text();
+    expect(signInPage).toContain(`href="${prefix}/static/design.css"`);
 
-    const created = await instance.post(`${prefix}/setup`, { email: "anna@example.org", password });
-    expect(created.headers.get("location")).toBe(`${prefix}/admin/recovery-kit`);
-    const session = cookieOf(created, "fb_session");
-    expect(session.path).toBe(prefix);
-
-    const kit = await instance.get(`${prefix}/admin`, { cookie: session.pair });
+    const session = await signedInCookie(instance);
+    const kit = await instance.get(`${prefix}/admin`, { cookie: session });
     expect(kit.headers.get("location")).toBe(`${prefix}/admin/recovery-kit`);
-    const kitPage = await (await instance.get(`${prefix}/admin/recovery-kit`, { cookie: session.pair })).text();
+    const kitPage = await (await instance.get(`${prefix}/admin/recovery-kit`, { cookie: session })).text();
     expect(kitPage).toContain(`action="${prefix}/admin/sign-out"`);
-    const confirmed = await instance.post(`${prefix}/admin/recovery-kit/confirm`, { saved: "yes" }, { cookie: session.pair });
+    const confirmed = await instance.post(`${prefix}/admin/recovery-kit/confirm`, { saved: "yes" }, { cookie: session });
     expect(confirmed.headers.get("location")).toBe(`${prefix}/admin`);
+    expect((await instance.get(`${prefix}/admin`, { cookie: session })).status).toBe(200);
+    expect((await instance.get(`${prefix}/`)).headers.get("location")).toBe(`${prefix}/admin`);
 
-    const signedOut = await instance.post(`${prefix}/admin/sign-out`, {}, { cookie: session.pair });
+    const signedOut = await instance.post(`${prefix}/admin/sign-out`, {}, { cookie: session });
     expect(signedOut.headers.get("location")).toBe(`${prefix}/admin/sign-in`);
     expect(cookieOf(signedOut, "fb_session").path).toBe(prefix);
-    const away = await instance.get(`${prefix}/admin`, { cookie: session.pair });
+    const away = await instance.get(`${prefix}/admin`, { cookie: session });
     expect(away.headers.get("location")).toBe(`${prefix}/admin/sign-in`);
-
-    const signInPage = await (await instance.get(`${prefix}/admin/sign-in`)).text();
-    expect(signInPage).toContain(`action="${prefix}/admin/sign-in"`);
-    const signedIn = await instance.post(`${prefix}/admin/sign-in`, { email: "anna@example.org", password });
-    expect(signedIn.headers.get("location")).toBe(`${prefix}/admin`);
-    expect((await instance.get(`${prefix}/admin`, { cookie: cookieOf(signedIn, "fb_session").pair })).status).toBe(200);
-    expect((await instance.get(`${prefix}/`)).headers.get("location")).toBe(`${prefix}/admin`);
   });
 
-  it("signs the first Admin in through the Identity Provider, with the callback below the prefix", async () => {
+  it("signs an Admin in through the Identity Provider, with the callback below the prefix", async () => {
     const provider = await FakeIdentityProvider.start();
     onTestFinished(() => provider.stop());
     instance = await bootHttpForTestBelow(prefix, {}, { identityProvider: { ...identityProvider, issuerUrl: provider.issuer } });
 
-    expect(await (await instance.get(`${prefix}/setup`)).text()).toContain(`href="${prefix}/sso/start"`);
+    expect(await (await instance.get(`${prefix}/admin/sign-in`)).text()).toContain(`href="${prefix}/sso/start"`);
     const start = await instance.get(`${prefix}/sso/start`);
     const location = start.headers.get("location") ?? "";
     expect(new URL(location).searchParams.get("redirect_uri")).toBe(`http://localhost${prefix}/sso/callback`);
@@ -75,16 +65,15 @@ describe("an Instance below a path prefix", () => {
 
     const back = await instance.get(`${callback.pathname}${callback.search}`, { cookie: sso.pair });
 
-    expect(back.headers.get("location")).toBe(`${prefix}/admin/recovery-kit`);
+    expect(back.headers.get("location")).toBe(`${prefix}/admin`);
     expect(cookieOf(back, "fb_sso").path).toBe(`${prefix}/sso`);
     expect(cookieOf(back, "fb_session").path).toBe(prefix);
   });
 
-  it("adds, changes and removes Family Members, Admins and Agendas, all below the prefix", async () => {
+  it("adds, changes and removes Family Members and Agendas, all below the prefix", async () => {
     instance = await bootHttpForTestBelow(prefix);
-    await instance.core.post("/setup", { email: "anna@example.org", password });
     await instance.app.recoveryKit.confirm();
-    const cookie = cookieOf(await instance.post(`${prefix}/admin/sign-in`, { email: "anna@example.org", password }), "fb_session").pair;
+    const cookie = await signedInCookie(instance);
     const page = async (path: string) => {
       const body = await (await instance.get(`${prefix}${path}`, { cookie })).text();
       // Every address the page emits from the root of the Instance lies below the prefix.
@@ -114,21 +103,13 @@ describe("an Instance below a path prefix", () => {
     expect(await redirected(`/admin/agendas/${agenda.id}`, { memberIds: mia.id, horizonDays: "14" })).toBe(`${prefix}/admin/agendas`);
     expect(await redirected(`/admin/agendas/${agenda.id}/remove`, {})).toBe(`${prefix}/admin/agendas`);
     expect(await redirected(`/admin/family-members/${mia.id}/remove`, {})).toBe(`${prefix}/admin/family-members`);
-
-    expect(await page("/admin/admins/new")).toContain(`action="${prefix}/admin/admins"`);
-    expect(await redirected("/admin/admins", { email: "ben@example.org", password })).toBe(`${prefix}/admin/admins`);
-    const ben = (await instance.app.admins.listAdmins()).find((admin) => admin.email === "ben@example.org");
-    if (!ben) throw new Error("Ben was not added");
-    expect(await page(`/admin/admins/${ben.id}`)).toContain(`action="${prefix}/admin/admins/${ben.id}/password"`);
-    expect(await redirected(`/admin/admins/${ben.id}/password`, { password: "another horse battery" })).toBe(`${prefix}/admin/admins`);
   });
 
   it("keeps the settings pages and their background requests below the prefix", async () => {
     instance = await bootHttpForTestBelow(prefix);
-    await instance.core.post("/setup", { email: "anna@example.org", password });
     await instance.app.recoveryKit.confirm();
-    const cookie = cookieOf(await instance.post(`${prefix}/admin/sign-in`, { email: "anna@example.org", password }), "fb_session").pair;
-    for (const path of ["/admin", "/admin/admins", "/admin/agendas", "/admin/display", "/admin/llm", "/admin/recovery-kit"]) {
+    const cookie = await signedInCookie(instance);
+    for (const path of ["/admin", "/admin/agendas", "/admin/display", "/admin/llm", "/admin/recovery-kit"]) {
       const body = await (await instance.get(`${prefix}${path}`, { cookie })).text();
       expect(body.match(/(?:href|src|action|hx-get|hx-post)="\/(?!agenda\/)[^"]*"/g) ?? [], path).toEqual([]);
     }

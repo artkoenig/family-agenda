@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { verifyTicket } from "../../src/egress/ticket";
 import { PluginContainers } from "../../src/plugin-containers/registry";
 import { bootForTest, type SecondFamily, type TestInstance } from "../support/boot";
-import { bootHttpForTest, type HttpTestInstance } from "../support/http";
+import { bootHttpForTest, signedInCookie, type HttpTestInstance } from "../support/http";
 
 describe("two Families in one process", () => {
   let instance: TestInstance;
@@ -54,11 +54,11 @@ describe("two Families in one process over HTTP", () => {
   it("serves each Family from its own database", async () => {
     const other = await instance.bootHttpSecondFamily();
 
-    const created = await instance.post("/setup", { email: "anna@example.org", password: "correct horse battery" });
-    expect(created.status).toBe(303);
+    await instance.app.recoveryKit.confirm();
+    const cookie = await signedInCookie(instance);
 
-    expect((await instance.get("/setup")).status).toBe(404);
-    expect((await other.get("/setup")).status).toBe(200);
+    expect((await instance.get("/admin", { cookie })).status).toBe(200);
+    expect((await other.get("/admin", { cookie })).headers.get("location")).toBe("/admin/sign-in");
   });
 });
 

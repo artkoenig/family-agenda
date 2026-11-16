@@ -3,13 +3,13 @@ import { bootForTest, type TestInstance } from "../support/boot";
 import { parseIdentityProviderSettings } from "@family-agenda/application";
 import { ScriptedIdentityProviderClient } from "../support/scripted-identity-provider";
 
-const password = "correct horse battery";
 const origin = "https://agenda.example.ts.net";
 const settings = {
   issuerUrl: "https://id.example.ts.net",
   clientId: "family-agenda",
   clientSecret: "s3cret",
   requiredGroup: "homelab-admin",
+  groupsClaim: "groups",
   publicBaseUrl: origin,
 };
 const anna = {
@@ -27,10 +27,6 @@ describe("Admins signing in through an Identity Provider", () => {
     instance = await bootForTest({
       identityProviderClient: provider,
       identityProvider: settings,
-    });
-    await instance.app.admins.createFirstAdmin({
-      email: "anna@example.org",
-      password,
     });
   });
   afterEach(async () => {
@@ -66,100 +62,34 @@ describe("Admins signing in through an Identity Provider", () => {
           issuerUrl: "https://id.example.ts.net",
           clientId: "family-agenda",
           clientSecret: "s3cret",
+          groupsClaim: "groups",
         },
         redirectUri: `${origin}/sso/callback`,
       });
     });
 
-    it("links the Admin with the same verified email and later finds them by the provider's id", async () => {
-      const first = await signInAs(anna);
-      const again = await signInAs({ ...anna, email: "other@example.org" });
-
-      for (const result of [first, again]) {
-        expect(result.ok).toBe(true);
-        if (!result.ok) continue;
-        expect(
-          (await instance.app.admins.authenticate(result.sessionToken))?.email,
-        ).toBe("anna@example.org");
-      }
-      expect(await instance.app.admins.listAdmins()).toHaveLength(1);
-    });
-
-    it("keeps the password working for a linked Admin", async () => {
-      await signInAs(anna);
-
-      const result = await instance.app.admins.signIn({
-        email: "anna@example.org",
-        password,
-        client: "192.0.2.1",
-      });
+    it("starts a session that holds the identity, without storing an Admin", async () => {
+      const result = await signInAs(anna);
 
       expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(await instance.app.admins.authenticate(result.sessionToken)).toEqual({ subject: "sub-anna", email: "anna@example.org" });
+      expect(await instance.query("SELECT subject, email FROM admin_session")).toEqual([{ subject: "sub-anna", email: "anna@example.org" }]);
     });
 
-    it("creates an Admin without a password for an unknown, verified email", async () => {
-      const result = await signInAs({
-        ...anna,
-        subject: "sub-ben",
-        email: "Ben@example.org",
-      });
+    it("signs in anyone in the required group, whom no one entered before", async () => {
+      const result = await signInAs({ ...anna, subject: "sub-ben", email: "ben@example.org" });
 
       expect(result.ok).toBe(true);
-      expect(
-        (await instance.app.admins.listAdmins()).map((admin) => admin.email),
-      ).toContain("ben@example.org");
-      expect(
-        await instance.query(
-          "SELECT password_hash FROM admin WHERE email = 'ben@example.org'",
-        ),
-      ).toEqual([{ password_hash: null }]);
-      expect(
-        await instance.app.admins.signIn({
-          email: "ben@example.org",
-          password: "",
-          client: "192.0.2.1",
-        }),
-      ).toEqual({
-        ok: false,
-        problem: "invalid-credentials",
-      });
-    });
-
-    it("lets another Admin set a password for one who has none", async () => {
-      await signInAs({ ...anna, subject: "sub-ben", email: "ben@example.org" });
-      const ben = (await instance.app.admins.listAdmins()).find(
-        (admin) => admin.email === "ben@example.org",
-      );
-      const actor = (await instance.app.admins.listAdmins()).find(
-        (admin) => admin.email === "anna@example.org",
-      );
-      if (!ben || !actor) throw new Error("missing admins");
-
-      await instance.app.admins.resetPassword(actor, {
-        adminId: ben.id,
-        newPassword: "another long password",
-      });
-
-      expect(
-        (
-          await instance.app.admins.signIn({
-            email: "ben@example.org",
-            password: "another long password",
-            client: "192.0.2.1",
-          })
-        ).ok,
-      ).toBe(true);
+      if (!result.ok) return;
+      expect((await instance.app.admins.authenticate(result.sessionToken))?.email).toBe("ben@example.org");
     });
 
     it("refuses someone outside the required group, every time", async () => {
-      const first = await signInAs(anna);
-      expect(first.ok).toBe(true);
+      expect((await signInAs(anna)).ok).toBe(true);
 
-      expect(await signInAs({ ...anna, groups: ["family"] })).toEqual({
-        ok: false,
-        problem: "sso-not-in-group",
-      });
-      expect(await instance.app.admins.listAdmins()).toHaveLength(1);
+      expect(await signInAs({ ...anna, groups: ["family"] })).toEqual({ ok: false, problem: "sso-not-in-group" });
+      expect(await signInAs({ ...anna, groups: [] })).toEqual({ ok: false, problem: "sso-not-in-group" });
     });
 
     it("lets a running session go on when the Admin has left the group", async () => {
@@ -168,9 +98,17 @@ describe("Admins signing in through an Identity Provider", () => {
 
       await signInAs({ ...anna, groups: [] });
 
-      expect(
-        await instance.app.admins.authenticate(first.sessionToken),
-      ).not.toBeNull();
+      expect(await instance.app.admins.authenticate(first.sessionToken)).not.toBeNull();
+    });
+
+    it("ends a session after 12 hours, so the browser goes through the provider again", async () => {
+      const result = await signInAs(anna);
+      if (!result.ok) throw new Error("sign-in failed");
+
+      instance.clock.advance(12 * 60 * 60 * 1000 - 1);
+      expect(await instance.app.admins.authenticate(result.sessionToken)).not.toBeNull();
+      instance.clock.advance(1);
+      expect(await instance.app.admins.authenticate(result.sessionToken)).toBeNull();
     });
 
     it("refuses an email the provider has not verified, or none", async () => {
@@ -189,15 +127,6 @@ describe("Admins signing in through an Identity Provider", () => {
       ).toEqual({
         ok: false,
         problem: "sso-email-unverified",
-      });
-    });
-
-    it("refuses another identity for an email that is already linked", async () => {
-      await signInAs(anna);
-
-      expect(await signInAs({ ...anna, subject: "sub-impostor" })).toEqual({
-        ok: false,
-        problem: "sso-conflict",
       });
     });
 
@@ -237,13 +166,6 @@ describe("Admins signing in through an Identity Provider", () => {
     expect(await sso().begin(origin)).toBeNull();
   });
 
-  it("makes the first Admin on an Instance without one", async () => {
-    await instance.close();
-    instance = await bootForTest({ identityProviderClient: provider, identityProvider: settings });
-
-    expect((await signInAs(anna)).ok).toBe(true);
-    expect(await instance.app.admins.needsFirstAdmin()).toBe(false);
-  });
 });
 
 describe("the Identity Provider from the environment", () => {
@@ -267,9 +189,15 @@ describe("the Identity Provider from the environment", () => {
         clientId: "family-agenda",
         clientSecret: "s3cret",
         requiredGroup: "homelab-admin",
+        groupsClaim: "groups",
         publicBaseUrl: origin,
       },
     });
+  });
+
+  it("takes the groups from another claim when told to", () => {
+    const parsed = parseIdentityProviderSettings({ ...variables, groupsClaim: " roles " });
+    expect(parsed.ok && parsed.settings?.groupsClaim).toBe("roles");
   });
 
   it("keeps an issuer with a trailing slash as before, without the slash", () => {
@@ -293,109 +221,9 @@ describe("the Identity Provider from the environment", () => {
     ["client-secret-missing", { clientSecret: undefined }],
     ["invalid-required-group", { requiredGroup: " " }],
     ["invalid-public-url", { publicBaseUrl: null }],
+    ["invalid-groups-claim", { groupsClaim: " " }],
+    ["invalid-groups-claim", { groupsClaim: "groups roles" }],
   ])("refuses %s", (problem, change) => {
     expect(parseIdentityProviderSettings({ ...variables, ...change })).toEqual({ ok: false, problem });
-  });
-});
-
-describe("signing in through an Identity Provider only as a known Admin", () => {
-  const knownOnly = { ...settings, knownAdminsOnly: true };
-  let instance: TestInstance;
-  let provider: ScriptedIdentityProviderClient;
-  beforeEach(async () => {
-    provider = new ScriptedIdentityProviderClient();
-    instance = await bootForTest({ identityProviderClient: provider, identityProvider: knownOnly });
-  });
-  afterEach(async () => {
-    await instance.close();
-  });
-
-  const signInAs = async (identity: typeof anna) => {
-    const sso = instance.app.singleSignOn;
-    const begun = await sso.begin(origin);
-    if (!begun) throw new Error("sign-in not offered");
-    return sso.complete({ baseUrl: origin, query: provider.returnWith(begun.pending, identity), pending: begun.pending });
-  };
-
-  it("signs in the Admin with the verified email and ties them to the identity", async () => {
-    await instance.app.admins.createFirstAdmin({ email: "anna@example.org", password });
-
-    const first = await signInAs(anna);
-    const again = await signInAs({ ...anna, email: "other@example.org" });
-
-    expect(first.ok && again.ok).toBe(true);
-    expect(await instance.app.admins.listAdmins()).toHaveLength(1);
-  });
-
-  it("refuses someone in the group whose email belongs to no Admin, and adds no Admin", async () => {
-    await instance.app.admins.createFirstAdmin({ email: "anna@example.org", password });
-
-    expect(await signInAs({ ...anna, subject: "sub-ben", email: "ben@example.org" })).toEqual({ ok: false, problem: "sso-unknown-admin" });
-    expect(await instance.app.admins.listAdmins()).toHaveLength(1);
-  });
-
-  it("refuses an email the provider has not verified, even of a known Admin", async () => {
-    await instance.app.admins.createFirstAdmin({ email: "anna@example.org", password });
-
-    expect(await signInAs({ ...anna, emailVerified: false })).toEqual({ ok: false, problem: "sso-email-unverified" });
-  });
-
-  it("makes no first Admin on a Family without one", async () => {
-    expect(await signInAs(anna)).toEqual({ ok: false, problem: "sso-unknown-admin" });
-    expect(await instance.app.admins.needsFirstAdmin()).toBe(true);
-    expect(instance.app.singleSignOn.makesFirstAdminAt(origin)).toBe(false);
-  });
-
-  it("signs in an Admin entered by email address without a password", async () => {
-    await instance.app.admins.enterAdmin({ email: "anna@example.org" });
-
-    expect((await signInAs(anna)).ok).toBe(true);
-  });
-
-  it("signs in an Admin another Admin added by email address alone", async () => {
-    await instance.app.admins.createFirstAdmin({ email: "anna@example.org", password });
-
-    expect(await instance.app.admins.createAdmin({ email: "ben@example.org", password: "" })).toEqual({ ok: true });
-
-    expect((await signInAs({ ...anna, subject: "sub-ben", email: "ben@example.org" })).ok).toBe(true);
-    expect((await instance.app.admins.signIn({ email: "ben@example.org", password: "", client: "192.0.2.1" })).ok).toBe(false);
-  });
-
-  it("does not tie a known Admin already tied to another identity", async () => {
-    await instance.app.admins.enterAdmin({ email: "anna@example.org" });
-    await signInAs(anna);
-
-    expect(await signInAs({ ...anna, subject: "sub-impostor" })).toEqual({ ok: false, problem: "sso-conflict" });
-  });
-});
-
-describe("the switch for known Admins only", () => {
-  const variables = { issuerUrl: "https://id.example.ts.net", clientId: "family-agenda", clientSecret: "s3cret", publicBaseUrl: origin };
-  const switched = (knownAdminsOnly: string | boolean | undefined) => {
-    const parsed = parseIdentityProviderSettings({ ...variables, knownAdminsOnly });
-    return parsed.ok ? (parsed.settings?.knownAdminsOnly ?? false) : parsed.problem;
-  };
-
-  it("is off unless set", () => {
-    expect(switched(undefined)).toBe(false);
-    expect(switched("")).toBe(false);
-    expect(switched(false)).toBe(false);
-    expect(switched("false")).toBe(false);
-  });
-
-  it("is on when set", () => {
-    expect(switched(true)).toBe(true);
-    expect(switched(" true ")).toBe(true);
-  });
-
-  it("is refused for anything else", () => {
-    expect(switched("yes")).toBe("invalid-known-admins-only");
-  });
-
-  it("makes the first Admin without it", async () => {
-    const instance = await bootForTest({ identityProvider: settings });
-    expect(instance.app.singleSignOn.makesFirstAdminAt(origin)).toBe(true);
-    expect(instance.app.singleSignOn.makesFirstAdminAt("http://family-agenda.local")).toBe(false);
-    await instance.close();
   });
 });

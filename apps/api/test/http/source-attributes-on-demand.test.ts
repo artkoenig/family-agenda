@@ -1,8 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { bootHttpForTest, sessionCookieOf, type HttpTestInstance } from "../support/http";
+import { bootHttpForTest, type HttpTestInstance, signedInCookie } from "../support/http";
 import { testPluginControls } from "../support/test-source-plugin";
-
-const password = "correct horse battery";
 
 describe("the Source Attributes of a plugin that names them apart from a run", () => {
   let instance: HttpTestInstance;
@@ -10,9 +8,8 @@ describe("the Source Attributes of a plugin that names them apart from a run", (
   let sourceId: string;
   beforeEach(async () => {
     instance = await bootHttpForTest({}, { sourcePlugins: [{ sourceTypeId: "folders", namesAttributes: true }] });
-    await instance.post("/setup", { email: "anna@example.org", password });
     await instance.app.recoveryKit.confirm();
-    cookie = sessionCookieOf(await instance.post("/admin/sign-in", { email: "anna@example.org", password }));
+    cookie = await signedInCookie(instance);
     await instance.app.sourceTypes.enable("folders");
     const member = await instance.app.familyMembers.add({ name: "Mia" });
     if (!member.ok) throw new Error("adding failed");

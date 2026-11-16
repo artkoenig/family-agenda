@@ -1,16 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { bootHttpForTest, sessionCookieOf, type HttpTestInstance } from "../support/http";
-
-const password = "correct horse battery";
+import { bootHttpForTest, signedInCookie, type HttpTestInstance } from "../support/http";
 
 describe("Recovery Kit over HTTP", () => {
   let instance: HttpTestInstance;
   let cookie: string;
   beforeEach(async () => {
     instance = await bootHttpForTest();
-    const created = await instance.post("/setup", { email: "anna@example.org", password });
-    expect(created.headers.get("location")).toBe("/admin/recovery-kit");
-    cookie = sessionCookieOf(created);
+    cookie = await signedInCookie(instance);
   });
   afterEach(async () => {
     await instance.close();
@@ -18,7 +14,8 @@ describe("Recovery Kit over HTTP", () => {
 
   const masterKey = () => instance.app.recoveryKit.contents().masterKey;
 
-  it("is shown right after creating the first Admin, printable and downloadable", async () => {
+  it("is shown to the first Admin who signs in, printable and downloadable", async () => {
+    expect((await instance.get("/admin", { cookie })).headers.get("location")).toBe("/admin/recovery-kit");
     const page = await instance.get("/admin/recovery-kit", { cookie });
     expect(page.status).toBe(200);
     expect(page.headers.get("cache-control")).toBe("no-store");
@@ -35,16 +32,12 @@ describe("Recovery Kit over HTTP", () => {
   });
 
   it("keeps the Admin area unreachable until saving the kit is confirmed", async () => {
-    for (const path of ["/admin", "/admin/admins"]) {
+    for (const path of ["/admin", "/admin/agendas"]) {
       const response = await instance.get(path, { cookie });
       expect(response.status).toBe(302);
       expect(response.headers.get("location")).toBe("/admin/recovery-kit");
     }
-    const adding = await instance.post(
-      "/admin/admins",
-      { email: "ben@example.org", password: "another long password" },
-      { cookie },
-    );
+    const adding = await instance.post("/admin/family-members", { name: "Mia" }, { cookie });
     expect(adding.headers.get("location")).toBe("/admin/recovery-kit");
 
     const unchecked = await instance.post("/admin/recovery-kit/confirm", {}, { cookie });

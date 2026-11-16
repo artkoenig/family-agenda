@@ -1,8 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { bootHttpForTest, sessionCookieOf, type HttpTestInstance } from "../support/http";
+import { bootHttpForTest, type HttpTestInstance, signedInCookie } from "../support/http";
 import { seedTasks } from "../support/seed-task";
-
-const password = "correct horse battery";
 
 /** A Task a message stated before the week began. */
 const task = (key: string, fields: { title: string; deadline?: string; description?: string }) => ({ key, sentAt: "2026-09-10T10:00:00Z", ...fields });
@@ -13,7 +11,6 @@ describe("Tasks over HTTP", () => {
   beforeEach(async () => {
     // The clock starts on Monday 2026-09-14 at 09:00 in Berlin.
     instance = await bootHttpForTest({}, { sourcePlugins: [{ sourceTypeId: "school" }] });
-    await instance.post("/setup", { email: "anna@example.org", password });
     await instance.app.recoveryKit.confirm();
     await instance.app.sourceTypes.enable("school");
     await instance.app.sources.add({ sourceTypeId: "school", plain: { url: "https://school.example.org" }, secrets: {} });
@@ -131,7 +128,7 @@ describe("Tasks over HTTP", () => {
   });
 
   it("leaves the Tasks to the Agendas, with no section of their own in the Admin area", async () => {
-    const cookie = sessionCookieOf(await instance.post("/admin/sign-in", { email: "anna@example.org", password }));
+    const cookie = await signedInCookie(instance);
 
     expect((await instance.get("/admin/tasks", { cookie })).status).toBe(404);
     expect(await (await instance.get("/admin/agendas", { cookie })).text()).not.toContain('href="/admin/tasks"');

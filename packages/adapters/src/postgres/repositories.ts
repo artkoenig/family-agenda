@@ -6,7 +6,6 @@ import type {
   AddingProgress,
   SourceAdding,
   SourceAddingRepository,
-  AdminRepository,
   AdminSession,
   AdminSessionRepository,
   BackgroundActivity,
@@ -19,7 +18,6 @@ import type {
   LlmEndpointRepository,
   PlainConfig,
   SecretRef,
-  SignInFailureLog,
   Source,
   SourceAttribute,
   SourceRepository,
@@ -30,10 +28,7 @@ import type {
   AgendaRepository,
 } from "@family-agenda/application";
 import type {
-  Admin,
-  AdminId,
   BlobRef,
-  Email,
   FamilyLanguages,
   FamilyMember,
   FamilyMemberId,
@@ -55,7 +50,6 @@ import { and, asc, eq, gt, inArray, lt, lte, sql, type SQL } from "drizzle-orm";
 import { uuidPattern } from "../uuid";
 import type { Database } from "./database";
 import {
-  admins,
   adminSessions,
   backgroundActivities,
   sourceAddings,
@@ -63,7 +57,6 @@ import {
   family,
   familyMembers,
   llmEndpoints,
-  signInFailures,
   sourceAttributeMembers,
   sourceAttributes,
   sourceRecordAttributes,
@@ -76,9 +69,6 @@ import {
   agendaMembers,
   agendas,
 } from "./schema";
-
-/** Arbitrary key that serialises creating the first Admin. */
-const setupLockKey = 7_342_002;
 
 /** Reads and writes the one row of `family`, which the schema creates (ADR-0003). */
 export class PostgresFamilyRepository implements FamilyRepository {
@@ -128,82 +118,6 @@ export class PostgresFamilyRepository implements FamilyRepository {
   }
 }
 
-export class PostgresAdminRepository implements AdminRepository {
-  constructor(private readonly db: Database) {}
-
-  async exists(): Promise<boolean> {
-    const [row] = await this.db.select({ id: admins.id }).from(admins).limit(1);
-    return row !== undefined;
-  }
-
-  async addFirst(admin: Admin): Promise<boolean> {
-    return this.db.transaction(async (tx) => {
-      await tx.execute(sql`SELECT pg_advisory_xact_lock(${setupLockKey})`);
-      const [existing] = await tx.select({ id: admins.id }).from(admins).limit(1);
-      if (existing) return false;
-      await tx.insert(admins).values(admin);
-      return true;
-    });
-  }
-
-  async add(admin: Admin): Promise<boolean> {
-    const inserted = await this.db
-      .insert(admins)
-      .values(admin)
-      .onConflictDoNothing({ target: admins.email })
-      .returning({ id: admins.id });
-    return inserted.length === 1;
-  }
-
-  async findById(id: AdminId): Promise<Admin | null> {
-    if (!uuidPattern.test(id)) return null;
-    const [row] = await this.db.select().from(admins).where(eq(admins.id, id));
-    return row ? toAdmin(row) : null;
-  }
-
-  async findByEmail(email: Email): Promise<Admin | null> {
-    const [row] = await this.db.select().from(admins).where(eq(admins.email, email));
-    return row ? toAdmin(row) : null;
-  }
-
-  async findByIdentitySubject(subject: string): Promise<Admin | null> {
-    const [row] = await this.db
-      .select()
-      .from(admins)
-      .where(eq(admins.identitySubject, subject));
-    return row ? toAdmin(row) : null;
-  }
-
-  async setIdentitySubject(id: AdminId, subject: string): Promise<void> {
-    await this.db
-      .update(admins)
-      .set({ identitySubject: subject })
-      .where(eq(admins.id, id));
-  }
-
-  async list(): Promise<Admin[]> {
-    const rows = await this.db
-      .select()
-      .from(admins)
-      .orderBy(asc(admins.createdAt), asc(admins.email));
-    return rows.map(toAdmin);
-  }
-
-  async setPasswordHash(id: AdminId, passwordHash: string): Promise<void> {
-    await this.db.update(admins).set({ passwordHash }).where(eq(admins.id, id));
-  }
-}
-
-function toAdmin(row: typeof admins.$inferSelect): Admin {
-  return {
-    id: row.id as AdminId,
-    email: row.email as Email,
-    passwordHash: row.passwordHash,
-    identitySubject: row.identitySubject,
-    createdAt: row.createdAt,
-  };
-}
-
 export class PostgresAdminSessionRepository implements AdminSessionRepository {
   constructor(private readonly db: Database) {}
 
@@ -213,53 +127,15 @@ export class PostgresAdminSessionRepository implements AdminSessionRepository {
 
   async find(id: string): Promise<AdminSession | null> {
     const [row] = await this.db.select().from(adminSessions).where(eq(adminSessions.id, id));
-    return row ? { id: row.id, adminId: row.adminId as AdminId, expiresAt: row.expiresAt } : null;
+    return row ? { id: row.id, subject: row.subject, email: row.email, expiresAt: row.expiresAt } : null;
   }
 
   async remove(id: string): Promise<void> {
     await this.db.delete(adminSessions).where(eq(adminSessions.id, id));
   }
 
-  async removeAllOf(adminId: AdminId): Promise<void> {
-    await this.db.delete(adminSessions).where(eq(adminSessions.adminId, adminId));
-  }
-
   async removeExpired(now: Date): Promise<void> {
     await this.db.delete(adminSessions).where(lte(adminSessions.expiresAt, now));
-  }
-}
-
-export class PostgresSignInFailureLog implements SignInFailureLog {
-  constructor(
-    private readonly db: Database,
-    /** Failures older than this are deleted when new ones are recorded. */
-    private readonly keepForMs: number,
-  ) {}
-
-  async record(keys: string[], at: Date): Promise<string[]> {
-    const rows = await this.db
-      .insert(signInFailures)
-      .values(keys.map((key) => ({ key, at })))
-      .returning({ id: signInFailures.id });
-    await this.db
-      .delete(signInFailures)
-      .where(lt(signInFailures.at, new Date(at.getTime() - this.keepForMs)));
-    return rows.map((row) => String(row.id));
-  }
-
-  async forget(ids: string[]): Promise<void> {
-    await this.db.delete(signInFailures).where(inArray(signInFailures.id, ids.map(Number)));
-  }
-
-  async countAfter(key: string, after: Date): Promise<number> {
-    return this.db.$count(
-      signInFailures,
-      and(eq(signInFailures.key, key), gt(signInFailures.at, after)),
-    );
-  }
-
-  async clear(key: string): Promise<void> {
-    await this.db.delete(signInFailures).where(eq(signInFailures.key, key));
   }
 }
 

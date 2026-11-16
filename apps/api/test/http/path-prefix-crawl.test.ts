@@ -1,10 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { addressAttributes, redirectHeaders } from "../../src/http/addresses";
-import { bootHttpForTestBelow, type HttpPrefixedTestInstance } from "../support/http";
+import { bootHttpForTestBelow, type HttpPrefixedTestInstance, signedInCookie } from "../support/http";
 import { photos } from "../support/photos";
 import { seedTasks } from "../support/seed-task";
 
-const password = "correct horse battery";
 const prefix = "/agenda";
 const origin = "http://localhost";
 
@@ -52,17 +51,12 @@ const redirectsOutside = (response: Response, from: string) => {
   return outside;
 };
 
-/** The `name=value` pair of a cookie a response sets. */
-const cookieOf = (response: Response, name: string) =>
-  response.headers.getSetCookie().find((c) => c.startsWith(`${name}=`))?.split(";")[0] ?? "";
-
 describe("every page below a path prefix", () => {
   let instance: HttpPrefixedTestInstance;
   let cookie: string;
   let agendaPath: string;
   beforeEach(async () => {
     instance = await bootHttpForTestBelow(prefix, {}, { sourcePlugins: [{ sourceTypeId: "school" }] });
-    await instance.core.post("/setup", { email: "anna@example.org", password });
     await instance.app.recoveryKit.confirm();
     await instance.app.sourceTypes.enable("school");
     await instance.app.sources.add({ sourceTypeId: "school", plain: { url: "https://school.example.org" }, secrets: {} });
@@ -74,8 +68,7 @@ describe("every page below a path prefix", () => {
     if (!list.ok) throw new Error("creating the Task List failed");
     agendaPath = `${prefix}/agendas/${agenda.id}`;
     await seedTasks((sql) => instance.query(sql), { key: "kit", title: "Bring sports kit", deadline: "2026-09-14", sentAt: "2026-09-10T10:00:00Z" });
-    const signedIn = await instance.post(`${prefix}/admin/sign-in`, { email: "anna@example.org", password });
-    cookie = cookieOf(signedIn, "fb_session");
+    cookie = await signedInCookie(instance);
   });
   afterEach(async () => {
     await instance.close();
@@ -119,7 +112,7 @@ describe("every page below a path prefix", () => {
   it("finds no address outside the prefix in the Admin area", async () => {
     const { outside, seen } = await crawl([`${prefix}/admin`]);
     expect(outside).toEqual([]);
-    for (const page of ["/admin/admins", "/admin/family-members", "/admin/agendas", "/admin/sources", "/static/design.css"]) {
+    for (const page of ["/admin/family-members", "/admin/agendas", "/admin/sources", "/static/design.css"]) {
       expect([...seen].some((path) => path.startsWith(prefix + page)), page).toBe(true);
     }
   });
@@ -170,17 +163,15 @@ describe("setting up and signing in below a path prefix", () => {
     return { response, location };
   };
 
-  it("keeps setup, the Recovery Kit, signing in and out below the prefix", async () => {
+  it("keeps the Recovery Kit, signing in and out below the prefix", async () => {
     instance = await bootHttpForTestBelow(prefix);
     const first = await opened(`${prefix}/admin`);
-    expect(first.response.headers.get("location")).toBe(`${prefix}/setup`);
-    const setup = await opened(`${prefix}/setup`);
-    const created = await submitted(actionOf(setup.page, /\/setup$/), { email: "anna@example.org", password });
-    const session = cookieOf(created.response, "fb_session");
-    expect(session).not.toBe("");
-    expect(created.location).toBe(`${prefix}/admin/recovery-kit`);
+    expect(first.response.headers.get("location")).toBe(`${prefix}/admin/sign-in`);
+    const session = await signedInCookie(instance);
+    const toKit = await opened(`${prefix}/admin`, session);
+    expect(toKit.response.headers.get("location")).toBe(`${prefix}/admin/recovery-kit`);
 
-    const kit = await opened(created.location, session);
+    const kit = await opened(`${prefix}/admin/recovery-kit`, session);
     const confirmed = await submitted(actionOf(kit.page, /\/recovery-kit\/confirm$/), { saved: "yes" }, session);
     expect(confirmed.location).toBe(`${prefix}/admin`);
     const admin = await opened(confirmed.location, session);
@@ -188,9 +179,7 @@ describe("setting up and signing in below a path prefix", () => {
 
     const signedOut = await submitted(actionOf(admin.page, /\/sign-out$/), {}, session);
     expect(signedOut.location).toBe(`${prefix}/admin/sign-in`);
-    const signIn = await opened(signedOut.location);
-    const signedIn = await submitted(actionOf(signIn.page, /\/sign-in$/), { email: "anna@example.org", password });
-    expect(signedIn.location).toBe(`${prefix}/admin`);
-    expect((await opened(signedIn.location, cookieOf(signedIn.response, "fb_session"))).response.status).toBe(200);
+    expect((await opened(signedOut.location)).response.status).toBe(200);
   });
+
 });

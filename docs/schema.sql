@@ -42,29 +42,14 @@ CREATE TABLE family (
 );
 INSERT INTO family DEFAULT VALUES;
 
-CREATE TABLE admin (
-  id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  email          TEXT NOT NULL CONSTRAINT admin_email_unique UNIQUE,
-  password_hash  TEXT,                     -- null: signs in only through the Identity Provider
-  identity_subject TEXT CONSTRAINT admin_identity_subject_unique UNIQUE, -- the IdP `sub`
-  created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
+-- No Admin table (ADR-0009): a session holds whom the Identity Provider vouched for.
 CREATE TABLE admin_session (
-  id          TEXT PRIMARY KEY,
-  admin_id    UUID NOT NULL REFERENCES admin(id) ON DELETE CASCADE,
-  expires_at  TIMESTAMPTZ NOT NULL
+  id          TEXT PRIMARY KEY,           -- SHA-256 of the session token
+  subject     TEXT NOT NULL,              -- the IdP `sub`
+  email       TEXT NOT NULL,              -- the verified email address
+  expires_at  TIMESTAMPTZ NOT NULL        -- 12 hours after sign-in
 );
-CREATE INDEX admin_session_admin_id_idx ON admin_session (admin_id);
 CREATE INDEX admin_session_expires_at_idx ON admin_session (expires_at);
-
--- Failed sign-ins, counted per key (an account or a client).
-CREATE TABLE sign_in_failure (
-  id   BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
-  key  TEXT NOT NULL,
-  at   TIMESTAMPTZ NOT NULL
-);
-CREATE INDEX sign_in_failure_key_at_idx ON sign_in_failure (key, at);
 
 -- Envelope-encrypted credentials (ADR-0003). Referred to by id, without foreign keys.
 CREATE TABLE secret (

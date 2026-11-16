@@ -1,18 +1,18 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   bootHttpForTest,
-  sessionCookieOf,
+  signedInCookie,
   type HttpTestInstance,
 } from "../support/http";
 import { FakeIdentityProvider, type IdTokenClaims } from "../../../../packages/adapters/test/support/fake-identity-provider";
 
-const password = "correct horse battery";
 /** The Identity Provider settings of an Instance that signs in through `provider`. */
 const identityProviderOf = (provider: FakeIdentityProvider) => ({
   issuerUrl: provider.issuer,
   clientId: "family-agenda",
   clientSecret: "s3cret",
   requiredGroup: "homelab-admin",
+  groupsClaim: "groups",
   publicBaseUrl: "http://localhost",
 });
 /** The session cookie a response sets among others. */
@@ -41,14 +41,8 @@ describe("single sign-on over HTTP", () => {
     provider = await FakeIdentityProvider.start();
     identityProvider = identityProviderOf(provider);
     instance = await bootHttpForTest({}, { identityProvider });
-    await instance.post("/setup", { email: "anna@example.org", password });
     await instance.app.recoveryKit.confirm();
-    cookie = sessionCookieOf(
-      await instance.post("/admin/sign-in", {
-        email: "anna@example.org",
-        password,
-      }),
-    );
+    cookie = await signedInCookie(instance);
   });
   afterEach(async () => {
     await instance.close();
@@ -78,7 +72,7 @@ describe("single sign-on over HTTP", () => {
     };
   };
 
-  it("offers the button on the public base URL only", async () => {
+  it("offers only the button, on the public base URL only", async () => {
     const there = await (await instance.get("/admin/sign-in")).text();
     const elsewhere = await (
       await instance.get("/admin/sign-in", {
@@ -87,17 +81,18 @@ describe("single sign-on over HTTP", () => {
     ).text();
 
     expect(there).toContain('href="/sso/start"');
-    expect(there).toContain('name="password"');
+    expect(there).not.toContain('name="password"');
     expect(elsewhere).not.toContain("/sso/start");
-    expect(elsewhere).toContain('name="password"');
+    expect(elsewhere).not.toContain('name="password"');
   });
 
-  it("offers no button, start or callback without an Identity Provider", async () => {
+  it("offers no button, start or callback without an Identity Provider, and says why", async () => {
     await instance.close();
     instance = await bootHttpForTest({});
-    await instance.post("/setup", { email: "anna@example.org", password });
 
-    expect(await (await instance.get("/admin/sign-in")).text()).not.toContain("/sso/start");
+    const page = await (await instance.get("/admin/sign-in")).text();
+    expect(page).not.toContain("/sso/start");
+    expect(page).toContain("No Identity Provider is connected");
     expect((await instance.get("/sso/start")).status).toBe(404);
     expect((await instance.get("/sso/callback?code=x&state=y")).status).toBe(404);
   });
@@ -149,7 +144,23 @@ describe("single sign-on over HTTP", () => {
     expect(response.headers.get("set-cookie") ?? "").not.toMatch(
       /fb_session=[^;]/,
     );
-    expect(await response.text()).toContain("not in the group");
+    expect(await response.text()).toContain("not in the group or role that may administer Family Agenda");
+  });
+
+  it("sends a browser without a session, or with an expired one, through the Identity Provider", async () => {
+    expect((await instance.get("/admin/agendas")).headers.get("location")).toBe("/sso/start");
+
+    instance.clock.advance(12 * 60 * 60 * 1000);
+
+    const expired = await instance.get("/admin/agendas", { cookie });
+    expect(expired.status).toBe(302);
+    expect(expired.headers.get("location")).toBe("/sso/start");
+  });
+
+  it("has no password sign-in, setup page or Admins page", async () => {
+    expect((await instance.post("/admin/sign-in", { email: "anna@example.org", password: "correct horse battery" })).status).toBe(404);
+    expect((await instance.get("/setup")).status).toBe(404);
+    expect((await instance.get("/admin/admins", { cookie })).status).toBe(404);
   });
 
   it("refuses a return without the cookie of the sign-in it began", async () => {
@@ -164,113 +175,5 @@ describe("single sign-on over HTTP", () => {
 
     for (const response of [withoutCookie, garbled, wrongShape, notAnObject])
       expect(response.status).toBe(401);
-  });
-
-  it("keeps the password sign-in working when single sign-on is on", async () => {
-
-    const response = await instance.post("/admin/sign-in", {
-      email: "anna@example.org",
-      password,
-    });
-
-    expect(response.status).toBe(303);
-  });
-
-  describe("on an Instance without Admins", () => {
-    beforeEach(async () => {
-      await instance.close();
-      instance = await bootHttpForTest({}, { identityProvider });
-    });
-
-    it("offers the Identity Provider on the setup page", async () => {
-      expect(await (await instance.get("/setup")).text()).toContain('href="/sso/start"');
-    });
-
-    it("makes the first Admin of someone in the required group, who sees the Recovery Kit next", async () => {
-      const { ssoCookie, callback } = await startSignIn();
-
-      const response = await instance.get(callback, { cookie: ssoCookie });
-
-      expect(response.status).toBe(303);
-      expect(response.headers.get("location")).toBe("/admin/recovery-kit");
-      expect((await instance.app.admins.listAdmins()).map((admin) => admin.email)).toEqual(["anna@example.org"]);
-      expect((await instance.get("/setup")).status).toBe(404);
-    });
-
-    it("stays on the setup page for someone outside the required group", async () => {
-      const { ssoCookie, callback } = await startSignIn({ ...anna, groups: [] });
-
-      const response = await instance.get(callback, { cookie: ssoCookie });
-
-      expect(response.status).toBe(401);
-      const page = await response.text();
-      expect(page).toContain("not in the group");
-      expect(page).toContain('action="/setup"');
-      expect(await instance.app.admins.needsFirstAdmin()).toBe(true);
-    });
-  });
-});
-
-describe("single sign-on over HTTP for known Admins only", () => {
-  let instance: HttpTestInstance;
-  let provider: FakeIdentityProvider;
-  beforeEach(async () => {
-    provider = await FakeIdentityProvider.start();
-    instance = await bootHttpForTest({}, { identityProvider: { ...identityProviderOf(provider), knownAdminsOnly: true } });
-  });
-  afterEach(async () => {
-    await instance.close();
-    await provider.stop();
-  });
-
-  const callbackFor = async (identity: IdTokenClaims) => {
-    const start = await instance.get("/sso/start");
-    const ssoCookie = start.headers.get("set-cookie")?.split(";")[0] ?? "";
-    provider.claims = identity;
-    return instance.get(pathOf(await provider.authorize(start.headers.get("location") ?? "")), { cookie: ssoCookie });
-  };
-
-  it("offers no Identity Provider on the setup page, and makes no first Admin from a sign-in", async () => {
-    expect(await (await instance.get("/setup")).text()).not.toContain("/sso/start");
-
-    const response = await callbackFor(anna);
-
-    expect(response.status).toBe(401);
-    const page = await response.text();
-    expect(page).toContain("No Admin here has the email address");
-    expect(page).not.toContain("/sso/start");
-    expect(await instance.app.admins.needsFirstAdmin()).toBe(true);
-  });
-
-  it("signs in an Admin another Admin added by email address alone, and refuses anyone else", async () => {
-    await instance.post("/setup", { email: "anna@example.org", password });
-    await instance.app.recoveryKit.confirm();
-    const cookie = sessionCookieOf(await instance.post("/admin/sign-in", { email: "anna@example.org", password }));
-    expect((await instance.post("/admin/admins", { email: "ben@example.org", password: "" }, { cookie })).status).toBe(303);
-
-    const ben = await callbackFor({ ...anna, sub: "sub-ben", email: "ben@example.org" });
-    const carla = await callbackFor({ ...anna, sub: "sub-carla", email: "carla@example.org" });
-
-    expect(ben.status).toBe(303);
-    expect(ben.headers.get("location")).toBe("/admin");
-    expect(carla.status).toBe(401);
-    expect(await carla.text()).toContain("No Admin here has the email address");
-    expect((await instance.app.admins.listAdmins()).map((admin) => admin.email)).toEqual(["anna@example.org", "ben@example.org"]);
-  });
-});
-
-describe("adding an Admin over HTTP", () => {
-  it("hints at an empty password only where an Identity Provider is offered", async () => {
-    const provider = await FakeIdentityProvider.start();
-    for (const [settings, hinted] of [[{ identityProvider: identityProviderOf(provider) }, true], [{}, false]] as const) {
-      const instance = await bootHttpForTest({}, settings);
-      await instance.post("/setup", { email: "anna@example.org", password });
-      await instance.app.recoveryKit.confirm();
-      const cookie = sessionCookieOf(await instance.post("/admin/sign-in", { email: "anna@example.org", password }));
-      const page = await (await instance.get("/admin/admins/new", { cookie })).text();
-      expect(page.includes("Leave it empty")).toBe(hinted);
-      await instance.close();
-    }
-    await provider.stop();
   });
 });

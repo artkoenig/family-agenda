@@ -1,4 +1,3 @@
-export * from "./admin";
 export * from "./calendar";
 export * from "./family-member";
 export * from "./photo";

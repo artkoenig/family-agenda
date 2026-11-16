@@ -1,9 +1,8 @@
 import type { SourceId } from "@family-agenda/domain";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { bootHttpForTest, sessionCookieOf, type HttpTestInstance } from "../support/http";
+import { bootHttpForTest, type HttpTestInstance, signedInCookie } from "../support/http";
 import { testPluginControls } from "../support/test-source-plugin";
 
-const password = "correct horse battery";
 const minutes = 60 * 1000;
 
 describe("Source health in the Admin area and on Agendas", () => {
@@ -20,9 +19,8 @@ describe("Source health in the Admin area and on Agendas", () => {
         },
       ],
     });
-    await instance.post("/setup", { email: "anna@example.org", password });
     await instance.app.recoveryKit.confirm();
-    cookie = sessionCookieOf(await instance.post("/admin/sign-in", { email: "anna@example.org", password }));
+    cookie = await signedInCookie(instance);
     await instance.app.sourceTypes.enable("calendar");
     const added = await instance.app.sources.add({
       sourceTypeId: "calendar",

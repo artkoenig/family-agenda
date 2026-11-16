@@ -35,7 +35,7 @@ describe("the design system over HTTP", () => {
   });
 
   it("links both stylesheets from a page", async () => {
-    const page = await (await instance.get("/setup")).text();
+    const page = await (await instance.get("/admin/sign-in")).text();
 
     expect(page).toContain('href="/static/tokens.css"');
     expect(page).toContain('href="/static/design.css"');

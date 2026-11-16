@@ -1,9 +1,7 @@
 import type { SourceId } from "@family-agenda/domain";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { bootHttpForTest, sessionCookieOf, type HttpTestInstance } from "../support/http";
+import { bootHttpForTest, type HttpTestInstance, signedInCookie } from "../support/http";
 import { testPluginControls, type TestConfiguration } from "../support/test-source-plugin";
-
-const password = "correct horse battery";
 
 const configuration: TestConfiguration = {
   version: 1,
@@ -22,9 +20,8 @@ describe("The Source Type page, which loads what its plugin offers as fragments"
     testPluginControls.catalogue("bridged", [{ id: "whatsapp", displayName: "WhatsApp", description: "Reads WhatsApp groups.", installed: true }]);
     testPluginControls.knowValues("bridged", [{ value: "!class:local", label: "Klasse 5b" }]);
     instance = await bootHttpForTest({}, { sourcePlugins: [{ sourceTypeId: "bridged", displayName: "Matrix", configuration, catalogue: { configKey: "messenger" } }] });
-    await instance.post("/setup", { email: "anna@example.org", password });
     await instance.app.recoveryKit.confirm();
-    cookie = sessionCookieOf(await instance.post("/admin/sign-in", { email: "anna@example.org", password }));
+    cookie = await signedInCookie(instance);
     await instance.app.sourceTypes.enable("bridged");
     await instance.app.catalogues.enable("bridged", "whatsapp", { riskAcknowledged: true });
     const added = await instance.app.sources.add({ sourceTypeId: "bridged", plain: { messenger: "whatsapp" }, secrets: {} });

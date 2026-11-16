@@ -1,10 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { bootHttpForTest, sessionCookieOf, type HttpTestInstance } from "../support/http";
+import { bootHttpForTest, type HttpTestInstance, signedInCookie } from "../support/http";
 import { InMemoryBlobStore } from "../support/in-memory-blob-store";
 import { extracted, extractedTask, ScriptedExtractor } from "../support/scripted-extractor";
 import { testPluginControls } from "../support/test-source-plugin";
-
-const password = "correct horse battery";
 
 describe("the LLM endpoint and mail over HTTP", () => {
   let instance: HttpTestInstance;
@@ -16,9 +14,8 @@ describe("the LLM endpoint and mail over HTTP", () => {
       {},
       { extractor, blobStore: new InMemoryBlobStore(), sourcePlugins: [{ sourceTypeId: "school-mail", needsLlm: true }] },
     );
-    await instance.post("/setup", { email: "anna@example.org", password });
     await instance.app.recoveryKit.confirm();
-    cookie = sessionCookieOf(await instance.post("/admin/sign-in", { email: "anna@example.org", password }));
+    cookie = await signedInCookie(instance);
   });
   afterEach(async () => {
     await instance.close();

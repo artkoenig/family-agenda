@@ -8,7 +8,7 @@ pnpm preview list        # running previews, their addresses and state
 pnpm preview down 189    # remove its containers, volumes, image and worktree
 ```
 
-`up` prints the address, `http://localhost:<9000 + the pull request number>`, and the Admin sign-in (`admin@example.org` / `preview-password`, public on purpose: a preview holds no real data).
+`up` prints the address, `http://localhost:<9000 + the pull request number>`. Admins sign in only through an Identity Provider (ADR-0009), which a preview does not connect yet, so its Admin area cannot be entered; its Agendas can.
 
 ## What it does
 
@@ -16,7 +16,7 @@ pnpm preview down 189    # remove its containers, volumes, image and worktree
 2. Builds the pull request's image and the demo Source's plugin container (`tools/demo-source/Dockerfile`, from your clone).
 3. Copies `tools/preview/plugins.yml` into the worktree and runs the pull request's own generator on it (`plugins generate`, see [configuration.md](configuration.md#plugins)), which writes `compose.plugins.yaml`, and the ticket key of the egress proxies in `.env`, into the worktree.
 4. Starts the pull request's `compose.yaml`, the generated `compose.plugins.yaml` and the overlay `tools/preview/compose.preview.yaml` as the Compose project `fa-pr-<n>`, with its own port, images and volumes, and without the `mdns` service. The overlay names the preview's own images, also for the egress proxies (`EGRESS_PROXY_IMAGE`). Previews of several pull requests run side by side and beside the real Instance.
-5. Seeds a demo Family: an Admin, four Family Members and an Agenda for the whole Family and for each child.
+5. Seeds a demo Family: four Family Members and an Agenda for the whole Family and for each child.
 
 The Agendas show a week of made-up Events and Lessons and two Tasks from the day you run `up`, and a Task List. They come from the **demo Source** (`tools/demo-source`), a Source plugin that states them as a calendar or timetable would. It runs as the plugin container `plugin-demo` (ADR-0001), which the core polls over REST; the worker refreshes it hourly. The seed (`tools/preview/src/seed.ts`) goes through the same use cases as the Admin area.
 

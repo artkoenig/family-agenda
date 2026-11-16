@@ -13,13 +13,9 @@ import {
   type AgendaAccessPolicy,
 } from "@family-agenda/application";
 import {
-  defaultFamilyLanguage,
   isAcceptableTimelineRange,
-  isFamilyLanguage,
   isLocalDate,
   maximumPhotoBytes,
-  type AdminId,
-  type FamilyLanguage,
   type FamilyMemberId,
   type ItemId,
   type RawMessageId,
@@ -48,9 +44,7 @@ import {
   type Translation,
 } from "./i18n/translation";
 import {
-  AdminsPage,
   FamilyMembersPage,
-  FirstAdminPage,
   DisplayPage,
   AddingRow,
   LiveStepProgress,
@@ -245,19 +239,6 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     return `${isHttps(c) ? "https" : "http"}://${hostOf(c)}`;
   }
 
-  /** The address the request came from; behind a trusted proxy, the one the proxy saw. */
-  const clientOf = (c: Context<Env>) => {
-    const forwarded = c.req
-      .header("x-forwarded-for")
-      ?.split(",")
-      .at(-1)
-      ?.trim();
-    if (options.trustProxy && forwarded) return forwarded;
-    // In-process requests, as in tests, come without Node bindings.
-    const bindings = c.env as Partial<HttpBindings> | undefined;
-    return bindings?.incoming?.socket.remoteAddress ?? "unknown";
-  };
-
   const startSession = (c: Context<Env>, token: string) => {
     setCookie(c, sessionCookie, token, {
       path: href(prefix, "/"),
@@ -323,60 +304,10 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     }),
   );
 
-  // Until the first Admin exists, every page leads to creating one, by password or through the Identity Provider unless only known Admins may sign in; afterwards that page is gone.
+  // The pages speak the Family Language.
   app.use(async (c, next) => {
-    const onSetup = c.req.path === "/setup";
-    const needed = await admins.needsFirstAdmin();
-    if (needed && !onSetup && !c.req.path.startsWith("/sso/")) return c.redirect(href(prefix, "/setup"));
-    if (!needed && onSetup) return c.notFound();
+    c.set("translation", translationFor(await languages.familyLanguage()));
     await next();
-  });
-
-  // The pages speak the Family Language; the setup speaks the one the browser prefers until one is chosen.
-  app.use(async (c, next) => {
-    const language =
-      c.req.path === "/setup"
-        ? preferredFamilyLanguage(c.req.header("accept-language"))
-        : await languages.familyLanguage();
-    c.set("translation", translationFor(language));
-    await next();
-  });
-
-  app.get("/setup", (c) =>
-    render(
-      c,
-      <FirstAdminPage
-        language={c.get("translation").language}
-        singleSignOn={singleSignOn.makesFirstAdminAt(requestBaseOf(c))}
-      />,
-    ),
-  );
-
-  app.post("/setup", async (c) => {
-    const form = await c.req.parseBody();
-    const email = field(form, "email");
-    const language = field(form, "language");
-    const result = await admins.createFirstAdmin({
-      email,
-      password: field(form, "password"),
-      ...(language !== "" ? { language } : {}),
-    });
-    if (!result.ok) {
-      if (result.problem === "admin-exists") return c.notFound();
-      if (isFamilyLanguage(language))
-        c.set("translation", translationFor(language));
-      const page = (
-        <FirstAdminPage
-          language={c.get("translation").language}
-          email={email}
-          problem={problemIn(c, result.problem)}
-          singleSignOn={singleSignOn.makesFirstAdminAt(requestBaseOf(c))}
-        />
-      );
-      return render(c, page, 400);
-    }
-    startSession(c, result.sessionToken);
-    return seeOther(c, "/admin/recovery-kit");
   });
 
   app.get("/", (c) => c.redirect(href(prefix, "/admin")));
@@ -573,9 +504,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
   app.get("/admin/sign-in", async (c) =>
     render(
       c,
-      <SignInPage
-        singleSignOn={singleSignOn.isOfferedAt(requestBaseOf(c))}
-      />,
+      <SignInPage singleSignOn={singleSignOn.isOfferedAt(requestBaseOf(c))} />,
     ),
   );
 
@@ -601,7 +530,6 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     const pending = pendingSignInOf(getCookie(c, singleSignOnCookie));
     deleteCookie(c, singleSignOnCookie, { path: href(prefix, "/sso") });
     if (!singleSignOn.isOfferedAt(base)) return c.notFound();
-    const first = await admins.needsFirstAdmin();
     const result = pending
       ? await singleSignOn.complete({
           baseUrl: base,
@@ -609,36 +537,10 @@ export function createHttpApp(application: Application, options: HttpOptions) {
           pending,
         })
       : ({ ok: false, problem: "sso-failed" } as const);
-    if (!result.ok) {
-      const problem = problemIn(c, result.problem);
-      const page = first ? (
-        <FirstAdminPage language={c.get("translation").language} problem={problem} singleSignOn={singleSignOn.makesFirstAdminAt(base)} />
-      ) : (
-        <SignInPage problem={problem} singleSignOn />
-      );
-      return render(c, page, 401);
-    }
+    if (!result.ok)
+      return render(c, <SignInPage problem={problemIn(c, result.problem)} singleSignOn />, 401);
     startSession(c, result.sessionToken);
-    return seeOther(c, first ? "/admin/recovery-kit" : "/admin");
-  });
-
-  app.post("/admin/sign-in", async (c) => {
-    const form = await c.req.parseBody();
-    const email = field(form, "email");
-    const result = await admins.signIn({
-      email,
-      password: field(form, "password"),
-      client: clientOf(c),
-    });
-    if (!result.ok) {
-      const status = result.problem === "rate-limited" ? 429 : 401;
-      return render(
-        c,
-        <SignInPage email={email} problem={problemIn(c, result.problem)} />,
-        status,
-      );
-    }
-    startSession(c, result.sessionToken);
+    // The Admin area sends the first Admin on to the Recovery Kit until one confirms saving it.
     return seeOther(c, "/admin");
   });
 
@@ -686,7 +588,6 @@ export function createHttpApp(application: Application, options: HttpOptions) {
         (source) => source.health.status === "failing",
       ).length,
       llm: endpoint ? { model: endpoint.model, local: endpoint.local } : null,
-      admins: (await admins.listAdmins()).length,
       kitSaved: await recoveryKit.isConfirmed(),
       version,
       family: language.language,
@@ -707,7 +608,9 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     }
     const token = getCookie(c, sessionCookie);
     const admin = token ? await admins.authenticate(token) : null;
-    if (!admin) return c.redirect(href(prefix, "/admin/sign-in"));
+    // Without a session, or once it expired, through the Identity Provider again: silently while its own session lasts.
+    if (!admin)
+      return c.redirect(href(prefix, singleSignOn.isOfferedAt(requestBaseOf(c)) ? "/sso/start" : "/admin/sign-in"));
     c.set("admin", { ...admin, settings: await settings() });
     await next();
   });
@@ -795,74 +698,6 @@ export function createHttpApp(application: Application, options: HttpOptions) {
 
   // The Admin area opens on its first section.
   app.get("/admin", (c) => familyMembersPage(c));
-
-  const adminsPage = async (
-    c: Context<Env>,
-    shown: {
-      problem?: string;
-      adding?: { email?: string; problem?: string };
-      editing?: { id: AdminId; problem?: string };
-    } = {},
-  ) => {
-    const page = (
-      <AdminsPage
-        admin={c.get("admin")}
-        admins={await admins.listAdmins()}
-        singleSignOn={singleSignOn.isOfferedAt(requestBaseOf(c))}
-        {...(shown.problem ? { problem: shown.problem } : {})}
-        {...(shown.adding ? { adding: shown.adding } : {})}
-        {...(shown.editing ? { editing: shown.editing } : {})}
-      />
-    );
-    return render(
-      c,
-      page,
-      shownStatus(undefined, [
-        shown.problem,
-        shown.adding?.problem,
-        shown.editing?.problem,
-      ]),
-    );
-  };
-
-  app.get("/admin/admins", (c) => adminsPage(c));
-
-  app.get("/admin/admins/new", (c) => adminsPage(c, { adding: {} }));
-
-  // Another Admin opens in a dialog, where their password is reset.
-  app.get("/admin/admins/:id", (c) =>
-    adminsPage(c, { editing: { id: c.req.param("id") as AdminId } }),
-  );
-
-  app.post("/admin/admins", async (c) => {
-    const form = await c.req.parseBody();
-    const email = field(form, "email");
-    const result = await admins.createAdmin({
-      email,
-      password: field(form, "password"),
-    });
-    if (!result.ok)
-      return adminsPage(c, {
-        adding: { email, problem: problemIn(c, result.problem) },
-      });
-    return seeOther(c, "/admin/admins");
-  });
-
-  app.post("/admin/admins/:id/password", async (c) => {
-    const form = await c.req.parseBody();
-    const result = await admins.resetPassword(c.get("admin"), {
-      adminId: c.req.param("id") as AdminId,
-      newPassword: field(form, "password"),
-    });
-    if (!result.ok)
-      return adminsPage(c, {
-        editing: {
-          id: c.req.param("id") as AdminId,
-          problem: problemIn(c, result.problem),
-        },
-      });
-    return seeOther(c, "/admin/admins");
-  });
 
   function shownStatus(
     status: 200 | 400 | 413 | undefined,
@@ -1904,33 +1739,6 @@ function classifyField(
     plain[name.slice("plain.".length)] = value.trim();
   if (name.startsWith("secret."))
     secrets[name.slice("secret.".length)] = value.trim();
-}
-
-/**
- * The Family Language the browser prefers most by its `Accept-Language` header, such as `de` for
- * `fr-FR,fr;q=0.9,de;q=0.7`; English if it prefers neither.
- */
-function preferredFamilyLanguage(
-  acceptLanguage: string | undefined,
-): FamilyLanguage {
-  const ranked = (acceptLanguage ?? "")
-    .split(",")
-    .map((entry) => {
-      const [tag = "", ...parameters] = entry.trim().split(";");
-      const quality = parameters
-        .map((parameter) => /^\s*q=([\d.]+)\s*$/.exec(parameter)?.[1])
-        .find(Boolean);
-      return {
-        language: tag.split("-")[0]?.toLowerCase() ?? "",
-        quality: quality ? Number(quality) : 1,
-      };
-    })
-    .filter((entry) => entry.quality > 0)
-    .sort((a, b) => b.quality - a.quality);
-  return (
-    ranked.map((entry) => entry.language).find(isFamilyLanguage) ??
-    defaultFamilyLanguage
-  );
 }
 
 /** The quick filter's setting from the `show` query parameter: `all`, or ids separated by commas. */

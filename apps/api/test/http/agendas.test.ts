@@ -1,10 +1,9 @@
 import type { FamilyMemberId, AgendaId } from "@family-agenda/domain";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { bootHttpForTest, sessionCookieOf, type HttpTestInstance } from "../support/http";
+import { bootHttpForTest, signedInCookie, type HttpTestInstance } from "../support/http";
 import { assignSource } from "../support/assign";
 import { photos } from "../support/photos";
 
-const password = "correct horse battery";
 
 describe("Agendas over HTTP", () => {
   let instance: HttpTestInstance;
@@ -12,7 +11,6 @@ describe("Agendas over HTTP", () => {
   let leo: FamilyMemberId;
   beforeEach(async () => {
     instance = await bootHttpForTest();
-    await instance.post("/setup", { email: "anna@example.org", password });
     await instance.app.recoveryKit.confirm();
     mia = await addMember("Mia", photos.png);
     leo = await addMember("Leo");
@@ -33,10 +31,7 @@ describe("Agendas over HTTP", () => {
     return created.id;
   };
 
-  const signIn = async () => {
-    const response = await instance.post("/admin/sign-in", { email: "anna@example.org", password });
-    return sessionCookieOf(response);
-  };
+  const signIn = () => signedInCookie(instance);
 
   /** The quick filter's link for a Family Member, or for "All". */
   const filterLink = (page: string, label: string) =>
@@ -158,7 +153,6 @@ describe("Agendas over HTTP", () => {
   it("shows an Agenda's address under the public URL, if one is set, rather than the host of the request", async () => {
     await instance.close();
     instance = await bootHttpForTest({ publicUrl: "http://192.168.1.10:8080" });
-    await instance.post("/setup", { email: "anna@example.org", password });
     await instance.app.recoveryKit.confirm();
     const id = await createAgenda([]);
     const cookie = await signIn();

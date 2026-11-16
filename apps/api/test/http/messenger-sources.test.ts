@@ -1,8 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { bootHttpForTest, sessionCookieOf, type HttpTestInstance } from "../support/http";
+import { bootHttpForTest, type HttpTestInstance, signedInCookie } from "../support/http";
 import { testPluginControls, type TestConfiguration } from "../support/test-source-plugin";
-
-const password = "correct horse battery";
 
 /** A Source Type whose Sources each use one Messenger and pick their chats once set up. */
 const configuration: TestConfiguration = {
@@ -27,9 +25,8 @@ describe("Sources of a Source Type with a catalogue and a live setup step", () =
       {},
       { sourcePlugins: [{ sourceTypeId: "bridged", displayName: "Matrix", configuration, catalogue: { configKey: "messenger" }, liveSteps: ["login"] }] },
     );
-    await instance.post("/setup", { email: "anna@example.org", password });
     await instance.app.recoveryKit.confirm();
-    cookie = sessionCookieOf(await instance.post("/admin/sign-in", { email: "anna@example.org", password }));
+    cookie = await signedInCookie(instance);
     await instance.app.sourceTypes.enable("bridged");
   });
   afterEach(async () => {

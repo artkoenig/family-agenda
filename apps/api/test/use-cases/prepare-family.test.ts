@@ -53,7 +53,7 @@ describe("Preparing a Family on an empty database", () => {
     const app = await boot(chosen);
 
     expect(app.familyId).toBe(chosen);
-    expect(await app.admins.needsFirstAdmin()).toBe(true);
+    expect(await app.familyMembers.list()).toEqual([]);
     expect((await postgres.query("SELECT family_id::text AS id FROM family")).rows).toEqual([{ id: chosen }]);
   });
 

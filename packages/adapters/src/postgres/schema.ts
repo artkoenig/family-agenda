@@ -71,36 +71,19 @@ export const family = pgTable(
   ],
 );
 
-export const admins = pgTable("admin", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  email: text("email").notNull().unique(),
-  passwordHash: text("password_hash"),
-  /** The Identity Provider's `sub` for this Admin; null until they sign in through it. */
-  identitySubject: text("identity_subject").unique(),
-  createdAt: timestamptz("created_at").notNull().defaultNow(),
-});
-
-/** Sessions by the SHA-256 of their token, so that a leaked table signs no one in. */
+/**
+ * Sessions by the SHA-256 of their token, so that a leaked table signs no one in. No Admin is
+ * stored (ADR-0009): a session holds whom the Identity Provider vouched for.
+ */
 export const adminSessions = pgTable(
   "admin_session",
   {
     id: text("id").primaryKey(),
-    adminId: uuid("admin_id")
-      .notNull()
-      .references(() => admins.id, { onDelete: "cascade" }),
+    subject: text("subject").notNull(),
+    email: text("email").notNull(),
     expiresAt: timestamptz("expires_at").notNull(),
   },
-  (table) => [index("admin_session_admin_id_idx").on(table.adminId), index("admin_session_expires_at_idx").on(table.expiresAt)],
-);
-
-export const signInFailures = pgTable(
-  "sign_in_failure",
-  {
-    id: bigint("id", { mode: "number" }).primaryKey().generatedAlwaysAsIdentity(),
-    key: text("key").notNull(),
-    at: timestamptz("at").notNull(),
-  },
-  (table) => [index("sign_in_failure_key_at_idx").on(table.key, table.at)],
+  (table) => [index("admin_session_expires_at_idx").on(table.expiresAt)],
 );
 
 /**

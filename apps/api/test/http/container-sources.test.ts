@@ -4,9 +4,7 @@ import type { SourceTypeId } from "@family-agenda/domain";
 import { PluginError } from "@family-agenda/plugin-kit";
 import { servePlugin } from "@family-agenda/plugin-kit/server";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { bootHttpForTest, sessionCookieOf, type HttpTestInstance } from "../support/http";
-
-const password = "correct horse battery";
+import { bootHttpForTest, type HttpTestInstance, signedInCookie } from "../support/http";
 
 describe("The Source wizard for a Source Type whose plugin runs in a container", () => {
   let instance: HttpTestInstance;
@@ -46,9 +44,8 @@ describe("The Source wizard for a Source Type whose plugin runs in a container",
     );
     const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
     instance = await bootHttpForTest({}, { pluginContainers: [{ sourceTypeId: "school-portal" as SourceTypeId, url }] });
-    await instance.post("/setup", { email: "anna@example.org", password });
     await instance.app.recoveryKit.confirm();
-    cookie = sessionCookieOf(await instance.post("/admin/sign-in", { email: "anna@example.org", password }));
+    cookie = await signedInCookie(instance);
     await instance.app.sourceTypes.enable("school-portal");
   });
   afterEach(async () => {

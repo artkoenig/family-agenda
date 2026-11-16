@@ -1,9 +1,8 @@
-import { pollIntervalRange, signInLimits } from "@family-agenda/application";
+import { pollIntervalRange } from "@family-agenda/application";
 import {
   horizonDaysRange,
   maximumNameLength,
   maximumPhotoBytes,
-  minimumPasswordLength,
   photoTypes,
   type FamilyLanguage,
   type AgendaLayout,
@@ -46,13 +45,6 @@ export const en = {
   },
 
   problems: {
-    "invalid-email": "Enter a valid email address.",
-    "password-too-short": `The password must have at least ${minimumPasswordLength} characters.`,
-    "email-taken": "This email already has an Admin account.",
-    "invalid-credentials": "Wrong email or password.",
-    "rate-limited": `Too many failed sign-ins. Wait ${signInLimits.windowMs / 60_000} minutes and try again.`,
-    "own-account": "You cannot reset your own password here.",
-    "unknown-admin": "This Admin does not exist.",
     "invalid-language": "Choose English or German as the Family Language.",
     "kit-not-saved": "Confirm that you have saved the Recovery Kit.",
     "invalid-name": `Enter a name of at most ${maximumNameLength} characters.`,
@@ -83,13 +75,9 @@ export const en = {
     "sso-failed":
       "Signing in through the Identity Provider did not work. Try again.",
     "sso-not-in-group":
-      "Your account at the Identity Provider is not in the group that may sign in here.",
+      "Your account at the Identity Provider is not in the group or role that may administer Family Agenda. Ask whoever runs the Identity Provider to add you to it.",
     "sso-email-unverified":
       "The Identity Provider has not verified an email address for your account.",
-    "sso-unknown-admin":
-      "No Admin here has the email address the Identity Provider verified for your account. An Admin can add you by that address.",
-    "sso-conflict":
-      "An Admin with this email is already linked to another account at the Identity Provider.",
     "invalid-interval": `The polling interval must be between ${pollIntervalRange.minSeconds / 60} minute and ${pollIntervalRange.maxSeconds / 86_400} days.`,
   },
   /** Problems that name what went wrong. */
@@ -114,8 +102,6 @@ export const en = {
   },
 
   common: {
-    email: "Email",
-    password: "Password",
     save: "Save",
     cancel: "Cancel",
     back: "Back",
@@ -125,19 +111,10 @@ export const en = {
     storedSecret: "Stored; leave empty to keep it",
   },
 
-  setup: {
-    title: "Create the first Admin",
-    intro: "This Instance has no Admin yet. Create your Admin account to protect the Admin area.",
-    password: `Password (at least ${minimumPasswordLength} characters)`,
-    familyLanguage: "Family Language",
-    familyLanguageHint:
-      "Family Agenda speaks it, writes dates in it, and reads scanned letters in it. You can change it in the settings.",
-    submit: "Create Admin",
-  },
-
   signIn: {
     title: "Sign in",
-    submit: "Sign in",
+    intro: "Admins sign in through the Identity Provider of this Instance.",
+    noIdentityProvider: "No Identity Provider is connected, so no one can sign in. Set OIDC_ISSUER_URL, OIDC_CLIENT_ID and OIDC_CLIENT_SECRET.",
     singleSignOn: "Sign in with passkey",
   },
 
@@ -162,24 +139,9 @@ export const en = {
     llmRemote: (model: string) => `${model}, outside the home network`,
     llmFailing: "Connection problem",
     notSetUp: "Not set up",
-    admins: (count: number) => plural(count, { one: `${count} Admin`, other: `${count} Admins` }),
     saved: "Saved",
     on: "On",
     notSavedYet: "Not saved yet",
-  },
-
-  admins: {
-    title: "Admins",
-    description: "Parents who sign in to manage settings and Sources. A forgotten password is reset by another Admin.",
-    add: "Add Admin",
-    eyebrow: "Instance",
-    dialogTitle: "Add an Admin",
-    passwordHint: `At least ${minimumPasswordLength} characters. Tell it to them in person.`,
-    newAdminPasswordHint: `At least ${minimumPasswordLength} characters. Tell it to them in person. Leave it empty for an Admin who signs in only through the Identity Provider.`,
-    you: "You",
-    admin: "Admin",
-    newPassword: "New password",
-    resetPassword: "Reset password",
   },
 
   recoveryKit: {

@@ -152,21 +152,19 @@ describe("Triggered operations of a core in supplied mode", () => {
     expect(tickets.map((ticket) => ticket?.sourceId)).not.toContain(ofB);
   });
 
-  it("enters an Admin, resets a password, purges and sweeps in the Context's Family only", async () => {
-    expect(await trigger("enter-admin", a, { email: "anna@example.org" })).toEqual({ status: 200, body: { email: "anna@example.org", outcome: "first" } });
-    expect((await trigger("reset-admin-password", a, { email: "anna@example.org" })).status).toBe(200);
-    expect(await trigger("reset-admin-password", b, { email: "anna@example.org" })).toEqual({ status: 404, body: { error: "unknown-admin" } });
-    expect(await trigger("enter-admin", b, { email: "anna@example.org" })).toEqual({ status: 200, body: { email: "anna@example.org", outcome: "first" } });
+  it("purges and sweeps in the Context's Family only, and manages no Admins", async () => {
     expect(await trigger("purge", a)).toEqual({ status: 200, body: { purged: 0, deleted: 0 } });
     expect(await trigger("secret-sweep", b)).toEqual({ status: 200, body: { removed: 0 } });
-    expect(await databases.get(a.databaseUrl)?.query("select email from admin")).toEqual([{ email: "anna@example.org" }]);
+    for (const name of ["enter-admin", "reset-admin-password"]) {
+      expect(await trigger(name, a, { email: "anna@example.org" })).toEqual({ status: 404, body: { error: "unknown-operation" } });
+    }
   });
 
   it("prepares an empty database on opening it for an operation, with the Context's Family id, and then runs the operation", async () => {
     empties.set("postgres://empty", await PGlite.create());
     const empty = contextOf("postgres://empty", randomUUID() as FamilyId);
 
-    expect(await trigger("enter-admin", empty, { email: "anna@example.org" })).toEqual({ status: 200, body: { email: "anna@example.org", outcome: "first" } });
+    expect(await trigger("purge", empty)).toEqual({ status: 200, body: { purged: 0, deleted: 0 } });
     expect(await on(empty, (application) => Promise.resolve(application.familyId))).toBe(empty.familyId);
     expect(await trigger("purge", { ...empty, familyId: randomUUID() as FamilyId })).toEqual({ status: 403, body: { error: "family-id-differs" } });
   });
@@ -186,8 +184,8 @@ describe("Triggered operations of a core in supplied mode", () => {
     await other.exec("create schema drizzle; create table drizzle.__drizzle_migrations (id serial primary key, hash text not null, created_at bigint); insert into drizzle.__drizzle_migrations (hash) values ('of the old data model')");
     const context = contextOf("postgres://other", randomUUID() as FamilyId);
 
-    for (const name of ["due-work", "purge", "secret-sweep", "enter-admin", "reset-admin-password"]) {
-      expect(await trigger(name, context, { email: "anna@example.org" })).toEqual({ status: 409, body: { error: "old-data-model" } });
+    for (const name of ["due-work", "purge", "secret-sweep"]) {
+      expect(await trigger(name, context)).toEqual({ status: 409, body: { error: "old-data-model" } });
     }
     expect((await other.query("select count(*)::int as n from information_schema.tables where table_schema = 'public'")).rows).toEqual([{ n: 0 }]);
     expect(warnings.join("\n")).toContain("old-data-model");
@@ -201,10 +199,9 @@ describe("Triggered operations of a core in supplied mode", () => {
     await families.close();
     await newer.exec("insert into drizzle.__drizzle_migrations (hash, created_at) values ('of a newer release', 0)");
 
-    for (const name of ["due-work", "purge", "secret-sweep", "enter-admin", "reset-admin-password"]) {
-      expect(await trigger(name, context, { email: "anna@example.org" })).toEqual({ status: 409, body: { error: "migrated-by-newer-release" } });
+    for (const name of ["due-work", "purge", "secret-sweep"]) {
+      expect(await trigger(name, context)).toEqual({ status: 409, body: { error: "migrated-by-newer-release" } });
     }
-    expect(await newer.query("select email from admin")).toMatchObject({ rows: [] });
   });
 
   it("answers 503 for an operation while preparing outlasts its wait, and runs it once preparing is done", async () => {
@@ -229,8 +226,8 @@ describe("Triggered operations of a core in supplied mode", () => {
   ])("refuses a trigger %s, opening nothing", async (_, context, status) => {
     opened = [];
 
-    for (const name of ["due-work", "purge", "secret-sweep", "enter-admin", "reset-admin-password"]) {
-      expect((await trigger(name, context(), { email: "anna@example.org" })).status).toBe(status);
+    for (const name of ["due-work", "purge", "secret-sweep"]) {
+      expect((await trigger(name, context())).status).toBe(status);
     }
     expect(opened).toEqual([]);
   });
@@ -264,14 +261,13 @@ describe("Triggered operations of a core in supplied mode", () => {
     const empty = contextOf("postgres://empty", randomUUID() as FamilyId);
     const release = held("postgres://empty");
 
-    const first = trigger("enter-admin", empty, { email: "anna@example.org" });
+    const first = trigger("purge", empty);
     await new Promise((resolve) => setTimeout(resolve, 20));
-    const second = trigger("enter-admin", { ...empty, publicUrl: "http://elsewhere" }, { email: "anna@example.org" });
+    const second = trigger("purge", { ...empty, publicUrl: "http://elsewhere" });
 
     expect(await settled(second)).toBe(false);
     release();
-    const outcomes = (await Promise.all([first, second])).map(({ status, body }) => [status, body.outcome]);
-    expect(outcomes.sort()).toEqual([[200, "exists"], [200, "first"]]);
+    expect((await Promise.all([first, second])).map(({ status }) => status)).toEqual([200, 200]);
   });
 
   it("serves one Family while another is being prepared", async () => {

@@ -7,12 +7,15 @@ const redirectUri = "https://agenda.example.ts.net/sso/callback";
 describe("the OIDC client", () => {
   let provider: FakeIdentityProvider;
   const client = new OidcIdentityProviderClient();
+  let groupsClaim = "groups";
   const connection = () => ({
     issuerUrl: provider.issuer,
     clientId: "family-agenda",
     clientSecret: "s3cret",
+    groupsClaim,
   });
   beforeEach(async () => {
+    groupsClaim = "groups";
     provider = await FakeIdentityProvider.start();
   });
   afterEach(async () => {
@@ -66,6 +69,16 @@ describe("the OIDC client", () => {
       emailVerified: true,
       groups: ["homelab-admin"],
     });
+  });
+
+  it("reads the groups from the configured claim, and asks for it as a scope", async () => {
+    groupsClaim = "roles";
+    provider.claims = { sub: "sub-3", roles: ["homelab-admin"], groups: ["other"] };
+
+    const { query, result } = await signIn();
+
+    expect(query.get("scope")).toBe("openid email profile roles");
+    expect((await result)?.groups).toEqual(["homelab-admin"]);
   });
 
   it("reads a token without email or groups as none", async () => {

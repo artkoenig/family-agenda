@@ -1,8 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { bootHttpForTest, sessionCookieOf, type HttpTestInstance } from "../support/http";
+import { bootHttpForTest, type HttpTestInstance, signedInCookie } from "../support/http";
 import { ScriptedExtractor } from "../support/scripted-extractor";
-
-const password = "correct horse battery";
 
 describe("choosing the model on the AI page", () => {
   let instance: HttpTestInstance;
@@ -11,9 +9,8 @@ describe("choosing the model on the AI page", () => {
   beforeEach(async () => {
     extractor = new ScriptedExtractor();
     instance = await bootHttpForTest({}, { extractor });
-    await instance.post("/setup", { email: "anna@example.org", password });
     await instance.app.recoveryKit.confirm();
-    cookie = sessionCookieOf(await instance.post("/admin/sign-in", { email: "anna@example.org", password }));
+    cookie = await signedInCookie(instance);
   });
   afterEach(async () => {
     await instance.close();

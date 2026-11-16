@@ -87,17 +87,18 @@ describe("a Context", () => {
     const opened = openContext(key, sealContext(key, withProvider), 1_000);
     expect(opened).toEqual({
       ...context,
-      identityProvider: { ...identityProvider, requiredGroup: "homelab-admin", publicBaseUrl: "https://a.example.org/agenda" },
+      identityProvider: { ...identityProvider, requiredGroup: "homelab-admin", groupsClaim: "groups", publicBaseUrl: "https://a.example.org/agenda" },
     });
     expect(openContext(key, sealContext(key, context), 1_000)).not.toHaveProperty("identityProvider");
     expect(sealContext(key, withProvider)).not.toContain("s3cret");
   });
 
-  it("carries whether only known Admins sign in through the Identity Provider", () => {
-    const opened = (knownAdminsOnly: boolean) => openContext(key, sealContext(key, { ...context, identityProvider: { ...identityProvider, knownAdminsOnly } }), 1_000);
-    expect(opened(true)?.identityProvider?.knownAdminsOnly).toBe(true);
-    expect(opened(false)?.identityProvider).not.toHaveProperty("knownAdminsOnly");
+  it("carries the claim the groups are read from, by default groups", () => {
+    const opened = (groupsClaim?: string) => openContext(key, sealContext(key, { ...context, identityProvider: { ...identityProvider, ...(groupsClaim ? { groupsClaim } : {}) } }), 1_000);
+    expect(opened("roles")?.identityProvider?.groupsClaim).toBe("roles");
+    expect(opened()?.identityProvider?.groupsClaim).toBe("groups");
   });
+
 
   it.each<[string, Partial<Record<keyof Context, unknown>>, RegExp]>([
     ["without a time zone", { timeZone: undefined }, /timeZone must be/],
@@ -110,7 +111,7 @@ describe("a Context", () => {
     ["with an Identity Provider without client id", { identityProvider: { ...identityProvider, clientId: "" } }, /identityProvider.clientId must be set/],
     ["with an Identity Provider without client secret", { identityProvider: { ...identityProvider, clientSecret: undefined } }, /identityProvider.clientSecret must be set/],
     ["with an empty required group", { identityProvider: { ...identityProvider, requiredGroup: " " } }, /identityProvider.requiredGroup must not be empty/],
-    ["with a switch for known Admins that is no boolean", { identityProvider: { ...identityProvider, knownAdminsOnly: "true" } }, /identityProvider.knownAdminsOnly must be true or false/],
+    ["with a groups claim that is no claim name", { identityProvider: { ...identityProvider, groupsClaim: "a b" } }, /identityProvider.groupsClaim must be a claim name/],
     ["with an issuer that is no http address", { identityProvider: { ...identityProvider, issuerUrl: "id.example.org" } }, /identityProvider.issuerUrl must be an http/],
   ])("is refused %s, naming what is wrong", (_, change, problem) => {
     const sealed = sealContext(key, { ...context, ...change } as Context);

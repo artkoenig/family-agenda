@@ -2,9 +2,7 @@ import { rm } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { FakeTessdataCatalog } from "../support/fake-tessdata-catalog";
-import { bootHttpForTest, sessionCookieOf, type HttpTestInstance } from "../support/http";
-
-const password = "correct horse battery";
+import { bootHttpForTest, type HttpTestInstance, signedInCookie } from "../support/http";
 
 /** The settings list's entry for a section, from its link to the link's end. */
 const entryOf = (page: string, label: string) =>
@@ -24,9 +22,11 @@ describe("the display and OCR settings over HTTP", () => {
   beforeEach(async () => {
     catalog = new FakeTessdataCatalog();
     instance = await bootHttpForTest({}, { tessdataCatalog: catalog });
-    await instance.post("/setup", { email: "anna@example.org", password, language: "de" });
+    await instance.app.languages.setLanguage("de");
+    await instance.app.languages.addOcrLanguage("deu");
+    await instance.app.languages.removeOcrLanguage("eng");
     await instance.app.recoveryKit.confirm();
-    cookie = sessionCookieOf(await instance.post("/admin/sign-in", { email: "anna@example.org", password }));
+    cookie = await signedInCookie(instance);
   });
   afterEach(async () => {
     await instance.close();
@@ -130,7 +130,7 @@ describe("dates in the Family Language", () => {
   beforeEach(async () => {
     // The clock starts on Monday 2026-09-14 at 09:00 in Berlin.
     instance = await bootHttpForTest();
-    await instance.post("/setup", { email: "anna@example.org", password, language: "de" });
+    await instance.app.languages.setLanguage("de");
   });
   afterEach(async () => {
     await instance.close();
@@ -154,7 +154,7 @@ describe("the Theme of a browser", () => {
   let instance: HttpTestInstance;
   beforeEach(async () => {
     instance = await bootHttpForTest();
-    await instance.post("/setup", { email: "anna@example.org", password, language: "en" });
+    await instance.app.languages.setLanguage("en");
   });
   afterEach(async () => {
     await instance.close();

@@ -20,7 +20,6 @@ describe("Events in an Agenda over HTTP", () => {
   beforeEach(async () => {
     // The clock starts on Monday 2026-09-14 at 09:00 in Berlin.
     instance = await bootHttpForTest({}, { sourcePlugins: [{ sourceTypeId: "timeline-cal", displayName: { en: "School calendar", de: "Schulkalender" } }] });
-    await instance.post("/setup", { email: "anna@example.org", password: "correct horse battery" });
     await instance.app.sourceTypes.enable("timeline-cal");
     await instance.app.sources.add({ sourceTypeId: "timeline-cal", plain: { url: "https://calendar.example.org" }, secrets: {} });
     const created = await instance.app.agendas.create({ memberIds: [], horizonDays: 3 });

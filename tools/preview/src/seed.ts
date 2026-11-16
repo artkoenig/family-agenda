@@ -1,12 +1,9 @@
 import type { Application } from "@family-agenda/api/composition-root";
 import type { AgendaId, FamilyMemberId, SourceAttributeId } from "@family-agenda/domain";
 
-/** Who signs in to the Admin area of a preview. Public on purpose: a preview holds no real data. */
-export const demoAdmin = { email: "admin@example.org", password: "preview-password" } as const;
-
 export type SeededAgenda = { id: AgendaId; audience: string };
 
-export type SeedResult = { ok: true; admin: typeof demoAdmin; agendas: SeededAgenda[] } | { ok: false; problem: string };
+export type SeedResult = { ok: true; agendas: SeededAgenda[] } | { ok: false; problem: string };
 
 const demoMembers = ["Anna", "Ben", "Emma", "Noah"];
 
@@ -30,21 +27,22 @@ function succeeded<T extends { ok: boolean }>(result: T): Extract<T, { ok: true 
 }
 
 /**
- * Fills a fresh Instance with a made-up Family for trying out a change: an Admin, four Family
+ * Fills a fresh Instance with a made-up Family for trying out a change: four Family
  * Members, the demo Source (which states a week of Events and Lessons and two Tasks, ADR-0005),
  * assigned to them, and an Agenda for the whole Family and for each child, and a Task List. It goes through the same use cases
  * as the Admin area, so what it writes is what the Instance itself would write. The demo Source
- * plugin must be installed in the Instance already.
+ * plugin must be installed in the Instance already. It adds no Admin: Admins exist only in the
+ * Identity Provider (ADR-0009). It refuses a Family that already has Family Members.
  *
  * It imports types only: a preview runs it inside the container of the pull request's code, which
  * may predate this tool, so nothing here may need a package that code lacks.
  */
 export async function seedDemoFamily(app: Application): Promise<SeedResult> {
   try {
-    succeeded(await app.admins.createFirstAdmin({ ...demoAdmin, language: "en" }));
+    if ((await app.familyMembers.list()).length > 0) return { ok: false, problem: "family-exists" };
     const members = await addMembers(app);
     await bringInDemoSource(app, members);
-    return { ok: true, admin: demoAdmin, agendas: await createAgendas(app, members) };
+    return { ok: true, agendas: await createAgendas(app, members) };
   } catch (error) {
     if (error instanceof SeedProblem) return { ok: false, problem: error.message };
     throw error;

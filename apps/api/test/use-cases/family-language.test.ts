@@ -4,8 +4,6 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { bootForTest, type TestInstance } from "../support/boot";
 import { fakeModel, FakeTessdataCatalog } from "../support/fake-tessdata-catalog";
 
-const password = "correct horse battery";
-
 describe("the Family Language", () => {
   let instance: TestInstance;
   beforeEach(async () => {
@@ -20,22 +18,6 @@ describe("the Family Language", () => {
 
     expect(settings.language).toBe("en");
     expect(settings.ocrLanguages).toEqual([{ language: "eng", installed: true }]);
-  });
-
-  it("is chosen with the first Admin, and OCR reads that language", async () => {
-    const created = await instance.app.admins.createFirstAdmin({ email: "anna@example.org", password, language: "de" });
-    expect(created.ok).toBe(true);
-
-    const settings = await instance.app.languages.current();
-    expect(settings.language).toBe("de");
-    expect(settings.ocrLanguages).toEqual([{ language: "deu", installed: true }]);
-  });
-
-  it("refuses a first Admin with a language the Instance does not speak", async () => {
-    const created = await instance.app.admins.createFirstAdmin({ email: "anna@example.org", password, language: "fr" });
-
-    expect(created).toEqual({ ok: false, problem: "invalid-language" });
-    expect(await instance.app.admins.needsFirstAdmin()).toBe(true);
   });
 
   it("can be changed by an Admin, which leaves the OCR languages as they are", async () => {

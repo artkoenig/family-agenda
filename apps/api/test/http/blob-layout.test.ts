@@ -1,12 +1,10 @@
 import { readdir, rename, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { bootHttpForTest, sessionCookieOf, type HttpTestInstance } from "../support/http";
+import { bootHttpForTest, type HttpTestInstance, signedInCookie } from "../support/http";
 import { photos } from "../support/photos";
 import { extracted, ScriptedExtractor } from "../support/scripted-extractor";
 import { testPluginControls } from "../support/test-source-plugin";
-
-const password = "correct horse battery";
 
 describe("blobs kept in the layout before Family folders", () => {
   let instance: HttpTestInstance;
@@ -27,7 +25,6 @@ describe("blobs kept in the layout before Family folders", () => {
   };
 
   it("loads a Family Member's photo and a message attachment on an Instance that started with them", async () => {
-    await instance.post("/setup", { email: "anna@example.org", password });
     await instance.app.recoveryKit.confirm();
     const added = await instance.app.familyMembers.add({ name: "Mia", photo: photos.png });
     if (!added.ok) throw new Error("adding failed");
@@ -56,7 +53,7 @@ describe("blobs kept in the layout before Family folders", () => {
 
     await intoOldLayout();
     await instance.restart();
-    const cookie = sessionCookieOf(await instance.post("/admin/sign-in", { email: "anna@example.org", password }));
+    const cookie = await signedInCookie(instance);
 
     const photo = await instance.get(`/family-members/${added.id}/photo`);
     expect(photo.status).toBe(200);

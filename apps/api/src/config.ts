@@ -68,7 +68,19 @@ const familyVariables = {
 type FixedOnly = keyof typeof familyVariables | "port";
 
 /** The settings each Family's Context carries in supplied mode (ADR-0003, ADR-0007), which supplied mode refuses in the environment. */
-const contextVariables = ["PUBLIC_URL", "OIDC_ISSUER_URL", "OIDC_CLIENT_ID", "OIDC_CLIENT_SECRET", "OIDC_REQUIRED_GROUP", "OIDC_KNOWN_ADMINS_ONLY"] as const;
+const contextVariables = ["PUBLIC_URL", "OIDC_ISSUER_URL", "OIDC_CLIENT_ID", "OIDC_CLIENT_SECRET", "OIDC_REQUIRED_GROUP", "OIDC_GROUPS_CLAIM"] as const;
+
+/** Variables of earlier releases that mean nothing any more: refused rather than ignored, so that no one relies on them. */
+const retiredVariables = {
+  OIDC_KNOWN_ADMINS_ONLY: "Admins exist only in the Identity Provider (ADR-0009), so every sign-in is checked against OIDC_REQUIRED_GROUP alone",
+} as const;
+
+/** Refuses a variable no release reads any more. */
+function checkRetiredVariables(env: NodeJS.ProcessEnv): void {
+  for (const [variable, reason] of Object.entries(retiredVariables)) {
+    if (env[variable] !== undefined) throw new Error(`${variable} is not a known variable: ${reason}; unset it`);
+  }
+}
 
 
 /** The mode `CONTEXT_MODE` chooses, refusing a Context key without supplied mode and the other way round. */
@@ -141,6 +153,7 @@ function addressConfigOf(env: NodeJS.ProcessEnv): Pick<Config, "publicUrl" | "id
 
 /** What a core reads from the environment in either mode. */
 function sharedConfigOf(env: NodeJS.ProcessEnv): Omit<Config, Exclude<FixedOnly, "port"> | "publicUrl" | "identityProvider"> {
+  checkRetiredVariables(env);
   const pluginContainers = parsePluginUrls(env.PLUGIN_URLS);
   return {
     pluginContainers,
@@ -201,7 +214,7 @@ const identityProviderProblems = {
   "invalid-client-id": "OIDC_CLIENT_ID must be set when OIDC_ISSUER_URL is",
   "client-secret-missing": "OIDC_CLIENT_SECRET must be set when OIDC_ISSUER_URL is",
   "invalid-required-group": "OIDC_REQUIRED_GROUP must not be empty",
-  "invalid-known-admins-only": "OIDC_KNOWN_ADMINS_ONLY must be true or false",
+  "invalid-groups-claim": "OIDC_GROUPS_CLAIM must be a claim name such as groups or roles",
   "invalid-public-url": "PUBLIC_URL must be set when OIDC_ISSUER_URL is: the redirect URI lies below it",
 } as const;
 
@@ -211,7 +224,7 @@ function identityProviderOf(env: NodeJS.ProcessEnv, publicUrl: string | null): I
     clientId: env.OIDC_CLIENT_ID,
     clientSecret: env.OIDC_CLIENT_SECRET,
     requiredGroup: env.OIDC_REQUIRED_GROUP || undefined,
-    knownAdminsOnly: env.OIDC_KNOWN_ADMINS_ONLY,
+    groupsClaim: env.OIDC_GROUPS_CLAIM || undefined,
     publicBaseUrl: publicUrl,
   });
   if (!parsed.ok) throw new Error(identityProviderProblems[parsed.problem]);

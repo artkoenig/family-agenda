@@ -6,7 +6,6 @@ import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describePreviews, planPreview, type Command } from "./plan";
-import { demoAdmin } from "./seed";
 
 const repoRoot = fileURLToPath(new URL("../../..", import.meta.url));
 const usage = "Usage: pnpm preview up <pull-request> | down <pull-request> | list";
@@ -37,7 +36,7 @@ function up(value: string | undefined): number {
     }
   }
   console.log(`\nPreview of pull request ${value} is running at ${plan.url}`);
-  console.log(`Admin area: ${plan.url}/admin, sign in as ${demoAdmin.email} / ${demoAdmin.password}`);
+  console.log(`Admin area: ${plan.url}/admin: Admins sign in only through an Identity Provider, which a preview does not connect yet`);
   console.log(`Remove it with: pnpm preview down ${value}`);
   return 0;
 }

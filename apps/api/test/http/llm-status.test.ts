@@ -1,8 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { bootHttpForTest, sessionCookieOf, type HttpTestInstance } from "../support/http";
+import { bootHttpForTest, type HttpTestInstance, signedInCookie } from "../support/http";
 import { ScriptedExtractor } from "../support/scripted-extractor";
-
-const password = "correct horse battery";
 
 /** An endpoint whose check can be held, as a slow LLM server's. */
 class HeldCheck extends ScriptedExtractor {
@@ -21,9 +19,8 @@ describe("The LLM status every Admin page shows", () => {
   beforeEach(async () => {
     extractor = new HeldCheck();
     instance = await bootHttpForTest({}, { extractor });
-    await instance.post("/setup", { email: "anna@example.org", password });
     await instance.app.recoveryKit.confirm();
-    cookie = sessionCookieOf(await instance.post("/admin/sign-in", { email: "anna@example.org", password }));
+    cookie = await signedInCookie(instance);
     await instance.app.llmEndpoint.save({ baseUrl: "http://ollama:11434/v1", model: "qwen3.5:9b", apiKey: "" });
   });
   afterEach(async () => {
