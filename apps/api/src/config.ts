@@ -1,5 +1,5 @@
 import { parseFamilyId, type FamilyId } from "@family-agenda/adapters";
-import { parseIdentityProviderSettings, type IdentityProviderSettings } from "@family-agenda/application";
+import { parseFamilyIdClaim, parseIdentityProviderConnection, parseIdentityProviderSettings, type IdentityProviderConnectionSettings, type IdentityProviderSettings } from "@family-agenda/application";
 import { parsePluginUrls, type PluginBinding } from "./plugin-containers/bindings";
 import { versionOf } from "./version";
 
@@ -67,8 +67,12 @@ const familyVariables = {
 /** What only a fixed core has: its Family and its pages port. */
 type FixedOnly = keyof typeof familyVariables | "port";
 
-/** The settings each Family's Context carries in supplied mode (ADR-0003, ADR-0007), which supplied mode refuses in the environment. */
-const contextVariables = ["PUBLIC_URL", "OIDC_ISSUER_URL", "OIDC_CLIENT_ID", "OIDC_CLIENT_SECRET", "OIDC_REQUIRED_GROUP", "OIDC_GROUPS_CLAIM"] as const;
+/** What supplied mode refuses in the environment, and why: each Context carries its address, and the Family claim decides (ADR-0009). */
+const suppliedRefusals = {
+  PUBLIC_URL: "every Context carries its Family's public address",
+  OIDC_REQUIRED_GROUP: `the claim OIDC_FAMILY_ID_CLAIM names decides who may sign in, and no group is checked`,
+  OIDC_GROUPS_CLAIM: `the claim OIDC_FAMILY_ID_CLAIM names decides who may sign in, and no group is checked`,
+} as const;
 
 /** Variables of earlier releases that mean nothing any more: refused rather than ignored, so that no one relies on them. */
 const retiredVariables = {
@@ -103,6 +107,8 @@ function checkContextKey(mode: ContextMode, key: string): void {
 
 /** A core in supplied mode: what it shares among the Families, and no Family of its own. */
 export type SuppliedConfig = Omit<Config, FixedOnly | "publicUrl" | "identityProvider"> & {
+  /** The one Identity Provider of the deployment, from the `OIDC_*` variables (ADR-0009); each Family's redirect URI lies below its Context's `publicUrl`. */
+  identityProvider: SuppliedIdentityProvider;
   /** The key the trusted caller seals Contexts with, from `CONTEXT_KEY`. */
   contextKey: string;
   /**
@@ -112,15 +118,29 @@ export type SuppliedConfig = Omit<Config, FixedOnly | "publicUrl" | "identityPro
   callerPort: number;
 };
 
+/** The Identity Provider all Families of a core in supplied mode sign in through, with the dotted path of the claim that names the Family. */
+export type SuppliedIdentityProvider = IdentityProviderConnectionSettings & { familyIdClaim: string };
+
 /** The configuration of a core in supplied mode (`CONTEXT_MODE=supplied`). */
 export function readSuppliedConfig(env: NodeJS.ProcessEnv = process.env): SuppliedConfig {
   if (readMode(env) !== "supplied") throw new Error("This configuration is for CONTEXT_MODE=supplied only");
   const given = Object.values(familyVariables).find((variable) => env[variable]);
   if (given) throw new Error(`${given} must not be set with CONTEXT_MODE=supplied: every request supplies its Family's Context`);
-  const carried = contextVariables.find((variable) => env[variable]);
-  if (carried) throw new Error(`${carried} must not be set with CONTEXT_MODE=supplied: every Context carries its Family's public address and Identity Provider`);
+  for (const [variable, reason] of Object.entries(suppliedRefusals)) {
+    if (env[variable]) throw new Error(`${variable} must not be set with CONTEXT_MODE=supplied: ${reason}`);
+  }
   const { port, ...shared } = sharedConfigOf(env);
-  return { ...shared, contextKey: env.CONTEXT_KEY ?? "", callerPort: callerPortOf(env.CALLER_PORT, port) };
+  return { ...shared, identityProvider: suppliedIdentityProviderOf(env), contextKey: env.CONTEXT_KEY ?? "", callerPort: callerPortOf(env.CALLER_PORT, port) };
+}
+
+/** The one Identity Provider of a core in supplied mode, which it requires. */
+function suppliedIdentityProviderOf(env: NodeJS.ProcessEnv): SuppliedIdentityProvider {
+  const parsed = parseIdentityProviderConnection({ issuerUrl: env.OIDC_ISSUER_URL, clientId: env.OIDC_CLIENT_ID, clientSecret: env.OIDC_CLIENT_SECRET });
+  if (!parsed.ok) throw new Error(identityProviderProblems[parsed.problem]);
+  if (parsed.settings === null) throw new Error("OIDC_ISSUER_URL must be set with CONTEXT_MODE=supplied: Admins sign in only through the Identity Provider (ADR-0009)");
+  const familyIdClaim = parseFamilyIdClaim(env.OIDC_FAMILY_ID_CLAIM);
+  if (familyIdClaim === null) throw new Error("OIDC_FAMILY_ID_CLAIM must be a claim name or a dotted path to one, such as family_id or custom_data.familyId");
+  return { ...parsed.settings, familyIdClaim };
 }
 
 /** The caller port, which supplied mode requires, apart from the pages port that browsers may reach. */
@@ -133,6 +153,7 @@ function callerPortOf(value: string | undefined, pagesPort: number): number {
 
 export function readConfig(env: NodeJS.ProcessEnv = process.env): Config {
   if (readMode(env) === "supplied") throw new Error("CONTEXT_MODE=supplied: in supplied mode this core has no Family of its own, only the Contexts requests supply");
+  if (env.OIDC_FAMILY_ID_CLAIM) throw new Error("OIDC_FAMILY_ID_CLAIM is set, but CONTEXT_MODE is not supplied: in fixed mode OIDC_REQUIRED_GROUP decides who may sign in; unset it");
   const databaseUrl = env.DATABASE_URL;
   if (!databaseUrl) throw new Error("DATABASE_URL is not set");
   return {

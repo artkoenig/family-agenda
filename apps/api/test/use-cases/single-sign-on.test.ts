@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { bootForTest, type TestInstance } from "../support/boot";
-import { parseIdentityProviderSettings } from "@family-agenda/application";
+import { parseFamilyIdClaim, parseIdentityProviderSettings } from "@family-agenda/application";
 import { ScriptedIdentityProviderClient } from "../support/scripted-identity-provider";
 
 const origin = "https://agenda.example.ts.net";
@@ -17,6 +17,7 @@ const anna = {
   email: "anna@example.org",
   emailVerified: true,
   groups: ["homelab-admin"],
+  familyId: null as string | null,
 };
 
 describe("Admins signing in through an Identity Provider", () => {
@@ -158,6 +159,32 @@ describe("Admins signing in through an Identity Provider", () => {
     });
   });
 
+  describe("in supplied mode, where the Family claim decides", () => {
+    const familyId = "0d6c4c3e-6a4f-4a4e-9a8e-2f5a3c1b7e10";
+    beforeEach(async () => {
+      await instance.close();
+      instance = await bootForTest({
+        identityProviderClient: provider,
+        identityProvider: { ...settings, family: { claim: "custom_data.familyId", familyId } },
+      });
+    });
+
+    it("asks the provider for the Family claim", async () => {
+      await sso().begin(origin);
+
+      expect(provider.begun[0]?.connection.familyIdClaim).toBe("custom_data.familyId");
+    });
+
+    it("signs in someone whose Family claim names the Family, in no group", async () => {
+      expect((await signInAs({ ...anna, groups: [], familyId })).ok).toBe(true);
+    });
+
+    it("refuses a token without the Family claim, and one naming another Family", async () => {
+      expect(await signInAs(anna)).toEqual({ ok: false, problem: "sso-no-family" });
+      expect(await signInAs({ ...anna, familyId: "another" })).toEqual({ ok: false, problem: "sso-other-family" });
+    });
+  });
+
   it("is offered nowhere without an Identity Provider", async () => {
     await instance.close();
     instance = await bootForTest({ identityProviderClient: provider });
@@ -208,6 +235,13 @@ describe("the Identity Provider from the environment", () => {
   it("keeps the path prefix of the public base URL, without a trailing slash", () => {
     const parsed = parseIdentityProviderSettings({ ...variables, publicBaseUrl: `${origin}/agenda/` });
     expect(parsed.ok && parsed.settings?.publicBaseUrl).toBe(`${origin}/agenda`);
+  });
+
+  it("reads the Family claim as a dotted path, family_id by default", () => {
+    expect(parseFamilyIdClaim(undefined)).toBe("family_id");
+    expect(parseFamilyIdClaim("")).toBe("family_id");
+    expect(parseFamilyIdClaim(" custom_data.familyId ")).toBe("custom_data.familyId");
+    for (const odd of ["a..b", ".a", "a.", "a b", "x".repeat(201)]) expect(parseFamilyIdClaim(odd)).toBeNull();
   });
 
   it.each([

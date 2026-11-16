@@ -10,7 +10,7 @@ import { openAgendaAccess } from "@family-agenda/application";
 import type { BlobRef } from "@family-agenda/domain";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { bootShared, type Application } from "../../src/composition-root";
-import { contextHeader, expirySkewMs, openContext, sealContext, type Context } from "../../src/context/context";
+import { contextHeader, expirySkewMs, openContext, sealContext, sealUncheckedContext, type Context } from "../../src/context/context";
 import { SuppliedFamilies } from "../../src/context/supplied-families";
 import { suppliedFetch, type FamilyFetch } from "../../src/context/supplied-http";
 import { createHttpApp } from "../../src/http/app";
@@ -39,6 +39,7 @@ describe("a core in supplied mode", () => {
   let b: Context;
   let provider: ScriptedIdentityProviderClient;
   let catalog: FakeTessdataCatalog;
+  const identityProvider = { issuerUrl: "https://id.example.org", clientId: "family-agenda", clientSecret: "s3cret-of-a" };
 
   const familyOf = async (name: string, settings: Partial<Context> = {}): Promise<Context> => {
     const database = await acquirePostgres();
@@ -121,6 +122,7 @@ describe("a core in supplied mode", () => {
     families = new SuppliedFamilies({
       shared,
       settings: { identityProviderClient: provider },
+      identityProvider: { ...identityProvider, requiredGroup: "homelab-admin", groupsClaim: "groups", familyIdClaim: "custom_data.familyId" },
       connectDatabase,
       idleMs,
       preparingWaitMs,
@@ -403,8 +405,7 @@ describe("a core in supplied mode", () => {
       const header = response.headers.getSetCookie().find((cookie) => cookie.startsWith(`${name}=`)) ?? "";
       return { pair: header.split(";")[0] ?? "", path: /Path=([^;]*)/i.exec(header)?.[1] };
     };
-    const anna = { subject: "sub-anna", email: "anna@example.org", emailVerified: true, groups: ["homelab-admin"] };
-    const identityProvider = { issuerUrl: "https://id.example.org", clientId: "family-agenda", clientSecret: "s3cret-of-a" };
+    const anna = { subject: "sub-anna", email: "anna@example.org", emailVerified: true, groups: ["homelab-admin"], familyId: null as string | null };
 
     it("shows each Family its Agenda's days in its own time zone", async () => {
       // The core's clock says 07:00 in UTC on Monday: Monday in Berlin, still Sunday in Pago Pago.
@@ -442,46 +443,49 @@ describe("a core in supplied mode", () => {
       }
     });
 
-    it("offers single sign-on to a Family whose Context names an Identity Provider, through it, and not to one whose Context names none", async () => {
-      const offered = await familyOf("offered", { publicUrl: "http://core/one", identityProvider });
-      const without = await familyOf("without", { publicUrl: "http://core/two" });
+    it("signs in through the one Identity Provider below each Family's address, someone whose Family claim names that Family alone", async () => {
+      const one = await familyOf("one", { publicUrl: "http://core/one" });
+      const two = await familyOf("two", { publicUrl: "http://core/two" });
+      const signIn = async (context: Context, familyId: string | null) => {
+        const start = await request(context, "/sso/start");
+        const sso = cookieOf(start, "fb_sso");
+        const pending = JSON.parse(decodeURIComponent(sso.pair.split("=").slice(1).join("="))) as Parameters<typeof provider.returnWith>[0];
+        return { sso, back: await request(context, `/sso/callback${provider.returnWith(pending, { ...anna, groups: [], familyId })}`, { headers: { cookie: sso.pair } }) };
+      };
 
-      expect(await (await request(without, "/admin/sign-in")).text()).not.toContain("/sso/start");
-      expect((await request(without, "/sso/start")).headers.get("location") ?? "").not.toContain("id.example.org");
-      expect(await (await request(offered, "/admin/sign-in")).text()).toContain(`href="/one/sso/start"`);
-
-      const start = await request(offered, "/sso/start");
-      expect(provider.begun).toEqual([{ connection: { ...identityProvider, groupsClaim: "groups" }, redirectUri: "http://core/one/sso/callback" }]);
-      const sso = cookieOf(start, "fb_sso");
+      expect(await (await request(one, "/admin/sign-in")).text()).toContain(`href="/one/sso/start"`);
+      const { sso, back } = await signIn(one, one.familyId);
+      expect(provider.begun[0]).toEqual({ connection: { ...identityProvider, groupsClaim: "groups", familyIdClaim: "custom_data.familyId" }, redirectUri: "http://core/one/sso/callback" });
       expect(sso.path).toBe("/one/sso");
-      const pending = JSON.parse(decodeURIComponent(sso.pair.split("=").slice(1).join("="))) as Parameters<typeof provider.returnWith>[0];
-      const back = await request(offered, `/sso/callback${provider.returnWith(pending, anna)}`, { headers: { cookie: sso.pair } });
-
       expect(back.headers.get("location")).toBe("/one/admin");
       expect(cookieOf(back, "fb_session").path).toBe("/one");
+
+      const foreign = (await signIn(two, one.familyId)).back;
+      expect(foreign.status).toBe(401);
+      expect(await foreign.text()).toContain("belongs to another Family");
+      const missing = (await signIn(two, null)).back;
+      expect(missing.status).toBe(401);
+      expect(await missing.text()).toContain("belongs to no Family");
       expect(warnings.join()).not.toContain("s3cret");
     });
 
     it("opens a Family anew for a Context with other settings, and keeps it apart from the one opened before", async () => {
       await request(a);
       await request({ ...a, publicUrl: "http://core/elsewhere" });
-      await request({ ...a, identityProvider: { ...identityProvider, issuerUrl: "http://core" } });
-      await request({ ...a, identityProvider: { ...identityProvider, clientSecret: "another" } });
       await request({ ...a, timeZone: "Asia/Tokyo" });
-      await request({ ...a, identityProvider: { ...identityProvider, groupsClaim: "roles" } });
-      expect(families.size).toBe(6);
+      expect(families.size).toBe(3);
 
-      expect((await request({ ...a, publicUrl: "http://core/elsewhere" }, "/admin")).headers.get("location")).toBe("/elsewhere/admin/sign-in");
-      expect((await request(a, "/admin")).headers.get("location")).toBe("/admin/sign-in");
-      expect(families.size).toBe(6);
+      expect((await request({ ...a, publicUrl: "http://core/elsewhere" }, "/admin")).headers.get("location")).toBe("/elsewhere/sso/start");
+      expect((await request(a, "/admin")).headers.get("location")).toBe("/sso/start");
+      expect(families.size).toBe(3);
     });
 
-    it("refuses a Context with incomplete Identity Provider settings, naming what is missing, and opens nothing", async () => {
-      const answer = await request({ ...a, identityProvider: { issuerUrl: identityProvider.issuerUrl, clientId: "family-agenda" } as NonNullable<Context["identityProvider"]> });
+    it("refuses a Context naming an Identity Provider, naming it, and opens nothing", async () => {
+      const answer = await request(sealUncheckedContext(contextKey, { ...a, identityProvider }));
 
       expect(answer.status).toBe(400);
-      expect(await answer.text()).toContain("identityProvider.clientSecret must be set");
-      expect(warnings).toEqual(["Refused a Context with settings the core does not take: identityProvider.clientSecret must be set when identityProvider.issuerUrl is"]);
+      expect(await answer.text()).toContain("identityProvider must not be set");
+      expect(warnings).toEqual([expect.stringMatching(/^Refused a Context with settings the core does not take: identityProvider must not be set/)]);
       expect(opened).toEqual([]);
     });
   });

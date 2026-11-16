@@ -708,6 +708,11 @@ export type IdentityProviderConnection = {
   clientSecret: string;
   /** The claim holding the groups or roles, such as `groups` or, with Logto, `roles`; also requested as a scope. */
   groupsClaim: string;
+  /**
+   * The dotted path of the claim naming the Family, such as `family_id` or `custom_data.familyId`
+   * (supplied mode, ADR-0009); its first segment is requested as a scope instead of the groups claim.
+   */
+  familyIdClaim?: string;
 };
 
 /** What the Instance remembers between sending an Admin to the Identity Provider and their return. */
@@ -724,6 +729,8 @@ export type VerifiedIdentity = {
   emailVerified: boolean;
   /** The strings in the connection's groups claim; none if it is missing or not a list. */
   groups: string[];
+  /** The string at the connection's Family claim path; null without one, or if it is missing or no string. */
+  familyId: string | null;
 };
 
 /** An OIDC client: authorization code flow with PKCE, scopes `openid email profile` and the groups claim. */

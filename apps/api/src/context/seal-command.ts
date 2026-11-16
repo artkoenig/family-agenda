@@ -9,7 +9,7 @@ const inputSchema = z.strictObject({
   blobDirectory: z.string(),
   timeZone: z.string(),
   publicUrl: z.string(),
-  /** Checked as the core checks it, naming what is wrong. */
+  /** Refused as the core refuses it, naming it (ADR-0009). */
   identityProvider: z.unknown().optional(),
   /** How long the Context lasts, 5 minutes by default. */
   ttlSeconds: z.number().int().positive().max(maximumContextLifetimeMs / 1000).default(300),
@@ -23,7 +23,7 @@ const inputSchema = z.strictObject({
 export function sealContextCommand(contextKey: string, input: string, now: number): string {
   if (contextKey.length < minimumKeyLength) throw new Error("CONTEXT_KEY must be set, at least 32 characters long");
   const parsed = inputSchema.safeParse(parseJson(input));
-  if (!parsed.success) throw new Error("Expected JSON { familyId, databaseUrl, familyKey, blobDirectory, timeZone, publicUrl, identityProvider?, ttlSeconds? }");
+  if (!parsed.success) throw new Error("Expected JSON { familyId, databaseUrl, familyKey, blobDirectory, timeZone, publicUrl, ttlSeconds? }");
   const { ttlSeconds, ...rest } = parsed.data;
   const sealed = sealUncheckedContext(contextKey, { ...rest, expiresAt: now + ttlSeconds * 1000 });
   const opened = openContextOutcome(contextKey, sealed, now);

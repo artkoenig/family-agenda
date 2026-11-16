@@ -6,8 +6,21 @@ import type {
   VerifiedIdentity,
 } from "@family-agenda/application";
 
-/** The scopes asked for: the standard ones, and the one named like the groups claim, such as `groups` or `roles`. */
-const scopeOf = (groupsClaim: string) => `openid email profile ${groupsClaim}`;
+/**
+ * The scopes asked for: the standard ones, and the one named like the claim that decides, the first
+ * segment of the Family claim's path (such as `custom_data`) if there is one, else the groups claim.
+ */
+const scopeOf = (connection: IdentityProviderConnection) =>
+  `openid email profile ${connection.familyIdClaim?.split(".")[0] ?? connection.groupsClaim}`;
+
+/** The string at the dotted `path` of `claims`, such as `custom_data.familyId`; null if it is none. */
+function stringAt(claims: Record<string, unknown>, path: string): string | null {
+  let value: unknown = claims;
+  for (const segment of path.split(".")) {
+    value = typeof value === "object" && value !== null ? (value as Record<string, unknown>)[segment] : undefined;
+  }
+  return typeof value === "string" ? value : null;
+}
 
 /** An OIDC client with the authorization code flow and PKCE, through `openid-client`. */
 export class OidcIdentityProviderClient implements IdentityProviderClient {
@@ -42,7 +55,7 @@ export class OidcIdentityProviderClient implements IdentityProviderClient {
     };
     const url = oidc.buildAuthorizationUrl(configuration, {
       redirect_uri: redirectUri,
-      scope: scopeOf(connection.groupsClaim),
+      scope: scopeOf(connection),
       state: pending.state,
       nonce: pending.nonce,
       code_challenge: await oidc.calculatePKCECodeChallenge(
@@ -81,6 +94,7 @@ export class OidcIdentityProviderClient implements IdentityProviderClient {
         groups: Array.isArray(groups)
           ? groups.filter((group) => typeof group === "string")
           : [],
+        familyId: connection.familyIdClaim === undefined ? null : stringAt(claims, connection.familyIdClaim),
       };
     } catch {
       return null;

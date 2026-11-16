@@ -1,5 +1,5 @@
 import type { AdminAccess } from "./admin-access";
-import type { IdentityProviderClient, PendingSignIn } from "./ports";
+import type { IdentityProviderClient, PendingSignIn, VerifiedIdentity } from "./ports";
 
 /** The one Identity Provider, as the operator configured it in the environment (ADR-0007). */
 export type IdentityProviderSettings = {
@@ -11,7 +11,15 @@ export type IdentityProviderSettings = {
   groupsClaim: string;
   /** The address the Family reaches the Instance at, its path prefix included; the redirect URI lies below it. */
   publicBaseUrl: string;
+  /**
+   * In supplied mode (ADR-0009): the claim at the dotted path `claim` must equal the Family's id
+   * `familyId`, and no group is checked besides. Absent in fixed mode, where the group decides.
+   */
+  family?: FamilyClaim;
 };
+
+/** The Family a sign-in must belong to, and the dotted path of the claim naming it, such as `custom_data.familyId`. */
+export type FamilyClaim = { claim: string; familyId: string };
 
 export type SingleSignOnDeps = {
   /** Null when no Identity Provider is configured. */
@@ -27,11 +35,13 @@ export const defaultRequiredGroup = "homelab-admin";
 
 export const defaultGroupsClaim = "groups";
 
+export const defaultFamilyIdClaim = "family_id";
+
 export type SingleSignOnSignInResult =
   | { ok: true; sessionToken: string }
   | {
       ok: false;
-      problem: "sso-failed" | "sso-not-in-group" | "sso-email-unverified";
+      problem: "sso-failed" | "sso-not-in-group" | "sso-no-family" | "sso-other-family" | "sso-email-unverified";
     };
 
 export function createSingleSignOn(deps: SingleSignOnDeps) {
@@ -45,6 +55,7 @@ export function createSingleSignOn(deps: SingleSignOnDeps) {
     clientId: offered.clientId,
     clientSecret: offered.clientSecret,
     groupsClaim: offered.groupsClaim,
+    ...(offered.family ? { familyIdClaim: offered.family.claim } : {}),
   });
 
   return {
@@ -70,14 +81,24 @@ export function createSingleSignOn(deps: SingleSignOnDeps) {
       const redirectUri = offered.publicBaseUrl + singleSignOnCallbackPath;
       const identity = await client.complete(connectionOf(offered), redirectUri, redirectUri + input.query, input.pending);
       if (!identity) return { ok: false, problem: "sso-failed" };
-      // Checked at every sign-in; leaving the group ends a running session only when it expires.
-      if (!identity.groups.includes(offered.requiredGroup)) return { ok: false, problem: "sso-not-in-group" };
+      // Checked at every sign-in; leaving the group or Family ends a running session only when it expires.
+      const refused = admissionProblemOf(offered, identity);
+      if (refused) return { ok: false, problem: refused };
       const email = identity.email?.trim() ?? "";
       if (email === "" || !identity.emailVerified) return { ok: false, problem: "sso-email-unverified" };
       return { ok: true, sessionToken: await admins.startSession({ subject: identity.subject, email }) };
     },
   };
 }
+
+/** Why `identity` may not administer the Family: in supplied mode its Family claim decides, else the required group. */
+function admissionProblemOf(offered: IdentityProviderSettings, identity: VerifiedIdentity): SingleSignOnRefusal | null {
+  if (!offered.family) return identity.groups.includes(offered.requiredGroup) ? null : "sso-not-in-group";
+  if (identity.familyId === null) return "sso-no-family";
+  return identity.familyId === offered.family.familyId ? null : "sso-other-family";
+}
+
+type SingleSignOnRefusal = Extract<SingleSignOnSignInResult, { ok: false }>["problem"];
 
 export type SingleSignOn = ReturnType<typeof createSingleSignOn>;
 
@@ -107,29 +128,49 @@ const maximumTextLength = 200;
 
 type SettingsProblem = Extract<ParsedIdentityProviderSettings, { ok: false }>["problem"];
 
+/** The settings any Identity Provider has, wherever its redirect URI lies. */
+export type IdentityProviderConnectionSettings = Omit<IdentityProviderSettings, "publicBaseUrl" | "family">;
+
+type Checkers<T> = { [K in keyof T]-?: [SettingsProblem, (variables: IdentityProviderVariables) => string | null] };
+
 /** Each setting, checked in turn: its value, or null with the problem it has. */
-const settingCheckers: {
-  [K in keyof IdentityProviderSettings]: [SettingsProblem, (variables: IdentityProviderVariables) => string | null];
-} = {
+const connectionCheckers: Checkers<IdentityProviderConnectionSettings> = {
   issuerUrl: ["invalid-issuer-url", (v) => httpUrl(v.issuerUrl ?? "")],
   clientId: ["invalid-client-id", (v) => shortText(v.clientId ?? "")],
   clientSecret: ["client-secret-missing", (v) => (v.clientSecret ?? "").trim() || null],
   requiredGroup: ["invalid-required-group", (v) => shortText(v.requiredGroup ?? defaultRequiredGroup)],
   groupsClaim: ["invalid-groups-claim", (v) => claimName(v.groupsClaim ?? defaultGroupsClaim)],
+};
+
+const settingCheckers: Checkers<Omit<IdentityProviderSettings, "family">> = {
+  ...connectionCheckers,
   publicBaseUrl: ["invalid-public-url", (v) => httpUrl(v.publicBaseUrl ?? "")],
 };
 
 /** The Identity Provider the variables configure; none when the issuer is not set. */
 export function parseIdentityProviderSettings(variables: IdentityProviderVariables): ParsedIdentityProviderSettings {
+  return checked(variables, settingCheckers);
+}
+
+/**
+ * As `parseIdentityProviderSettings`, without the public base URL: the one Identity Provider of a
+ * core in supplied mode, whose redirect URI lies below each Family's own address (ADR-0009).
+ */
+export function parseIdentityProviderConnection(
+  variables: IdentityProviderVariables,
+): { ok: true; settings: IdentityProviderConnectionSettings | null } | Extract<ParsedIdentityProviderSettings, { ok: false }> {
+  return checked(variables, connectionCheckers);
+}
+
+function checked<T>(variables: IdentityProviderVariables, checkers: Checkers<T>): { ok: true; settings: T | null } | { ok: false; problem: SettingsProblem } {
   if (!variables.issuerUrl?.trim()) return { ok: true, settings: null };
-  const settings: Partial<IdentityProviderSettings> = {};
-  type Checked = keyof typeof settingCheckers;
-  for (const [key, [problem, check]] of Object.entries(settingCheckers) as [Checked, (typeof settingCheckers)[Checked]][]) {
+  const settings: Record<string, string> = {};
+  for (const [key, [problem, check]] of Object.entries<[SettingsProblem, (v: IdentityProviderVariables) => string | null]>(checkers)) {
     const value = check(variables);
     if (value === null) return { ok: false, problem };
     settings[key] = value;
   }
-  return { ok: true, settings: settings as IdentityProviderSettings };
+  return { ok: true, settings: settings as T };
 }
 
 /** A claim name, also requested as a scope: letters, digits, `_`, `-`, `.` and `:` only. */
@@ -159,4 +200,10 @@ function parsedPlainUrl(text: string): URL | null {
   const url = new URL(text);
   const plain = (url.protocol === "http:" || url.protocol === "https:") && url.username + url.password + url.search + url.hash === "";
   return plain ? url : null;
+}
+
+/** The dotted path `OIDC_FAMILY_ID_CLAIM` gives, `family_id` when empty; null for one with an empty or odd segment. */
+export function parseFamilyIdClaim(text: string | undefined): string | null {
+  const path = shortText(text || defaultFamilyIdClaim);
+  return path !== null && /^[\w:-]+(?:\.[\w:-]+)*$/.test(path) ? path : null;
 }

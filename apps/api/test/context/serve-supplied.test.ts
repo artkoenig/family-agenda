@@ -5,6 +5,8 @@ import type { FamilyId } from "@family-agenda/adapters";
 import { createServer } from "node:net";
 import { describe, expect, it } from "vitest";
 import { readSuppliedConfig } from "../../src/config";
+
+const oidc = { OIDC_ISSUER_URL: "https://id.example.org", OIDC_CLIENT_ID: "family-agenda", OIDC_CLIENT_SECRET: "s3cret" };
 import { contextHeader, sealContext } from "../../src/context/context";
 import { serveSupplied } from "../../src/context/serve-supplied";
 
@@ -21,7 +23,7 @@ describe("starting a core in supplied mode", () => {
       });
     });
     const directory = await mkdtemp(join(tmpdir(), "family-agenda-supplied-"));
-    const config = readSuppliedConfig({ CONTEXT_MODE: "supplied", CONTEXT_KEY: contextKey, PORT: String(free), CALLER_PORT: "0", TESSDATA_DIRECTORY: join(directory, "tessdata"), BUNDLED_TESSDATA_DIRECTORY: "" });
+    const config = readSuppliedConfig({ ...oidc, CONTEXT_MODE: "supplied", CONTEXT_KEY: contextKey, PORT: String(free), CALLER_PORT: "0", TESSDATA_DIRECTORY: join(directory, "tessdata"), BUNDLED_TESSDATA_DIRECTORY: "" });
     const core = await serveSupplied(config, { info: () => {}, warn: () => {}, error: () => {} });
     try {
       await expect(fetch(`http://127.0.0.1:${free}/api/health`)).rejects.toThrow();
@@ -36,7 +38,7 @@ describe("starting a core in supplied mode", () => {
     const directory = await mkdtemp(join(tmpdir(), "family-agenda-supplied-"));
     const lines: string[] = [];
     const log = { info: (line: string) => lines.push(line), warn: (line: string) => lines.push(line), error: (line: string) => lines.push(line) };
-    const config = readSuppliedConfig({ CONTEXT_MODE: "supplied", CONTEXT_KEY: contextKey, CALLER_PORT: "0", TESSDATA_DIRECTORY: join(directory, "tessdata"), BUNDLED_TESSDATA_DIRECTORY: "" });
+    const config = readSuppliedConfig({ ...oidc, CONTEXT_MODE: "supplied", CONTEXT_KEY: contextKey, CALLER_PORT: "0", TESSDATA_DIRECTORY: join(directory, "tessdata"), BUNDLED_TESSDATA_DIRECTORY: "" });
     const core = await serveSupplied(config, log);
     try {
       const health = await fetch(`http://127.0.0.1:${core.port}/api/health`);
@@ -74,7 +76,7 @@ describe("starting a core in supplied mode", () => {
         });
       });
     });
-    const config = readSuppliedConfig({ CONTEXT_MODE: "supplied", CONTEXT_KEY: contextKey, CALLER_PORT: "0", TRIGGER_PORT: String(triggerPort), TRIGGER_TOKEN: "s3cret-token", TESSDATA_DIRECTORY: join(directory, "tessdata"), BUNDLED_TESSDATA_DIRECTORY: "" });
+    const config = readSuppliedConfig({ ...oidc, CONTEXT_MODE: "supplied", CONTEXT_KEY: contextKey, CALLER_PORT: "0", TRIGGER_PORT: String(triggerPort), TRIGGER_TOKEN: "s3cret-token", TESSDATA_DIRECTORY: join(directory, "tessdata"), BUNDLED_TESSDATA_DIRECTORY: "" });
     const core = await serveSupplied(config, log);
     try {
       expect((await fetch(`http://127.0.0.1:${core.port}/api/health`)).status).toBe(200);

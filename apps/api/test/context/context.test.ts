@@ -82,37 +82,19 @@ describe("a Context", () => {
     expect(contextOfRequest(key, new Request("http://core/", { headers: { cookie: `context=${sealed}` } }), 0)).toBeNull();
   });
 
-  it("carries the Family's time zone, public address and Identity Provider", () => {
-    const withProvider = { ...context, publicUrl: "https://a.example.org/agenda/", identityProvider };
-    const opened = openContext(key, sealContext(key, withProvider), 1_000);
-    expect(opened).toEqual({
-      ...context,
-      identityProvider: { ...identityProvider, requiredGroup: "homelab-admin", groupsClaim: "groups", publicBaseUrl: "https://a.example.org/agenda" },
-    });
-    expect(openContext(key, sealContext(key, context), 1_000)).not.toHaveProperty("identityProvider");
-    expect(sealContext(key, withProvider)).not.toContain("s3cret");
+  it("carries the Family's time zone and public address, the latter without a trailing slash", () => {
+    expect(openContext(key, sealContext(key, { ...context, publicUrl: "https://a.example.org/agenda/" }), 1_000)).toEqual(context);
   });
 
-  it("carries the claim the groups are read from, by default groups", () => {
-    const opened = (groupsClaim?: string) => openContext(key, sealContext(key, { ...context, identityProvider: { ...identityProvider, ...(groupsClaim ? { groupsClaim } : {}) } }), 1_000);
-    expect(opened("roles")?.identityProvider?.groupsClaim).toBe("roles");
-    expect(opened()?.identityProvider?.groupsClaim).toBe("groups");
-  });
-
-
-  it.each<[string, Partial<Record<keyof Context, unknown>>, RegExp]>([
+  it.each<[string, Partial<Record<keyof Context | "identityProvider", unknown>>, RegExp]>([
     ["without a time zone", { timeZone: undefined }, /timeZone must be/],
     ["with a time zone that is none", { timeZone: "Mars/Olympus" }, /timeZone must be/],
     ["with an offset for a time zone", { timeZone: "+01:00" }, /timeZone must be/],
     ["without a public address", { publicUrl: undefined }, /publicUrl must be/],
     ["with a public address that is no http address", { publicUrl: "ftp://a.example.org" }, /publicUrl must be/],
     ["with a public address with a query", { publicUrl: "https://a.example.org/?x=1" }, /publicUrl must be/],
-    ["with an Identity Provider without issuer", { identityProvider: { clientId: "x", clientSecret: "y" } }, /identityProvider.issuerUrl must be set/],
-    ["with an Identity Provider without client id", { identityProvider: { ...identityProvider, clientId: "" } }, /identityProvider.clientId must be set/],
-    ["with an Identity Provider without client secret", { identityProvider: { ...identityProvider, clientSecret: undefined } }, /identityProvider.clientSecret must be set/],
-    ["with an empty required group", { identityProvider: { ...identityProvider, requiredGroup: " " } }, /identityProvider.requiredGroup must not be empty/],
-    ["with a groups claim that is no claim name", { identityProvider: { ...identityProvider, groupsClaim: "a b" } }, /identityProvider.groupsClaim must be a claim name/],
-    ["with an issuer that is no http address", { identityProvider: { ...identityProvider, issuerUrl: "id.example.org" } }, /identityProvider.issuerUrl must be an http/],
+    ["with an Identity Provider, which comes from the environment", { identityProvider }, /identityProvider must not be set: .*OIDC_\* variables/],
+    ["with an empty Identity Provider", { identityProvider: {} }, /identityProvider must not be set/],
   ])("is refused %s, naming what is wrong", (_, change, problem) => {
     const sealed = sealContext(key, { ...context, ...change } as Context);
     expect(openContext(key, sealed, 1_000)).toBeNull();

@@ -8,14 +8,17 @@ describe("the OIDC client", () => {
   let provider: FakeIdentityProvider;
   const client = new OidcIdentityProviderClient();
   let groupsClaim = "groups";
+  let familyIdClaim: string | undefined;
   const connection = () => ({
     issuerUrl: provider.issuer,
     clientId: "family-agenda",
     clientSecret: "s3cret",
     groupsClaim,
+    ...(familyIdClaim === undefined ? {} : { familyIdClaim }),
   });
   beforeEach(async () => {
     groupsClaim = "groups";
+    familyIdClaim = undefined;
     provider = await FakeIdentityProvider.start();
   });
   afterEach(async () => {
@@ -68,7 +71,27 @@ describe("the OIDC client", () => {
       email: "anna@example.org",
       emailVerified: true,
       groups: ["homelab-admin"],
+      familyId: null,
     });
+  });
+
+  it("reads the Family id at a nested claim path, and asks for its first segment as a scope", async () => {
+    familyIdClaim = "custom_data.familyId";
+    provider.claims = { sub: "sub-4", custom_data: { familyId: "f-1" }, family_id: "other" };
+
+    const { query, result } = await signIn();
+
+    expect(query.get("scope")).toBe("openid email profile custom_data");
+    expect((await result)?.familyId).toBe("f-1");
+  });
+
+  it("reads a Family id that is missing, no string, or below no object as none", async () => {
+    familyIdClaim = "custom_data.familyId";
+    for (const claims of [{}, { custom_data: { familyId: 7 } }, { custom_data: "f-1" }, { custom_data: null }]) {
+      provider.claims = { sub: "sub-5", ...claims };
+      const { result } = await signIn();
+      expect((await result)?.familyId).toBeNull();
+    }
   });
 
   it("reads the groups from the configured claim, and asks for it as a scope", async () => {
@@ -91,6 +114,7 @@ describe("the OIDC client", () => {
       email: null,
       emailVerified: false,
       groups: [],
+      familyId: null,
     });
   });
 

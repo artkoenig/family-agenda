@@ -20,7 +20,7 @@ describe("the port of triggered operations", () => {
 
 describe("the caller port of supplied mode", () => {
   it("is not published by the compose file", () => {
-    const { callerPort } = readSuppliedConfig({ CONTEXT_MODE: "supplied", CONTEXT_KEY: "a-context-key-of-at-least-32-characters", CALLER_PORT: "3002" });
+    const { callerPort } = readSuppliedConfig({ CONTEXT_MODE: "supplied", CONTEXT_KEY: "a-context-key-of-at-least-32-characters", CALLER_PORT: "3002", OIDC_ISSUER_URL: "https://id.example.org", OIDC_CLIENT_ID: "family-agenda", OIDC_CLIENT_SECRET: "s3cret" });
     const published = Object.values(compose.services).flatMap((service) => service.ports ?? []);
     expect(published.some((mapping) => mapping.endsWith(`:${callerPort}`))).toBe(false);
   });

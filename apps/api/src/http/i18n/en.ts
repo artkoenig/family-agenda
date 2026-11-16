@@ -76,6 +76,10 @@ export const en = {
       "Signing in through the Identity Provider did not work. Try again.",
     "sso-not-in-group":
       "Your account at the Identity Provider is not in the group or role that may administer Family Agenda. Ask whoever runs the Identity Provider to add you to it.",
+    "sso-no-family":
+      "Your account at the Identity Provider belongs to no Family. Ask whoever runs the Identity Provider to assign it to this Family.",
+    "sso-other-family":
+      "Your account at the Identity Provider belongs to another Family, not this one. Sign in at your own Family's address.",
     "sso-email-unverified":
       "The Identity Provider has not verified an email address for your account.",
     "invalid-interval": `The polling interval must be between ${pollIntervalRange.minSeconds / 60} minute and ${pollIntervalRange.maxSeconds / 86_400} days.`,
