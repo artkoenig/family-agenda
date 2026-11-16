@@ -161,11 +161,11 @@ One run of the Family's background work: the Sources whose polling interval has 
 _Avoid_: Polling job, sync
 
 **Preparing the Family**:
-Bringing a Family's database up to date: migrating its schema, writing its Family id while it has none, moving blobs of the earlier layout into the Family's folder of the blob volume, recording the Source Types seen for the first time as disabled, and migrating the configuration of the Sources of enabled ones. The `api` and `worker` do it when they start; it is also a Triggered operation, and running it again changes nothing.
+Bringing a Family's database up to date: migrating its schema, writing its Family id while it has none, moving blobs of the earlier layout into the Family's folder of the blob volume, recording the Source Types seen for the first time as disabled, and migrating the configuration of the Sources of enabled ones. The `api` and `worker` do it when they start, and a core in supplied mode when it opens a Family whose database this release has not prepared; running it again changes nothing.
 _Avoid_: Bootstrap, setup, init
 
 **Triggered operation**:
-A piece of the `worker`'s work, such as Due work, the purge or the secret sweep, Preparing the Family, or entering an Admin and resetting an Admin's password, that something outside the core runs on request through the `api`'s own unpublished port, with the Instance's trigger token, and in supplied mode with the Context of the Family it acts on. It runs the same code as the `worker`'s schedule, as starting, or as the command line.
+A piece of the `worker`'s work, such as Due work, the purge or the secret sweep, or entering an Admin and resetting an Admin's password, that something outside the core runs on request through the `api`'s own unpublished port, with the Instance's trigger token, and in supplied mode with the Context of the Family it acts on. It runs the same code as the `worker`'s schedule or as the command line.
 _Avoid_: Job, webhook, internal API
 
 **Companion**:

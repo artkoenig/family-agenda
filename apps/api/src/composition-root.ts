@@ -11,6 +11,8 @@ import {
   holdsSecrets,
   isSchemaCurrent,
   migrationsFolder,
+  refuseNewerMigrationHistory,
+  refuseOldMigrationHistory,
   storedFamilyId,
   FamilyIdConflictError,
   OpenAiCompatibleExtractor,
@@ -267,7 +269,7 @@ const connectionOf = (config: DatabaseConfig): PostgresConnection =>
 
 /**
  * Wires one Family's use cases to its database, stores and cache, on the wiring the process shares,
- * after Preparing the Family, as the Triggered operation `prepare-family` does.
+ * after Preparing the Family.
  */
 export async function bootFamily(shared: SharedWiring, config: FamilyConfig): Promise<Application> {
   const postgres = connectionOf(config);
@@ -289,20 +291,34 @@ export class FamilyNotPreparedError extends Error {
 
 /**
  * Wires the Family `familyId` names on its database, as a core in supplied mode opens one from a
- * Context (ADR-0003), without writing anything: no migration, no Family id, no blob move, no Source
- * Types recorded. A database whose schema is not this version's, or that holds no or another Family
- * id, is refused; Preparing the Family is a Triggered operation of its own.
+ * Context (ADR-0003). A database that holds no Family, or one an older release prepared, is refused
+ * as not prepared, for the core to prepare it first; one a newer release migrated, one of the old
+ * data model, or one that holds another Family id, is refused with the error that says so. Each is
+ * refused before anything is written. On a prepared one it migrates nothing, writes no Family id
+ * and moves no blobs; it only records the Source Types seen for the first time, as starting does.
  */
 export async function openPreparedFamily(shared: SharedWiring, config: FamilyConfig & { familyId: FamilyId }): Promise<Application> {
   const postgres = connectionOf(config);
   const masterKey = await withDatabase(postgres, async () => {
-    if (!(await isSchemaCurrent(postgres.db, migrationsFolder))) throw new FamilyNotPreparedError();
+    await checkPreparedSchema(postgres);
     const stored = await storedFamilyId(postgres.db);
     if (stored === null) throw new FamilyNotPreparedError();
     if (stored !== config.familyId) throw new FamilyIdConflictError(stored, config.familyId);
+    await startSourceTypes(shared, postgres, config.familyId);
     return familyKeyOf(postgres, config);
   });
   return wireFamily(shared, config, postgres, masterKey, config.familyId);
+}
+
+/**
+ * Refuses, without writing anything, a database whose schema is not this release's: one of the old
+ * data model or migrated by a newer release with the error that says so, one an older release
+ * prepared, or an empty one, as not prepared.
+ */
+export async function checkPreparedSchema(postgres: Pick<PostgresConnection, "db">): Promise<void> {
+  await refuseOldMigrationHistory(postgres.db, migrationsFolder);
+  await refuseNewerMigrationHistory(postgres.db, migrationsFolder);
+  if (!(await isSchemaCurrent(postgres.db, migrationsFolder))) throw new FamilyNotPreparedError();
 }
 
 /**
@@ -341,11 +357,19 @@ async function prepareOn(
   const prepared = { familyId: await new PostgresFamilyRepository(postgres.db).familyId() };
   // Blobs of the layout before Family folders move into the Family's folder (docs/upgrading.md).
   if (blobDirectory !== undefined) await new FileBlobStore(blobDirectory, prepared.familyId).adoptTopLevelBlobs();
-  const registry = shared.plugins.forFamily(prepared.familyId);
+  await startSourceTypes(shared, postgres, prepared.familyId);
+  return prepared;
+}
+
+/**
+ * Records the Source Types and catalogue entries seen for the first time as disabled, and migrates
+ * the configuration of the Sources of enabled ones; running it again changes nothing.
+ */
+async function startSourceTypes(shared: SharedWiring, postgres: PostgresConnection, familyId: FamilyId): Promise<void> {
+  const registry = shared.plugins.forFamily(familyId);
   const sourceTypes = new PostgresSourceTypeRepository(postgres.db);
   await createSourceTypeAccess({ registry, sourceTypes, sources: new PostgresSourceRepository(postgres.db), clock: shared.clock }).start();
   await createCatalogueAccess({ cached: createCache(shared.clock), registry, sourceTypes, catalogues: new PostgresCatalogueRepository(postgres.db) }).start();
-  return prepared;
 }
 
 function wireFamily(

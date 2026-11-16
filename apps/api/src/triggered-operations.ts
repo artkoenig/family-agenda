@@ -1,10 +1,8 @@
 import { timingSafeEqual } from "node:crypto";
-import { FamilyIdConflictError, NewerMigrationHistoryError, OldMigrationHistoryError, parseFamilyId, type FamilyId } from "@family-agenda/adapters";
 import type { AdminAccess, DueWorkReport, StepOutcome } from "@family-agenda/application";
 import { serve, type ServerType } from "@hono/node-server";
 import { Hono } from "hono";
 import { runDueWork, workFailures, type BackgroundWork, type WorkLog } from "./background-work";
-import type { PreparedFamily } from "./composition-root";
 import type { TriggerConfig } from "./config";
 import { contextHeader, openContextOutcome, type OpenedContext } from "./context/context";
 import { databaseKeyOf, type OpeningProblem, type SuppliedFamilies } from "./context/supplied-families";
@@ -22,18 +20,16 @@ export type TriggerAnswers = {
   "due-work": DueWorkAnswer;
   purge: { purged: number; deleted: number };
   "secret-sweep": { removed: number };
-  "prepare-family": PreparedFamily;
   "enter-admin": { email: string; outcome: "first" | "added" | "exists" };
   "reset-admin-password": { email: string; newPassword: string };
 };
 
 /**
- * What the Triggered operations act on: the worker's work; Preparing the Family, which works on
- * the Family's database itself, not on a booted Family, so that it also prepares an empty one;
- * and the Admins, for an operator who is not signed in.
+ * What the Triggered operations act on: the worker's work, and the Admins, for an operator who is
+ * not signed in. Preparing the Family is none of them: a core prepares its Family when it starts,
+ * or in supplied mode when it opens one.
  */
 export type TriggeredWork = BackgroundWork & {
-  prepare(familyId?: FamilyId): Promise<PreparedFamily>;
   admins: Pick<AdminAccess, "enterAdmin" | "issueNewPassword">;
 };
 
@@ -60,25 +56,6 @@ class Refused extends Error {
   }
 }
 
-/** The Family id a `prepare-family` body names, if any; a body that names no UUID is refused. */
-function familyIdIn(body: unknown): FamilyId | undefined {
-  const given = typeof body === "object" && body !== null ? (body as { familyId?: unknown }).familyId : undefined;
-  if (given === undefined) return undefined;
-  const familyId = parseFamilyId(given);
-  if (familyId === null) throw new Refused(400, { error: "invalid-family-id" });
-  return familyId;
-}
-
-async function prepareFamily(work: TriggeredWork, body: BodyReader): Promise<PreparedFamily> {
-  const familyId = familyIdIn(await body());
-  try {
-    return await work.prepare(familyId);
-  } catch (error) {
-    if (error instanceof FamilyIdConflictError) throw new Refused(409, { error: "family-id-differs", familyId: error.stored });
-    throw error;
-  }
-}
-
 /** The email address a body names, as given; a body that names no text is refused. */
 async function emailIn(body: BodyReader): Promise<string> {
   const given: unknown = await body();
@@ -87,14 +64,14 @@ async function emailIn(body: BodyReader): Promise<string> {
   return email;
 }
 
-async function enterAdmin(work: FamilyWork, body: BodyReader): Promise<TriggerAnswers["enter-admin"]> {
+async function enterAdmin(work: TriggeredWork, body: BodyReader): Promise<TriggerAnswers["enter-admin"]> {
   const result = await work.admins.enterAdmin({ email: await emailIn(body) });
   if (!result.ok) throw new Refused(400, { error: result.problem });
   return { email: result.email, outcome: result.outcome };
 }
 
 /** The new password is in the answer alone, never in a log line. */
-async function resetAdminPassword(work: FamilyWork, body: BodyReader): Promise<TriggerAnswers["reset-admin-password"]> {
+async function resetAdminPassword(work: TriggeredWork, body: BodyReader): Promise<TriggerAnswers["reset-admin-password"]> {
   const result = await work.admins.issueNewPassword({ email: await emailIn(body) });
   if (!result.ok) throw new Refused(result.problem === "invalid-email" ? 400 : 404, { error: result.problem });
   return { email: result.email, newPassword: result.newPassword };
@@ -114,31 +91,13 @@ function joined<T>(run: () => Promise<T>): () => Promise<T> {
   };
 }
 
-/**
- * Lets prepares of one `api` take turns rather than share a run as `joined` does: each may name
- * another Family id and must get its own answer, refused or not. Across containers, the migration
- * lock in Postgres serialises them.
- */
-function queued<A extends unknown[], T>(run: (...args: A) => Promise<T>): (...args: A) => Promise<T> {
-  let previous: Promise<unknown> = Promise.resolve();
-  return (...args) => {
-    const next = previous.then(() => run(...args));
-    previous = next.catch(() => {});
-    return next;
-  };
-}
-
-/** What a booted Family's operations act on: all of its Triggered work but Preparing the Family. */
-type FamilyWork = Omit<TriggeredWork, "prepare">;
-type FamilyOperations = Omit<Operations, "prepare-family">;
-
-const dueWorkAnswer = async (work: FamilyWork, log: WorkLog): Promise<DueWorkAnswer> => {
+const dueWorkAnswer = async (work: TriggeredWork, log: WorkLog): Promise<DueWorkAnswer> => {
   const report = await runDueWork(work, log);
   return { polled: stepOf(report.polled), extracted: stepOf(report.extracted) };
 };
 
 /** The worker's work as named operations: the same calls, and the same log lines, as its schedules. */
-function familyOperations(work: FamilyWork, log: WorkLog, dueWork = joined(() => dueWorkAnswer(work, log))): FamilyOperations {
+function triggeredOperations(work: TriggeredWork, log: WorkLog, dueWork = joined(() => dueWorkAnswer(work, log))): Operations {
   return {
     "due-work": dueWork,
     purge: () => work.retention.purge(),
@@ -146,11 +105,6 @@ function familyOperations(work: FamilyWork, log: WorkLog, dueWork = joined(() =>
     "enter-admin": (body) => enterAdmin(work, body),
     "reset-admin-password": (body) => resetAdminPassword(work, body),
   };
-}
-
-function triggeredOperations(work: TriggeredWork, log: WorkLog): Operations {
-  const { "due-work": dueWork, purge, "secret-sweep": sweep, ...admins } = familyOperations(work, log);
-  return { "due-work": dueWork, purge, "secret-sweep": sweep, "prepare-family": queued((body: BodyReader) => prepareFamily(work, body)), ...admins };
 }
 
 /** The JSON body of a request; none when it is empty, and refused when it is no JSON. */
@@ -191,11 +145,11 @@ export type SuppliedTriggerOptions = {
   now?: () => number;
 };
 
-type FamilyOperationName = keyof FamilyOperations;
-
 const openingRefusals: Record<OpeningProblem, () => Refused> = {
   "family-id-differs": () => new Refused(403, { error: "family-id-differs" }),
-  "family-not-prepared": () => new Refused(409, { error: "family-not-prepared" }),
+  "migrated-by-newer-release": () => new Refused(409, { error: "migrated-by-newer-release" }),
+  "old-data-model": () => new Refused(409, { error: "old-data-model" }),
+  migrating: () => new Refused(503, { error: "migrating" }),
   unavailable: () => new Refused(503, { error: "unavailable" }),
 };
 
@@ -208,40 +162,16 @@ function contextOf(request: Request, contextKey: string, now: number): OpenedCon
   throw new Refused(401, { error: "invalid-context" });
 }
 
-/** Why preparing a database is refused, by the error it stopped with; nothing has changed. */
-function preparingRefusal(error: unknown): Refused | null {
-  if (error instanceof FamilyIdConflictError) return new Refused(409, { error: "family-id-differs", familyId: error.stored });
-  if (error instanceof NewerMigrationHistoryError) return new Refused(409, { error: "migrated-by-newer-release" });
-  if (error instanceof OldMigrationHistoryError) return new Refused(409, { error: "old-data-model" });
-  return null;
-}
-
-/** In supplied mode the Family id is the Context's: a body may only confirm it. */
-async function preparedFor(families: SuppliedFamilies, context: OpenedContext, body: BodyReader, log: WorkLog): Promise<PreparedFamily> {
-  const named = familyIdIn(await body());
-  if (named !== undefined && named !== context.familyId) throw new Refused(400, { error: "family-id-not-the-contexts" });
-  try {
-    return await families.prepare(context);
-  } catch (error) {
-    const refusal = preparingRefusal(error);
-    if (refusal) throw refusal;
-    // As opening answers a database it cannot reach; the message could name it, so only the kind of error.
-    log.error(`${workFailures["prepare-family"]} the Family ${context.familyId}`, error instanceof Error ? error.name : "unknown");
-    throw new Refused(503, { error: "unavailable" });
-  }
-}
-
 /**
  * The Triggered operations of a core in supplied mode (ADR-0003): each request carries the token
- * of the port and the Context of the Family it acts on. Preparing the Family is the one operation
- * that writes to a database the core has not opened; every other opens the Family read-only, as a
- * page request does, and is refused for a database not prepared by this release.
+ * of the port and the Context of the Family it acts on, and opens the Family as a page request
+ * does, preparing a database not yet prepared by this release first.
  */
 export function createSuppliedTriggerApp(options: SuppliedTriggerOptions): Hono {
   const { contextKey, families, log, now = Date.now } = options;
   // Due work under way, by database: a trigger during a run waits for it, whichever opening it came by.
   const dueWorkRuns = new Map<string, Promise<DueWorkAnswer>>();
-  const joinedDueWork = (context: OpenedContext, work: FamilyWork) => {
+  const joinedDueWork = (context: OpenedContext, work: TriggeredWork) => {
     const database = databaseKeyOf(context);
     let running = dueWorkRuns.get(database);
     if (!running) {
@@ -251,11 +181,11 @@ export function createSuppliedTriggerApp(options: SuppliedTriggerOptions): Hono 
     return running;
   };
   const onFamily =
-    <Name extends FamilyOperationName>(name: Name) =>
+    <Name extends OperationName>(name: Name) =>
     async (body: BodyReader, request: Request): Promise<TriggerAnswers[Name]> => {
       const context = contextOf(request, contextKey, now());
       const opening = await families.serve(context, ({ application }) =>
-        familyOperations(application, log, () => joinedDueWork(context, application))[name](body),
+        triggeredOperations(application, log, () => joinedDueWork(context, application))[name](body),
       );
       if (opening.ok) return opening.family;
       log.warn(`Could not open the Family ${context.familyId} for the Triggered operation ${name}: ${opening.problem}`);
@@ -266,7 +196,6 @@ export function createSuppliedTriggerApp(options: SuppliedTriggerOptions): Hono 
       "due-work": onFamily("due-work"),
       purge: onFamily("purge"),
       "secret-sweep": onFamily("secret-sweep"),
-      "prepare-family": (body, request) => preparedFor(families, contextOf(request, contextKey, now()), body, log),
       "enter-admin": onFamily("enter-admin"),
       "reset-admin-password": onFamily("reset-admin-password"),
     },

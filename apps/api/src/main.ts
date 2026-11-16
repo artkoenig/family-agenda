@@ -1,7 +1,6 @@
-import type { FamilyId } from "@family-agenda/adapters";
 import { serve } from "@hono/node-server";
 import { openAgendaAccess } from "@family-agenda/application";
-import { bootFamily, bootShared, prepareFamily } from "./composition-root";
+import { bootFamily, bootShared } from "./composition-root";
 import { readConfig, readMode, readSuppliedConfig } from "./config";
 import { serveSupplied } from "./context/serve-supplied";
 import { createHttpApp } from "./http/app";
@@ -39,8 +38,6 @@ async function serveFixed() {
     dueWork: application.dueWork,
     retention: application.retention,
     secretSweep: application.secretSweep,
-    // On the Family's database itself, as starting does.
-    prepare: (familyId?: FamilyId) => prepareFamily(shared, config, familyId),
     admins: application.admins,
   };
   const triggers = serveTriggers(triggered, config.trigger, { info: console.log, warn: console.warn, error: console.error });

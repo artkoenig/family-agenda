@@ -50,7 +50,6 @@ export const workFailures = {
   "due-work": "Running due Sources and Extraction failed:",
   purge: "Purging messages past their retention failed:",
   "secret-sweep": "Removing secrets nothing refers to failed:",
-  "prepare-family": "Preparing the Family failed:",
   "enter-admin": "Entering an Admin failed:",
   "reset-admin-password": "Resetting an Admin's password failed:",
 } as const;

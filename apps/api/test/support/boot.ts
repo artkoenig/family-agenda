@@ -19,7 +19,6 @@ import { PgBossWorkRunner } from "@family-agenda/adapters";
 import type { WorkLog } from "../../src/background-work";
 import type { TriggeredWork } from "../../src/triggered-operations";
 import {
-  prepareFamily,
   bootFamily,
   bootShared,
   bootWorker,
@@ -162,7 +161,6 @@ export async function bootForTest(options: TestOptions = {}): Promise<TestInstan
       dueWork: instance.app.dueWork,
       retention: instance.app.retention,
       secretSweep: instance.app.secretSweep,
-      prepare: (familyId) => prepareFamily(shared, config, familyId),
       admins: instance.app.admins,
     }),
     installPlugin,
