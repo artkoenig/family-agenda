@@ -36,7 +36,7 @@ function up(value: string | undefined): number {
     }
   }
   console.log(`\nPreview of pull request ${value} is running at ${plan.url}`);
-  console.log(`Admin area: ${plan.url}/admin: Admins sign in only through an Identity Provider, which a preview does not connect yet`);
+  console.log(`Admin area: ${plan.url}/admin: sign in with any name on the mock Identity Provider's page, no password`);
   console.log(`Remove it with: pnpm preview down ${value}`);
   return 0;
 }

@@ -37,6 +37,8 @@ describe("planning a preview of a pull request", () => {
     expect(new Set([a.worktree, b.worktree]).size).toBe(2);
     expect(new Set([a.image, b.image]).size).toBe(2);
     expect(new Set([a.demoImage, b.demoImage]).size).toBe(2);
+    expect(a.idpPort).toBe(20_189);
+    expect(new Set([a.port, a.idpPort, b.port, b.idpPort]).size).toBe(4);
   });
 
   it("checks the pull request's code out, builds it and the demo Source, generates the plugin containers and waits until it is healthy before seeding", () => {
@@ -87,6 +89,23 @@ describe("planning a preview of a pull request", () => {
     });
   });
 
+  it("points the Instance at the mock Identity Provider that the overlay starts beside it", () => {
+    const { start } = composeSteps(planPreview(189, repo, user).up);
+
+    expect(start.env).toMatchObject({
+      PREVIEW_IDP_PORT: "20189",
+      OIDC_ISSUER_URL: "http://localhost:20189/preview",
+      OIDC_REQUIRED_GROUP: "homelab-admin",
+      OIDC_GROUPS_CLAIM: "groups",
+    });
+    expect(start.env?.OIDC_CLIENT_ID).toBeTruthy();
+    expect(start.env?.OIDC_CLIENT_SECRET).toBeTruthy();
+  });
+
+  it("keeps every preview's port below the mock Identity Provider ports", () => {
+    expect(planPreview(9999, repo, user).port).toBeLessThan(planPreview(1, repo, user).idpPort);
+  });
+
   it("removes everything the preview made when it comes down", () => {
     const { down } = planPreview(189, repo, user);
 
@@ -98,7 +117,7 @@ describe("planning a preview of a pull request", () => {
     ]);
   });
 
-  it.each([0, -1, 1.5, Number.NaN, 50_000])("refuses %s as a pull request number", (pr) => {
+  it.each([0, -1, 1.5, Number.NaN, 10_000])("refuses %s as a pull request number", (pr) => {
     expect(() => planPreview(pr, repo, user)).toThrow(/pull request number/);
   });
 });

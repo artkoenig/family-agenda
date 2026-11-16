@@ -12,13 +12,19 @@ export type PreviewPlan = {
   image: string;
   /** The image the demo Source's plugin container is built into, from the clone `pnpm preview` runs in. */
   demoImage: string;
+  /** Where the mock Identity Provider that Admins sign in through listens, on `localhost`. */
+  idpPort: number;
   up: Command[];
   down: Command[];
 };
 
-/** Previews listen on 9000 plus the pull request number, so a number alone settles the port. */
+/**
+ * Previews listen on 9000 plus the pull request number, and their mock Identity Provider on 20000
+ * plus it, so a number alone settles both ports, and no two previews' ports meet.
+ */
 const firstPort = 9000;
-const largestPullRequest = 49_999;
+const firstIdpPort = 20_000;
+const largestPullRequest = 9999;
 const previewPrefix = "fa-pr-";
 
 /**
@@ -40,6 +46,7 @@ export function planPreview(pullRequest: number, repoRoot: string, user: string)
   const image = `family-agenda-preview:pr-${pullRequest}`;
   const demoImage = `family-agenda-demo-source-preview:pr-${pullRequest}`;
   const ref = `refs/previews/pr-${pullRequest}`;
+  const idpPort = firstIdpPort + pullRequest;
 
   const env = {
     PORT: String(port),
@@ -49,6 +56,13 @@ export function planPreview(pullRequest: number, repoRoot: string, user: string)
     PREVIEW_IMAGE: image,
     PREVIEW_DEMO_IMAGE: demoImage,
     EGRESS_PROXY_IMAGE: image,
+    PREVIEW_IDP_PORT: String(idpPort),
+    // The overlay's mock Identity Provider, which takes any client and issues OIDC_REQUIRED_GROUP.
+    OIDC_ISSUER_URL: `http://localhost:${idpPort}/preview`,
+    OIDC_CLIENT_ID: "family-agenda-preview",
+    OIDC_CLIENT_SECRET: "preview",
+    OIDC_REQUIRED_GROUP: "homelab-admin",
+    OIDC_GROUPS_CLAIM: "groups",
   };
   const overlay = join(repoRoot, "tools", "preview", "compose.preview.yaml");
   const composeWith = (files: string[], args: string[]): Command => ({
@@ -69,6 +83,7 @@ export function planPreview(pullRequest: number, repoRoot: string, user: string)
     worktree,
     image,
     demoImage,
+    idpPort,
     up: [
       { file: "git", args: ["fetch", "origin", `+pull/${pullRequest}/head:${ref}`] },
       { file: "git", args: ["worktree", "add", "--force", "--detach", worktree, ref] },
