@@ -193,7 +193,7 @@ The path an Instance is served below, such as `/agenda`: the path of `PUBLIC_URL
 _Avoid_: Base path, subpath
 
 **Recovery Kit**:
-What an Admin prints or saves at first start to recover the Instance; without it, a backup cannot restore Source credentials.
+What an Admin prints or saves after the first sign-in to recover the Instance; the Admin area shows it until an Admin confirms it was saved; without it, a backup cannot restore Source credentials.
 _Avoid_: Recovery key, master key (for the document), backup code
 
 **Single sign-on**:

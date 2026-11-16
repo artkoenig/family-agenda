@@ -52,7 +52,7 @@ curl -fsSLO https://github.com/artkoenig/family-agenda/releases/latest/download/
 docker compose up -d
 ```
 
-Connect an OIDC Identity Provider ([docs/configuration.md](docs/configuration.md#single-sign-on-oidc)), open `http://localhost:8080`, sign in through it, keep the **Recovery Kit** safe. Then add Family Members, Agendas and Sources in the Admin area.
+Connect an OIDC Identity Provider ([docs/configuration.md](docs/configuration.md#single-sign-on-oidc)), open `http://localhost:8080`, sign in through it (there is no setup page), keep the **Recovery Kit** safe: the Admin area shows it until you confirm it was saved. The Family Language starts as English with OCR in English; change them under Display and AI. Then add Family Members, Agendas and Sources in the Admin area.
 
 An Instance runs the release its `compose.yaml` comes from. To move to another release, back up first and follow [docs/upgrading.md](docs/upgrading.md). Running it in Portainer: [docs/portainer.md](docs/portainer.md).
 
