@@ -27,7 +27,7 @@ A person in the Family whom Items can concern, child or adult.
 _Avoid_: User, profile, kid
 
 **Admin**:
-A parent who signs in with their own account, by password or through the Identity Provider, to manage settings and Sources, and to delete Items that should not be there. One who signs in only through the Identity Provider, or whom an operator entered by email address, has no password until another Admin or a password reset sets one.
+A parent who signs in through the Identity Provider to manage settings and Sources, and to delete Items that should not be there. The Identity Provider alone decides who is one: by its required role or group in fixed mode, by the Family id it names in supplied mode, where each Admin belongs to exactly one Family. The core keeps no accounts and no passwords.
 _Avoid_: Owner, superuser, parent account
 
 **Agenda**:
@@ -129,7 +129,7 @@ _Avoid_: Late, expired, missed
 ### Operation
 
 **Context**:
-What a core in supplied mode needs to open the Family one request is for: its Family id, its database, its family key and its blob location, and the settings that are the Family's own: its time zone, its public address (the path prefix included) and, if any, its Identity Provider, with an expiry at most a day ahead, encrypted and signed by a trusted caller in front with the Context key. It reaches the core only on the caller port; without a valid one the core refuses the request and opens nothing. It opens only a Family that is already prepared, and writes nothing; only the Triggered operation that prepares the Family writes to its database, with the Context's Family id.
+What a core in supplied mode needs to open the Family one request is for: its Family id, its database, its family key and its blob location, and the settings that are the Family's own: its time zone and its public address (the path prefix included), with an expiry at most a day ahead, encrypted and signed by a trusted caller in front with the Context key. It reaches the core only on the caller port; without a valid one the core refuses the request and opens nothing. It opens only a Family that is already prepared, and writes nothing; only the Triggered operation that prepares the Family writes to its database, with the Context's Family id.
 _Avoid_: Tenant context, session, family token
 
 **Context key**:
@@ -165,7 +165,7 @@ Bringing a Family's database up to date: migrating its schema, writing its Famil
 _Avoid_: Bootstrap, setup, init
 
 **Triggered operation**:
-A piece of the `worker`'s work, such as Due work, the purge or the secret sweep, or entering an Admin and resetting an Admin's password, that something outside the core runs on request through the `api`'s own unpublished port, with the Instance's trigger token, and in supplied mode with the Context of the Family it acts on. It runs the same code as the `worker`'s schedule or as the command line.
+A piece of the `worker`'s work, such as Due work, the purge or the secret sweep that something outside the core runs on request through the `api`'s own unpublished port, with the Instance's trigger token, and in supplied mode with the Context of the Family it acts on. It runs the same code as the `worker`'s schedule or as the command line.
 _Avoid_: Job, webhook, internal API
 
 **Companion**:
@@ -197,11 +197,11 @@ What an Admin prints or saves at first start to recover the Instance; without it
 _Avoid_: Recovery key, master key (for the document), backup code
 
 **Single sign-on**:
-Signing in as an Admin through the Identity Provider instead of the password. Offered only at `PUBLIC_URL`, also on the setup page of an Instance without Admins unless only known Admins may sign in; the Family Agenda session that follows is its own.
+Signing in as an Admin through the Identity Provider, the only way to sign in. The Family Agenda session that follows is its own and lasts 12 hours.
 _Avoid_: SSO login, passkey login
 
 **Identity Provider**:
-The OIDC server, such as Pocket ID, that an Admin may sign in through instead of a password, configured in the environment or the Context. Only members of its required group may; with the switch for known Admins only, only those who are already an Admin of the Family.
+The one OIDC server of a deployment that Admins sign in through, configured in the environment: the household's own, or the optional Logto container the stack ships. It holds the Admins, their passwords and their roles.
 _Avoid_: SSO server, login provider
 
 **Agenda Link**:
