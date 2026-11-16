@@ -1,4 +1,5 @@
 import { iconUrl, icons } from "./design/icons.js";
+import { randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import {
@@ -34,7 +35,9 @@ import { csrf } from "hono/csrf";
 import { createMiddleware } from "hono/factory";
 import {
   sessionLifetimeMs,
+  type AdmittedIdentity,
   type PendingSignIn,
+  type SignInSecrets,
 } from "@family-agenda/application";
 import type { Application } from "../composition-root";
 import type { Catalogue } from "./i18n/en";
@@ -90,7 +93,20 @@ import {
 } from "./agenda-page";
 import { href, pathPrefixOf, PathPrefixContext, stylesheetBelow } from "./href";
 
+/**
+ * Single sign-on through the one callback of a deployment in supplied mode (ADR-0009), for this
+ * Family: the `state` it begins a sign-in with, and the handover from the callback it takes.
+ */
+export type FamilySignInRelay = {
+  /** How to make the `state` of a sign-in begun by the browser holding `binding`. */
+  stateOf(binding: string): (secrets: SignInSecrets) => string;
+  /** Who `token` hands over to this Family, for the browser holding `binding`, once; null otherwise. */
+  take(token: string, binding: string): AdmittedIdentity | null;
+};
+
 export type HttpOptions = {
+  /** In supplied mode: how sign-ins return through the one callback of the deployment. */
+  signInRelay?: FamilySignInRelay;
   /** Whether a reverse proxy in front sets `X-Forwarded-For` and `X-Forwarded-Proto`. */
   trustProxy: boolean;
   /**
@@ -117,6 +133,16 @@ const problemIn = (c: Context<Env>, problem: ProblemKey): string =>
   c.get("translation").t.problems[problem];
 
 const sessionCookie = "fb_session";
+
+/** Where a Family takes the handover from the one callback of the deployment (supplied mode). */
+export const handoverPath = "/sso/handover";
+
+/** The refusals the one callback of the deployment names on a Family's sign-in page. */
+const relayedProblems = ["sso-failed", "sso-not-in-group", "sso-no-family", "sso-other-family", "sso-email-unverified"] as const;
+
+function isRelayedProblem(text: string | undefined): text is (typeof relayedProblems)[number] {
+  return (relayedProblems as readonly (string | undefined)[]).includes(text);
+}
 
 /** What the single sign-on cookie holds, or null if it is missing or not what `/sso/start` set. */
 function pendingSignInOf(cookie: string | undefined): PendingSignIn | null {
@@ -501,35 +527,47 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     });
   });
 
-  app.get("/admin/sign-in", async (c) =>
-    render(
+  app.get("/admin/sign-in", async (c) => {
+    // The one callback of the deployment sends a refused sign-in here, naming why (supplied mode).
+    const relayed = c.req.query("problem");
+    const problem = options.signInRelay && isRelayedProblem(relayed) ? problemIn(c, relayed) : undefined;
+    return render(
       c,
-      <SignInPage singleSignOn={singleSignOn.isOfferedAt(requestBaseOf(c))} />,
-    ),
-  );
+      <SignInPage singleSignOn={singleSignOn.isOfferedAt(requestBaseOf(c))} {...(problem ? { problem } : {})} />,
+      problem ? 401 : 200,
+    );
+  });
 
   const singleSignOnCookie = "fb_sso";
+  const singleSignOnCookieOptions = (c: Context<Env>) => ({
+    path: href(prefix, "/sso"),
+    httpOnly: true,
+    // Lax, so that the cookie comes back with the redirect from the Identity Provider or the one callback.
+    sameSite: "Lax" as const,
+    secure: isHttps(c),
+    maxAge: 10 * 60,
+  });
 
-  // Sends the Admin to the Identity Provider, remembering state, nonce and PKCE verifier in a short-lived cookie.
+  /**
+   * Sends the Admin to the Identity Provider. In fixed mode a short-lived cookie remembers state,
+   * nonce and PKCE verifier; in supplied mode they travel sealed in the `state` to the one callback,
+   * and the cookie holds only what binds the handover back to this browser.
+   */
   app.get("/sso/start", async (c) => {
-    const begun = await singleSignOn.begin(requestBaseOf(c));
+    const relay = options.signInRelay;
+    const binding = randomBytes(32).toString("base64url");
+    const begun = await singleSignOn.begin(requestBaseOf(c), relay?.stateOf(binding));
     if (!begun) return c.notFound();
-    setCookie(c, singleSignOnCookie, JSON.stringify(begun.pending), {
-      path: href(prefix, "/sso"),
-      httpOnly: true,
-      // Lax, so that the cookie comes back with the redirect from the Identity Provider.
-      sameSite: "Lax",
-      secure: isHttps(c),
-      maxAge: 10 * 60,
-    });
+    setCookie(c, singleSignOnCookie, relay ? binding : JSON.stringify(begun.pending), singleSignOnCookieOptions(c));
     return c.redirect(begun.authorizationUrl, 303);
   });
 
   app.get("/sso/callback", async (c) => {
     const base = requestBaseOf(c);
+    // In supplied mode the Identity Provider returns to the one callback of the deployment instead.
+    if (!singleSignOn.isOfferedAt(base) || singleSignOn.returnsElsewhere(base)) return c.notFound();
     const pending = pendingSignInOf(getCookie(c, singleSignOnCookie));
     deleteCookie(c, singleSignOnCookie, { path: href(prefix, "/sso") });
-    if (!singleSignOn.isOfferedAt(base)) return c.notFound();
     const result = pending
       ? await singleSignOn.complete({
           baseUrl: base,
@@ -541,6 +579,22 @@ export function createHttpApp(application: Application, options: HttpOptions) {
       return render(c, <SignInPage problem={problemIn(c, result.problem)} singleSignOn />, 401);
     startSession(c, result.sessionToken);
     // The Admin area sends the first Admin on to the Recovery Kit until one confirms saving it.
+    return seeOther(c, "/admin");
+  });
+
+  // Supplied mode: the one callback hands the sign-in over, once, to the browser that began it here.
+  app.get(handoverPath, async (c) => {
+    const relay = options.signInRelay;
+    if (!relay) return c.notFound();
+    const binding = getCookie(c, singleSignOnCookie) ?? "";
+    deleteCookie(c, singleSignOnCookie, { path: href(prefix, "/sso") });
+    // The token is in the address: no page this leads to tells another site about it.
+    c.header("referrer-policy", "no-referrer");
+    c.header("cache-control", "no-store");
+    const identity = relay.take(c.req.query("token") ?? "", binding);
+    if (!identity)
+      return render(c, <SignInPage problem={problemIn(c, "sso-failed")} singleSignOn={singleSignOn.isOfferedAt(requestBaseOf(c))} />, 401);
+    startSession(c, await singleSignOn.signInHandedOver(identity));
     return seeOther(c, "/admin");
   });
 

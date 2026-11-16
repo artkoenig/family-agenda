@@ -21,7 +21,7 @@ export type Context = {
   /**
    * The address the Family reaches the core at, through the caller, without a trailing slash. Its
    * path is the path prefix: the caller removes it from a request, and the core writes every
-   * address, cookie, the web manifest, the Agenda feed and the single sign-on redirect URI below it.
+   * address, cookie, the web manifest, the Agenda feed and the single sign-on handover below it.
    */
   publicUrl: string;
   /**

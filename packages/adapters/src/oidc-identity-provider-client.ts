@@ -3,6 +3,7 @@ import type {
   IdentityProviderClient,
   IdentityProviderConnection,
   PendingSignIn,
+  SignInSecrets,
   VerifiedIdentity,
 } from "@family-agenda/application";
 
@@ -46,12 +47,16 @@ export class OidcIdentityProviderClient implements IdentityProviderClient {
   async begin(
     connection: IdentityProviderConnection,
     redirectUri: string,
+    stateOf?: (secrets: SignInSecrets) => string,
   ): Promise<{ authorizationUrl: string; pending: PendingSignIn }> {
     const configuration = await configurationOf(connection);
-    const pending: PendingSignIn = {
-      state: oidc.randomState(),
+    const secrets: SignInSecrets = {
       nonce: oidc.randomNonce(),
       codeVerifier: oidc.randomPKCECodeVerifier(),
+    };
+    const pending: PendingSignIn = {
+      state: stateOf ? stateOf(secrets) : oidc.randomState(),
+      ...secrets,
     };
     const url = oidc.buildAuthorizationUrl(configuration, {
       redirect_uri: redirectUri,

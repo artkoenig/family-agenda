@@ -118,6 +118,21 @@ describe("the OIDC client", () => {
     });
   });
 
+  it("makes the state from the sign-in's secrets when asked, and completes with it", async () => {
+    const seen: { nonce: string; codeVerifier: string }[] = [];
+    const { authorizationUrl, pending } = await client.begin(connection(), redirectUri, (secrets) => {
+      seen.push(secrets);
+      return `sealed.${secrets.nonce.length}`;
+    });
+
+    expect(seen).toEqual([{ nonce: pending.nonce, codeVerifier: pending.codeVerifier }]);
+    expect(pending.state).toBe(`sealed.${pending.nonce.length}`);
+    expect(new URL(authorizationUrl).searchParams.get("state")).toBe(pending.state);
+    expect(authorizationUrl).not.toContain(pending.codeVerifier);
+    const back = await provider.authorize(authorizationUrl);
+    expect((await client.complete(connection(), redirectUri, back, pending))?.subject).toBe("sub-anna");
+  });
+
   it("refuses a return with another state", async () => {
     const { result } = await signIn(
       () => `${redirectUri}?code=abc&state=forged`,

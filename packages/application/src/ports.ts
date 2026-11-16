@@ -722,6 +722,9 @@ export type PendingSignIn = {
   codeVerifier: string;
 };
 
+/** What only the core may know of a sign-in under way: the ID token's nonce and the PKCE verifier. */
+export type SignInSecrets = Pick<PendingSignIn, "nonce" | "codeVerifier">;
+
 /** Who the Identity Provider says has signed in. */
 export type VerifiedIdentity = {
   subject: string;
@@ -739,9 +742,11 @@ export interface IdentityProviderClient {
   discover(
     issuerUrl: string,
   ): Promise<{ ok: true } | { ok: false; message: string }>;
+  /** `stateOf` makes the `state` from the sign-in's secrets, such as one sealed with them inside; a random one without. */
   begin(
     connection: IdentityProviderConnection,
     redirectUri: string,
+    stateOf?: (secrets: SignInSecrets) => string,
   ): Promise<{ authorizationUrl: string; pending: PendingSignIn }>;
   /** The verified identity for the URL the provider sent the Admin back to, or null if it does not check out. */
   complete(

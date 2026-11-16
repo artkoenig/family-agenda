@@ -13,6 +13,11 @@ export type SuppliedHttpOptions = {
   families: SuppliedFamilies;
   version: string;
   log: ContextLog;
+  /**
+   * The one callback of the deployment (ADR-0009): a request to its path without a Context is the
+   * Identity Provider's redirect, which names no Family until its `state` is opened. None in tests that sign in to nothing.
+   */
+  signInCallback?: { path: string; answer(request: Request): Promise<Response> };
   now?: () => number;
 };
 
@@ -22,14 +27,16 @@ const refusal = (status: 400 | 401 | 403 | 409 | 503, text: string) =>
 /**
  * The pages listener of a core in supplied mode: every request must carry a valid Context in its
  * header, which opens the Family it is for; the Family's pages then answer it, the header removed.
- * Only the health check, which names no Family, answers without one.
+ * Only the health check and the one sign-in callback, which name no Family, answer without one.
  */
-export function suppliedFetch({ contextKey, families, version, log, now = Date.now }: SuppliedHttpOptions) {
+export function suppliedFetch({ contextKey, families, version, log, signInCallback, now = Date.now }: SuppliedHttpOptions) {
   return async (request: Request, env?: unknown): Promise<Response> => {
-    if (new URL(request.url).pathname === "/api/health") {
+    const { pathname } = new URL(request.url);
+    if (pathname === "/api/health") {
       return Response.json({ status: "ok", version } satisfies HealthResponse);
     }
     const text = request.headers.get(contextHeader);
+    if (text === null && request.method === "GET" && signInCallback?.path === pathname) return signInCallback.answer(request);
     const outcome = text === null ? { ok: false as const, problem: null } : openContextOutcome(contextKey, text, now());
     if (!outcome.ok && outcome.problem !== null) {
       // Sealed with the Context key, so by the trusted caller: it learns what is wrong, never a value.

@@ -6,7 +6,7 @@ import { createServer } from "node:net";
 import { describe, expect, it } from "vitest";
 import { readSuppliedConfig } from "../../src/config";
 
-const oidc = { OIDC_ISSUER_URL: "https://id.example.org", OIDC_CLIENT_ID: "family-agenda", OIDC_CLIENT_SECRET: "s3cret" };
+const oidc = { OIDC_ISSUER_URL: "https://id.example.org", OIDC_CLIENT_ID: "family-agenda", OIDC_CLIENT_SECRET: "s3cret", OIDC_CALLBACK_URL: "https://sign-in.example.org/sso/callback" };
 import { contextHeader, sealContext } from "../../src/context/context";
 import { serveSupplied } from "../../src/context/serve-supplied";
 
@@ -44,6 +44,9 @@ describe("starting a core in supplied mode", () => {
       const health = await fetch(`http://127.0.0.1:${core.port}/api/health`);
       expect(health.status).toBe(200);
       expect((await fetch(`http://127.0.0.1:${core.port}/setup`)).status).toBe(401);
+      // The one sign-in callback answers without a Context: here, a state it did not seal, refused.
+      const callback = await fetch(`http://127.0.0.1:${core.port}/sso/callback?code=x&state=forged`, { redirect: "manual" });
+      expect([callback.status, callback.headers.get("location")]).toEqual([400, null]);
       const lost = sealContext(contextKey, {
         familyId: "0b8f3c1e-5d7a-4c2b-9e6f-1a2b3c4d5e6f" as FamilyId,
         databaseUrl: "postgres://family:secret-password@127.0.0.1:1/none",

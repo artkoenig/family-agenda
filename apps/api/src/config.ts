@@ -107,7 +107,7 @@ function checkContextKey(mode: ContextMode, key: string): void {
 
 /** A core in supplied mode: what it shares among the Families, and no Family of its own. */
 export type SuppliedConfig = Omit<Config, FixedOnly | "publicUrl" | "identityProvider"> & {
-  /** The one Identity Provider of the deployment, from the `OIDC_*` variables (ADR-0009); each Family's redirect URI lies below its Context's `publicUrl`. */
+  /** The one Identity Provider of the deployment, from the `OIDC_*` variables (ADR-0009); every Family's sign-in returns to `OIDC_CALLBACK_URL`. */
   identityProvider: SuppliedIdentityProvider;
   /** The key the trusted caller seals Contexts with, from `CONTEXT_KEY`. */
   contextKey: string;
@@ -119,7 +119,11 @@ export type SuppliedConfig = Omit<Config, FixedOnly | "publicUrl" | "identityPro
 };
 
 /** The Identity Provider all Families of a core in supplied mode sign in through, with the dotted path of the claim that names the Family. */
-export type SuppliedIdentityProvider = IdentityProviderConnectionSettings & { familyIdClaim: string };
+export type SuppliedIdentityProvider = IdentityProviderConnectionSettings & {
+  familyIdClaim: string;
+  /** The one redirect URI of the deployment, from `OIDC_CALLBACK_URL`: every Family's sign-in returns there. */
+  callbackUrl: string;
+};
 
 /** The configuration of a core in supplied mode (`CONTEXT_MODE=supplied`). */
 export function readSuppliedConfig(env: NodeJS.ProcessEnv = process.env): SuppliedConfig {
@@ -140,7 +144,11 @@ function suppliedIdentityProviderOf(env: NodeJS.ProcessEnv): SuppliedIdentityPro
   if (parsed.settings === null) throw new Error("OIDC_ISSUER_URL must be set with CONTEXT_MODE=supplied: Admins sign in only through the Identity Provider (ADR-0009)");
   const familyIdClaim = parseFamilyIdClaim(env.OIDC_FAMILY_ID_CLAIM);
   if (familyIdClaim === null) throw new Error("OIDC_FAMILY_ID_CLAIM must be a claim name or a dotted path to one, such as family_id or custom_data.familyId");
-  return { ...parsed.settings, familyIdClaim };
+  const callbackUrl = parsePublicUrl(env.OIDC_CALLBACK_URL ?? "");
+  if (callbackUrl === null || new URL(callbackUrl).pathname === "/") {
+    throw new Error("OIDC_CALLBACK_URL must be set with CONTEXT_MODE=supplied: the one redirect URI of the deployment, an http or https address with a path, such as https://sign-in.example.org/sso/callback");
+  }
+  return { ...parsed.settings, familyIdClaim, callbackUrl };
 }
 
 /** The caller port, which supplied mode requires, apart from the pages port that browsers may reach. */
@@ -154,6 +162,7 @@ function callerPortOf(value: string | undefined, pagesPort: number): number {
 export function readConfig(env: NodeJS.ProcessEnv = process.env): Config {
   if (readMode(env) === "supplied") throw new Error("CONTEXT_MODE=supplied: in supplied mode this core has no Family of its own, only the Contexts requests supply");
   if (env.OIDC_FAMILY_ID_CLAIM) throw new Error("OIDC_FAMILY_ID_CLAIM is set, but CONTEXT_MODE is not supplied: in fixed mode OIDC_REQUIRED_GROUP decides who may sign in; unset it");
+  if (env.OIDC_CALLBACK_URL) throw new Error("OIDC_CALLBACK_URL is set, but CONTEXT_MODE is not supplied: in fixed mode the redirect URI is <PUBLIC_URL>/sso/callback; unset it");
   const databaseUrl = env.DATABASE_URL;
   if (!databaseUrl) throw new Error("DATABASE_URL is not set");
   return {

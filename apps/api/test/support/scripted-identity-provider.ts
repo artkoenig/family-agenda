@@ -3,6 +3,7 @@ import type {
   IdentityProviderClient,
   IdentityProviderConnection,
   PendingSignIn,
+  SignInSecrets,
   VerifiedIdentity,
 } from "@family-agenda/application";
 
@@ -25,14 +26,11 @@ export class ScriptedIdentityProviderClient implements IdentityProviderClient {
     );
   }
 
-  begin(connection: IdentityProviderConnection, redirectUri: string) {
+  begin(connection: IdentityProviderConnection, redirectUri: string, stateOf?: (secrets: SignInSecrets) => string) {
     this.begun.push({ connection, redirectUri });
-    const pending: PendingSignIn = {
-      state: randomUUID(),
-      nonce: randomUUID(),
-      codeVerifier: randomUUID(),
-    };
-    const authorizationUrl = `${connection.issuerUrl}/authorize?state=${pending.state}&redirect_uri=${encodeURIComponent(redirectUri)}`;
+    const secrets: SignInSecrets = { nonce: randomUUID(), codeVerifier: randomUUID() };
+    const pending: PendingSignIn = { state: stateOf ? stateOf(secrets) : randomUUID(), ...secrets };
+    const authorizationUrl = `${connection.issuerUrl}/authorize?state=${encodeURIComponent(pending.state)}&redirect_uri=${encodeURIComponent(redirectUri)}`;
     return Promise.resolve({ authorizationUrl, pending });
   }
 
@@ -40,7 +38,7 @@ export class ScriptedIdentityProviderClient implements IdentityProviderClient {
   returnWith(pending: PendingSignIn, identity: VerifiedIdentity): string {
     const code = randomUUID();
     this.identities.set(`${code}:${pending.state}`, identity);
-    return `?code=${code}&state=${pending.state}`;
+    return `?code=${code}&state=${encodeURIComponent(pending.state)}`;
   }
 
   complete(

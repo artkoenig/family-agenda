@@ -16,8 +16,8 @@ export type SuppliedFamiliesOptions = {
   /** What every Family gets alike; nothing by default. */
   settings?: FamilySettings;
   /**
-   * The one Identity Provider of the deployment (ADR-0009): each Family signs in through it, its
-   * redirect URI below the Context's `publicUrl`, admitting only tokens whose Family claim names
+   * The one Identity Provider of the deployment (ADR-0009): each Family signs in through it, offered
+   * at the Context's `publicUrl` and returning to the one callback, admitting only tokens whose Family claim names
    * the Context's Family. None offers no single sign-on, as in tests that need none.
    */
   identityProvider?: SuppliedIdentityProvider;
@@ -264,10 +264,11 @@ export class SuppliedFamilies {
   }
 }
 
-/** The Identity Provider as one Family signs in through it: below its address, for its Family alone. */
+/** The Identity Provider as one Family signs in through it: offered at its address, returning to the one callback, for its Family alone. */
 function identityProviderOf(provider: SuppliedIdentityProvider | undefined, context: Context): IdentityProviderSettings | null {
   if (provider === undefined) return null;
   const { familyIdClaim, ...connection } = provider;
+  // `connection` carries the one callback of the deployment, `OIDC_CALLBACK_URL`.
   return { ...connection, publicBaseUrl: context.publicUrl, family: { claim: familyIdClaim, familyId: context.familyId } };
 }
 
