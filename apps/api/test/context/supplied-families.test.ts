@@ -11,6 +11,7 @@ import type { BlobRef } from "@family-agenda/domain";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { bootShared, type Application } from "../../src/composition-root";
 import { contextHeader, expirySkewMs, openContext, sealContext, sealUncheckedContext, type Context } from "../../src/context/context";
+import { handoverLifetimeMs, signInStateLifetimeMs, SignInRelay } from "../../src/context/sign-in-relay";
 import { SuppliedFamilies } from "../../src/context/supplied-families";
 import { suppliedFetch, type FamilyFetch } from "../../src/context/supplied-http";
 import { createHttpApp } from "../../src/http/app";
@@ -40,6 +41,7 @@ describe("a core in supplied mode", () => {
   let provider: ScriptedIdentityProviderClient;
   let catalog: FakeTessdataCatalog;
   const identityProvider = { issuerUrl: "https://id.example.org", clientId: "family-agenda", clientSecret: "s3cret-of-a" };
+  const callbackUrl = "https://sign-in.example.org/sso/return";
 
   const familyOf = async (name: string, settings: Partial<Context> = {}): Promise<Context> => {
     const database = await acquirePostgres();
@@ -90,7 +92,8 @@ describe("a core in supplied mode", () => {
 
   const request = (context: Context | string | null, path = "/admin/sign-in", init: RequestInit = {}) =>
     fetch(
-      new Request(`http://core${path}`, {
+      // At the Family's own host, as the caller forwards it.
+      new Request(`${typeof context === "object" && context !== null ? new URL(context.publicUrl).origin : "http://core"}${path}`, {
         ...init,
         headers: { ...(context === null ? {} : { [contextHeader]: typeof context === "string" ? context : sealContext(contextKey, context) }), ...(init.headers as Record<string, string>) },
       }),
@@ -119,17 +122,19 @@ describe("a core in supplied mode", () => {
     catalog = new FakeTessdataCatalog();
     const shared = await bootShared({ tessdataDirectory: join(directory, "tessdata"), bundledTessdataDirectory: null, tessdataCatalog: catalog, clock: new FakeClock(new Date(now)) });
     provider = new ScriptedIdentityProviderClient();
+    const supplied = { ...identityProvider, requiredGroup: "homelab-admin", groupsClaim: "groups", familyIdClaim: "custom_data.familyId", callbackUrl };
+    const relay = new SignInRelay({ contextKey, identityProvider: supplied, client: provider, now: () => now });
     families = new SuppliedFamilies({
       shared,
       settings: { identityProviderClient: provider },
-      identityProvider: { ...identityProvider, requiredGroup: "homelab-admin", groupsClaim: "groups", familyIdClaim: "custom_data.familyId" },
+      identityProvider: supplied,
       connectDatabase,
       idleMs,
       preparingWaitMs,
       schemaCheckMs,
       now: () => now,
       serving: (application, context) => {
-        const app = createHttpApp(application, { trustProxy: false, publicUrl: context.publicUrl, agendaAccess: openAgendaAccess });
+        const app = createHttpApp(application, { trustProxy: false, publicUrl: context.publicUrl, agendaAccess: openAgendaAccess, signInRelay: relay.forFamily(context) });
         const serve: FamilyFetch = (incoming, env) => {
           seen.push(incoming);
           return app.fetch(incoming, env as never);
@@ -137,7 +142,8 @@ describe("a core in supplied mode", () => {
         return serve;
       },
     });
-    fetch = suppliedFetch({ contextKey, families, version: "test", log: { warn: (message) => warnings.push(message) }, now: () => now });
+    const signInCallback = { path: relay.callbackPath, answer: (incoming: Request) => relay.callback(incoming) };
+    fetch = suppliedFetch({ contextKey, families, version: "test", log: { warn: (message) => warnings.push(message) }, signInCallback, now: () => now });
     a = await familyOf("a");
     b = await familyOf("b");
   });
@@ -428,7 +434,7 @@ describe("a core in supplied mode", () => {
       const second = await familyOf("second", { publicUrl: "https://second.example.org/two/" });
 
       for (const [context, prefix, origin] of [[first, "/one", "https://first.example.org"], [second, "/two", "https://second.example.org"]] as const) {
-        expect((await request(context, "/admin")).headers.get("location")).toBe(`${prefix}/admin/sign-in`);
+        expect((await request(context, "/admin")).headers.get("location")).toBe(`${prefix}/sso/start`);
         const session = await on(context, (application) => application.admins.startSession({ subject: "sub-anna", email: "anna@example.org" }));
         expect((await request(context, "/admin", { headers: { cookie: `fb_session=${session}` } })).headers.get("location")).toBe(`${prefix}/admin/recovery-kit`);
         const agenda = await on(context, (application) => application.agendas.create({ memberIds: [], horizonDays: 3 }));
@@ -443,30 +449,112 @@ describe("a core in supplied mode", () => {
       }
     });
 
-    it("signs in through the one Identity Provider below each Family's address, someone whose Family claim names that Family alone", async () => {
-      const one = await familyOf("one", { publicUrl: "http://core/one" });
-      const two = await familyOf("two", { publicUrl: "http://core/two" });
-      const signIn = async (context: Context, familyId: string | null) => {
-        const start = await request(context, "/sso/start");
-        const sso = cookieOf(start, "fb_sso");
-        const pending = JSON.parse(decodeURIComponent(sso.pair.split("=").slice(1).join("="))) as Parameters<typeof provider.returnWith>[0];
-        return { sso, back: await request(context, `/sso/callback${provider.returnWith(pending, { ...anna, groups: [], familyId })}`, { headers: { cookie: sso.pair } }) };
-      };
+    /** The browser the Identity Provider sends back to the one callback, as it would follow the redirects. */
+    const callback = (query: string) => fetch(new Request(`http://core/sso/return${query}`));
+    const begin = async (context: Context) => {
+      const start = await request(context, "/sso/start");
+      const sso = cookieOf(start, "fb_sso");
+      const state = new URL(start.headers.get("location") ?? "").searchParams.get("state") ?? "";
+      return { sso, state, pending: { state, nonce: "", codeVerifier: "" } };
+    };
+    /** Begins a sign-in at `context`, and returns from the Identity Provider to the one callback as someone of `familyId`. */
+    const signIn = async (context: Context, familyId: string | null) => {
+      const begun = await begin(context);
+      const back = await callback(provider.returnWith(begun.pending, { ...anna, groups: [], familyId }));
+      return { ...begun, back };
+    };
+    /** Follows the handover `location` to the Family's pages, its path prefix removed as the caller does. */
+    const handOver = (context: Context, location: string, cookie: string) => {
+      const prefix = new URL(context.publicUrl).pathname.replace(/\/$/, "");
+      const target = new URL(location);
+      return request(context, target.pathname.slice(prefix.length) + target.search, { headers: { cookie } });
+    };
+
+    it("signs two Families with different addresses in through the one callback, each into its own Family", async () => {
+      const one = await familyOf("one", { publicUrl: "https://one.example.org/one" });
+      const two = await familyOf("two", { publicUrl: "https://two.example.org" });
 
       expect(await (await request(one, "/admin/sign-in")).text()).toContain(`href="/one/sso/start"`);
-      const { sso, back } = await signIn(one, one.familyId);
-      expect(provider.begun[0]).toEqual({ connection: { ...identityProvider, groupsClaim: "groups", familyIdClaim: "custom_data.familyId" }, redirectUri: "http://core/one/sso/callback" });
-      expect(sso.path).toBe("/one/sso");
-      expect(back.headers.get("location")).toBe("/one/admin");
-      expect(cookieOf(back, "fb_session").path).toBe("/one");
+      for (const context of [one, two]) {
+        const { sso, back } = await signIn(context, context.familyId);
+        expect(provider.begun.at(-1)).toEqual({ connection: { ...identityProvider, groupsClaim: "groups", familyIdClaim: "custom_data.familyId" }, redirectUri: callbackUrl });
+        expect(back.status).toBe(303);
+        const location = back.headers.get("location") ?? "";
+        expect(location.startsWith(`${context.publicUrl}/sso/handover?token=`)).toBe(true);
+        expect(back.headers.get("referrer-policy")).toBe("no-referrer");
+        const taken = await handOver(context, location, sso.pair);
+        expect(taken.headers.get("location")).toBe(`${new URL(context.publicUrl).pathname.replace(/\/$/, "")}/admin`);
+        const session = cookieOf(taken, "fb_session");
+        expect(session.path).toBe(new URL(context.publicUrl).pathname);
+        expect((await request(context, "/admin", { headers: { cookie: session.pair } })).headers.get("location")).toMatch(/\/admin\/recovery-kit$/);
+      }
+      expect(warnings.join()).not.toContain("s3cret");
+    });
+
+    it("answers the Family's own callback path with nothing in supplied mode: sign-ins return to the one callback", async () => {
+      expect((await request(a, "/sso/callback?code=x&state=y")).status).toBe(404);
+    });
+
+    it("refuses a token for Family A that returns from a sign-in begun for Family B, naming why on B's sign-in page", async () => {
+      const one = await familyOf("one", { publicUrl: "http://core/one" });
+      const two = await familyOf("two", { publicUrl: "http://core/two" });
 
       const foreign = (await signIn(two, one.familyId)).back;
-      expect(foreign.status).toBe(401);
-      expect(await foreign.text()).toContain("belongs to another Family");
-      const missing = (await signIn(two, null)).back;
-      expect(missing.status).toBe(401);
-      expect(await missing.text()).toContain("belongs to no Family");
-      expect(warnings.join()).not.toContain("s3cret");
+      expect(foreign.headers.get("location")).toBe("http://core/two/admin/sign-in?problem=sso-other-family");
+      const page = await request(two, "/admin/sign-in?problem=sso-other-family");
+      expect(page.status).toBe(401);
+      expect(await page.text()).toContain("belongs to another Family");
+      expect((await signIn(two, null)).back.headers.get("location")).toBe("http://core/two/admin/sign-in?problem=sso-no-family");
+      // Nothing else is shown from the address.
+      expect((await request(two, "/admin/sign-in?problem=%3Cscript%3E")).status).toBe(200);
+    });
+
+    it("refuses a handover for Family A at Family B, even with the cookie of the browser that began it", async () => {
+      const one = await familyOf("one", { publicUrl: "http://core/one" });
+      const two = await familyOf("two", { publicUrl: "http://core/two" });
+      const { sso, back } = await signIn(one, one.familyId);
+
+      const taken = await request(two, `/sso/handover${new URL(back.headers.get("location") ?? "").search}`, { headers: { cookie: sso.pair } });
+      expect(taken.status).toBe(401);
+      expect(cookieOf(taken, "fb_session").pair).toBe("");
+    });
+
+    it("refuses a tampered, foreign or expired state, and sends the browser nowhere", async () => {
+      const { pending } = await begin(a);
+      const [version, iv, ciphertext = "", tag] = pending.state.split(".");
+      const tampered = [version, iv, (ciphertext.startsWith("A") ? "B" : "A") + ciphertext.slice(1), tag].join(".");
+      for (const state of [tampered, "v1.a.b.c", "", pending.state.replace(/^v1/, "v2")]) {
+        const back = await callback(provider.returnWith({ ...pending, state }, { ...anna, familyId: a.familyId }));
+        expect(back.status).toBe(400);
+        expect(back.headers.get("location")).toBeNull();
+      }
+
+      const late = await begin(a);
+      now += signInStateLifetimeMs;
+      const expired = await callback(provider.returnWith(late.pending, { ...anna, familyId: a.familyId }));
+      expect(expired.status).toBe(400);
+    });
+
+    it("takes a handover once, only in the browser that began the sign-in, and not after it expired", async () => {
+      const first = await signIn(a, a.familyId);
+      const location = first.back.headers.get("location") ?? "";
+
+      // Another browser, without the cookie or with one of its own, cannot take it.
+      expect((await handOver(a, location, "")).status).toBe(401);
+      const other = await begin(a);
+      expect((await handOver(a, location, other.sso.pair)).status).toBe(401);
+      expect((await handOver(a, location.replace(/token=.{4}/, "token=AAAA"), first.sso.pair)).status).toBe(401);
+
+      const taken = await handOver(a, location, first.sso.pair);
+      expect(taken.status).toBe(303);
+      expect(taken.headers.get("referrer-policy")).toBe("no-referrer");
+      const replayed = await handOver(a, location, first.sso.pair);
+      expect(replayed.status).toBe(401);
+      expect(cookieOf(replayed, "fb_session").pair).toBe("");
+
+      const second = await signIn(a, a.familyId);
+      now += handoverLifetimeMs;
+      expect((await handOver(a, second.back.headers.get("location") ?? "", second.sso.pair)).status).toBe(401);
     });
 
     it("opens a Family anew for a Context with other settings, and keeps it apart from the one opened before", async () => {

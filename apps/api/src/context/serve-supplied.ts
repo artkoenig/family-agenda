@@ -5,6 +5,8 @@ import { bootShared } from "../composition-root";
 import type { SuppliedConfig } from "../config";
 import { createHttpApp } from "../http/app";
 import { serveSuppliedTriggers, type TriggerLog } from "../triggered-operations";
+import { OidcIdentityProviderClient } from "@family-agenda/adapters";
+import { SignInRelay } from "./sign-in-relay";
 import { SuppliedFamilies } from "./supplied-families";
 import { suppliedFetch, type FamilyFetch } from "./supplied-http";
 
@@ -19,11 +21,15 @@ const sweepEveryMs = 60_000;
  */
 export async function serveSupplied(config: SuppliedConfig, log: TriggerLog) {
   const shared = await bootShared(config);
+  const client = new OidcIdentityProviderClient();
+  const relay = new SignInRelay({ contextKey: config.contextKey, identityProvider: config.identityProvider, client });
   const families = new SuppliedFamilies({
     shared,
+    settings: { identityProviderClient: client },
     identityProvider: config.identityProvider,
     serving: (application, context) => {
       const app = createHttpApp(application, {
+        signInRelay: relay.forFamily(context),
         trustProxy: config.trustProxy,
         version: config.version,
         // The Family's own address, its path prefix included: the caller removed the prefix from the request.
@@ -37,7 +43,8 @@ export async function serveSupplied(config: SuppliedConfig, log: TriggerLog) {
   });
   const sweeping = setInterval(() => void families.sweep(), sweepEveryMs);
   sweeping.unref();
-  const fetch = suppliedFetch({ contextKey: config.contextKey, families, version: config.version, log });
+  const signInCallback = { path: relay.callbackPath, answer: (request: Request) => relay.callback(request) };
+  const fetch = suppliedFetch({ contextKey: config.contextKey, families, version: config.version, log, signInCallback });
   const { server, port } = await new Promise<{ server: ReturnType<typeof serve>; port: number }>((resolve) => {
     const listening = serve({ fetch, port: config.callerPort }, (info) => {
       log.info(`Family Agenda listening on caller port ${info.port} in supplied mode`);

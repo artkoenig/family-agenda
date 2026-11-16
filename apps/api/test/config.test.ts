@@ -10,7 +10,7 @@ const oidc = {
   OIDC_CLIENT_SECRET: "s3cret",
 };
 
-const suppliedOidc = { OIDC_ISSUER_URL: "https://id.example.ts.net", OIDC_CLIENT_ID: "family-agenda", OIDC_CLIENT_SECRET: "s3cret" };
+const suppliedOidc = { OIDC_ISSUER_URL: "https://id.example.ts.net", OIDC_CLIENT_ID: "family-agenda", OIDC_CLIENT_SECRET: "s3cret", OIDC_CALLBACK_URL: "https://sign-in.example.org/sso/callback/" };
 
 describe("the Identity Provider in the environment", () => {
   it("is none without OIDC_ISSUER_URL", () => {
@@ -45,6 +45,7 @@ describe("the Identity Provider in the environment", () => {
       requiredGroup: "homelab-admin",
       groupsClaim: "groups",
       familyIdClaim: "family_id",
+      callbackUrl: "https://sign-in.example.org/sso/callback",
     });
     expect(readSuppliedConfig({ ...supplied, OIDC_FAMILY_ID_CLAIM: "custom_data.familyId" }).identityProvider.familyIdClaim).toBe("custom_data.familyId");
     expect(() => readSuppliedConfig({ ...supplied, OIDC_FAMILY_ID_CLAIM: "custom_data..familyId" })).toThrow(/OIDC_FAMILY_ID_CLAIM must be a claim name or a dotted path/);
@@ -53,8 +54,16 @@ describe("the Identity Provider in the environment", () => {
     expect(() => readSuppliedConfig({ ...supplied, OIDC_CLIENT_SECRET: undefined })).toThrow(/OIDC_CLIENT_SECRET must be set/);
   });
 
-  it("refuses OIDC_FAMILY_ID_CLAIM in fixed mode, where the group decides", () => {
+  it("requires OIDC_CALLBACK_URL in supplied mode: an http or https address with a path, without query or fragment", () => {
+    const supplied = { CONTEXT_MODE: "supplied", CONTEXT_KEY: "a-context-key-of-at-least-32-characters", CALLER_PORT: "3002", ...suppliedOidc };
+    for (const value of [undefined, "", "sign-in.example.org/sso/callback", "ftp://sign-in.example.org/cb", "https://sign-in.example.org", "https://sign-in.example.org/cb?x=1", "https://sign-in.example.org/cb#x"]) {
+      expect(() => readSuppliedConfig({ ...supplied, OIDC_CALLBACK_URL: value })).toThrow(/OIDC_CALLBACK_URL must be set with CONTEXT_MODE=supplied/);
+    }
+  });
+
+  it("refuses OIDC_FAMILY_ID_CLAIM and OIDC_CALLBACK_URL in fixed mode, where the group decides and the callback lies below PUBLIC_URL", () => {
     expect(() => readConfig({ ...oidc, OIDC_FAMILY_ID_CLAIM: "family_id" })).toThrow(/OIDC_FAMILY_ID_CLAIM is set, but CONTEXT_MODE is not supplied/);
+    expect(() => readConfig({ ...oidc, OIDC_CALLBACK_URL: "https://sign-in.example.org/sso/callback" })).toThrow(/OIDC_CALLBACK_URL is set, but CONTEXT_MODE is not supplied/);
   });
 
   it("refuses to start with OIDC_KNOWN_ADMINS_ONLY, which is no longer known", () => {

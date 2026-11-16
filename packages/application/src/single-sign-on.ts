@@ -1,5 +1,5 @@
 import type { AdminAccess } from "./admin-access";
-import type { IdentityProviderClient, PendingSignIn, VerifiedIdentity } from "./ports";
+import type { IdentityProviderClient, PendingSignIn, SignInSecrets, VerifiedIdentity } from "./ports";
 
 /** The one Identity Provider, as the operator configured it in the environment (ADR-0007). */
 export type IdentityProviderSettings = {
@@ -16,6 +16,12 @@ export type IdentityProviderSettings = {
    * `familyId`, and no group is checked besides. Absent in fixed mode, where the group decides.
    */
   family?: FamilyClaim;
+  /**
+   * In supplied mode (ADR-0009): the one redirect URI of the whole deployment, `OIDC_CALLBACK_URL`,
+   * which the core answers itself before handing the sign-in over to the Family's address. Absent
+   * in fixed mode, where the redirect URI lies below `publicBaseUrl`.
+   */
+  callbackUrl?: string;
 };
 
 /** The Family a sign-in must belong to, and the dotted path of the claim naming it, such as `custom_data.familyId`. */
@@ -50,25 +56,30 @@ export function createSingleSignOn(deps: SingleSignOnDeps) {
   const at = (baseUrl: string): IdentityProviderSettings | null =>
     settings !== null && settings.publicBaseUrl === baseUrl ? settings : null;
 
-  const connectionOf = (offered: IdentityProviderSettings) => ({
-    issuerUrl: offered.issuerUrl,
-    clientId: offered.clientId,
-    clientSecret: offered.clientSecret,
-    groupsClaim: offered.groupsClaim,
-    ...(offered.family ? { familyIdClaim: offered.family.claim } : {}),
-  });
-
   return {
     /** Whether single sign-on is offered to someone who reached the Instance at `baseUrl`, path prefix included. */
     isOfferedAt(baseUrl: string): boolean {
       return at(baseUrl) !== null;
     },
 
-    /** Where to send an Admin to sign in, with what to remember until they return; null if it is not offered at `baseUrl`. */
-    async begin(baseUrl: string): Promise<{ authorizationUrl: string; pending: PendingSignIn } | null> {
+    /** Whether the Identity Provider sends Admins back to the one callback of the deployment, not below `baseUrl` (supplied mode). */
+    returnsElsewhere(baseUrl: string): boolean {
+      return at(baseUrl)?.callbackUrl !== undefined;
+    },
+
+    /**
+     * Where to send an Admin to sign in, with what to remember until they return; null if it is not
+     * offered at `baseUrl`. `stateOf` makes the `state` from the sign-in's secrets, a random one without.
+     */
+    async begin(baseUrl: string, stateOf?: (secrets: SignInSecrets) => string): Promise<{ authorizationUrl: string; pending: PendingSignIn } | null> {
       const offered = at(baseUrl);
       if (!offered) return null;
-      return client.begin(connectionOf(offered), offered.publicBaseUrl + singleSignOnCallbackPath);
+      return client.begin(connectionOf(offered), redirectUriOf(offered), stateOf);
+    },
+
+    /** Signs in someone the one callback of the deployment vouched for and handed over (supplied mode). */
+    async signInHandedOver(identity: AdmittedIdentity): Promise<string> {
+      return admins.startSession(identity);
     },
 
     /**
@@ -78,17 +89,48 @@ export function createSingleSignOn(deps: SingleSignOnDeps) {
     async complete(input: { baseUrl: string; query: string; pending: PendingSignIn }): Promise<SingleSignOnSignInResult> {
       const offered = at(input.baseUrl);
       if (!offered) return { ok: false, problem: "sso-failed" };
-      const redirectUri = offered.publicBaseUrl + singleSignOnCallbackPath;
-      const identity = await client.complete(connectionOf(offered), redirectUri, redirectUri + input.query, input.pending);
-      if (!identity) return { ok: false, problem: "sso-failed" };
-      // Checked at every sign-in; leaving the group or Family ends a running session only when it expires.
-      const refused = admissionProblemOf(offered, identity);
-      if (refused) return { ok: false, problem: refused };
-      const email = identity.email?.trim() ?? "";
-      if (email === "" || !identity.emailVerified) return { ok: false, problem: "sso-email-unverified" };
-      return { ok: true, sessionToken: await admins.startSession({ subject: identity.subject, email }) };
+      const admitted = await completeSignIn(client, offered, input.query, input.pending);
+      return admitted.ok ? { ok: true, sessionToken: await admins.startSession(admitted.identity) } : admitted;
     },
   };
+}
+
+/** Who may administer the Family: as the Identity Provider vouched for them, with a verified email address. */
+export type AdmittedIdentity = { subject: string; email: string };
+
+export type SignInAdmission = { ok: true; identity: AdmittedIdentity } | Extract<SingleSignOnSignInResult, { ok: false }>;
+
+const connectionOf = (offered: IdentityProviderSettings) => ({
+  issuerUrl: offered.issuerUrl,
+  clientId: offered.clientId,
+  clientSecret: offered.clientSecret,
+  groupsClaim: offered.groupsClaim,
+  ...(offered.family ? { familyIdClaim: offered.family.claim } : {}),
+});
+
+/** The one callback of the deployment in supplied mode, else the callback below the public base URL. */
+const redirectUriOf = (offered: IdentityProviderSettings) => offered.callbackUrl ?? offered.publicBaseUrl + singleSignOnCallbackPath;
+
+/**
+ * Whom the provider sent back with `query` to the redirect URI, if they may administer the Family:
+ * the groups claim holds the required group, or in supplied mode the Family claim names the Family,
+ * and the email address is verified. Starts no session.
+ */
+export async function completeSignIn(
+  client: IdentityProviderClient,
+  offered: IdentityProviderSettings,
+  query: string,
+  pending: PendingSignIn,
+): Promise<SignInAdmission> {
+  const redirectUri = redirectUriOf(offered);
+  const identity = await client.complete(connectionOf(offered), redirectUri, redirectUri + query, pending);
+  if (!identity) return { ok: false, problem: "sso-failed" };
+  // Checked at every sign-in; leaving the group or Family ends a running session only when it expires.
+  const refused = admissionProblemOf(offered, identity);
+  if (refused) return { ok: false, problem: refused };
+  const email = identity.email?.trim() ?? "";
+  if (email === "" || !identity.emailVerified) return { ok: false, problem: "sso-email-unverified" };
+  return { ok: true, identity: { subject: identity.subject, email } };
 }
 
 /** Why `identity` may not administer the Family: in supplied mode its Family claim decides, else the required group. */
@@ -129,7 +171,7 @@ const maximumTextLength = 200;
 type SettingsProblem = Extract<ParsedIdentityProviderSettings, { ok: false }>["problem"];
 
 /** The settings any Identity Provider has, wherever its redirect URI lies. */
-export type IdentityProviderConnectionSettings = Omit<IdentityProviderSettings, "publicBaseUrl" | "family">;
+export type IdentityProviderConnectionSettings = Omit<IdentityProviderSettings, "publicBaseUrl" | "family" | "callbackUrl">;
 
 type Checkers<T> = { [K in keyof T]-?: [SettingsProblem, (variables: IdentityProviderVariables) => string | null] };
 
@@ -142,7 +184,7 @@ const connectionCheckers: Checkers<IdentityProviderConnectionSettings> = {
   groupsClaim: ["invalid-groups-claim", (v) => claimName(v.groupsClaim ?? defaultGroupsClaim)],
 };
 
-const settingCheckers: Checkers<Omit<IdentityProviderSettings, "family">> = {
+const settingCheckers: Checkers<Omit<IdentityProviderSettings, "family" | "callbackUrl">> = {
   ...connectionCheckers,
   publicBaseUrl: ["invalid-public-url", (v) => httpUrl(v.publicBaseUrl ?? "")],
 };
