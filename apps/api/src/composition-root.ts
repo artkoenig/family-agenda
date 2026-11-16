@@ -300,9 +300,7 @@ export class FamilyNotPreparedError extends Error {
 export async function openPreparedFamily(shared: SharedWiring, config: FamilyConfig & { familyId: FamilyId }): Promise<Application> {
   const postgres = connectionOf(config);
   const masterKey = await withDatabase(postgres, async () => {
-    await refuseOldMigrationHistory(postgres.db, migrationsFolder);
-    await refuseNewerMigrationHistory(postgres.db, migrationsFolder);
-    if (!(await isSchemaCurrent(postgres.db, migrationsFolder))) throw new FamilyNotPreparedError();
+    await checkPreparedSchema(postgres);
     const stored = await storedFamilyId(postgres.db);
     if (stored === null) throw new FamilyNotPreparedError();
     if (stored !== config.familyId) throw new FamilyIdConflictError(stored, config.familyId);
@@ -310,6 +308,17 @@ export async function openPreparedFamily(shared: SharedWiring, config: FamilyCon
     return familyKeyOf(postgres, config);
   });
   return wireFamily(shared, config, postgres, masterKey, config.familyId);
+}
+
+/**
+ * Refuses, without writing anything, a database whose schema is not this release's: one of the old
+ * data model or migrated by a newer release with the error that says so, one an older release
+ * prepared, or an empty one, as not prepared.
+ */
+export async function checkPreparedSchema(postgres: Pick<PostgresConnection, "db">): Promise<void> {
+  await refuseOldMigrationHistory(postgres.db, migrationsFolder);
+  await refuseNewerMigrationHistory(postgres.db, migrationsFolder);
+  if (!(await isSchemaCurrent(postgres.db, migrationsFolder))) throw new FamilyNotPreparedError();
 }
 
 /**

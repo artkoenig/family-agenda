@@ -47,6 +47,14 @@ export async function storedFamilyId(db: Queryable): Promise<string | null> {
   return row?.id ?? null;
 }
 
+export type MigrationOptions = {
+  /**
+   * How long a statement of the migration waits for a lock, such as a table another connection
+   * reads, before the migration fails with `55P03` and changes nothing; no limit by default.
+   */
+  lockTimeoutMs?: number;
+};
+
 /**
  * Brings the schema up to date for the Family `familyId` names, as drizzle's `migrate` does. A
  * given id is written while the database has none, by the last migration, in the one transaction
@@ -54,13 +62,22 @@ export async function storedFamilyId(db: Queryable): Promise<string | null> {
  * it holds is refused before anything changes. Without one, the Family keeps its id, or gets the
  * random UUID the schema draws.
  */
-export async function migrateFamily(db: Queryable, migrationsFolder: string, familyId?: FamilyId): Promise<void> {
+export async function migrateFamily(db: Queryable, migrationsFolder: string, familyId?: FamilyId, options: MigrationOptions = {}): Promise<void> {
   const stored = familyId === undefined ? null : await storedFamilyId(db);
   if (familyId !== undefined && stored !== null && stored !== familyId) throw new FamilyIdConflictError(stored, familyId);
   const migrations = readMigrationFiles({ migrationsFolder });
-  const last = migrations.at(-1);
-  // The id is a UUID, so it is safe inline; the migrator runs statements as they are.
-  if (familyId !== undefined && stored === null && last) last.sql.push(`UPDATE family SET family_id = '${familyId}'`);
+  if (familyId !== undefined && stored === null) writingFamilyId(migrations, familyId);
+  if (options.lockTimeoutMs !== undefined) underLockTimeout(migrations, options.lockTimeoutMs);
   const migrator = db as unknown as Migrator;
   await migrator.dialect.migrate(migrations, migrator.session, { migrationsFolder });
+}
+
+/** Writes `familyId` with the last migration. The id is a UUID, so it is safe inline; the migrator runs statements as they are. */
+function writingFamilyId(migrations: MigrationMeta[], familyId: FamilyId): void {
+  migrations.at(-1)?.sql.push(`UPDATE family SET family_id = '${familyId}'`);
+}
+
+/** Each migration that runs sets the lock timeout first, for the one transaction they share; it ends with that. */
+function underLockTimeout(migrations: MigrationMeta[], lockTimeoutMs: number): void {
+  for (const migration of migrations) migration.sql.unshift(`SET LOCAL lock_timeout = '${Math.trunc(lockTimeoutMs)}ms'`);
 }

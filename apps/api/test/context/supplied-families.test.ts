@@ -23,6 +23,7 @@ import { ScriptedIdentityProviderClient } from "../support/scripted-identity-pro
 const contextKey = "a-context-key-of-at-least-32-characters";
 const idleMs = 60_000;
 const preparingWaitMs = 200;
+const schemaCheckMs = 5_000;
 
 describe("a core in supplied mode", () => {
   let directory: string;
@@ -123,6 +124,7 @@ describe("a core in supplied mode", () => {
       connectDatabase,
       idleMs,
       preparingWaitMs,
+      schemaCheckMs,
       now: () => now,
       serving: (application, context) => {
         const app = createHttpApp(application, { trustProxy: false, publicUrl: context.publicUrl, agendaAccess: openAgendaAccess });
@@ -291,6 +293,25 @@ describe("a core in supplied mode", () => {
     expect(await answer.text()).toContain("migrated-by-newer-release");
     expect((await newer.query("select count(*)::int as n from drizzle.__drizzle_migrations")).rows).toEqual(before);
     expect(families.size).toBe(0);
+  });
+
+  it("notices a newer release migrating a Family it has open, and refuses it from then on", async () => {
+    const newer = await PGlite.create();
+    others.set("postgres://newer", newer);
+    const open = { ...a, databaseUrl: "postgres://newer", familyId: randomUUID() as FamilyId };
+    expect((await request(open)).status).toBe(200);
+    await newer.exec("insert into drizzle.__drizzle_migrations (hash, created_at) values ('of a newer release', 0)");
+
+    // Checked again at most every few seconds, not on every request.
+    now += schemaCheckMs - 1;
+    expect((await request(open)).status).toBe(200);
+    now += 1;
+    const answer = await request(open);
+
+    expect(answer.status).toBe(409);
+    expect(await answer.text()).toContain("migrated-by-newer-release");
+    expect(families.size).toBe(0);
+    expect(closed).toContain("postgres://newer");
   });
 
   it("refuses a database of the data model before the rebuild, writing nothing to it", async () => {

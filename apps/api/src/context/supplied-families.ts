@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { connectPostgres, FamilyIdConflictError, NewerMigrationHistoryError, OldMigrationHistoryError, type PostgresConnection } from "@family-agenda/adapters";
-import { FamilyNotPreparedError, openPreparedFamily, prepareFamily, type Application, type FamilyConfig, type SharedWiring } from "../composition-root";
+import { checkPreparedSchema, FamilyNotPreparedError, openPreparedFamily, prepareFamily, type Application, type FamilyConfig, type SharedWiring } from "../composition-root";
 import type { OpenedContext } from "./context";
 
 /** What a Family's pages answer a request with, such as its Hono app's `fetch`. */
@@ -19,6 +19,11 @@ export type SuppliedFamiliesOptions = {
   connectDatabase?: (databaseUrl: string) => PostgresConnection;
   /** How long a request waits for its Family to be prepared before it is answered `migrating`, 20 seconds by default. */
   preparingWaitMs?: number;
+  /**
+   * How often a request that reuses an opened Family checks its schema again, 5 seconds by default:
+   * a newer release may have migrated it meanwhile, on another core.
+   */
+  schemaCheckMs?: number;
   /** How long an opened Family stays open without a request, 5 minutes by default. */
   idleMs?: number;
   now?: () => number;
@@ -41,15 +46,27 @@ type Tried<T> = Opening<T> | NotPrepared;
 /** An opened Family: its application, and what answers its requests. */
 export type OpenedFamily = { application: Application; fetch: FamilyFetch };
 
+/** An opened Family, and how to check that its database still has this release's schema. */
+type Opened = { family: OpenedFamily; checkSchema(): Promise<void> };
+
 type Entry = {
-  opening: Promise<OpenedFamily>;
+  /** What opens it, as `keyOf` names it. */
+  key: string;
+  opening: Promise<Opened>;
   lastUsed: number;
+  /** When its schema was last checked, on opening or by a request reusing it. */
+  checkedAt: number;
+  /** The last check: null when it passed, else the error it found. */
+  checked: Promise<unknown>;
   /** Requests under way, which keep the Family open. */
   active: number;
+  /** No longer reused, as its schema is no longer this release's; closed once no request uses it. */
+  dropped: boolean;
 };
 
 export const defaultIdleMs = 5 * 60_000;
 export const defaultPreparingWaitMs = 20_000;
+export const defaultSchemaCheckMs = 5_000;
 
 const late = Symbol("late");
 
@@ -126,17 +143,45 @@ export class SuppliedFamilies {
     const entry = this.#entryFor(context);
     entry.active += 1;
     try {
-      let opened: OpenedFamily;
+      let opened: Opened;
       try {
         opened = await entry.opening;
       } catch (error) {
-        return error instanceof FamilyNotPreparedError ? { ok: false, problem: "not-prepared", error } : { ok: false, problem: refusalOf(error), error };
+        return failureOf(error);
       }
-      return { ok: true, family: await fn(opened) };
+      const stale = await this.#checked(entry, opened);
+      if (stale !== null) return failureOf(stale);
+      return { ok: true, family: await fn(opened.family) };
     } finally {
       entry.active -= 1;
       entry.lastUsed = this.#now();
+      if (entry.dropped && entry.active === 0) await closeEntry(entry);
     }
+  }
+
+  /**
+   * Checks the schema of a reused Family again, at most every `schemaCheckMs`; requests meanwhile
+   * share the last check. Null while it is this release's; otherwise the Family is dropped, and
+   * the error found is the answer.
+   */
+  async #checked(entry: Entry, opened: Opened): Promise<unknown> {
+    const now = this.#now();
+    if (now - entry.checkedAt >= (this.#options.schemaCheckMs ?? defaultSchemaCheckMs)) {
+      entry.checkedAt = now;
+      entry.checked = opened.checkSchema().then(
+        () => null,
+        (error: unknown) => error,
+      );
+    }
+    const stale = await entry.checked;
+    if (stale !== null) this.#drop(entry);
+    return stale;
+  }
+
+  /** Opens the Family anew for the next request, and closes this opening once no request uses it. */
+  #drop(entry: Entry): void {
+    if (this.#entries.get(entry.key) === entry) this.#entries.delete(entry.key);
+    entry.dropped = true;
   }
 
   /**
@@ -182,7 +227,8 @@ export class SuppliedFamilies {
     const key = keyOf(context);
     const existing = this.#entries.get(key);
     if (existing) return existing;
-    const entry: Entry = { opening: this.#open(context), lastUsed: this.#now(), active: 0 };
+    // Opening checks the schema, so the first check of a reuse is due `schemaCheckMs` after.
+    const entry: Entry = { key, opening: this.#open(context), lastUsed: this.#now(), checkedAt: this.#now(), checked: Promise.resolve(null), active: 0, dropped: false };
     this.#entries.set(key, entry);
     // A Family that failed to open is tried again with the next request.
     entry.opening.catch(() => {
@@ -191,22 +237,28 @@ export class SuppliedFamilies {
     return entry;
   }
 
-  async #open(context: OpenedContext): Promise<OpenedFamily> {
+  async #open(context: OpenedContext): Promise<Opened> {
     const { shared, settings = {}, serving, connectDatabase = connectPostgres } = this.#options;
+    const postgres = connectDatabase(context.databaseUrl);
     // Refuses a database not prepared by this release before it writes anything, for `serve` to prepare it.
     const application = await openPreparedFamily(shared, {
       ...settings,
       timeZone: context.timeZone,
       identityProvider: context.identityProvider ?? null,
-      connectDatabase: () => connectDatabase(context.databaseUrl),
+      connectDatabase: () => postgres,
       familyKey: Buffer.from(context.familyKey, "base64url"),
       blobDirectory: context.blobDirectory,
       familyId: context.familyId,
       // All Families of the core share the OCR models, so removing a language leaves its model.
       keepOcrModels: true,
     });
-    return { application, fetch: serving(application, context) };
+    return { family: { application, fetch: serving(application, context) }, checkSchema: () => checkPreparedSchema(postgres) };
   }
+}
+
+/** What a failed opening, or a failed check of an opened Family, answers. */
+function failureOf(error: unknown): Refused | NotPrepared {
+  return error instanceof FamilyNotPreparedError ? { ok: false, problem: "not-prepared", error } : { ok: false, problem: refusalOf(error), error };
 }
 
 /** Why opening or preparing a Family refused it, by the error it stopped with. */
@@ -232,7 +284,7 @@ function keyOf({ familyId, databaseUrl, familyKey, blobDirectory, timeZone, publ
 
 async function closeEntry(entry: Entry): Promise<void> {
   try {
-    await (await entry.opening).application.close();
+    await (await entry.opening).family.application.close();
   } catch {
     // It never opened, or is closed already.
   }

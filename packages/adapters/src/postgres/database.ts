@@ -3,6 +3,7 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
 import pg from "pg";
 import { migrateFamily, type FamilyId } from "./family-id";
+import { retriedOnLockTimeout } from "./lock-timeout";
 import { refuseNewerMigrationHistory, refuseOldMigrationHistory } from "./migration-history";
 import * as schema from "./schema";
 
@@ -29,6 +30,13 @@ export { schema as postgresSchema };
 /** Arbitrary key that serialises migrations run by `api` and `worker` starting together. */
 const migrationLockKey = 7_342_001;
 
+/**
+ * How long a migration waits for a table another connection holds, such as a long transaction of
+ * a core serving the Family, before it gives up and is tried again: it never queues every other
+ * request on that table behind it for long.
+ */
+const migrationLockTimeoutMs = 5_000;
+
 export function connectPostgres(databaseUrl: string): PostgresConnection {
   // Idle connections close after ten seconds, also for a Family a core in supplied mode opened (ADR-0003).
   const pool = new pg.Pool({ connectionString: databaseUrl, idleTimeoutMillis: 10_000 });
@@ -41,7 +49,7 @@ export function connectPostgres(databaseUrl: string): PostgresConnection {
         await lockClient.query("SELECT pg_advisory_lock($1)", [migrationLockKey]);
         await refuseOldMigrationHistory(db, migrationsFolder);
         await refuseNewerMigrationHistory(db, migrationsFolder);
-        await migrateFamily(db, migrationsFolder, options.familyId);
+        await retriedOnLockTimeout(() => migrateFamily(db, migrationsFolder, options.familyId, { lockTimeoutMs: migrationLockTimeoutMs }));
       } finally {
         await lockClient.query("SELECT pg_advisory_unlock($1)", [migrationLockKey]);
         lockClient.release();

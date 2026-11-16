@@ -15,6 +15,10 @@ pnpm workspace, Node >=22.12. Run from repo root.
 
 The `api` project uses an in-process Postgres (migrated once via `apps/api/test/support/postgres-snapshot.ts`); no external DB needed. Tests live in `{packages,apps,tools}/*/test/`.
 
+## Migrations
+
+Write every migration in `packages/adapters/drizzle/` as expand/contract: older cores keep running on the new schema during a rolling update. The rule: ADR-0003, "Migrations expand, then contract".
+
 ## Agent skills
 
 ### Issue tracker
