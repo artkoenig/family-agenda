@@ -42,7 +42,7 @@ The core no longer manages people. It stores no passwords and has no table of Ad
 ## Consequences
 
 - **The Identity Provider becomes a hard dependency.** If it is down, no one can sign in. Agendas keep working.
-- **Instances that run no Identity Provider today must add one.** One release keeps password sign-in, marked deprecated, with a notice in the Admin area. The release after that drops it. The migrations follow ADR-0003: expand first (sessions get `subject` and `email`, and `admin_id` becomes nullable), and only once no core reads them does a contract migration drop `admin_session.admin_id` and the Admin table.
+- **A hard cut, with no transition.** No Instance needs to be carried over, so there is no deprecation release and no expand/contract stage. One release drops password sign-in, `admin_session.admin_id` and the Admin table together. This is a deliberate one-time exception to ADR-0003's rule.
 - **Removal is not immediate.** Revoking someone in the Identity Provider takes effect only when their session expires, at most 12 hours.
 - **Tests and previews** use an in-process fake Identity Provider that signs tokens. Preview Instances (`pnpm preview`) use `mock-oauth2-server`, so trying a PR needs no passkeys or passwords.
 - **Logto's own limits apply.** Its docs recommend generous hardware (2 vCPU, 8 GiB). Real use is expected to be far lower, but that has not been measured here. In the open-source edition, Logto's console has one console administrator without a Logto licence; household Admins are ordinary Logto users and are not limited.
