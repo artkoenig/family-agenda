@@ -115,3 +115,14 @@ export function sessionCookieOf(response: Response): string {
   if (!pair) throw new Error("response sets no cookie");
   return pair;
 }
+
+/**
+ * The cookie of a session for an Admin the Identity Provider vouched for, started directly: Admins
+ * exist only in the Identity Provider (ADR-0009), so there is nothing to sign in with here.
+ */
+export async function signedInCookie(
+  instance: { app: Pick<Application, "admins"> },
+  identity = { subject: "sub-anna", email: "anna@example.org" },
+): Promise<string> {
+  return `fb_session=${await instance.app.admins.startSession(identity)}`;
+}

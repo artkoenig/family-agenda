@@ -87,7 +87,7 @@ describe("a core in supplied mode", () => {
     return { ...connection, close: () => Promise.resolve(void closed.push(databaseUrl)) };
   };
 
-  const request = (context: Context | string | null, path = "/setup", init: RequestInit = {}) =>
+  const request = (context: Context | string | null, path = "/admin/sign-in", init: RequestInit = {}) =>
     fetch(
       new Request(`http://core${path}`, {
         ...init,
@@ -149,9 +149,8 @@ describe("a core in supplied mode", () => {
 
   it("answers a request with the Context of Family A from A's data only, and one of B from B's, through one core", async () => {
     await on(a, (application) => application.familyMembers.add({ name: "Mia" }));
-    await on(a, (application) => application.admins.enterAdmin({ email: "anna@example.org" }));
 
-    expect((await request(a)).status).toBe(404);
+    expect((await request(a)).status).toBe(200);
     expect((await request(b)).status).toBe(200);
     expect(await on(a, (application) => application.familyMembers.list())).toMatchObject([{ name: "Mia" }]);
     expect(await on(b, (application) => application.familyMembers.list())).toEqual([]);
@@ -400,16 +399,10 @@ describe("a core in supplied mode", () => {
   });
 
   describe("with the settings of each Family's own Context", () => {
-    const password = "correct horse battery";
     const cookieOf = (response: Response, name: string) => {
       const header = response.headers.getSetCookie().find((cookie) => cookie.startsWith(`${name}=`)) ?? "";
       return { pair: header.split(";")[0] ?? "", path: /Path=([^;]*)/i.exec(header)?.[1] };
     };
-    const form = (fields: Record<string, string>): RequestInit => ({
-      method: "POST",
-      body: new URLSearchParams(fields),
-      headers: { origin: "http://core", "content-type": "application/x-www-form-urlencoded" },
-    });
     const anna = { subject: "sub-anna", email: "anna@example.org", emailVerified: true, groups: ["homelab-admin"] };
     const identityProvider = { issuerUrl: "https://id.example.org", clientId: "family-agenda", clientSecret: "s3cret-of-a" };
 
@@ -434,11 +427,9 @@ describe("a core in supplied mode", () => {
       const second = await familyOf("second", { publicUrl: "https://second.example.org/two/" });
 
       for (const [context, prefix, origin] of [[first, "/one", "https://first.example.org"], [second, "/two", "https://second.example.org"]] as const) {
-        expect((await request(context, "/admin")).headers.get("location")).toBe(`${prefix}/setup`);
-        expect(await (await request(context, "/setup")).text()).toContain(`action="${prefix}/setup"`);
-        const created = await request(context, "/setup", form({ email: "anna@example.org", password }));
-        expect(created.headers.get("location")).toBe(`${prefix}/admin/recovery-kit`);
-        expect(cookieOf(created, "fb_session").path).toBe(prefix);
+        expect((await request(context, "/admin")).headers.get("location")).toBe(`${prefix}/admin/sign-in`);
+        const session = await on(context, (application) => application.admins.startSession({ subject: "sub-anna", email: "anna@example.org" }));
+        expect((await request(context, "/admin", { headers: { cookie: `fb_session=${session}` } })).headers.get("location")).toBe(`${prefix}/admin/recovery-kit`);
         const agenda = await on(context, (application) => application.agendas.create({ memberIds: [], horizonDays: 3 }));
         if (!agenda.ok) throw new Error(agenda.problem);
         const manifest = (await (await request(context, `/agendas/${agenda.id}/manifest.webmanifest`)).json()) as { start_url: string; scope: string };
@@ -446,7 +437,7 @@ describe("a core in supplied mode", () => {
         // The feed itself answers, and the Admin area hands out its address below the prefix.
         expect((await request(context, `/agendas/${agenda.id}/feed.ics`)).status).toBe(200);
         await on(context, (application) => application.recoveryKit.confirm());
-        const editing = await (await request(context, `/admin/agendas/${agenda.id}`, { headers: { cookie: cookieOf(created, "fb_session").pair } })).text();
+        const editing = await (await request(context, `/admin/agendas/${agenda.id}`, { headers: { cookie: `fb_session=${session}` } })).text();
         expect(editing).toContain(`href="${origin}${prefix}/agendas/${agenda.id}/feed.ics"`);
       }
     });
@@ -455,20 +446,19 @@ describe("a core in supplied mode", () => {
       const offered = await familyOf("offered", { publicUrl: "http://core/one", identityProvider });
       const without = await familyOf("without", { publicUrl: "http://core/two" });
 
-      expect(await (await request(without, "/setup")).text()).not.toContain("/sso/start");
+      expect(await (await request(without, "/admin/sign-in")).text()).not.toContain("/sso/start");
       expect((await request(without, "/sso/start")).headers.get("location") ?? "").not.toContain("id.example.org");
-      expect(await (await request(offered, "/setup")).text()).toContain(`href="/one/sso/start"`);
+      expect(await (await request(offered, "/admin/sign-in")).text()).toContain(`href="/one/sso/start"`);
 
       const start = await request(offered, "/sso/start");
-      expect(provider.begun).toEqual([{ connection: identityProvider, redirectUri: "http://core/one/sso/callback" }]);
+      expect(provider.begun).toEqual([{ connection: { ...identityProvider, groupsClaim: "groups" }, redirectUri: "http://core/one/sso/callback" }]);
       const sso = cookieOf(start, "fb_sso");
       expect(sso.path).toBe("/one/sso");
       const pending = JSON.parse(decodeURIComponent(sso.pair.split("=").slice(1).join("="))) as Parameters<typeof provider.returnWith>[0];
       const back = await request(offered, `/sso/callback${provider.returnWith(pending, anna)}`, { headers: { cookie: sso.pair } });
 
-      expect(back.headers.get("location")).toBe("/one/admin/recovery-kit");
+      expect(back.headers.get("location")).toBe("/one/admin");
       expect(cookieOf(back, "fb_session").path).toBe("/one");
-      expect(await on(offered, (application) => application.admins.listAdmins())).toMatchObject([{ email: "anna@example.org" }]);
       expect(warnings.join()).not.toContain("s3cret");
     });
 
@@ -478,11 +468,11 @@ describe("a core in supplied mode", () => {
       await request({ ...a, identityProvider: { ...identityProvider, issuerUrl: "http://core" } });
       await request({ ...a, identityProvider: { ...identityProvider, clientSecret: "another" } });
       await request({ ...a, timeZone: "Asia/Tokyo" });
-      await request({ ...a, identityProvider: { ...identityProvider, knownAdminsOnly: true } });
+      await request({ ...a, identityProvider: { ...identityProvider, groupsClaim: "roles" } });
       expect(families.size).toBe(6);
 
-      expect((await request({ ...a, publicUrl: "http://core/elsewhere" }, "/admin")).headers.get("location")).toBe("/elsewhere/setup");
-      expect((await request(a, "/admin")).headers.get("location")).toBe("/setup");
+      expect((await request({ ...a, publicUrl: "http://core/elsewhere" }, "/admin")).headers.get("location")).toBe("/elsewhere/admin/sign-in");
+      expect((await request(a, "/admin")).headers.get("location")).toBe("/admin/sign-in");
       expect(families.size).toBe(6);
     });
 

@@ -1,5 +1,5 @@
 import { timingSafeEqual } from "node:crypto";
-import type { AdminAccess, DueWorkReport, StepOutcome } from "@family-agenda/application";
+import type { DueWorkReport, StepOutcome } from "@family-agenda/application";
 import { serve, type ServerType } from "@hono/node-server";
 import { Hono } from "hono";
 import { runDueWork, workFailures, type BackgroundWork, type WorkLog } from "./background-work";
@@ -20,31 +20,25 @@ export type TriggerAnswers = {
   "due-work": DueWorkAnswer;
   purge: { purged: number; deleted: number };
   "secret-sweep": { removed: number };
-  "enter-admin": { email: string; outcome: "first" | "added" | "exists" };
-  "reset-admin-password": { email: string; newPassword: string };
 };
 
 /**
- * What the Triggered operations act on: the worker's work, and the Admins, for an operator who is
- * not signed in. Preparing the Family is none of them: a core prepares its Family when it starts,
- * or in supplied mode when it opens one.
+ * What the Triggered operations act on: the worker's work. Preparing the Family is none of them: a
+ * core prepares its Family when it starts, or in supplied mode when it opens one. No operation
+ * manages Admins, who exist only in the Identity Provider (ADR-0009).
  */
-export type TriggeredWork = BackgroundWork & {
-  admins: Pick<AdminAccess, "enterAdmin" | "issueNewPassword">;
-};
+export type TriggeredWork = BackgroundWork;
 
 type OperationName = keyof TriggerAnswers;
-/** Reads the JSON body of the request; only an operation that takes one calls it. */
-type BodyReader = () => Promise<unknown>;
-type Operations = { [Name in OperationName]: (body: BodyReader) => Promise<TriggerAnswers[Name]> };
+type Operations = { [Name in OperationName]: () => Promise<TriggerAnswers[Name]> };
 /** The operations as served: each may also read the request, such as for the Context it carries. */
-type Served = { [Name in OperationName]: (body: BodyReader, request: Request) => Promise<TriggerAnswers[Name]> };
+type Served = { [Name in OperationName]: (request: Request) => Promise<TriggerAnswers[Name]> };
 
 /** Where the Triggered operations write: the worker's lines, and whether they listen. */
 export type TriggerLog = WorkLog & { info(line: string): void };
 
 /** The statuses an operation is refused with. */
-type RefusalStatus = 400 | 401 | 403 | 404 | 409 | 503;
+type RefusalStatus = 400 | 401 | 403 | 409 | 503;
 
 /** An operation that will not run as asked, answered with `status` and `body`; nothing has changed. */
 class Refused extends Error {
@@ -54,27 +48,6 @@ class Refused extends Error {
   ) {
     super(body.error);
   }
-}
-
-/** The email address a body names, as given; a body that names no text is refused. */
-async function emailIn(body: BodyReader): Promise<string> {
-  const given: unknown = await body();
-  const email = typeof given === "object" && given !== null ? (given as { email?: unknown }).email : undefined;
-  if (typeof email !== "string") throw new Refused(400, { error: "invalid-email" });
-  return email;
-}
-
-async function enterAdmin(work: TriggeredWork, body: BodyReader): Promise<TriggerAnswers["enter-admin"]> {
-  const result = await work.admins.enterAdmin({ email: await emailIn(body) });
-  if (!result.ok) throw new Refused(400, { error: result.problem });
-  return { email: result.email, outcome: result.outcome };
-}
-
-/** The new password is in the answer alone, never in a log line. */
-async function resetAdminPassword(work: TriggeredWork, body: BodyReader): Promise<TriggerAnswers["reset-admin-password"]> {
-  const result = await work.admins.issueNewPassword({ email: await emailIn(body) });
-  if (!result.ok) throw new Refused(result.problem === "invalid-email" ? 400 : 404, { error: result.problem });
-  return { email: result.email, newPassword: result.newPassword };
 }
 
 const stepOf = <R>(outcome: StepOutcome<R>): StepAnswer<R> =>
@@ -102,20 +75,7 @@ function triggeredOperations(work: TriggeredWork, log: WorkLog, dueWork = joined
     "due-work": dueWork,
     purge: () => work.retention.purge(),
     "secret-sweep": async () => ({ removed: await work.secretSweep.sweep() }),
-    "enter-admin": (body) => enterAdmin(work, body),
-    "reset-admin-password": (body) => resetAdminPassword(work, body),
   };
-}
-
-/** The JSON body of a request; none when it is empty, and refused when it is no JSON. */
-async function bodyOf(request: Request): Promise<unknown> {
-  const text = await request.text();
-  if (text.trim() === "") return undefined;
-  try {
-    return JSON.parse(text) as unknown;
-  } catch {
-    throw new Refused(400, { error: "invalid-body" });
-  }
 }
 
 const isOperation = (operations: Served, name: string): name is OperationName => Object.hasOwn(operations, name);
@@ -182,10 +142,10 @@ export function createSuppliedTriggerApp(options: SuppliedTriggerOptions): Hono 
   };
   const onFamily =
     <Name extends OperationName>(name: Name) =>
-    async (body: BodyReader, request: Request): Promise<TriggerAnswers[Name]> => {
+    async (request: Request): Promise<TriggerAnswers[Name]> => {
       const context = contextOf(request, contextKey, now());
       const opening = await families.serve(context, ({ application }) =>
-        triggeredOperations(application, log, () => joinedDueWork(context, application))[name](body),
+        triggeredOperations(application, log, () => joinedDueWork(context, application))[name](),
       );
       if (opening.ok) return opening.family;
       log.warn(`Could not open the Family ${context.familyId} for the Triggered operation ${name}: ${opening.problem}`);
@@ -196,8 +156,6 @@ export function createSuppliedTriggerApp(options: SuppliedTriggerOptions): Hono 
       "due-work": onFamily("due-work"),
       purge: onFamily("purge"),
       "secret-sweep": onFamily("secret-sweep"),
-      "enter-admin": onFamily("enter-admin"),
-      "reset-admin-password": onFamily("reset-admin-password"),
     },
     options,
   );
@@ -214,7 +172,7 @@ function triggerApp(operations: Served, { token, log }: { token: string; log: Wo
     const name = c.req.param("name");
     if (!isOperation(operations, name)) return c.json({ error: "unknown-operation" }, 404);
     try {
-      return c.json(await operations[name](() => bodyOf(c.req.raw), c.req.raw));
+      return c.json(await operations[name](c.req.raw));
     } catch (error) {
       if (error instanceof Refused) return c.json(error.body, error.status);
       log.error(workFailures[name], error);

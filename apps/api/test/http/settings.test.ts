@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { bootHttpForTest, sessionCookieOf, type HttpTestInstance } from "../support/http";
+import { bootHttpForTest, type HttpTestInstance, signedInCookie } from "../support/http";
 
-const password = "correct horse battery";
 
 /** The open dialog of a page, from `<dialog` to `</dialog>`; empty if none is open. */
 const dialogOf = (page: string) => /<dialog open=""[^>]*>.*?<\/dialog>/s.exec(page)?.[0] ?? "";
@@ -18,9 +17,8 @@ describe("the settings in the Admin area", () => {
       {},
       { sourcePlugins: [{ sourceTypeId: "calendar", displayName: "Calendar" }, { sourceTypeId: "mailbox", displayName: "Mailbox" }] },
     );
-    await instance.post("/setup", { email: "anna@example.org", password });
     await instance.app.recoveryKit.confirm();
-    cookie = sessionCookieOf(await instance.post("/admin/sign-in", { email: "anna@example.org", password }));
+    cookie = await signedInCookie(instance);
   });
   afterEach(async () => {
     await instance.close();
@@ -39,7 +37,7 @@ describe("the settings in the Admin area", () => {
     expect(entryOf(page, "Agendas")).toContain('aria-current="page"');
     expect(entryOf(page, "Family Members")).not.toContain("aria-current");
     expect(entryOf(page, "AI")).toContain("Not set up");
-    expect(entryOf(page, "Admins")).toContain("1 Admin");
+    expect(page, "Admins live in the Identity Provider").not.toContain('href="/admin/admins"');
     expect(entryOf(page, "Recovery Kit")).toContain("Saved");
     expect(entryOf(page, "Sources")).toContain("None yet");
     expect(page, "an installed Source Type simply appears disabled").not.toContain("New Source Types");
@@ -67,17 +65,10 @@ describe("the settings in the Admin area", () => {
     expect(dialogOf(await get("/admin/family-members"))).toBe("");
   });
 
-  it("creates an Agenda and adds an Admin in dialogs, showing why either was refused there", async () => {
+  it("creates an Agenda in a dialog, showing why it was refused there", async () => {
     expect(dialogOf(await get("/admin/agendas/new"))).toContain("Create Agenda");
     const farAhead = await instance.post("/admin/agendas", { horizonDays: "90" }, { cookie });
     expect(dialogOf(await farAhead.text())).toContain("between 1 and 31 days");
-
-    expect(dialogOf(await get("/admin/admins/new"))).toContain("Add Admin");
-    const short = await instance.post("/admin/admins", { email: "ben@example.org", password: "short" }, { cookie });
-    expect(short.status).toBe(400);
-    const dialog = dialogOf(await short.text());
-    expect(dialog).toContain("at least 12 characters");
-    expect(dialog).toContain('value="ben@example.org"');
   });
 
   it("adds a Source from its Source Type's page, in a dialog over that page", async () => {

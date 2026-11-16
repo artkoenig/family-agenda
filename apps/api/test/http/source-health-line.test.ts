@@ -1,8 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { bootHttpForTest, sessionCookieOf, type HttpTestInstance } from "../support/http";
+import { bootHttpForTest, type HttpTestInstance, signedInCookie } from "../support/http";
 import { testPluginControls, type TestConfiguration } from "../support/test-source-plugin";
-
-const password = "correct horse battery";
 
 describe("a Source's health line, kept up to date without reloading", () => {
   let instance: HttpTestInstance;
@@ -10,9 +8,8 @@ describe("a Source's health line, kept up to date without reloading", () => {
   let sourceId: string;
   beforeEach(async () => {
     instance = await bootHttpForTest({}, { sourcePlugins: [{ sourceTypeId: "school-mail" }] });
-    await instance.post("/setup", { email: "anna@example.org", password });
     await instance.app.recoveryKit.confirm();
-    cookie = sessionCookieOf(await instance.post("/admin/sign-in", { email: "anna@example.org", password }));
+    cookie = await signedInCookie(instance);
     await instance.app.sourceTypes.enable("school-mail");
     const added = await instance.app.sources.add({ sourceTypeId: "school-mail", plain: { url: "imap.example.org" }, secrets: {} });
     if (!added.ok) throw new Error("adding failed");
@@ -113,9 +110,8 @@ describe("a Source's pending Source Attributes, brought in with its health line"
       ],
     };
     instance = await bootHttpForTest({}, { sourcePlugins: [{ sourceTypeId: "mail", displayName: "Mail", configuration }] });
-    await instance.post("/setup", { email: "anna@example.org", password });
     await instance.app.recoveryKit.confirm();
-    cookie = sessionCookieOf(await instance.post("/admin/sign-in", { email: "anna@example.org", password }));
+    cookie = await signedInCookie(instance);
     await instance.app.sourceTypes.enable("mail");
     const member = await instance.app.familyMembers.add({ name: "Mia" });
     if (!member.ok) throw new Error("adding failed");

@@ -1,16 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { bootHttpForTest, sessionCookieOf, type HttpTestInstance } from "../support/http";
+import { bootHttpForTest, type HttpTestInstance, signedInCookie } from "../support/http";
 
-const password = "correct horse battery";
 
 describe("Sources in the Admin area", () => {
   let instance: HttpTestInstance;
   let cookie: string;
   beforeEach(async () => {
     instance = await bootHttpForTest({}, { sourcePlugins: [{ sourceTypeId: "calendar", displayName: "Calendar" }] });
-    await instance.post("/setup", { email: "anna@example.org", password });
     await instance.app.recoveryKit.confirm();
-    cookie = sessionCookieOf(await instance.post("/admin/sign-in", { email: "anna@example.org", password }));
+    cookie = await signedInCookie(instance);
   });
   afterEach(async () => {
     await instance.close();

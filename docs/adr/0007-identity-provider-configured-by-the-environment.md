@@ -8,6 +8,8 @@ The one OpenID Connect Identity Provider that Admins may sign in through (ADR-00
 
 Because it is there before any Admin, the setup page of an empty Instance offers it too: the first one in the required group who signs in becomes the first Admin, without a password, and sees the Recovery Kit next.
 
+Superseded in part by ADR-0009: no Admin is made or stored, the setup page and `OIDC_KNOWN_ADMINS_ONLY` are gone, and whoever is in the required group is an Admin.
+
 ## Considered Options
 
 - **Settings in the Admin area, as before.** Needs an Admin first, so a household that wants only the Identity Provider has to create a password Admin it does not want, then enter the client secret in a form. Rejected.

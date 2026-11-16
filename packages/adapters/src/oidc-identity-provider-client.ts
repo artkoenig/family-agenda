@@ -6,7 +6,8 @@ import type {
   VerifiedIdentity,
 } from "@family-agenda/application";
 
-const scope = "openid email profile groups";
+/** The scopes asked for: the standard ones, and the one named like the groups claim, such as `groups` or `roles`. */
+const scopeOf = (groupsClaim: string) => `openid email profile ${groupsClaim}`;
 
 /** An OIDC client with the authorization code flow and PKCE, through `openid-client`. */
 export class OidcIdentityProviderClient implements IdentityProviderClient {
@@ -18,6 +19,7 @@ export class OidcIdentityProviderClient implements IdentityProviderClient {
         issuerUrl,
         clientId: "discovery",
         clientSecret: "",
+        groupsClaim: "groups",
       });
       return { ok: true };
     } catch (error) {
@@ -40,7 +42,7 @@ export class OidcIdentityProviderClient implements IdentityProviderClient {
     };
     const url = oidc.buildAuthorizationUrl(configuration, {
       redirect_uri: redirectUri,
-      scope,
+      scope: scopeOf(connection.groupsClaim),
       state: pending.state,
       nonce: pending.nonce,
       code_challenge: await oidc.calculatePKCECodeChallenge(
@@ -71,12 +73,13 @@ export class OidcIdentityProviderClient implements IdentityProviderClient {
       );
       const claims = tokens.claims();
       if (!claims) return null;
+      const groups = claims[connection.groupsClaim];
       return {
         subject: claims.sub,
         email: typeof claims.email === "string" ? claims.email : null,
         emailVerified: claims.email_verified === true,
-        groups: Array.isArray(claims.groups)
-          ? claims.groups.filter((group) => typeof group === "string")
+        groups: Array.isArray(groups)
+          ? groups.filter((group) => typeof group === "string")
           : [],
       };
     } catch {

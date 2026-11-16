@@ -1,10 +1,8 @@
 import type { FamilyMemberId, SourceId } from "@family-agenda/domain";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { assignSource } from "../support/assign";
-import { bootHttpForTest, sessionCookieOf, type HttpTestInstance } from "../support/http";
+import { bootHttpForTest, type HttpTestInstance, signedInCookie } from "../support/http";
 import { testPluginControls } from "../support/test-source-plugin";
-
-const password = "correct horse battery";
 
 describe("Assigning a Source to Family Members in the Admin area", () => {
   let instance: HttpTestInstance;
@@ -13,9 +11,8 @@ describe("Assigning a Source to Family Members in the Admin area", () => {
   let mia: FamilyMemberId;
   beforeEach(async () => {
     instance = await bootHttpForTest({}, { sourcePlugins: [{ sourceTypeId: "assigned-cal", displayName: "Calendar" }] });
-    await instance.post("/setup", { email: "anna@example.org", password });
     await instance.app.recoveryKit.confirm();
-    cookie = sessionCookieOf(await instance.post("/admin/sign-in", { email: "anna@example.org", password }));
+    cookie = await signedInCookie(instance);
     await instance.app.sourceTypes.enable("assigned-cal");
     const added = await instance.app.sources.add({ sourceTypeId: "assigned-cal", plain: { url: "https://calendar.example.org" }, secrets: {} });
     if (!added.ok) throw new Error("adding failed");

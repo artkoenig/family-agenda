@@ -11,7 +11,6 @@ describe("an Agenda as an app on the home screen", () => {
   let leo: FamilyMemberId;
   beforeEach(async () => {
     instance = await bootHttpForTest();
-    await instance.post("/setup", { email: "anna@example.org", password: "correct horse battery" });
     await instance.app.recoveryKit.confirm();
     mia = await addMember("Mia");
     leo = await addMember("Leo");

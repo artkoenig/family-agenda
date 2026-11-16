@@ -1,6 +1,6 @@
 import {
   pollIntervalRange,
-  type AdminSummary,
+  type SignedInIdentity,
   type CatalogueSummary,
   type FamilyMemberSummary,
   type LanguageSettings,
@@ -29,11 +29,9 @@ import {
   parseColour,
   type MemberAvatar,
   type MemberColour,
-  minimumPasswordLength,
   photoTypes,
   silentAfterMs,
   agendaLayouts,
-  type AdminId,
   type FamilyLanguage,
   type FamilyMemberId,
   type MultilingualText,
@@ -94,114 +92,30 @@ function EntrancePage(props: {
   );
 }
 
-export function FirstAdminPage(props: {
-  language: FamilyLanguage;
-  email?: string;
+/**
+ * Signing in, which goes through the Identity Provider alone (ADR-0009): a button to it, or, when
+ * none is configured, why no one can sign in. Shown after signing out, and when a sign-in was refused.
+ */
+export function SignInPage(props: {
   problem?: string;
-  /** Whether the first Admin may come from the Identity Provider instead. */
-  singleSignOn?: boolean;
+  /** Whether an Identity Provider is offered at the address the request came to. */
+  singleSignOn: boolean;
 }) {
   const prefix = usePathPrefix();
   const { t } = useTranslation();
   return (
     <EntrancePage
-      title={t.setup.title}
-      intro={t.setup.intro}
+      title={t.signIn.title}
+      intro={props.singleSignOn ? t.signIn.intro : t.signIn.noIdentityProvider}
       problem={props.problem}
     >
-      <form method="post" action={href(prefix, "/setup")} class="fam-sheet__form">
-        <div class="fam-group__fields">
-          <div class="fam-field">
-            <label for="email">{t.common.email}</label>
-            <input
-              id="email"
-              name="email"
-              type="email"
-              required
-              autofocus
-              autocomplete="username"
-              value={props.email}
-            />
-          </div>
-          <div class="fam-field">
-            <label for="password">{t.setup.password}</label>
-            <input
-              id="password"
-              name="password"
-              type="password"
-              required
-              minlength={minimumPasswordLength}
-              autocomplete="new-password"
-            />
-          </div>
-          <div class="fam-field">
-            <label for="language">{t.setup.familyLanguage}</label>
-            <select id="language" name="language">
-              <FamilyLanguageOptions selected={props.language} />
-            </select>
-            <small>{t.setup.familyLanguageHint}</small>
-          </div>
-        </div>
+      {props.singleSignOn ? (
         <div class="fam-group__actions">
-          <button type="submit" class="fam-button fam-button--primary">
-            {t.setup.submit}
-          </button>
-          {props.singleSignOn ? (
-            <a href={href(prefix, "/sso/start")} class="fam-button">
-              {t.signIn.singleSignOn}
-            </a>
-          ) : null}
+          <a href={href(prefix, "/sso/start")} class="fam-button fam-button--primary">
+            {t.signIn.singleSignOn}
+          </a>
         </div>
-      </form>
-    </EntrancePage>
-  );
-}
-
-export function SignInPage(props: {
-  email?: string;
-  problem?: string;
-  singleSignOn?: boolean;
-}) {
-  const prefix = usePathPrefix();
-  const { t } = useTranslation();
-  return (
-    <EntrancePage title={t.signIn.title} problem={props.problem}>
-      <form method="post" action={href(prefix, "/admin/sign-in")} class="fam-sheet__form">
-        <div class="fam-group__fields">
-          <div class="fam-field">
-            <label for="email">{t.common.email}</label>
-            <input
-              id="email"
-              name="email"
-              type="email"
-              required
-              autofocus
-              autocomplete="username"
-              value={props.email}
-            />
-          </div>
-          <div class="fam-field">
-            <label for="password">{t.common.password}</label>
-            <input
-              id="password"
-              name="password"
-              type="password"
-              required
-              autocomplete="current-password"
-            />
-          </div>
-        </div>
-        <div class="fam-group__actions">
-          <button type="submit" class="fam-button fam-button--primary">
-            {t.signIn.submit}
-          </button>
-          {props.singleSignOn ? (
-            <a href={href(prefix, "/sso/start")} class="fam-button">
-              {t.signIn.singleSignOn}
-            </a>
-          ) : null}
-        </div>
-      </form>
+      ) : null}
     </EntrancePage>
   );
 }
@@ -214,7 +128,6 @@ export type SettingsSummary = {
   /** How many Sources are Failing, which the whole Admin area shows a banner for. */
   failingSources: number;
   llm: { model: string; local: boolean } | null;
-  admins: number;
   kitSaved: boolean;
   /** The release this Instance runs, such as `0.3.1`, `main-1a2b3c4` or `dev`. */
   version: string;
@@ -225,7 +138,7 @@ export type SettingsSummary = {
 };
 
 /** The Admin a page is shown to, and the settings list. */
-export type SignedInAdmin = AdminSummary & { settings: SettingsSummary };
+export type SignedInAdmin = SignedInIdentity & { settings: SettingsSummary };
 
 type SectionId =
   | "members"
@@ -233,7 +146,6 @@ type SectionId =
   | "display"
   | "sources"
   | "llm"
-  | "admins"
   | "recovery-kit";
 
 /** `fragment` loads a fresher summary right after the page, which does not wait for it. */
@@ -315,12 +227,6 @@ function settingsGroups(translation: Translation): SettingsGroup[] {
     {
       name: s.groups.instance,
       sections: [
-        {
-          id: "admins",
-          href: "/admin/admins",
-          label: t.admins.title,
-          summary: ({ settings }) => ({ text: s.admins(settings.admins) }),
-        },
         {
           id: "recovery-kit",
           href: "/admin/recovery-kit",
@@ -444,12 +350,6 @@ function SectionIcon(props: { id: SectionId }) {
       <>
         <path d="M4 5h16v11H9l-5 4z"></path>
         <path d="M8 9h8M8 12h5"></path>
-      </>
-    ),
-    admins: (
-      <>
-        <path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z"></path>
-        <path d="M9 12l2 2 4-4"></path>
       </>
     ),
     "recovery-kit": (
@@ -769,124 +669,6 @@ const addButton = (href: string, label: string) => (
     {label}
   </a>
 );
-
-export function AdminsPage(props: {
-  admin: SignedInAdmin;
-  /** Whether an Identity Provider is offered, so that an Admin without a password can sign in. */
-  singleSignOn?: boolean;
-  admins: AdminSummary[];
-  problem?: string;
-  /** The add dialog, open with what was entered and why it was refused. */
-  adding?: { email?: string; problem?: string };
-  /** The dialog of another Admin, open with why a new password was refused. */
-  editing?: { id: AdminId; problem?: string };
-}) {
-  const prefix = usePathPrefix();
-  const { adding, editing } = props;
-  const { t } = useTranslation();
-  const edited = editing
-    ? props.admins.find(
-        (other) => other.id === editing.id && other.id !== props.admin.id,
-      )
-    : undefined;
-  const dialog = edited ? (
-    <Dialog
-      id="edit-admin"
-      eyebrow={t.admins.eyebrow}
-      title={edited.email}
-      closeHref={href(prefix, "/admin/admins")}
-    >
-      <form
-        method="post"
-        action={href(prefix, `/admin/admins/${edited.id}/password`)}
-        class="fam-dialog__form"
-      >
-        <Problem message={editing?.problem} />
-        <div class="fam-field">
-          <label for="password">{t.admins.newPassword}</label>
-          <input
-            id="password"
-            name="password"
-            type="password"
-            required
-            autofocus
-            minlength={minimumPasswordLength}
-            autocomplete="new-password"
-          />
-          <small>{t.admins.passwordHint}</small>
-        </div>
-        <DialogFooter
-          closeHref={href(prefix, "/admin/admins")}
-          submit={t.admins.resetPassword}
-        />
-      </form>
-    </Dialog>
-  ) : adding ? (
-    <Dialog
-      id="add-admin"
-      eyebrow={t.admins.eyebrow}
-      title={t.admins.dialogTitle}
-      closeHref={href(prefix, "/admin/admins")}
-    >
-      <form method="post" action={href(prefix, "/admin/admins")} class="fam-dialog__form">
-        <Problem message={adding.problem} />
-        <div class="fam-field">
-          <label for="email">{t.common.email}</label>
-          <input
-            id="email"
-            name="email"
-            type="email"
-            required
-            autofocus
-            value={adding.email}
-          />
-        </div>
-        <div class="fam-field">
-          <label for="password">{t.common.password}</label>
-          <input
-            id="password"
-            name="password"
-            type="password"
-            minlength={minimumPasswordLength}
-            autocomplete="new-password"
-          />
-          <small>{props.singleSignOn ? t.admins.newAdminPasswordHint : t.admins.passwordHint}</small>
-        </div>
-        <DialogFooter closeHref={href(prefix, "/admin/admins")} submit={t.admins.add} />
-      </form>
-    </Dialog>
-  ) : undefined;
-  return (
-    <AdminLayout
-      title={t.admins.title}
-      admin={props.admin}
-      current="admins"
-      dialog={dialog}
-    >
-      <SectionHeader
-        title={t.admins.title}
-        description={t.admins.description}
-        action={addButton(href(prefix, "/admin/admins/new"), t.admins.add)}
-      />
-      <Problem message={props.problem} />
-      <section class="fam-sheet">
-        <ul class="fam-rows">
-          {props.admins.map((other) =>
-            other.id === props.admin.id ? (
-              <ListRow name={other.email} meta={t.admins.you} />
-            ) : (
-              <ListRow
-                href={href(prefix, `/admin/admins/${other.id}`)}
-                name={other.email}
-                meta={t.admins.admin}
-              />
-            ),
-          )}
-        </ul>
-      </section>
-    </AdminLayout>
-  );
-}
 
 /** The kit as a text file to download. */
 export function recoveryKitText(kit: RecoveryKit, t: Catalogue): string {

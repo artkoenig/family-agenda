@@ -1,9 +1,8 @@
-import { pollIntervalRange, signInLimits } from "@family-agenda/application";
+import { pollIntervalRange } from "@family-agenda/application";
 import {
   horizonDaysRange,
   maximumNameLength,
   maximumPhotoBytes,
-  minimumPasswordLength,
   photoTypes,
 } from "@family-agenda/domain";
 import type { Catalogue } from "./en";
@@ -31,13 +30,6 @@ export const de: Catalogue = {
   },
 
   problems: {
-    "invalid-email": "Gib eine gültige E-Mail-Adresse ein.",
-    "password-too-short": `Das Passwort muss mindestens ${minimumPasswordLength} Zeichen haben.`,
-    "email-taken": "Für diese E-Mail-Adresse gibt es schon ein Admin-Konto.",
-    "invalid-credentials": "E-Mail-Adresse oder Passwort ist falsch.",
-    "rate-limited": `Zu viele fehlgeschlagene Anmeldungen. Warte ${signInLimits.windowMs / 60_000} Minuten und versuche es dann erneut.`,
-    "own-account": "Dein eigenes Passwort kannst du hier nicht zurücksetzen.",
-    "unknown-admin": "Diesen Admin gibt es nicht.",
     "invalid-language": "Wähle Englisch oder Deutsch als Familiensprache.",
     "kit-not-saved": "Bestätige, dass du das Wiederherstellungs-Kit gespeichert hast.",
     "invalid-name": `Gib einen Namen mit höchstens ${maximumNameLength} Zeichen ein.`,
@@ -70,13 +62,9 @@ export const de: Catalogue = {
     "sso-failed":
       "Die Anmeldung über den Identity Provider hat nicht geklappt. Versuche es noch einmal.",
     "sso-not-in-group":
-      "Dein Konto beim Identity Provider gehört nicht zur Gruppe, die sich hier anmelden darf.",
+      "Dein Konto beim Identity Provider gehört nicht zur Gruppe oder Rolle, die Family Agenda verwalten darf. Bitte die Person, die den Identity Provider betreibt, dich hinzuzufügen.",
     "sso-email-unverified":
       "Der Identity Provider hat keine E-Mail-Adresse für dein Konto bestätigt.",
-    "sso-unknown-admin":
-      "Hier hat kein Admin die E-Mail-Adresse, die der Identity Provider für dein Konto bestätigt hat. Ein Admin kann dich mit dieser Adresse hinzufügen.",
-    "sso-conflict":
-      "Ein Admin mit dieser E-Mail-Adresse ist bereits mit einem anderen Konto beim Identity Provider verknüpft.",
     "invalid-interval": `Das Abrufintervall muss zwischen ${pollIntervalRange.minSeconds / 60} Minute und ${pollIntervalRange.maxSeconds / 86_400} Tagen liegen.`,
   },
   problemsWith: {
@@ -98,8 +86,6 @@ export const de: Catalogue = {
   },
 
   common: {
-    email: "E-Mail",
-    password: "Passwort",
     save: "Speichern",
     cancel: "Abbrechen",
     back: "Zurück",
@@ -109,19 +95,10 @@ export const de: Catalogue = {
     storedSecret: "Gespeichert; leer lassen, um es zu behalten",
   },
 
-  setup: {
-    title: "Ersten Admin anlegen",
-    intro: "Diese Instanz hat noch keinen Admin. Lege dein Admin-Konto an, um den Admin-Bereich zu schützen.",
-    password: `Passwort (mindestens ${minimumPasswordLength} Zeichen)`,
-    familyLanguage: "Familiensprache",
-    familyLanguageHint:
-      "Family Agenda spricht sie, schreibt Daten in ihr und liest eingescannte Briefe in ihr. Du kannst sie in den Einstellungen ändern.",
-    submit: "Admin anlegen",
-  },
-
   signIn: {
     title: "Anmelden",
-    submit: "Anmelden",
+    intro: "Admins melden sich über den Identity Provider dieser Instanz an.",
+    noIdentityProvider: "Kein Identity Provider ist verbunden, daher kann sich niemand anmelden. Setze OIDC_ISSUER_URL, OIDC_CLIENT_ID und OIDC_CLIENT_SECRET.",
     singleSignOn: "Mit Passkey anmelden",
   },
 
@@ -145,25 +122,9 @@ export const de: Catalogue = {
     llmRemote: (model) => `${model}, außerhalb des Heimnetzes`,
     llmFailing: "Erreichbarkeitsproblem",
     notSetUp: "Nicht eingerichtet",
-    admins: (count) => plural(count, { one: `${count} Admin`, other: `${count} Admins` }),
     saved: "Gespeichert",
     on: "An",
     notSavedYet: "Noch nicht gespeichert",
-  },
-
-  admins: {
-    title: "Admins",
-    description:
-      "Eltern, die sich anmelden, um Einstellungen und Quellen zu verwalten. Ein vergessenes Passwort setzt ein anderer Admin zurück.",
-    add: "Admin hinzufügen",
-    eyebrow: "Instanz",
-    dialogTitle: "Einen Admin hinzufügen",
-    passwordHint: `Mindestens ${minimumPasswordLength} Zeichen. Sag es der Person persönlich.`,
-    newAdminPasswordHint: `Mindestens ${minimumPasswordLength} Zeichen. Sag es der Person persönlich. Lass es leer für einen Admin, der sich nur über den Identity Provider anmeldet.`,
-    you: "Du",
-    admin: "Admin",
-    newPassword: "Neues Passwort",
-    resetPassword: "Passwort zurücksetzen",
   },
 
   recoveryKit: {

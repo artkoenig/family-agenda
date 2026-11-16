@@ -22,7 +22,7 @@ try {
     console.error(`Seeding failed: ${seeded.problem}`);
     process.exitCode = 1;
   } else {
-    console.log(`Seeded ${seeded.agendas.length} Agendas. Admin: ${seeded.admin.email} / ${seeded.admin.password}`);
+    console.log(`Seeded ${seeded.agendas.length} Agendas.`);
   }
 } finally {
   await application.close();

@@ -1,9 +1,8 @@
 import type { SourceId } from "@family-agenda/domain";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { bootHttpForTest, sessionCookieOf, type HttpTestInstance } from "../support/http";
+import { bootHttpForTest, type HttpTestInstance, signedInCookie } from "../support/http";
 import { testPluginControls } from "../support/test-source-plugin";
 
-const password = "correct horse battery";
 const htmx = { "hx-request": "true", "hx-target": "fam-dialog-slot" };
 
 describe("The Add and Fix dialogs, loaded on their own into the open page", () => {
@@ -12,9 +11,8 @@ describe("The Add and Fix dialogs, loaded on their own into the open page", () =
   let source: SourceId;
   beforeEach(async () => {
     instance = await bootHttpForTest({}, { sourcePlugins: [{ sourceTypeId: "calendar", displayName: "Calendar" }] });
-    await instance.post("/setup", { email: "anna@example.org", password });
     await instance.app.recoveryKit.confirm();
-    cookie = sessionCookieOf(await instance.post("/admin/sign-in", { email: "anna@example.org", password }));
+    cookie = await signedInCookie(instance);
     await instance.app.sourceTypes.enable("calendar");
     const added = await instance.app.sources.add({ sourceTypeId: "calendar", plain: { url: "https://calendar.example.org" }, secrets: { password: "hunter2" } });
     if (!added.ok) throw new Error("adding failed");

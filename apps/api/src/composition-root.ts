@@ -2,7 +2,6 @@ import { randomBytes } from "node:crypto";
 import { endpoints } from "@family-agenda/plugin-contract";
 import { mkdir } from "node:fs/promises";
 import {
-  Argon2idPasswordHasher,
   CommandLineTextExtractor,
   connectPostgres,
   createMasterKey,
@@ -18,7 +17,6 @@ import {
   OpenAiCompatibleExtractor,
   PgBossWorkRunner,
   PostgresActivityRepository,
-  PostgresAdminRepository,
   PostgresAdminSessionRepository,
   PostgresCatalogueRepository,
   PostgresFamilyMemberRepository,
@@ -26,7 +24,6 @@ import {
   PostgresItemRepository,
   PostgresLlmEndpointRepository,
   OidcIdentityProviderClient,
-  PostgresSignInFailureLog,
   PostgresSourceAddingRepository,
   PostgresSourceRunTurns,
   PostgresSourceRepository,
@@ -62,7 +59,6 @@ import {
   createSourceTypeAccess,
   createTaskAccess,
   createAgendaAccess,
-  signInLimits,
   type AdminAccess,
   type Cached,
   type CatalogueAccess,
@@ -210,7 +206,7 @@ export type Application = {
   /** Runs the due Sources, then Extraction, once; the worker does once a minute. */
   dueWork: DueWork;
   llmEndpoint: LlmEndpointAccess;
-  /** Signing in through the Identity Provider, alongside the password. */
+  /** Signing in through the Identity Provider, the only way Admins sign in (ADR-0009). */
   singleSignOn: SingleSignOn;
   /** Extracts Items from the raw messages that wait for it, as part of due work. */
   extraction: ExtractionAccess;
@@ -388,11 +384,7 @@ function wireFamily(
 
   const admins = createAdminAccess({
     clock,
-    passwordHasher: new Argon2idPasswordHasher(),
-    families,
-    admins: new PostgresAdminRepository(postgres.db),
     sessions: new PostgresAdminSessionRepository(postgres.db),
-    signInFailures: new PostgresSignInFailureLog(postgres.db, signInLimits.windowMs),
   });
 
   const recoveryKit = createRecoveryKitAccess({ clock, families, masterKey });

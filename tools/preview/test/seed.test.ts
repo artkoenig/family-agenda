@@ -50,10 +50,10 @@ describe("seeding a demo Family into an Instance", () => {
     expect(days.flatMap((day) => day.items.map((event) => event.title))).not.toContain("Football training");
   });
 
-  it("refuses to seed an Instance that already has an Admin", async () => {
-    await instance.app.admins.createFirstAdmin({ email: "real@example.org", password: "a real password" });
+  it("refuses to seed a Family that already has Family Members", async () => {
+    await instance.app.familyMembers.add({ name: "Real" });
 
-    expect(await seedDemoFamily(instance.app)).toEqual({ ok: false, problem: "admin-exists" });
+    expect(await seedDemoFamily(instance.app)).toEqual({ ok: false, problem: "family-exists" });
   });
 
   it("gives the Family a Task List with the Tasks that are due or coming", async () => {

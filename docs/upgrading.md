@@ -91,7 +91,7 @@ docker compose up -d
 
 Remove the volumes of plugins you start over with too (`docker volume ls`, those named `family-agenda_plugin-*`); coming from in-process plugins, also remove the old `plugins`, `matrix-data` and `matrix-instance` volumes, and set up `plugins.yml` (see [Plugins](configuration.md#plugins)). A custom plugin you kept in the `plugins` volume no longer loads: build it as a container image that answers the plugin contract ([plugin-kit.md](plugin-kit.md)) and list it in `plugins.yml`. The `master-key` and `tessdata` volumes can stay. Keep the `master-key` volume if you want the Recovery Kit you saved to stay valid for the credentials you enter again. If you remove it, the first start creates a new master key and a new Recovery Kit, and the old kit opens nothing.
 
-Then open the Instance, create the first Admin, keep the Recovery Kit it shows, and add Family Members, Agendas and Sources again.
+Then open the Instance, sign in through the Identity Provider, keep the Recovery Kit it shows, and add Family Members, Agendas and Sources again.
 
 ## Restore
 

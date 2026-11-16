@@ -27,7 +27,6 @@ describe("Timetables in an Agenda over HTTP", () => {
   beforeEach(async () => {
     // The clock starts on Monday 2026-09-14 at 09:00 in Berlin.
     instance = await bootHttpForTest({}, { sourcePlugins: [{ sourceTypeId: "untis-test", displayName: "Untis" }] });
-    await instance.post("/setup", { email: "anna@example.org", password: "correct horse battery" });
     await instance.app.sourceTypes.enable("untis-test");
     const added = await instance.app.sources.add({ sourceTypeId: "untis-test", plain: { url: "https://school.example.org" }, secrets: {} });
     if (!added.ok) throw new Error("adding failed");

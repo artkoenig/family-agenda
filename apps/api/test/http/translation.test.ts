@@ -1,8 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { bootHttpForTest, sessionCookieOf, type HttpTestInstance } from "../support/http";
+import { bootHttpForTest, type HttpTestInstance, signedInCookie } from "../support/http";
 import { testPluginControls, type TestPluginPackage } from "../support/test-source-plugin";
-
-const password = "correct horse battery";
 
 /** The settings list's entry for a section, from its link to the link's end. */
 const entryOf = (page: string, label: string) =>
@@ -17,23 +15,14 @@ describe("the pages in the Family Language", () => {
 
   const setUp = async (language: "en" | "de", sourcePlugins: TestPluginPackage[] = []) => {
     instance = await bootHttpForTest({}, { sourcePlugins });
-    await instance.post("/setup", { email: "anna@example.org", password, language });
+    await instance.app.languages.setLanguage(language);
     await instance.app.recoveryKit.confirm();
-    cookie = sessionCookieOf(await instance.post("/admin/sign-in", { email: "anna@example.org", password }));
+    cookie = await signedInCookie(instance);
   };
   const get = async (path: string) => (await instance.get(path, { cookie })).text();
 
-  it("sets up in the language the browser prefers, and signs in in the Family Language", async () => {
-    instance = await bootHttpForTest();
-
-    const setup = await (await instance.get("/setup", { headers: { "accept-language": "de-DE,de;q=0.9" } })).text();
-    expect(setup).toContain('<html lang="de">');
-    expect(setup).toContain("Ersten Admin anlegen");
-
-    const refused = await instance.post("/setup", { email: "anna", password, language: "de" });
-    expect(await refused.text()).toContain("Gib eine gültige E-Mail-Adresse ein.");
-
-    await instance.post("/setup", { email: "anna@example.org", password, language: "de" });
+  it("signs in in the Family Language", async () => {
+    await setUp("de");
     const signIn = await (await instance.get("/admin/sign-in")).text();
     expect(signIn).toContain('<html lang="de">');
     expect(signIn).toContain("Anmelden");

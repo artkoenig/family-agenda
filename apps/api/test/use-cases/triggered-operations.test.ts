@@ -108,34 +108,3 @@ describe("Triggering the worker's work from outside the core", () => {
     expect(await items()).toEqual([{ n: 0 }]);
   });
 });
-
-describe("Triggering the Admins' operations from outside the core", () => {
-  let instance: TestInstance;
-  beforeEach(async () => {
-    instance = await bootForTest();
-  });
-  afterEach(async () => {
-    await instance.close();
-  });
-
-  const trigger = (name: string, body: unknown) =>
-    createTriggerApp(instance.triggeredWork(), { token, log }).request(`/operations/${name}`, { method: "POST", headers: bearer, body: JSON.stringify(body) });
-
-  it("enters the first Admin, after which the setup page is not found", async () => {
-    const pages = createHttpApp(instance.app, { trustProxy: false, agendaAccess: openAgendaAccess });
-    expect((await pages.request("/setup")).status).toBe(200);
-
-    const response = await trigger("enter-admin", { email: "anna@example.org" });
-
-    expect(await response.json()).toEqual({ email: "anna@example.org", outcome: "first" });
-    expect((await pages.request("/setup")).status).toBe(404);
-  });
-
-  it("resets the entered Admin's password, who can then sign in with it", async () => {
-    await trigger("enter-admin", { email: "anna@example.org" });
-
-    const answer = (await (await trigger("reset-admin-password", { email: "anna@example.org" })).json()) as { newPassword: string };
-
-    expect((await instance.app.admins.signIn({ email: "anna@example.org", password: answer.newPassword, client: "192.0.2.1" })).ok).toBe(true);
-  });
-});

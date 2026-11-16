@@ -77,26 +77,12 @@ Reach the port from a container on the Instance's network, such as `docker compo
 
 | Request | Does | Answers |
 |---|---|---|
-| `GET /operations` | lists the operations | `{ "operations": ["due-work", "purge", "secret-sweep", "enter-admin", "reset-admin-password"] }` |
+| `GET /operations` | lists the operations | `{ "operations": ["due-work", "purge", "secret-sweep"] }` |
 | `POST /operations/due-work` | Due work: polls the due Sources, then extracts the messages they and earlier runs brought in (Extraction runs even when polling fails) | `{ "polled": …, "extracted": … }`, each `{ "ok": true, "report": … }` with what ran and what failed, or `{ "ok": false, "error": "<message>" }` |
 | `POST /operations/purge` | deletes the text and attachments of messages past their retention | `{ "purged": <messages>, "deleted": <rows deleted> }` |
 | `POST /operations/secret-sweep` | removes secrets nothing refers to (older than an hour) | `{ "removed": <secrets> }` |
-| `POST /operations/enter-admin` | enters an Admin by email address, without a password (see [Admins without signing in](#admins-without-signing-in)); the body is `{ "email": "<address>" }` | `{ "email": "<address>", "outcome": "first" }` for the Family's first Admin, `"added"` for one more, `"exists"` when an Admin already has that address, which changes nothing; `400` `{ "error": "invalid-email" }` for an address that is no email address |
-| `POST /operations/reset-admin-password` | gives the Admin with that email a new random password and ends their sessions; the body is `{ "email": "<address>" }` | `{ "email": "<address>", "newPassword": "<password>" }`, the only place the password appears; `404` `{ "error": "unknown-admin" }` when no Admin has it, `400` `{ "error": "invalid-email" }` for an address that is no email address |
 
 Each operation calls exactly what the `worker`'s schedule calls (`due-work` every minute, `purge` hourly, `secret-sweep` at start and nightly), and writes the same lines to the `api` log as the `worker` writes to its own. A `due-work` trigger that arrives while one is under way in the same `api` waits for that run and gets its answer; across containers, and alongside the `worker`, runs of one Source take turns in the database, so no Source runs twice at once. An unknown operation answers `404`, one that fails `500` (the `api` log has the error), a body that is no JSON `400` `{ "error": "invalid-body" }`. Preparing the Family is no Triggered operation: the core does it on its own, when it starts or, in supplied mode, when it opens a Family (see [Preparing the Family](#preparing-the-family)).
-
-### Admins without signing in
-
-Two operations act on the Admins for an operator who does not sign in to the Family, each both a Triggered operation and a command in the `api` container:
-
-```sh
-docker compose exec api family-agenda enter-admin anna@example.org
-docker compose exec api family-agenda reset-admin-password anna@example.org
-```
-
-- **Entering an Admin** adds one with that email address and no password. On a Family without Admins it is the first one, and the setup page is gone afterwards, as after any first Admin. The Admin then signs in through the Identity Provider, which links its identity to the Admin with the same verified email address (see [Who becomes an Admin](#who-becomes-an-admin)), or gets a password through the reset; until then no password signs them in. An address an Admin already has changes nothing, and the answer says so.
-- **Resetting a password** gives the Admin a new random password, shown once in the answer or the command's output and never logged, and ends their sessions.
 
 ### Preparing the Family
 
@@ -110,8 +96,8 @@ Preparing the Family brings its database schema up to date, makes sure it has it
 
 For a provider serving many Families, not for a home Instance. With `CONTEXT_MODE=supplied` the core has no Family of its own: every request carries the **Context** of the Family it is for, and the core opens that Family's database, reads its Source credentials with its family key and keeps its blobs in its folder of the blob location (ADR-0003). Any core can then serve any Family, and one core several, each in its own database.
 
-- **Setting it.** `CONTEXT_MODE=supplied`, `CONTEXT_KEY`, 32 random characters or more, which only the core and the trusted caller in front of it hold, and `CALLER_PORT`, other than `PORT`. The core then opens no listener on `PORT`, only on `CALLER_PORT`. The core refuses to start in supplied mode without `CONTEXT_KEY`, with `CONTEXT_KEY` but without `CONTEXT_MODE=supplied`, and with `DATABASE_URL`, `FAMILY_ID`, `MASTER_KEY_FILE` or `BLOB_DIRECTORY` set: it never falls back to a fixed Family. The `worker` and the `family-agenda` Admin commands run in fixed mode only: a core in supplied mode runs no schedule and prepares no Family when it starts, but each when it opens it (see [Triggered operations in supplied mode](#triggered-operations-in-supplied-mode)). `PUBLIC_URL` and the `OIDC_*` variables are refused too: each Family's Context carries its own time zone, public address and Identity Provider instead. `TZ` only sets the time zone of the core's own log.
-- **The Context.** JSON with the Family id (a UUID), the database (a Postgres URL), the family key (32 random bytes in base64url, which stands in for the master key file), the blob location (a directory; the Family's blobs lie in its folder `<directory>/<family id>`), the Family's time zone (`timeZone`, required, an IANA name such as `Europe/Berlin`, as `TZ` in fixed mode), its public address (`publicUrl`, required, as `PUBLIC_URL`: its path is the Family's path prefix, which the caller removes from a request before it passes it on, and the core emits every link, redirect, cookie, web manifest, Agenda feed and the SSO redirect URI below it) and, optionally, its Identity Provider (`identityProvider`: `issuerUrl`, `clientId`, `clientSecret`, `requiredGroup`, `knownAdminsOnly` (a boolean), as the `OIDC_*` variables; without it, no SSO), plus an expiry, encrypted and signed with AES-256-GCM under a key derived from `CONTEXT_KEY`. Seal one with `family-agenda seal-context`, which reads it from standard input so that no secret appears in a process list, for 5 minutes unless `ttlSeconds` says otherwise, at most a day:
+- **Setting it.** `CONTEXT_MODE=supplied`, `CONTEXT_KEY`, 32 random characters or more, which only the core and the trusted caller in front of it hold, and `CALLER_PORT`, other than `PORT`. The core then opens no listener on `PORT`, only on `CALLER_PORT`. The core refuses to start in supplied mode without `CONTEXT_KEY`, with `CONTEXT_KEY` but without `CONTEXT_MODE=supplied`, and with `DATABASE_URL`, `FAMILY_ID`, `MASTER_KEY_FILE` or `BLOB_DIRECTORY` set: it never falls back to a fixed Family. The `worker` runs in fixed mode only: a core in supplied mode runs no schedule and prepares no Family when it starts, but each when it opens it (see [Triggered operations in supplied mode](#triggered-operations-in-supplied-mode)). `PUBLIC_URL` and the `OIDC_*` variables are refused too: each Family's Context carries its own time zone, public address and Identity Provider instead. `TZ` only sets the time zone of the core's own log.
+- **The Context.** JSON with the Family id (a UUID), the database (a Postgres URL), the family key (32 random bytes in base64url, which stands in for the master key file), the blob location (a directory; the Family's blobs lie in its folder `<directory>/<family id>`), the Family's time zone (`timeZone`, required, an IANA name such as `Europe/Berlin`, as `TZ` in fixed mode), its public address (`publicUrl`, required, as `PUBLIC_URL`: its path is the Family's path prefix, which the caller removes from a request before it passes it on, and the core emits every link, redirect, cookie, web manifest, Agenda feed and the SSO redirect URI below it) and, optionally, its Identity Provider (`identityProvider`: `issuerUrl`, `clientId`, `clientSecret`, `requiredGroup`, `groupsClaim`, as the `OIDC_*` variables; without it, no SSO), plus an expiry, encrypted and signed with AES-256-GCM under a key derived from `CONTEXT_KEY`. Seal one with `family-agenda seal-context`, which reads it from standard input so that no secret appears in a process list, for 5 minutes unless `ttlSeconds` says otherwise, at most a day:
 
   ```sh
   echo '{"familyId":"…","databaseUrl":"postgres://…","familyKey":"…","blobDirectory":"/var/lib/blobs","timeZone":"Europe/Berlin","publicUrl":"https://agenda.example.org/family-a","ttlSeconds":300}' \
@@ -166,18 +152,18 @@ Set `TRUST_PROXY=true` only behind a proxy you run, which sets `X-Forwarded-Prot
 
 - The app sees the real scheme and host. Without it, behind an HTTPS proxy it sees `http://` and offers no SSO button.
 - Session cookies become `Secure` on HTTPS.
-- `X-Forwarded-For` is trusted for sign-in rate limiting. Do not expose the `api` port directly with this on.
+- Do not expose the `api` port directly with this on.
 
 ## Single sign-on (OIDC)
 
-Admins can sign in through an OIDC Identity Provider (Pocket ID, Authentik, Authelia, ...). The password stays and cannot be switched off.
+Admins sign in only through an OIDC Identity Provider (Pocket ID, Authentik, Authelia, ...); Family Agenda keeps no accounts and no passwords (ADR-0009). Without one, no one can sign in to the Admin area; Agendas still open.
 
 ### At the Identity Provider
 
 1. Create a client for Family Agenda. Authorization code flow with PKCE.
 2. Redirect URI: `<PUBLIC_URL>/sso/callback`.
-3. Scopes: `openid email profile groups`. The `groups` claim must be present.
-4. Create a group for Admins (default name `homelab-admin`) and add the Admins. Everybody in that group can become an Admin on first sign-in, so keep it small.
+3. Scopes: `openid email profile` and the groups claim (`groups` by default, see `OIDC_GROUPS_CLAIM`), which must be in the ID token.
+4. Create a group or role for Admins (default name `homelab-admin`) and add the Admins. Everybody in it is an Admin, so keep it small.
 5. Every user needs a **verified email**. Pocket ID v2: set "email verified" on each existing user, the global toggle only affects new users. Otherwise Family Agenda refuses the sign-in.
 
 ### In Family Agenda
@@ -190,24 +176,16 @@ Set these variables (ADR-0007) and restart. Wrong or missing ones stop the Insta
 | `OIDC_CLIENT_ID` | Client ID |
 | `OIDC_CLIENT_SECRET` | Client secret |
 | `OIDC_REQUIRED_GROUP` | Group whose members may sign in. Default `homelab-admin` |
-| `OIDC_KNOWN_ADMINS_ONLY` | `true`: only an existing Admin signs in, none is made from a sign-in (see [Who becomes an Admin](#who-becomes-an-admin)). Default `false` |
+| `OIDC_GROUPS_CLAIM` | ID token claim holding the groups or roles, such as `roles`; also asked for as a scope. Default `groups` |
 | `PUBLIC_URL` | Required. The SSO button appears only there; a path in it, the path prefix, is part of the redirect URI |
 
 Behind HTTPS also set `TRUST_PROXY=true` (see above).
 
-On an Instance without Admins the setup page offers SSO too: the first one in the group who signs in becomes the first Admin, without a password. Not with `OIDC_KNOWN_ADMINS_ONLY=true`.
-
 The Instance must reach the Identity Provider (discovery, keys, token endpoint). Outbound only.
 
-### Who becomes an Admin
+### Who is an Admin
 
-- Same `sub` as a stored Admin: signs in.
-- Otherwise, an existing Admin with the same verified email is linked.
-- Otherwise a new Admin without a password is created. It sees only the Recovery Kit until that is confirmed.
-
-With `OIDC_KNOWN_ADMINS_ONLY=true` (in a Context, `identityProvider.knownAdminsOnly: true`) the last step is gone: someone in the group whose verified email belongs to no Admin is refused, told that no Admin here has that address, and no Admin is made, not even the first. Use it for one Identity Provider shared by several Families, where everyone in its group could otherwise become an Admin of any Family. Who is an Admin is then decided in the Family alone: its first Admin is entered by email address ([`enter-admin`](#admins-without-signing-in)) or set up with a password, and its Admins add more in the Admin area, by email address with the password left empty for one who signs in only through the Identity Provider.
-
-The group is checked at every sign-in. Leaving it does not end running sessions (14 days).
+Whoever signs in with a verified email and `OIDC_REQUIRED_GROUP` in the groups claim. Family Agenda stores no Admins, only sessions (the IdP's `sub` and email). Anyone else is refused with a message naming why. A session lasts 12 hours and is not refreshed; after that the browser goes through the Identity Provider again, which checks the group again. `OIDC_KNOWN_ADMINS_ONLY` is gone: the core refuses to start with it set.
 
 ### One address for Admins
 
@@ -215,13 +193,11 @@ Sessions are cookies bound to **one host**. The SSO button and the SSO session e
 
 - Open Admin links on `PUBLIC_URL`. A link such as "Open the message" on an Agenda opened at another host stays on that host and asks for a sign-in. Let your proxy or DNS redirect the other names to `PUBLIC_URL`.
 - Plain Agendas and ICS feeds need no session and work on every address.
-- Password sign-in works on every address, at any time.
 
 ### Locked out
 
-- Password sign-in still works. Forgotten: another Admin can set a new one, or the operator resets it (ADR-0004; [`reset-admin-password`](#admins-without-signing-in)).
-- Identity Provider down: use the password.
-- Wrong settings: fix or unset the `OIDC_*` variables and restart.
+- Identity Provider down: no one can sign in until it is back; Agendas keep working.
+- Wrong settings: fix the `OIDC_*` variables and restart.
 
 ## Troubleshooting
 

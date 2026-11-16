@@ -16,7 +16,6 @@ describe("an Agenda below a path prefix", () => {
   let mia: FamilyMemberId;
   beforeEach(async () => {
     instance = await bootHttpForTestBelow(prefix, {}, { sourcePlugins: [{ sourceTypeId: "school" }] });
-    await instance.core.post("/setup", { email: "anna@example.org", password: "correct horse battery" });
     await instance.app.recoveryKit.confirm();
     await instance.app.sourceTypes.enable("school");
     await instance.app.sources.add({ sourceTypeId: "school", plain: { url: "https://school.example.org" }, secrets: {} });

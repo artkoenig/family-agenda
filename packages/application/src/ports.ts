@@ -1,9 +1,6 @@
 import type {
-  Admin,
   DateMention,
   BlobRef,
-  AdminId,
-  Email,
   FamilyLanguages,
   FamilyMember,
   FamilyMemberId,
@@ -31,11 +28,6 @@ export interface Clock {
   now(): Date;
 }
 
-export interface PasswordHasher {
-  hash(password: string): Promise<string>;
-  verify(hash: string, password: string): Promise<boolean>;
-}
-
 /** The settings of the Instance's one Family (ADR-0003). */
 export interface FamilyRepository {
   /** The Family id, which names the Family outside its database, such as in the ticket of a plugin call. */
@@ -48,21 +40,6 @@ export interface FamilyRepository {
   /** Whether OCR reads the scanned pages of attachments. */
   ocrEnabled(): Promise<boolean>;
   saveOcrEnabled(enabled: boolean): Promise<void>;
-}
-
-export interface AdminRepository {
-  exists(): Promise<boolean>;
-  /** Adds the Admin only if no Admin exists yet. Returns whether it was added. */
-  addFirst(admin: Admin): Promise<boolean>;
-  /** Returns false if the email is taken. */
-  add(admin: Admin): Promise<boolean>;
-  findById(id: AdminId): Promise<Admin | null>;
-  findByEmail(email: Email): Promise<Admin | null>;
-  findByIdentitySubject(subject: string): Promise<Admin | null>;
-  list(): Promise<Admin[]>;
-  setPasswordHash(id: AdminId, passwordHash: string): Promise<void>;
-  /** Links the Admin to the Identity Provider's `sub`, which no other Admin may have. */
-  setIdentitySubject(id: AdminId, subject: string): Promise<void>;
 }
 
 export interface FamilyMemberRepository {
@@ -107,7 +84,10 @@ export interface AgendaAccessPolicy {
 export type AdminSession = {
   /** A hash of the session token; the token itself is never stored. */
   id: string;
-  adminId: AdminId;
+  /** The Identity Provider's `sub`. */
+  subject: string;
+  /** The verified email address the Identity Provider gave. */
+  email: string;
   expiresAt: Date;
 };
 
@@ -115,18 +95,8 @@ export interface AdminSessionRepository {
   add(session: AdminSession): Promise<void>;
   find(id: string): Promise<AdminSession | null>;
   remove(id: string): Promise<void>;
-  removeAllOf(adminId: AdminId): Promise<void>;
   /** Removes the sessions that expired at `now` or before. */
   removeExpired(now: Date): Promise<void>;
-}
-
-/** Sign-in attempts that have not succeeded, counted per key (an account or a client). */
-export interface SignInFailureLog {
-  /** Returns ids of the recorded entries, for `forget`. */
-  record(keys: string[], at: Date): Promise<string[]>;
-  forget(ids: string[]): Promise<void>;
-  countAfter(key: string, after: Date): Promise<number>;
-  clear(key: string): Promise<void>;
 }
 
 /** Where a secret is kept in the SecretStore; stored in Postgres in the secret's place. */
@@ -736,6 +706,8 @@ export type IdentityProviderConnection = {
   issuerUrl: string;
   clientId: string;
   clientSecret: string;
+  /** The claim holding the groups or roles, such as `groups` or, with Logto, `roles`; also requested as a scope. */
+  groupsClaim: string;
 };
 
 /** What the Instance remembers between sending an Admin to the Identity Provider and their return. */
@@ -750,10 +722,11 @@ export type VerifiedIdentity = {
   subject: string;
   email: string | null;
   emailVerified: boolean;
+  /** The strings in the connection's groups claim; none if it is missing or not a list. */
   groups: string[];
 };
 
-/** An OIDC client: authorization code flow with PKCE, scopes `openid email profile groups`. */
+/** An OIDC client: authorization code flow with PKCE, scopes `openid email profile` and the groups claim. */
 export interface IdentityProviderClient {
   /** Fetches the provider's discovery document. */
   discover(

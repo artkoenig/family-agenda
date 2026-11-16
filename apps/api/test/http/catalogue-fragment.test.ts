@@ -1,8 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { bootHttpForTest, sessionCookieOf, type HttpTestInstance } from "../support/http";
+import { bootHttpForTest, type HttpTestInstance, signedInCookie } from "../support/http";
 import { testPluginControls, type TestConfiguration } from "../support/test-source-plugin";
-
-const password = "correct horse battery";
 
 const configuration: TestConfiguration = {
   version: 1,
@@ -15,9 +13,8 @@ describe("The catalogue of a Source Type, loaded as a fragment of its page", () 
   beforeEach(async () => {
     testPluginControls.catalogue("bridged", [{ id: "whatsapp", displayName: "WhatsApp", description: "Reads WhatsApp groups.", installed: true }]);
     instance = await bootHttpForTest({}, { sourcePlugins: [{ sourceTypeId: "bridged", displayName: "Matrix", configuration, catalogue: { configKey: "messenger" } }] });
-    await instance.post("/setup", { email: "anna@example.org", password });
     await instance.app.recoveryKit.confirm();
-    cookie = sessionCookieOf(await instance.post("/admin/sign-in", { email: "anna@example.org", password }));
+    cookie = await signedInCookie(instance);
     await instance.app.sourceTypes.enable("bridged");
     // Past what was asked while the Instance started and the Source Type was enabled.
     instance.clock.advance(60_000);

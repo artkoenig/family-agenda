@@ -1,8 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { bootHttpForTest, sessionCookieOf, type HttpTestInstance } from "../support/http";
+import { bootHttpForTest, type HttpTestInstance, signedInCookie } from "../support/http";
 import { testPluginControls, type TestConfiguration } from "../support/test-source-plugin";
-
-const password = "correct horse battery";
 
 const configuration: TestConfiguration = {
   version: 1,
@@ -20,9 +18,8 @@ describe("A Source's page, whose choice fields load as fragments", () => {
   beforeEach(async () => {
     testPluginControls.knowValues("mail", [{ value: "INBOX", label: "Inbox" }, { value: "Work", label: "Work" }]);
     instance = await bootHttpForTest({}, { sourcePlugins: [{ sourceTypeId: "mail", displayName: "Mail", configuration }] });
-    await instance.post("/setup", { email: "anna@example.org", password });
     await instance.app.recoveryKit.confirm();
-    cookie = sessionCookieOf(await instance.post("/admin/sign-in", { email: "anna@example.org", password }));
+    cookie = await signedInCookie(instance);
     await instance.app.sourceTypes.enable("mail");
     const added = await instance.app.sources.add({ sourceTypeId: "mail", plain: { host: "imap.example.org" }, secrets: {} });
     if (!added.ok) throw new Error("adding failed");

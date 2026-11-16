@@ -1,11 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { bootHttpForTestBelow, type HttpPrefixedTestInstance } from "../support/http";
+import { bootHttpForTestBelow, type HttpPrefixedTestInstance, signedInCookie } from "../support/http";
 import { InMemoryBlobStore } from "../support/in-memory-blob-store";
 import { extracted, ScriptedExtractor } from "../support/scripted-extractor";
 import { testPluginControls, type TestConfiguration, type TestPluginPackage } from "../support/test-source-plugin";
 import type { TestOptions } from "../support/boot";
 
-const password = "correct horse battery";
 const prefix = "/agenda";
 
 /** A Source Type whose Sources each use one Messenger and pick their chats once set up. */
@@ -31,10 +30,8 @@ describe("the Admin area's Source pages below a path prefix", () => {
 
   const boot = async (sourcePlugins: TestPluginPackage[], testOptions: TestOptions = {}) => {
     instance = await bootHttpForTestBelow(prefix, {}, { sourcePlugins, ...testOptions });
-    await instance.core.post("/setup", { email: "anna@example.org", password });
     await instance.app.recoveryKit.confirm();
-    const signedIn = await instance.post(`${prefix}/admin/sign-in`, { email: "anna@example.org", password });
-    cookie = signedIn.headers.getSetCookie().find((c) => c.startsWith("fb_session="))?.split(";")[0] ?? "";
+    cookie = await signedInCookie(instance);
   };
   /** A page or fragment, checked to emit no address outside the prefix. */
   const page = async (path: string, headers: Record<string, string> = {}) => {

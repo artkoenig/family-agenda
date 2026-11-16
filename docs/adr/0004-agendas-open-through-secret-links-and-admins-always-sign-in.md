@@ -10,6 +10,8 @@ An Agenda Link is built from `PUBLIC_URL`, so below a Path prefix every Agenda l
 
 The Admin area is the one place with accounts. Admins sign in with an email and a password (Argon2id), or through one OpenID Connect Identity Provider (issuer, client, required group), for households that already run one. The operator configures it in the environment (ADR-0007). Password sign-in is rate-limited per account and per client.
 
+Superseded for the password part by ADR-0009: Admins exist only in the Identity Provider and sign in only through it; the core keeps no accounts and no passwords.
+
 ## Considered Options
 
 - **The home network as access control**, with open Agendas locally and links only from outside: no secret on the LAN, but the Instance cannot tell a tunnelled request from a local one, and a hosted Instance has no home network.
