@@ -1,10 +1,9 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, onTestFinished } from "vitest";
 import { bootHttpForTestBelow, type HttpPrefixedTestInstance } from "../support/http";
-import { ScriptedIdentityProviderClient } from "../support/scripted-identity-provider";
+import { FakeIdentityProvider } from "../../../../packages/adapters/test/support/fake-identity-provider";
 
 const password = "correct horse battery";
 const prefix = "/agenda";
-const anna = { subject: "sub-anna", email: "anna@example.org", emailVerified: true, groups: ["homelab-admin"] };
 const identityProvider = {
   issuerUrl: "https://id.example.ts.net",
   clientId: "family-agenda",
@@ -61,17 +60,20 @@ describe("an Instance below a path prefix", () => {
   });
 
   it("signs the first Admin in through the Identity Provider, with the callback below the prefix", async () => {
-    const provider = new ScriptedIdentityProviderClient();
-    instance = await bootHttpForTestBelow(prefix, {}, { identityProviderClient: provider, identityProvider });
+    const provider = await FakeIdentityProvider.start();
+    onTestFinished(() => provider.stop());
+    instance = await bootHttpForTestBelow(prefix, {}, { identityProvider: { ...identityProvider, issuerUrl: provider.issuer } });
 
     expect(await (await instance.get(`${prefix}/setup`)).text()).toContain(`href="${prefix}/sso/start"`);
     const start = await instance.get(`${prefix}/sso/start`);
-    expect(provider.begun[0]?.redirectUri).toBe(`http://localhost${prefix}/sso/callback`);
+    const location = start.headers.get("location") ?? "";
+    expect(new URL(location).searchParams.get("redirect_uri")).toBe(`http://localhost${prefix}/sso/callback`);
     const sso = cookieOf(start, "fb_sso");
     expect(sso.path).toBe(`${prefix}/sso`);
-    const pending = JSON.parse(decodeURIComponent(sso.pair.split("=").slice(1).join("="))) as Parameters<typeof provider.returnWith>[0];
+    const callback = new URL(await provider.authorize(location));
+    expect(callback.pathname).toBe(`${prefix}/sso/callback`);
 
-    const back = await instance.get(`${prefix}/sso/callback${provider.returnWith(pending, anna)}`, { cookie: sso.pair });
+    const back = await instance.get(`${callback.pathname}${callback.search}`, { cookie: sso.pair });
 
     expect(back.headers.get("location")).toBe(`${prefix}/admin/recovery-kit`);
     expect(cookieOf(back, "fb_sso").path).toBe(`${prefix}/sso`);
