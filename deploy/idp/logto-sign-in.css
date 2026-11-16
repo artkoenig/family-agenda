@@ -1,0 +1,32 @@
+/*
+ * Family Agenda's look for Logto's sign-in pages, applied as the sign-in experience's custom CSS
+ * by `logto-setup` (ADR-0009). Versioned here: edit this file and run the setup again; changes
+ * made in the Logto console are overwritten. The brand colour (buttons, links) is set by the setup
+ * itself; this adds the surfaces of the Admin area (tokens.css). Logto keeps its `logto_*` class
+ * names stable for custom CSS.
+ */
+body {
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  background: #f1e9de !important;
+}
+
+.logto_main-content {
+  background: #fffdf9 !important;
+  border: 1px solid #e6dccd;
+  border-radius: 16px !important;
+}
+
+/* Logto adds a theme class to body; dark follows the device like the Admin area. */
+body[class*="_dark"] {
+  background: #15120f !important;
+}
+
+body[class*="_dark"] .logto_main-content {
+  background: #262019 !important;
+  border-color: #3a3129;
+}
+
+button,
+input {
+  border-radius: 10px !important;
+}
