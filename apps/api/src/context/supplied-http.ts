@@ -50,7 +50,9 @@ export function suppliedFetch({ contextKey, families, version, log, now = Date.n
 
 const refusalOf = {
   "family-id-differs": () => refusal(403, "The Context names a database of another Family."),
-  "family-not-prepared": () => refusal(409, "family-not-prepared: the database the Context names holds no prepared Family."),
+  "migrated-by-newer-release": () => refusal(409, "migrated-by-newer-release: a newer release migrated the database the Context names; another core may serve it."),
+  "old-data-model": () => refusal(409, "old-data-model: the database the Context names holds the data model from before its rebuild."),
+  migrating: () => refusal(503, "migrating: the Family's database is being prepared; try again shortly."),
   unavailable: () => refusal(503, "The Family cannot be opened now."),
 } as const;
 

@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
-import { connectPostgres, FamilyIdConflictError, type PostgresConnection } from "@family-agenda/adapters";
-import { FamilyNotPreparedError, openPreparedFamily, prepareFamily, type Application, type FamilyConfig, type PreparedFamily, type SharedWiring } from "../composition-root";
+import { connectPostgres, FamilyIdConflictError, NewerMigrationHistoryError, OldMigrationHistoryError, type PostgresConnection } from "@family-agenda/adapters";
+import { FamilyNotPreparedError, openPreparedFamily, prepareFamily, type Application, type FamilyConfig, type SharedWiring } from "../composition-root";
 import type { OpenedContext } from "./context";
 
 /** What a Family's pages answer a request with, such as its Hono app's `fetch`. */
@@ -17,31 +17,59 @@ export type SuppliedFamiliesOptions = {
   serving: (application: Application, context: OpenedContext) => FamilyFetch;
   /** Connects to the database a Context names; to its Postgres server by default. */
   connectDatabase?: (databaseUrl: string) => PostgresConnection;
+  /** How long a request waits for its Family to be prepared before it is answered `migrating`, 20 seconds by default. */
+  preparingWaitMs?: number;
   /** How long an opened Family stays open without a request, 5 minutes by default. */
   idleMs?: number;
   now?: () => number;
 };
 
 /** Why a Context that opened opens no Family. */
-export type OpeningProblem = "family-id-differs" | "family-not-prepared" | "unavailable";
+export type OpeningProblem = "family-id-differs" | "migrated-by-newer-release" | "old-data-model" | "migrating" | "unavailable";
 
 export type Opening<T> = { ok: true; family: T } | { ok: false; problem: OpeningProblem; error?: unknown };
+
+/** An opening refused: what `serve` answers when it serves no request. */
+type Refused = Extract<Opening<never>, { ok: false }>;
+
+/** A database this release has not prepared, which `serve` prepares rather than answers. */
+type NotPrepared = { ok: false; problem: "not-prepared"; error: unknown };
+
+/** One try at opening a Family: served, refused, or found not prepared. */
+type Tried<T> = Opening<T> | NotPrepared;
 
 /** An opened Family: its application, and what answers its requests. */
 export type OpenedFamily = { application: Application; fetch: FamilyFetch };
 
 type Entry = {
-  /** The database it was opened on, as `databaseKeyOf` names it. */
-  database: string;
   opening: Promise<OpenedFamily>;
   lastUsed: number;
   /** Requests under way, which keep the Family open. */
   active: number;
-  /** Replaced by a newer opening after Preparing the Family; closed once no request uses it. */
-  retired: boolean;
 };
 
 export const defaultIdleMs = 5 * 60_000;
+export const defaultPreparingWaitMs = 20_000;
+
+const late = Symbol("late");
+
+/** A request's wait for preparing, which ends at the same time for all it waits for. */
+type Waiting = { within<T>(promise: Promise<T>): Promise<T | typeof late>; stop(): void };
+
+function waitingFor(ms: number): Waiting {
+  let timer: NodeJS.Timeout | undefined;
+  const over = new Promise<typeof late>((resolve) => {
+    timer = setTimeout(() => {
+      resolve(late);
+    }, ms);
+  });
+  return {
+    within: (promise) => Promise.race([promise, over]),
+    stop: () => {
+      clearTimeout(timer);
+    },
+  };
+}
 
 /**
  * The Families a core in supplied mode has opened from Contexts (ADR-0003): what it derived from a
@@ -51,8 +79,8 @@ export const defaultIdleMs = 5 * 60_000;
 export class SuppliedFamilies {
   readonly #options: SuppliedFamiliesOptions;
   readonly #entries = new Map<string, Entry>();
-  /** The prepares under way or waiting, by database: the last of each, which settles without failing. */
-  readonly #preparing = new Map<string, Promise<void>>();
+  /** The prepare under way, by database: null once it is prepared, or why it is not. */
+  readonly #preparing = new Map<string, Promise<Refused | null>>();
 
   constructor(options: SuppliedFamiliesOptions) {
     this.#options = options;
@@ -63,10 +91,38 @@ export class SuppliedFamilies {
     return this.#entries.size;
   }
 
-  /** Runs `fn` on the Family `context` opens, which stays open meanwhile. */
+  /**
+   * Runs `fn` on the Family `context` opens, which stays open meanwhile. A database not yet
+   * prepared by this release, empty or prepared by an older one, is prepared first, once however
+   * many requests open it; a request waits for that up to `preparingWaitMs`, and is then answered
+   * `migrating` while the preparing goes on.
+   */
   async serve<R>(context: OpenedContext, fn: (family: OpenedFamily) => Promise<R>): Promise<Opening<R>> {
     await this.sweep();
-    await this.#afterPreparing(databaseKeyOf(context));
+    const waiting = waitingFor(this.#options.preparingWaitMs ?? defaultPreparingWaitMs);
+    try {
+      const first = await this.#serveOpened(context, fn, waiting);
+      return first.ok || first.problem !== "not-prepared" ? first : await this.#servePrepared(context, fn, waiting);
+    } finally {
+      waiting.stop();
+    }
+  }
+
+  /** Prepares the database `context` names, which opening found not prepared, then serves the request on it. */
+  async #servePrepared<R>(context: OpenedContext, fn: (family: OpenedFamily) => Promise<R>, waiting: Waiting): Promise<Opening<R>> {
+    const refused = await waiting.within(this.#prepared(context));
+    if (refused === late) return { ok: false, problem: "migrating" };
+    if (refused !== null) return refused;
+    const second = await this.#serveOpened(context, fn, waiting);
+    // Prepared, and still not this release's schema: a history no release migrates on, such as
+    // one with the migrations of another branch. Waiting would not change it.
+    return second.ok || second.problem !== "not-prepared" ? second : { ok: false, problem: "unavailable", error: second.error };
+  }
+
+  async #serveOpened<R>(context: OpenedContext, fn: (family: OpenedFamily) => Promise<R>, waiting: Waiting): Promise<Tried<R>> {
+    // A Family is opened on the schema a prepare under way leaves.
+    const preparing = this.#preparing.get(databaseKeyOf(context));
+    if (preparing && (await waiting.within(preparing)) === late) return { ok: false, problem: "migrating" };
     const entry = this.#entryFor(context);
     entry.active += 1;
     try {
@@ -74,62 +130,33 @@ export class SuppliedFamilies {
       try {
         opened = await entry.opening;
       } catch (error) {
-        return { ok: false, problem: problemOf(error), error };
+        return error instanceof FamilyNotPreparedError ? { ok: false, problem: "not-prepared", error } : { ok: false, problem: refusalOf(error), error };
       }
       return { ok: true, family: await fn(opened) };
     } finally {
-      await this.#release(entry);
+      entry.active -= 1;
+      entry.lastUsed = this.#now();
     }
-  }
-
-  /** Waits until no prepare of `database` is under way or waiting: a Family is opened on the schema it left. */
-  async #afterPreparing(database: string): Promise<void> {
-    for (let preparing = this.#preparing.get(database); preparing; preparing = this.#preparing.get(database)) await preparing;
-  }
-
-  async #release(entry: Entry): Promise<void> {
-    entry.active -= 1;
-    entry.lastUsed = this.#now();
-    if (entry.retired && entry.active === 0) await closeEntry(entry);
   }
 
   /**
-   * Preparing the Family a Context names, on its database itself, with the Context's Family id: the
-   * one way a core in supplied mode writes to a Family's database. Its blobs stay where they are: the
-   * blob location is shared, and only the Family's own folder is its. A Family opened before is
-   * opened anew by the next request.
+   * Preparing the Family a Context names, on its database itself, with the Context's Family id, as
+   * opening a database not yet prepared by this release does. Requests that open it meanwhile wait
+   * for the same prepare: nothing is prepared twice. Its blobs stay where they are: the blob
+   * location is shared, and only the Family's own folder is its.
    */
-  async prepare(context: OpenedContext): Promise<PreparedFamily> {
+  #prepared(context: OpenedContext): Promise<Refused | null> {
     const database = databaseKeyOf(context);
-    // Prepares of one database take turns; those of others run meanwhile.
-    const previous = this.#preparing.get(database) ?? Promise.resolve();
-    const run = previous.then(() => this.#prepareNow(context, database));
-    const settled = run.then(
-      () => {},
-      () => {},
-    );
-    this.#preparing.set(database, settled);
-    void settled.then(() => {
-      if (this.#preparing.get(database) === settled) this.#preparing.delete(database);
-    });
-    return run;
-  }
-
-  async #prepareNow(context: OpenedContext, database: string): Promise<PreparedFamily> {
-    // No request reuses what was opened on the schema before; requests under way finish on it.
-    this.#retire(database);
+    const under = this.#preparing.get(database);
+    if (under) return under;
     const { shared, connectDatabase = connectPostgres } = this.#options;
-    return prepareFamily(shared, { connectDatabase: () => connectDatabase(context.databaseUrl) }, context.familyId);
-  }
-
-  /** Drops the Families opened on `database`, closing each once no request uses it. */
-  #retire(database: string): void {
-    for (const [key, entry] of this.#entries) {
-      if (entry.database !== database) continue;
-      this.#entries.delete(key);
-      entry.retired = true;
-      if (entry.active === 0) void closeEntry(entry);
-    }
+    const run = prepareFamily(shared, { connectDatabase: () => connectDatabase(context.databaseUrl) }, context.familyId).then(
+      () => null,
+      (error: unknown): Refused => ({ ok: false, problem: refusalOf(error), error }),
+    );
+    this.#preparing.set(database, run);
+    void run.then(() => this.#preparing.delete(database));
+    return run;
   }
 
   /** Closes the Families no request has used for `idleMs`. */
@@ -155,7 +182,7 @@ export class SuppliedFamilies {
     const key = keyOf(context);
     const existing = this.#entries.get(key);
     if (existing) return existing;
-    const entry: Entry = { database: databaseKeyOf(context), opening: this.#open(context), lastUsed: this.#now(), active: 0, retired: false };
+    const entry: Entry = { opening: this.#open(context), lastUsed: this.#now(), active: 0 };
     this.#entries.set(key, entry);
     // A Family that failed to open is tried again with the next request.
     entry.opening.catch(() => {
@@ -166,7 +193,7 @@ export class SuppliedFamilies {
 
   async #open(context: OpenedContext): Promise<OpenedFamily> {
     const { shared, settings = {}, serving, connectDatabase = connectPostgres } = this.#options;
-    // Read only: a Family is prepared by a Triggered operation, never by opening it.
+    // Refuses a database not prepared by this release before it writes anything, for `serve` to prepare it.
     const application = await openPreparedFamily(shared, {
       ...settings,
       timeZone: context.timeZone,
@@ -182,12 +209,14 @@ export class SuppliedFamilies {
   }
 }
 
-function problemOf(error: unknown): OpeningProblem {
+/** Why opening or preparing a Family refused it, by the error it stopped with. */
+function refusalOf(error: unknown): OpeningProblem {
   if (error instanceof FamilyIdConflictError) return "family-id-differs";
-  return error instanceof FamilyNotPreparedError ? "family-not-prepared" : "unavailable";
+  if (error instanceof NewerMigrationHistoryError) return "migrated-by-newer-release";
+  return error instanceof OldMigrationHistoryError ? "old-data-model" : "unavailable";
 }
 
-/** The database a Context names, hashed so that the key holds no password: what Preparing the Family works on. */
+/** The database a Context names, hashed so that the key holds no password: what Preparing the Family and due work go by. */
 export function databaseKeyOf({ databaseUrl }: Pick<OpenedContext, "databaseUrl">): string {
   return createHash("sha256").update(databaseUrl).digest("hex");
 }

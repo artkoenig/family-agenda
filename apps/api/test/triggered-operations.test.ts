@@ -1,7 +1,6 @@
 import type { DueWorkReport } from "@family-agenda/application";
 import type { Email } from "@family-agenda/domain";
 import { describe, expect, it } from "vitest";
-import { FamilyIdConflictError } from "@family-agenda/adapters";
 import type { WorkLog } from "../src/background-work";
 import type { AddressInfo } from "node:net";
 import { createTriggerApp, serveTriggers, type TriggeredWork } from "../src/triggered-operations";
@@ -15,13 +14,10 @@ type Overrides = {
   run: () => Promise<DueWorkReport>;
   purge: () => Promise<{ purged: number; deleted: number }>;
   sweep: () => Promise<number>;
-  prepare: (familyId?: string) => Promise<{ familyId: string }>;
   enterAdmin: TriggeredWork["admins"]["enterAdmin"];
   issueNewPassword: TriggeredWork["admins"]["issueNewPassword"];
 };
-const familyId = "0b6f3c1e-8a2d-4f5b-9c7e-1d2a3b4c5d6e";
 const fakeWork = (overrides: Partial<Overrides> = {}): TriggeredWork => ({
-  prepare: overrides.prepare ?? ((given) => Promise.resolve({ familyId: given ?? familyId })),
   dueWork: { run: overrides.run ?? (() => Promise.resolve(emptyReport)) },
   retention: { purge: overrides.purge ?? (() => Promise.resolve({ purged: 2, deleted: 3 })) },
   secretSweep: { sweep: overrides.sweep ?? (() => Promise.resolve(4)) },
@@ -42,7 +38,7 @@ describe("triggered operations", () => {
   it("lists the operations it offers", async () => {
     const response = await appOf(fakeWork()).request("/operations", { headers: bearer });
 
-    expect(await response.json()).toEqual({ operations: ["due-work", "purge", "secret-sweep", "prepare-family", "enter-admin", "reset-admin-password"] });
+    expect(await response.json()).toEqual({ operations: ["due-work", "purge", "secret-sweep", "enter-admin", "reset-admin-password"] });
   });
 
   it("answers the purge and the sweep with what they did", async () => {
@@ -109,62 +105,14 @@ describe("triggered operations", () => {
     expect(errors).toEqual(["Polling Sources failed:"]);
   });
 
-  it("prepares the Family, with the Family id a body names or without one", async () => {
-    const given: (string | undefined)[] = [];
-    const app = appOf(fakeWork({ prepare: (id) => (given.push(id), Promise.resolve({ familyId })) }));
+  it("refuses a body that is no JSON, entering no Admin", async () => {
+    let entered = 0;
+    const app = appOf(fakeWork({ enterAdmin: ({ email }) => (entered++, Promise.resolve({ ok: true, email: email as Email, outcome: "first" })) }));
 
-    expect(await (await trigger(app, "prepare-family")).json()).toEqual({ familyId });
-    expect(await (await trigger(app, "prepare-family", bearer, "{}")).json()).toEqual({ familyId });
-    expect(await (await trigger(app, "prepare-family", bearer, JSON.stringify({ familyId: familyId.toUpperCase() }))).json()).toEqual({ familyId });
-    expect(given).toEqual([undefined, undefined, familyId]);
-  });
+    const notJson = await trigger(app, "enter-admin", bearer, "{");
 
-  it("refuses a Family id that is no UUID, and a body that is no JSON, without preparing", async () => {
-    let prepared = 0;
-    const app = appOf(fakeWork({ prepare: () => (prepared++, Promise.resolve({ familyId })) }));
-
-    const invalid = await trigger(app, "prepare-family", bearer, JSON.stringify({ familyId: 7 }));
-    const notJson = await trigger(app, "prepare-family", bearer, "{");
-
-    expect([invalid.status, await invalid.json()]).toEqual([400, { error: "invalid-family-id" }]);
     expect([notJson.status, await notJson.json()]).toEqual([400, { error: "invalid-body" }]);
-    expect(prepared).toBe(0);
-  });
-
-  it("answers 409 with the Family id the database holds when another one is given", async () => {
-    const other = "7c1d2e3f-4a5b-4c6d-8e7f-9a0b1c2d3e4f";
-    const app = appOf(fakeWork({ prepare: (id) => Promise.reject(new FamilyIdConflictError(familyId, id ?? "")) }));
-
-    const response = await trigger(app, "prepare-family", bearer, JSON.stringify({ familyId: other }));
-
-    expect(response.status).toBe(409);
-    expect(await response.json()).toEqual({ error: "family-id-differs", familyId });
-  });
-
-  it("answers 500 when preparing fails otherwise, and logs it", async () => {
-    const errors: string[] = [];
-    const app = appOf(fakeWork({ prepare: () => Promise.reject(new Error("database gone")) }), { warn: () => {}, error: (line: string) => void errors.push(line) });
-
-    expect((await trigger(app, "prepare-family")).status).toBe(500);
-    expect(errors).toEqual(["Preparing the Family failed:"]);
-  });
-
-  it("lets prepares in one api take turns, also after one failed", async () => {
-    const steps: string[] = [];
-    let calls = 0;
-    const app = appOf(fakeWork({ prepare: async () => {
-      const call = ++calls;
-      steps.push(`start ${call}`);
-      await new Promise((resolve) => setTimeout(resolve, 5));
-      steps.push(`end ${call}`);
-      if (call === 1) throw new Error("first fails");
-      return { familyId };
-    } }));
-
-    const statuses = await Promise.all([trigger(app, "prepare-family"), trigger(app, "prepare-family")].map(async (r) => (await r).status));
-
-    expect(statuses).toEqual([500, 200]);
-    expect(steps).toEqual(["start 1", "end 1", "start 2", "end 2"]);
+    expect(entered).toBe(0);
   });
 
   it("enters an Admin by the email a body names, and says whether it changed anything", async () => {

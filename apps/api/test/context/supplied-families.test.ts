@@ -1,10 +1,11 @@
 import { randomBytes, randomUUID } from "node:crypto";
-import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PGlite } from "@electric-sql/pglite";
-import { FileBlobStore, parseFamilyId, postgresSchema, type FamilyId, type PostgresConnection } from "@family-agenda/adapters";
+import { FileBlobStore, migrateFamily, migrationsFolder, parseFamilyId, postgresSchema, refuseNewerMigrationHistory, refuseOldMigrationHistory, type FamilyId, type PostgresConnection } from "@family-agenda/adapters";
 import { drizzle } from "drizzle-orm/pglite";
+import { migrate as migrateUpTo } from "drizzle-orm/pglite/migrator";
 import { openAgendaAccess } from "@family-agenda/application";
 import type { BlobRef } from "@family-agenda/domain";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -21,6 +22,7 @@ import { ScriptedIdentityProviderClient } from "../support/scripted-identity-pro
 
 const contextKey = "a-context-key-of-at-least-32-characters";
 const idleMs = 60_000;
+const preparingWaitMs = 200;
 
 describe("a core in supplied mode", () => {
   let directory: string;
@@ -57,13 +59,25 @@ describe("a core in supplied mode", () => {
 
   /** Databases that are not a test Instance's, such as an empty one. */
   let others: Map<string, PGlite>;
+  /** The databases named here migrate only once the promise settles. */
+  let migrationsHeld: Map<string, Promise<void>>;
+  /** The databases migrated, once for each migration. */
+  let migrated: string[];
 
   const connectDatabase = (databaseUrl: string): PostgresConnection => {
     const other = others.get(databaseUrl);
     if (other) {
       opened.push(databaseUrl);
-      const migrate = () => Promise.reject(new Error("never migrated on opening"));
-      return { db: drizzle(other, { schema: postgresSchema }), migrate, close: () => Promise.resolve(void closed.push(databaseUrl)) };
+      const db = drizzle(other, { schema: postgresSchema });
+      const migrate = async (options: { familyId?: FamilyId } = {}) => {
+        await migrationsHeld.get(databaseUrl);
+        // As a Postgres connection migrates: refusing the history of another release first.
+        await refuseOldMigrationHistory(db, migrationsFolder);
+        await refuseNewerMigrationHistory(db, migrationsFolder);
+        migrated.push(databaseUrl);
+        await migrateFamily(db, migrationsFolder, options.familyId);
+      };
+      return { db, migrate, close: () => Promise.resolve(void closed.push(databaseUrl)) };
     }
     const database = databases.get(databaseUrl);
     if (!database) throw new Error("no such database");
@@ -93,6 +107,8 @@ describe("a core in supplied mode", () => {
     directory = await mkdtemp(join(tmpdir(), "family-agenda-supplied-"));
     databases = new Map();
     others = new Map();
+    migrationsHeld = new Map();
+    migrated = [];
     now = Date.parse("2026-09-14T07:00:00Z");
     opened = [];
     closed = [];
@@ -106,6 +122,7 @@ describe("a core in supplied mode", () => {
       settings: { identityProviderClient: provider },
       connectDatabase,
       idleMs,
+      preparingWaitMs,
       now: () => now,
       serving: (application, context) => {
         const app = createHttpApp(application, { trustProxy: false, publicUrl: context.publicUrl, agendaAccess: openAgendaAccess });
@@ -225,27 +242,117 @@ describe("a core in supplied mode", () => {
     expect(closed.sort()).toEqual([a.databaseUrl, a.databaseUrl, b.databaseUrl]);
   });
 
-  it("refuses a Context naming an empty database, writing nothing to it", async () => {
-    const empty = await PGlite.create();
-    others.set("postgres://empty", empty);
+  it("prepares an empty database on opening, with the Context's Family id, and then serves the request", async () => {
+    others.set("postgres://empty", await PGlite.create());
+    const empty = { ...a, databaseUrl: "postgres://empty", familyId: randomUUID() as FamilyId };
 
-    const answer = await request({ ...a, databaseUrl: "postgres://empty" });
+    const answer = await request(empty);
 
-    expect(answer.status).toBe(409);
-    expect(await answer.text()).toContain("family-not-prepared");
-    expect(closed).toEqual(["postgres://empty"]);
-    expect((await empty.query("select count(*)::int as n from information_schema.tables where table_schema not in ('pg_catalog', 'information_schema')")).rows).toEqual([{ n: 0 }]);
+    expect(answer.status).toBe(200);
+    expect(await on(empty, (application) => Promise.resolve(application.familyId))).toBe(empty.familyId);
+    expect(migrated).toEqual(["postgres://empty"]);
   });
 
-  it("refuses a Context naming a database this version has not prepared, migrating nothing", async () => {
-    const behind = await PGlite.create();
-    others.set("postgres://behind", behind);
-    await behind.exec("create schema drizzle; create table drizzle.__drizzle_migrations (id serial primary key, hash text not null, created_at bigint); insert into drizzle.__drizzle_migrations (hash) values ('an older migration')");
+  /** A database as an older release left it: migrated up to, not including, this release's last migration. */
+  const preparedByOlderRelease = async (): Promise<PGlite> => {
+    const folder = join(directory, "older-release");
+    await cp(migrationsFolder, folder, { recursive: true });
+    const journalPath = join(folder, "meta", "_journal.json");
+    const journal = JSON.parse(await readFile(journalPath, "utf8")) as { entries: unknown[] };
+    await writeFile(journalPath, JSON.stringify({ ...journal, entries: journal.entries.slice(0, -1) }));
+    const older = await PGlite.create();
+    await migrateUpTo(drizzle(older), { migrationsFolder: folder });
+    return older;
+  };
 
-    expect((await request({ ...a, databaseUrl: "postgres://behind" })).status).toBe(409);
-    expect((await behind.query("select hash from drizzle.__drizzle_migrations")).rows).toEqual([{ hash: "an older migration" }]);
-    expect((await behind.query("select count(*)::int as n from information_schema.tables where table_schema = 'public'")).rows).toEqual([{ n: 0 }]);
+  it("prepares a database an older release prepared on opening, and then serves the request", async () => {
+    const older = await preparedByOlderRelease();
+    others.set("postgres://older", older);
+    const [stored] = (await older.query<{ id: FamilyId }>("select family_id::text as id from family")).rows;
+    const behind = { ...a, databaseUrl: "postgres://older", familyId: stored!.id };
+
+    expect((await request(behind)).status).toBe(200);
+    expect(migrated).toEqual(["postgres://older"]);
+    expect((await older.query("select family_id::text as id from family")).rows).toEqual([{ id: behind.familyId }]);
+  });
+
+  it("refuses a database a newer release migrated with an answer of its own, writing nothing to it", async () => {
+    const newer = await PGlite.create();
+    others.set("postgres://newer", newer);
+    const ahead = { ...a, databaseUrl: "postgres://newer", familyId: randomUUID() as FamilyId };
+    expect((await request(ahead)).status).toBe(200);
+    await families.close();
+    await newer.exec("insert into drizzle.__drizzle_migrations (hash, created_at) values ('of a newer release', 0)");
+    const before = (await newer.query("select count(*)::int as n from drizzle.__drizzle_migrations")).rows;
+
+    const answer = await request(ahead);
+
+    expect(answer.status).toBe(409);
+    expect(await answer.text()).toContain("migrated-by-newer-release");
+    expect((await newer.query("select count(*)::int as n from drizzle.__drizzle_migrations")).rows).toEqual(before);
     expect(families.size).toBe(0);
+  });
+
+  it("refuses a database of the data model before the rebuild, writing nothing to it", async () => {
+    const old = await PGlite.create();
+    others.set("postgres://old", old);
+    await old.exec("create schema drizzle; create table drizzle.__drizzle_migrations (id serial primary key, hash text not null, created_at bigint); insert into drizzle.__drizzle_migrations (hash) values ('of the old data model')");
+
+    const answer = await request({ ...a, databaseUrl: "postgres://old" });
+
+    expect(answer.status).toBe(409);
+    expect(await answer.text()).toContain("old-data-model");
+    expect((await old.query("select count(*)::int as n from information_schema.tables where table_schema = 'public'")).rows).toEqual([{ n: 0 }]);
+    expect(migrated).toEqual([]);
+  });
+
+  const held = (databaseUrl: string) => {
+    let release = () => {};
+    migrationsHeld.set(databaseUrl, new Promise<void>((resolve) => (release = resolve)));
+    return release;
+  };
+
+  it("answers 503 while preparing outlasts the wait of a request, and serves a retry once it is done", async () => {
+    others.set("postgres://empty", await PGlite.create());
+    const empty = { ...a, databaseUrl: "postgres://empty", familyId: randomUUID() as FamilyId };
+    const release = held("postgres://empty");
+
+    const answer = await request(empty);
+    expect(answer.status).toBe(503);
+    expect(await answer.text()).toContain("migrating");
+    // Another request meanwhile waits too, and starts no prepare of its own.
+    expect((await request({ ...empty, publicUrl: "http://core/elsewhere" })).status).toBe(503);
+
+    release();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect((await request(empty)).status).toBe(200);
+    expect(migrated).toEqual(["postgres://empty"]);
+  });
+
+  it("prepares a database once for requests that open it at once, and serves each after", async () => {
+    others.set("postgres://empty", await PGlite.create());
+    const empty = { ...a, databaseUrl: "postgres://empty", familyId: randomUUID() as FamilyId };
+    const release = held("postgres://empty");
+
+    const answers = Promise.all([request(empty), request(empty), request({ ...empty, publicUrl: "http://core/elsewhere" })]);
+    setTimeout(release, 20);
+
+    expect((await answers).map((answer) => answer.status)).toEqual([200, 200, 200]);
+    expect(migrated).toEqual(["postgres://empty"]);
+  });
+
+  it("answers 503 unavailable for a database whose history no release migrates on, rather than waiting on it", async () => {
+    const diverged = await PGlite.create();
+    others.set("postgres://diverged", diverged);
+    const context = { ...a, databaseUrl: "postgres://diverged", familyId: randomUUID() as FamilyId };
+    expect((await request(context)).status).toBe(200);
+    await families.close();
+    await diverged.exec("update drizzle.__drizzle_migrations set hash = 'of another branch' where id = (select max(id) from drizzle.__drizzle_migrations)");
+
+    const answer = await request(context);
+
+    expect(answer.status).toBe(503);
+    expect(await answer.text()).not.toContain("migrating");
   });
 
   it("leaves the shared blob directory as it is on opening: no blobs of the earlier layout are moved", async () => {

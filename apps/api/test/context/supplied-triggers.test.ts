@@ -34,6 +34,7 @@ describe("Triggered operations of a core in supplied mode", () => {
   let opened: string[];
   let warnings: string[];
   let families: SuppliedFamilies;
+  let shared: Awaited<ReturnType<typeof bootShared>>;
   let app: ReturnType<typeof createSuppliedTriggerApp>;
   let a: Context;
   let b: Context;
@@ -116,7 +117,7 @@ describe("Triggered operations of a core in supplied mode", () => {
     migrationsHeld = new Map();
     opened = [];
     warnings = [];
-    const shared = await bootShared({
+    shared = await bootShared({
       tessdataDirectory: join(directory, "tessdata"),
       bundledTessdataDirectory: null,
       clock,
@@ -127,8 +128,6 @@ describe("Triggered operations of a core in supplied mode", () => {
     app = createSuppliedTriggerApp({ token, contextKey, families, log: { warn: (line) => void warnings.push(line), error: () => {} } });
     a = await familyOf("a");
     b = await familyOf("b");
-    // Records the Source Type the plugin brings, as preparing does.
-    for (const context of [a, b]) expect((await trigger("prepare-family", context)).status).toBe(200);
   });
 
   afterEach(async () => {
@@ -163,43 +162,62 @@ describe("Triggered operations of a core in supplied mode", () => {
     expect(await databases.get(a.databaseUrl)?.query("select email from admin")).toEqual([{ email: "anna@example.org" }]);
   });
 
-  it("prepares an empty database with the Context's Family id, and refuses another id after", async () => {
+  it("prepares an empty database on opening it for an operation, with the Context's Family id, and then runs the operation", async () => {
     empties.set("postgres://empty", await PGlite.create());
     const empty = contextOf("postgres://empty", randomUUID() as FamilyId);
 
-    expect(await trigger("enter-admin", empty, { email: "anna@example.org" })).toEqual({ status: 409, body: { error: "family-not-prepared" } });
-    expect(await trigger("prepare-family", empty)).toEqual({ status: 200, body: { familyId: empty.familyId } });
     expect(await trigger("enter-admin", empty, { email: "anna@example.org" })).toEqual({ status: 200, body: { email: "anna@example.org", outcome: "first" } });
     expect(await on(empty, (application) => Promise.resolve(application.familyId))).toBe(empty.familyId);
-    // Again, once the Family is open: it changes nothing, and the next request opens it anew.
-    expect(await trigger("prepare-family", empty)).toEqual({ status: 200, body: { familyId: empty.familyId } });
-    expect(await trigger("enter-admin", empty, { email: "anna@example.org" })).toEqual({ status: 200, body: { email: "anna@example.org", outcome: "exists" } });
-
-    const another = { ...empty, familyId: randomUUID() as FamilyId };
-    expect(await trigger("prepare-family", another)).toEqual({ status: 409, body: { error: "family-id-differs", familyId: empty.familyId } });
-    expect(await trigger("purge", another)).toEqual({ status: 403, body: { error: "family-id-differs" } });
+    expect(await trigger("purge", { ...empty, familyId: randomUUID() as FamilyId })).toEqual({ status: 403, body: { error: "family-id-differs" } });
   });
 
-  it("refuses a body naming a Family id other than the Context's, changing nothing", async () => {
-    empties.set("postgres://empty", await PGlite.create());
-    const empty = contextOf("postgres://empty", randomUUID() as FamilyId);
+  it("records a Source Type installed since, when it opens a database this release already prepared", async () => {
+    const database = databases.get(a.databaseUrl)!;
+    await database.query("delete from source_type");
 
-    expect(await trigger("prepare-family", empty, { familyId: randomUUID() })).toEqual({ status: 400, body: { error: "family-id-not-the-contexts" } });
-    expect(await trigger("prepare-family", empty, { familyId: "nope" })).toEqual({ status: 400, body: { error: "invalid-family-id" } });
-    expect(await trigger("prepare-family", empty, { familyId: empty.familyId })).toEqual({ status: 200, body: { familyId: empty.familyId } });
+    expect((await trigger("purge", a)).status).toBe(200);
+
+    expect(await database.query("select id, enabled from source_type")).toEqual([{ id: "ics", enabled: false }]);
   });
 
-  it("refuses a database prepared by another release, writing nothing to it", async () => {
+  it("refuses a database of the data model before the rebuild for any operation, writing nothing to it", async () => {
     const other = await PGlite.create();
     empties.set("postgres://other", other);
-    await other.exec("create schema drizzle; create table drizzle.__drizzle_migrations (id serial primary key, hash text not null, created_at bigint); insert into drizzle.__drizzle_migrations (hash) values ('of another release')");
+    await other.exec("create schema drizzle; create table drizzle.__drizzle_migrations (id serial primary key, hash text not null, created_at bigint); insert into drizzle.__drizzle_migrations (hash) values ('of the old data model')");
     const context = contextOf("postgres://other", randomUUID() as FamilyId);
 
     for (const name of ["due-work", "purge", "secret-sweep", "enter-admin", "reset-admin-password"]) {
-      expect(await trigger(name, context, { email: "anna@example.org" })).toEqual({ status: 409, body: { error: "family-not-prepared" } });
+      expect(await trigger(name, context, { email: "anna@example.org" })).toEqual({ status: 409, body: { error: "old-data-model" } });
     }
     expect((await other.query("select count(*)::int as n from information_schema.tables where table_schema = 'public'")).rows).toEqual([{ n: 0 }]);
-    expect(warnings.join("\n")).toContain("family-not-prepared");
+    expect(warnings.join("\n")).toContain("old-data-model");
+  });
+
+  it("refuses a database a newer release migrated for any operation, writing nothing to it", async () => {
+    const newer = await PGlite.create();
+    empties.set("postgres://newer", newer);
+    const context = contextOf("postgres://newer", randomUUID() as FamilyId);
+    expect((await trigger("purge", context)).status).toBe(200);
+    await families.close();
+    await newer.exec("insert into drizzle.__drizzle_migrations (hash, created_at) values ('of a newer release', 0)");
+
+    for (const name of ["due-work", "purge", "secret-sweep", "enter-admin", "reset-admin-password"]) {
+      expect(await trigger(name, context, { email: "anna@example.org" })).toEqual({ status: 409, body: { error: "migrated-by-newer-release" } });
+    }
+    expect(await newer.query("select email from admin")).toMatchObject({ rows: [] });
+  });
+
+  it("answers 503 for an operation while preparing outlasts its wait, and runs it once preparing is done", async () => {
+    families = new SuppliedFamilies({ shared, connectDatabase, serving: () => () => new Response("page"), preparingWaitMs: 100 });
+    app = createSuppliedTriggerApp({ token, contextKey, families, log: { warn: (line) => void warnings.push(line), error: () => {} } });
+    empties.set("postgres://empty", await PGlite.create());
+    const empty = contextOf("postgres://empty", randomUUID() as FamilyId);
+    const release = held("postgres://empty");
+
+    expect(await trigger("purge", empty)).toEqual({ status: 503, body: { error: "migrating" } });
+    release();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(await trigger("purge", empty)).toEqual({ status: 200, body: { purged: 0, deleted: 0 } });
   });
 
   it.each<[string, () => Context | string | null, number]>([
@@ -211,7 +229,7 @@ describe("Triggered operations of a core in supplied mode", () => {
   ])("refuses a trigger %s, opening nothing", async (_, context, status) => {
     opened = [];
 
-    for (const name of ["due-work", "purge", "secret-sweep", "prepare-family", "enter-admin", "reset-admin-password"]) {
+    for (const name of ["due-work", "purge", "secret-sweep", "enter-admin", "reset-admin-password"]) {
       expect((await trigger(name, context(), { email: "anna@example.org" })).status).toBe(status);
     }
     expect(opened).toEqual([]);
@@ -241,55 +259,31 @@ describe("Triggered operations of a core in supplied mode", () => {
     return done;
   };
 
-  it("lets a request for a Family wait while it is prepared, then serves it on the prepared database", async () => {
+  it("lets a trigger for a Family wait while another prepares it, then runs it on the prepared database", async () => {
     empties.set("postgres://empty", await PGlite.create());
     const empty = contextOf("postgres://empty", randomUUID() as FamilyId);
     const release = held("postgres://empty");
 
-    const preparing = trigger("prepare-family", empty);
+    const first = trigger("enter-admin", empty, { email: "anna@example.org" });
     await new Promise((resolve) => setTimeout(resolve, 20));
-    const entering = trigger("enter-admin", { ...empty, publicUrl: "http://elsewhere" }, { email: "anna@example.org" });
+    const second = trigger("enter-admin", { ...empty, publicUrl: "http://elsewhere" }, { email: "anna@example.org" });
 
-    expect(await settled(entering)).toBe(false);
+    expect(await settled(second)).toBe(false);
     release();
-    expect(await preparing).toEqual({ status: 200, body: { familyId: empty.familyId } });
-    expect(await entering).toEqual({ status: 200, body: { email: "anna@example.org", outcome: "first" } });
+    const outcomes = (await Promise.all([first, second])).map(({ status, body }) => [status, body.outcome]);
+    expect(outcomes.sort()).toEqual([[200, "exists"], [200, "first"]]);
   });
 
-  it("prepares one Family while another is being prepared", async () => {
+  it("serves one Family while another is being prepared", async () => {
     empties.set("postgres://empty", await PGlite.create());
     const empty = contextOf("postgres://empty", randomUUID() as FamilyId);
     const release = held("postgres://empty");
 
-    const preparing = trigger("prepare-family", empty);
-    expect(await trigger("prepare-family", a)).toEqual({ status: 200, body: { familyId: a.familyId } });
+    const preparing = trigger("purge", empty);
+    expect(await trigger("purge", a)).toEqual({ status: 200, body: { purged: 0, deleted: 0 } });
     expect(await settled(preparing)).toBe(false);
     release();
     expect((await preparing).status).toBe(200);
-  });
-
-  it("refuses to prepare a database a newer release migrated, changing nothing", async () => {
-    const newer = await PGlite.create();
-    empties.set("postgres://newer", newer);
-    const context = contextOf("postgres://newer", randomUUID() as FamilyId);
-    expect((await trigger("prepare-family", context)).status).toBe(200);
-    await newer.exec("insert into drizzle.__drizzle_migrations (hash, created_at) values ('of a newer release', 0)");
-
-    expect(await trigger("prepare-family", context)).toEqual({ status: 409, body: { error: "migrated-by-newer-release" } });
-    expect((await newer.query("select count(*)::int as n from drizzle.__drizzle_migrations where hash = 'of a newer release'")).rows).toEqual([{ n: 1 }]);
-  });
-
-  it("refuses to prepare a database of the data model before the rebuild, changing nothing", async () => {
-    const old = await PGlite.create();
-    empties.set("postgres://old", old);
-    await old.exec("create schema drizzle; create table drizzle.__drizzle_migrations (id serial primary key, hash text not null, created_at bigint); insert into drizzle.__drizzle_migrations (hash) values ('of the old data model')");
-
-    expect(await trigger("prepare-family", contextOf("postgres://old", randomUUID() as FamilyId))).toEqual({ status: 409, body: { error: "old-data-model" } });
-    expect((await old.query("select count(*)::int as n from information_schema.tables where table_schema = 'public'")).rows).toEqual([{ n: 0 }]);
-  });
-
-  it("answers 503 for preparing a database that cannot be reached", async () => {
-    expect(await trigger("prepare-family", { ...a, databaseUrl: "postgres://gone" })).toEqual({ status: 503, body: { error: "unavailable" } });
   });
 
   it("lets due work triggered for a Family during a run wait for that run, whatever else its Context says", async () => {
