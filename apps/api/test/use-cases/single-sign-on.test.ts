@@ -71,6 +71,17 @@ describe("Admins signing in through an Identity Provider", () => {
       });
     });
 
+    it("keeps the ID token with the session, and hands it back on signing out, for the provider's sign-out", async () => {
+      const result = await signInAs({ ...anna, idToken: "ey.anna" } as typeof anna);
+      if (!result.ok) throw new Error(result.problem);
+
+      expect(await instance.app.admins.signOut(result.sessionToken)).toEqual({ idToken: "ey.anna" });
+      expect(await instance.app.admins.signOut(result.sessionToken)).toBeNull();
+      const url = new URL((await sso().signOutUrl(origin, "ey.anna")) ?? "");
+      expect(url.searchParams.get("post_logout_redirect_uri")).toBe(`${origin}/admin/sign-in`);
+      expect(await sso().signOutUrl("http://family-agenda.local", "ey.anna")).toBeNull();
+    });
+
     it("starts a session that holds the identity, without storing an Admin", async () => {
       const result = await signInAs(anna);
 

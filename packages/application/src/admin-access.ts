@@ -12,23 +12,32 @@ export type AdminAccessDeps = {
 /** Whom a session belongs to: whoever the Identity Provider vouched for, as no Admin is stored. */
 export type SignedInIdentity = { subject: string; email: string };
 
+/** Whom a session is started for, with the ID token of the sign-in if it gave one. */
+export type SessionIdentity = SignedInIdentity & { idToken?: string | undefined };
+
 export function createAdminAccess(deps: AdminAccessDeps) {
   const { clock, sessions } = deps;
 
   return {
     /** Starts a session for someone the Identity Provider vouched for as an Admin; returns its token. */
-    async startSession(identity: SignedInIdentity): Promise<string> {
+    async startSession({ subject, email, idToken }: SessionIdentity): Promise<string> {
       const token = randomBytes(32).toString("base64url");
       const now = clock.now();
       // Sessions no one used again until they expired go here, rather than never.
       await sessions.removeExpired(now);
       const expiresAt = new Date(now.getTime() + sessionLifetimeMs);
-      await sessions.add({ id: hashToken(token), ...identity, expiresAt });
+      await sessions.add({ id: hashToken(token), subject, email, idToken: idToken ?? null, expiresAt });
       return token;
     },
 
-    async signOut(sessionToken: string): Promise<void> {
+    /**
+     * Ends the session; returns how it was signed in, for signing out at the Identity Provider too:
+     * its ID token, null if it has none; or null if there was no such session.
+     */
+    async signOut(sessionToken: string): Promise<{ idToken: string | null } | null> {
+      const session = await sessions.find(hashToken(sessionToken));
       await sessions.remove(hashToken(sessionToken));
+      return session ? { idToken: session.idToken } : null;
     },
 
     /** Who a session token belongs to, or null if it is unknown or expired. */

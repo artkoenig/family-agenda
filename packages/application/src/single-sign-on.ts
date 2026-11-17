@@ -91,6 +91,22 @@ export function createSingleSignOn(deps: SingleSignOnDeps) {
     /** The id of the Family's organization, for the `state` of a sign-in that returns elsewhere; null before there is one. */
     organizationId,
 
+    /**
+     * Where to send a browser whose session with ID token `idToken` signed out, to sign out at the
+     * Identity Provider too (RP-initiated logout); null if single sign-on is not offered at `baseUrl`
+     * or the provider names no end session endpoint. The provider sends it back to the Family's
+     * sign-in page, or in supplied mode to the one callback with `state`, which hands it on.
+     */
+    async signOutUrl(baseUrl: string, idToken: string, state?: string): Promise<string | null> {
+      const offered = at(baseUrl);
+      if (!offered) return null;
+      return client.signOutUrl(connectionOf(offered), {
+        postLogoutRedirectUri: postLogoutRedirectUriOf(offered),
+        idToken,
+        ...(state === undefined ? {} : { state }),
+      });
+    },
+
     /** Signs in someone the one callback of the deployment vouched for and handed over (supplied mode). */
     async signInHandedOver(identity: AdmittedIdentity): Promise<string> {
       return admins.startSession(identity);
@@ -110,7 +126,10 @@ export function createSingleSignOn(deps: SingleSignOnDeps) {
 }
 
 /** Who may administer the Family: as the Identity Provider vouched for them, with a verified email address. */
-export type AdmittedIdentity = { subject: string; email: string };
+export type AdmittedIdentity = { subject: string; email: string; idToken?: string | undefined };
+
+/** Where the Identity Provider sends a browser that signed out there, below the public base URL. */
+export const signedOutPath = "/admin/sign-in";
 
 export type SignInAdmission = { ok: true; identity: AdmittedIdentity } | Extract<SingleSignOnSignInResult, { ok: false }>;
 
@@ -125,6 +144,9 @@ const connectionOf = (offered: IdentityProviderSettings) => ({
 
 /** The one callback of the deployment in supplied mode, else the callback below the public base URL. */
 const redirectUriOf = (offered: IdentityProviderSettings) => offered.callbackUrl ?? offered.publicBaseUrl + singleSignOnCallbackPath;
+
+/** In supplied mode the one callback, which hands the browser on to its Family; else the sign-in page below the public base URL. */
+const postLogoutRedirectUriOf = (offered: IdentityProviderSettings) => offered.callbackUrl ?? offered.publicBaseUrl + signedOutPath;
 
 /**
  * Whom the provider sent back with `query` to the redirect URI, if they may administer the Family:
@@ -154,7 +176,8 @@ export async function completeSignIn(
 /** Who `identity` is with a verified email address; null without one. */
 function verifiedIdentityOf(identity: VerifiedIdentity): AdmittedIdentity | null {
   const email = identity.email?.trim() ?? "";
-  return email !== "" && identity.emailVerified ? { subject: identity.subject, email } : null;
+  if (email === "" || !identity.emailVerified) return null;
+  return identity.idToken === undefined ? { subject: identity.subject, email } : { subject: identity.subject, email, idToken: identity.idToken };
 }
 
 /** An invitee is not a member yet, nor does their token say so: their verified email accepts their invitation (ADR-0010). */

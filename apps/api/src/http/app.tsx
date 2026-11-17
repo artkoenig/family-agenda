@@ -107,6 +107,8 @@ export type FamilySignInRelay = {
   stateOf(binding: string, organizationId: string | null): (secrets: SignInSecrets) => string;
   /** Who `token` hands over to this Family, for the browser holding `binding`, once; null otherwise. */
   take(token: string, binding: string): AdmittedIdentity | null;
+  /** The `state` of a sign-out at the Identity Provider, which the one callback hands back to this Family's sign-in. */
+  signedOutState(): string;
 };
 
 export type HttpOptions = {
@@ -754,9 +756,11 @@ export function createHttpApp(application: Application, options: HttpOptions) {
 
   app.post("/admin/sign-out", async (c) => {
     const token = getCookie(c, sessionCookie);
-    if (token) await admins.signOut(token);
+    const ended = token ? await admins.signOut(token) : null;
     deleteCookie(c, sessionCookie, { path: href(prefix, "/") });
-    return seeOther(c, "/admin/sign-in");
+    // A session from single sign-on signs out at the Identity Provider too, else its session signs the next person in as this Admin.
+    const atProvider = ended?.idToken ? await singleSignOn.signOutUrl(requestBaseOf(c), ended.idToken, options.signInRelay?.signedOutState()) : null;
+    return atProvider ? c.redirect(atProvider, 303) : seeOther(c, "/admin/sign-in");
   });
 
   const recoveryKitPage = async (c: Context<Env>, problem?: string) => {

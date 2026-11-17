@@ -83,6 +83,8 @@ export const adminSessions = pgTable(
     id: text("id").primaryKey(),
     subject: text("subject").notNull(),
     email: text("email").notNull(),
+    /** The ID token of the sign-in, to sign out at the Identity Provider too; null without one. */
+    idToken: text("id_token"),
     expiresAt: timestamptz("expires_at").notNull(),
   },
   (table) => [index("admin_session_expires_at_idx").on(table.expiresAt)],

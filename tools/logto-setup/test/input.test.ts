@@ -19,6 +19,7 @@ describe("reading the setup's settings", () => {
     expect(setup.input).toEqual({
       publicEndpoint: "https://sign-in.example.org",
       redirectUris: ["https://agenda.example.org/sso/callback"],
+      postLogoutRedirectUris: ["https://agenda.example.org/admin/sign-in"],
       adminRole: "homelab-admin",
       firstAdmin: { username: "parent", email: "parent@example.org" },
       branding: { logoUrl: files.logoDataUrl, primaryColor: "#bb4f29", darkPrimaryColor: "#e8875f", customCss: "body {}" },
@@ -34,7 +35,7 @@ describe("reading the setup's settings", () => {
     );
 
     expect(setup.apiEndpoint).toBe("http://localhost:3001");
-    expect(setup.input).toMatchObject({ redirectUris: ["https://sign-in.example.org/sso/callback"], suppliedMode: true, adminRole: "parents", branding: { logoUrl: "https://example.org/logo.png" } });
+    expect(setup.input).toMatchObject({ redirectUris: ["https://sign-in.example.org/sso/callback"], postLogoutRedirectUris: ["https://sign-in.example.org/sso/callback"], suppliedMode: true, adminRole: "parents", branding: { logoUrl: "https://example.org/logo.png" } });
   });
 
   it("reads SMTP only when SMTP_HOST is set", () => {

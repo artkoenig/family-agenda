@@ -49,6 +49,7 @@ CREATE TABLE admin_session (
   id          TEXT PRIMARY KEY,           -- SHA-256 of the session token
   subject     TEXT NOT NULL,              -- the IdP `sub`
   email       TEXT NOT NULL,              -- the verified email address
+  id_token    TEXT,                       -- the sign-in's ID token, the hint for signing out at the IdP; null without one
   expires_at  TIMESTAMPTZ NOT NULL        -- 12 hours after sign-in
 );
 CREATE INDEX admin_session_expires_at_idx ON admin_session (expires_at);

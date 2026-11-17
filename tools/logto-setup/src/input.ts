@@ -30,7 +30,7 @@ export function readSetupEnvironment(env: Env, files: { customCss: string; logoD
   const appSecret = required("LOGTO_M2M_APP_SECRET");
   const publicEndpoint = required("LOGTO_ENDPOINT");
   const firstAdmin = readFirstAdmin(env, required);
-  const redirectUris = readRedirectUris(env, missing);
+  const { redirectUris, postLogoutRedirectUris } = readRedirectUris(env, missing);
   const smtp = readSmtp(env, missing);
   const registration = readRegistration(env, missing, { endpoint: publicEndpoint, clientId: appId, clientSecret: appSecret });
   if (missing.length > 0) throw new Error(`Missing: ${missing.join(", ")}`);
@@ -42,6 +42,7 @@ export function readSetupEnvironment(env: Env, files: { customCss: string; logoD
     input: {
       publicEndpoint,
       redirectUris,
+      postLogoutRedirectUris,
       adminRole: env.OIDC_REQUIRED_GROUP ?? "homelab-admin",
       ...firstAdmin,
       // Logto's sign-in pages load images only over https or as data: URLs.
@@ -59,12 +60,17 @@ function readFirstAdmin(env: Env, required: (name: string) => string): { firstAd
   return { firstAdmin: { username: required("FIRST_ADMIN_USERNAME"), email: required("FIRST_ADMIN_EMAIL") } };
 }
 
-/** `<PUBLIC_URL>/sso/callback`, and in supplied mode `OIDC_CALLBACK_URL`; at least one. */
-function readRedirectUris(env: Env, missing: string[]): string[] {
-  const fromPublicUrl = env.PUBLIC_URL ? [`${withoutTrailingSlash(env.PUBLIC_URL)}/sso/callback`] : [];
-  const redirectUris = [...fromPublicUrl, ...(env.OIDC_CALLBACK_URL ? [env.OIDC_CALLBACK_URL] : [])];
+/**
+ * `<PUBLIC_URL>/sso/callback`, and in supplied mode `OIDC_CALLBACK_URL`; at least one. After signing
+ * out at Logto the browser returns to `<PUBLIC_URL>/admin/sign-in`, in supplied mode to `OIDC_CALLBACK_URL`,
+ * which hands it on to its Family's sign-in.
+ */
+function readRedirectUris(env: Env, missing: string[]): Pick<SetupInput, "redirectUris" | "postLogoutRedirectUris"> {
+  const publicUrl = env.PUBLIC_URL ? withoutTrailingSlash(env.PUBLIC_URL) : null;
+  const callback = env.OIDC_CALLBACK_URL ? [env.OIDC_CALLBACK_URL] : [];
+  const redirectUris = [...(publicUrl === null ? [] : [`${publicUrl}/sso/callback`]), ...callback];
   if (redirectUris.length === 0) missing.push("PUBLIC_URL or OIDC_CALLBACK_URL");
-  return redirectUris;
+  return { redirectUris, postLogoutRedirectUris: [...(publicUrl === null ? [] : [`${publicUrl}/admin/sign-in`]), ...callback] };
 }
 
 /** SMTP only when SMTP_HOST is set; it then needs SMTP_FROM. */

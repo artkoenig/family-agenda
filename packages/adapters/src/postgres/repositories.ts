@@ -147,7 +147,7 @@ export class PostgresAdminSessionRepository implements AdminSessionRepository {
 
   async find(id: string): Promise<AdminSession | null> {
     const [row] = await this.db.select().from(adminSessions).where(eq(adminSessions.id, id));
-    return row ? { id: row.id, subject: row.subject, email: row.email, expiresAt: row.expiresAt } : null;
+    return row ? { id: row.id, subject: row.subject, email: row.email, idToken: row.idToken, expiresAt: row.expiresAt } : null;
   }
 
   async remove(id: string): Promise<void> {

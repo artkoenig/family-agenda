@@ -5,6 +5,7 @@ import { fakeManagementApi } from "./fake-management-api";
 const input: SetupInput = {
   publicEndpoint: "https://sign-in.example.org/",
   redirectUris: ["https://agenda.example.org/sso/callback"],
+  postLogoutRedirectUris: ["https://agenda.example.org/admin/sign-in"],
   adminRole: "homelab-admin",
   firstAdmin: { username: "parent", email: "parent@example.org" },
   branding: { logoUrl: "data:image/svg+xml;base64,PHN2Zy8+", primaryColor: "#bb4f29", darkPrimaryColor: "#e8875f", customCss: "body {}" },
@@ -27,7 +28,7 @@ describe("setting up Logto", () => {
     const result = await setUpLogto(logto.api, input, newPassword);
 
     const [client] = logto.tables.applications ?? [];
-    expect(client).toMatchObject({ name: "Family Agenda", type: "Traditional", oidcClientMetadata: { redirectUris: input.redirectUris } });
+    expect(client).toMatchObject({ name: "Family Agenda", type: "Traditional", oidcClientMetadata: { redirectUris: input.redirectUris, postLogoutRedirectUris: input.postLogoutRedirectUris } });
     const [role] = logto.tables.roles ?? [];
     expect(role).toMatchObject({ name: "homelab-admin", type: "User" });
     const [user] = logto.tables.users ?? [];
@@ -74,13 +75,16 @@ describe("setting up Logto", () => {
     expect(third.oidc).toEqual(first.oidc);
   });
 
-  it("keeps the client's redirect URIs in step with the environment", async () => {
+  it("keeps the client's redirect URIs, after sign-in and after sign-out, in step with the environment", async () => {
     const logto = fakeManagementApi();
     await setUpLogto(logto.api, input, newPassword);
 
-    await setUpLogto(logto.api, { ...input, redirectUris: ["https://new.example.org/sso/callback"] }, newPassword);
+    const moved = { redirectUris: ["https://new.example.org/sso/callback"], postLogoutRedirectUris: ["https://new.example.org/admin/sign-in"] };
+    await setUpLogto(logto.api, { ...input, ...moved }, newPassword);
+    await setUpLogto(logto.api, { ...input, ...moved }, newPassword);
 
-    expect(logto.tables.applications?.[0]).toMatchObject({ oidcClientMetadata: { redirectUris: ["https://new.example.org/sso/callback"] } });
+    expect(logto.tables.applications).toHaveLength(1);
+    expect(logto.tables.applications?.[0]).toMatchObject({ oidcClientMetadata: moved });
   });
 
   it("gives the client a secret when it has none", async () => {
