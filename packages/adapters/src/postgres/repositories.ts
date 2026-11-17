@@ -17,6 +17,7 @@ import type {
   SoleAssignment,
   LlmEndpointRepository,
   PlainConfig,
+  ProcessedEventRepository,
   SecretRef,
   Source,
   SourceAttribute,
@@ -57,6 +58,7 @@ import {
   family,
   familyMembers,
   llmEndpoints,
+  processedIdpEvents,
   sourceAttributeMembers,
   sourceAttributes,
   sourceRecordAttributes,
@@ -703,4 +705,22 @@ export class PostgresSourceAddingRepository implements SourceAddingRepository {
 
 function addingOf(row: typeof sourceAddings.$inferSelect): SourceAdding {
   return { id: row.id as AddingId, startedAt: row.startedAt, progress: row.progress };
+}
+
+/** The Identity Provider's events processed, recorded in one statement so that concurrent replays record one. */
+export class PostgresProcessedEventRepository implements ProcessedEventRepository {
+  constructor(private readonly db: Database) {}
+
+  async recordIfNew(eventId: string, at: Date): Promise<boolean> {
+    const recorded = await this.db
+      .insert(processedIdpEvents)
+      .values({ eventId, processedAt: at })
+      .onConflictDoNothing()
+      .returning({ eventId: processedIdpEvents.eventId });
+    return recorded.length > 0;
+  }
+
+  async forget(eventId: string): Promise<void> {
+    await this.db.delete(processedIdpEvents).where(eq(processedIdpEvents.eventId, eventId));
+  }
 }

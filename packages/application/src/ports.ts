@@ -24,6 +24,17 @@ import type {
   AgendaId,
 } from "@family-agenda/domain";
 
+/**
+ * The events from the Identity Provider the Family's database has processed (ADR-0010), so that a
+ * replay of one does nothing.
+ */
+export interface ProcessedEventRepository {
+  /** Records the event as processed at `at`, unless it is already; whether it was new. */
+  recordIfNew(eventId: string, at: Date): Promise<boolean>;
+  /** Forgets the event, when processing it failed after all. */
+  forget(eventId: string): Promise<void>;
+}
+
 export interface Clock {
   now(): Date;
 }

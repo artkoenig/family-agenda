@@ -621,3 +621,9 @@ export const backgroundActivities = pgTable(
     check("background_activity_progress", sql`0 <= ${table.done} AND ${table.done} <= ${table.total}`),
   ],
 );
+
+/** The events from the Identity Provider processed (ADR-0010), by an id unique to each, so that a replay does nothing. */
+export const processedIdpEvents = pgTable("processed_idp_event", {
+  eventId: text("event_id").primaryKey(),
+  processedAt: timestamptz("processed_at").notNull(),
+});
