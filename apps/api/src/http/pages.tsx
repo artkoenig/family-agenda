@@ -15,6 +15,7 @@ import {
   type SourceSummary,
   type SourceTypeSummary,
   type AgendaSummary,
+  type AdminsListing,
 } from "@family-agenda/application";
 import {
   defaultHorizonDays,
@@ -136,6 +137,8 @@ export type SettingsSummary = {
   failingSources: number;
   llm: { model: string; local: boolean } | null;
   kitSaved: boolean;
+  /** How many Admins the Family has in the Identity Provider; null without the Admins page (ADR-0010). */
+  admins: number | null;
   /** The release this Instance runs, such as `0.3.1`, `main-1a2b3c4` or `dev`. */
   version: string;
   /** The Family Language. */
@@ -149,6 +152,7 @@ export type SignedInAdmin = SignedInIdentity & { settings: SettingsSummary };
 
 type SectionId =
   | "members"
+  | "admins"
   | "agendas"
   | "display"
   | "sources"
@@ -187,6 +191,7 @@ function settingsGroups(translation: Translation): SettingsGroup[] {
                 : s.noneYet,
           }),
         },
+        ...adminsSections(translation),
         {
           id: "agendas",
           href: "/admin/agendas",
@@ -244,6 +249,19 @@ function settingsGroups(translation: Translation): SettingsGroup[] {
               : { text: s.notSavedYet, tone: "attention" },
         },
       ],
+    },
+  ];
+}
+
+/** The Admins section, in the settings list only with a management API (ADR-0010). */
+function adminsSections(translation: Translation): SettingsGroup["sections"] {
+  const a = translation.t.admins;
+  return [
+    {
+      id: "admins",
+      href: "/admin/admins",
+      label: a.title,
+      summary: ({ settings }) => ({ text: a.count(settings.admins ?? 0) }),
     },
   ];
 }
@@ -335,6 +353,12 @@ function SectionIcon(props: { id: SectionId }) {
         <path d="M17 14c2.4 0 4 1.5 4.5 4"></path>
       </>
     ),
+    admins: (
+      <>
+        <path d="M12 3l7 3v5c0 4.5-3 8.2-7 10-4-1.8-7-5.5-7-10V6z"></path>
+        <path d="M9 12l2 2 4-4"></path>
+      </>
+    ),
     agendas: (
       <>
         <rect x="3" y="4" width="18" height="13" rx="2.5"></rect>
@@ -420,7 +444,7 @@ function AdminLayout(props: {
           {settingsGroups(translation).map((group) => (
             <>
               <span class="fam-settings__group">{group.name}</span>
-              {group.sections.map((section) => {
+              {group.sections.filter((section) => section.id !== "admins" || admin.settings.admins !== null).map((section) => {
                 const summary = section.summary(admin);
                 return (
                   <a
@@ -4330,6 +4354,80 @@ function OcrLanguageList(props: { languages: LanguageSettings }) {
         </form>
       ) : null}
     </>
+  );
+}
+
+/**
+ * The Admins section (ADR-0010): the Family's Admins with their last sign-in, the pending
+ * invitations, and a form to invite one by email. The Identity Provider keeps them all.
+ */
+export function AdminsPage(props: {
+  admin: SignedInAdmin;
+  listing: AdminsListing;
+  problem?: string;
+}) {
+  const prefix = usePathPrefix();
+  const { t, locale } = useTranslation();
+  const a = t.admins;
+  const dateOf = (date: Date) => date.toLocaleDateString(locale, { year: "numeric", month: "long", day: "numeric" });
+  const only = props.listing.admins.length <= 1;
+  return (
+    <AdminLayout title={a.title} admin={props.admin} current="admins">
+      <SectionHeader title={a.title} description={a.description} />
+      <Problem message={props.problem} />
+      <section class="fam-sheet">
+        <ul class="fam-rows">
+          {props.listing.admins.map((member) => (
+            <ListRow
+              name={member.email ?? a.noEmail}
+              meta={member.userId === props.admin.subject ? a.you : member.lastSignInAt ? a.lastSignIn(dateOf(member.lastSignInAt)) : a.neverSignedIn}
+              trailing={
+                only ? null : (
+                  <form method="post" action={href(prefix, `/admin/admins/${encodeURIComponent(member.userId)}/remove`)}>
+                    <button type="submit" class="fam-button fam-button--quiet">{a.remove}</button>
+                  </form>
+                )
+              }
+            />
+          ))}
+        </ul>
+      </section>
+      <section class="fam-sheet">
+        <Group title={a.invitations} level={2}>
+          {props.listing.invitations.length === 0 ? (
+            <p class="fam-empty">{a.noInvitations}</p>
+          ) : (
+            <ul class="fam-rows">
+              {props.listing.invitations.map((invitation) => (
+                <ListRow
+                  name={invitation.email}
+                  meta={a.expires(dateOf(invitation.expiresAt))}
+                  trailing={
+                    <form method="post" action={href(prefix, `/admin/admins/invitations/${encodeURIComponent(invitation.invitationId)}/revoke`)}>
+                      <button type="submit" class="fam-button fam-button--quiet">{a.revoke}</button>
+                    </form>
+                  }
+                />
+              ))}
+            </ul>
+          )}
+        </Group>
+      </section>
+      <form method="post" action={href(prefix, "/admin/admins/invitations")} class="fam-sheet fam-sheet__form">
+        <Group title={a.invite} level={2}>
+          <div class="fam-group__fields">
+            <div class="fam-field">
+              <label for="email">{a.email}</label>
+              <input id="email" name="email" type="email" required autocomplete="off" />
+              <small>{a.inviteHint}</small>
+            </div>
+          </div>
+          <div class="fam-group__actions">
+            <button type="submit" class="fam-button fam-button--primary">{a.invite}</button>
+          </div>
+        </Group>
+      </form>
+    </AdminLayout>
   );
 }
 

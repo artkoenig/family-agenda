@@ -84,6 +84,10 @@ export const en = {
       "Your account at the Identity Provider is not among this Family's Admins. Ask someone who already administers the Family to invite you.",
     "sso-email-unverified":
       "The Identity Provider has not verified an email address for your account.",
+    "invalid-email": "Enter an email address.",
+    "already-admin": "This address is already an Admin of the Family.",
+    "already-invited": "This address is already invited.",
+    "last-admin": "The Family keeps at least one Admin: the last Admin cannot be removed.",
     "invalid-interval": `The polling interval must be between ${pollIntervalRange.minSeconds / 60} minute and ${pollIntervalRange.maxSeconds / 86_400} days.`,
   },
   /** Problems that name what went wrong. */
@@ -173,6 +177,24 @@ export const en = {
     confirm: "I have printed or saved the Recovery Kit.",
     confirmTitle: "Confirm",
     continue: "Continue",
+  },
+
+  admins: {
+    title: "Admins",
+    description: "Who administers the Family. An invitation sends an email with a link to the Family's sign-in.",
+    count: (count: number) => plural(count, { one: `${count} Admin`, other: `${count} Admins` }),
+    you: "You",
+    noEmail: "No email address",
+    lastSignIn: (date: string) => `Last signed in ${date}`,
+    neverSignedIn: "Never signed in",
+    remove: "Remove",
+    invitations: "Pending invitations",
+    noInvitations: "No pending invitations.",
+    expires: (date: string) => `Expires ${date}`,
+    revoke: "Revoke",
+    invite: "Invite",
+    email: "Email address",
+    inviteHint: "The invitation is valid for 7 days.",
   },
 
   members: {

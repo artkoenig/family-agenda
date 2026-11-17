@@ -7,8 +7,8 @@ export type DirectoryMember = { userId: string; email: string | null; lastSignIn
 /** A pending invitation to a Family's organization; the Identity Provider mails it. */
 export type DirectoryInvitation = { invitationId: string; email: string; expiresAt: Date };
 
-/** What an invitation carries besides the invitee: when it expires, and the accept link its email shows. */
-export type InvitationDetails = { expiresAt: Date; link: string };
+/** What an invitation carries besides the invitee: when it expires, the accept link its email shows, and the language it is written in. */
+export type InvitationDetails = { expiresAt: Date; link: string; locale: string };
 
 /**
  * The Identity Provider's management API (ADR-0010): each Family is an organization, its Admins are

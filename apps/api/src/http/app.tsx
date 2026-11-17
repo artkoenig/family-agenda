@@ -48,6 +48,7 @@ import {
 } from "./i18n/translation";
 import {
   FamilyMembersPage,
+  AdminsPage,
   DisplayPage,
   AddingRow,
   LiveStepProgress,
@@ -670,6 +671,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
       ).length,
       llm: endpoint ? { model: endpoint.model, local: endpoint.local } : null,
       kitSaved: await recoveryKit.isConfirmed(),
+      admins: (await application.familyAdmins.list())?.admins.length ?? null,
       version,
       family: language.language,
       ocr: {
@@ -831,6 +833,33 @@ export function createHttpApp(application: Application, options: HttpOptions) {
         : { adding: { problem } };
       return familyMembersPage(c, { ...shown, status: 413 });
     },
+  });
+
+  const adminsPage = async (c: Context<Env>, problem?: ProblemKey) => {
+    const listing = await application.familyAdmins.list();
+    if (!listing) return c.notFound();
+    return render(
+      c,
+      <AdminsPage admin={c.get("admin")} listing={listing} {...(problem ? { problem: problemIn(c, problem) } : {})} />,
+      problem ? 400 : 200,
+    );
+  };
+
+  app.get("/admin/admins", (c) => adminsPage(c));
+
+  app.post("/admin/admins/invitations", async (c) => {
+    const result = await application.familyAdmins.invite(field(await c.req.parseBody(), "email"), requestBaseOf(c) + "/admin/sign-in");
+    return result.ok ? seeOther(c, "/admin/admins") : adminsPage(c, result.problem);
+  });
+
+  app.post("/admin/admins/invitations/:id/revoke", async (c) => {
+    await application.familyAdmins.revoke(c.req.param("id"));
+    return seeOther(c, "/admin/admins");
+  });
+
+  app.post("/admin/admins/:userId/remove", async (c) => {
+    const result = await application.familyAdmins.remove(c.req.param("userId"));
+    return result.ok ? seeOther(c, "/admin/admins") : adminsPage(c, result.problem);
   });
 
   app.get("/admin/family-members", (c) => familyMembersPage(c));
