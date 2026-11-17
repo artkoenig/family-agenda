@@ -24,3 +24,4 @@ export * from "./sources";
 export * from "./tasks";
 export * from "./agendas";
 export * from "./egress-hosts";
+export * from "./identity-directory";

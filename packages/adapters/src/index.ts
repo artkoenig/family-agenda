@@ -14,3 +14,4 @@ export * from "./postgres/item-repository";
 export * from "./system-clock";
 export * from "./tessdata-directory";
 export * from "./tessdata-fast-catalog";
+export * from "./logto-identity-directory";
