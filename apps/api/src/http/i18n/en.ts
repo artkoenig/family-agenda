@@ -80,6 +80,8 @@ export const en = {
       "Your account at the Identity Provider belongs to no Family. Ask whoever runs the Identity Provider to assign it to this Family.",
     "sso-other-family":
       "Your account at the Identity Provider belongs to another Family, not this one. Sign in at your own Family's address.",
+    "sso-not-member":
+      "Your account at the Identity Provider is not among this Family's Admins. Ask someone who already administers the Family to invite you.",
     "sso-email-unverified":
       "The Identity Provider has not verified an email address for your account.",
     "invalid-interval": `The polling interval must be between ${pollIntervalRange.minSeconds / 60} minute and ${pollIntervalRange.maxSeconds / 86_400} days.`,

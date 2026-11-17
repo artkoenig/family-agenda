@@ -728,7 +728,12 @@ export type IdentityProviderConnection = {
    * (supplied mode, ADR-0009); its first segment is requested as a scope instead of the groups claim.
    */
   familyIdClaim?: string;
+  /** With a management API (ADR-0010): the scope asking for the user's organizations, and the claim listing their ids. */
+  organizations?: OrganizationsClaim;
 };
+
+/** The scope and claim of a user's organizations, such as Logto's `urn:logto:scope:organizations` and `organizations`. */
+export type OrganizationsClaim = { scope: string; claim: string };
 
 /** What the Instance remembers between sending an Admin to the Identity Provider and their return. */
 export type PendingSignIn = {
@@ -749,6 +754,8 @@ export type VerifiedIdentity = {
   groups: string[];
   /** The string at the connection's Family claim path; null without one, or if it is missing or no string. */
   familyId: string | null;
+  /** The strings in the connection's organizations claim; none without one, or if it is missing or not a list. */
+  organizations: string[];
 };
 
 /** An OIDC client: authorization code flow with PKCE, scopes `openid email profile` and the groups claim. */

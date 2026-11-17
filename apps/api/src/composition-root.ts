@@ -532,6 +532,7 @@ function wireFamily(
     settings: config.identityProvider ?? null,
     client: config.identityProviderClient ?? new OidcIdentityProviderClient(),
     admins,
+    organizationId: () => families.organizationId(),
   });
   const retention = createRetention({ clock, items, blobs });
   const secretSweep = createSecretSweep({

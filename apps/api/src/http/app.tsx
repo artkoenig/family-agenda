@@ -98,8 +98,8 @@ import { href, pathPrefixOf, PathPrefixContext, stylesheetBelow } from "./href";
  * Family: the `state` it begins a sign-in with, and the handover from the callback it takes.
  */
 export type FamilySignInRelay = {
-  /** How to make the `state` of a sign-in begun by the browser holding `binding`. */
-  stateOf(binding: string): (secrets: SignInSecrets) => string;
+  /** How to make the `state` of a sign-in begun by the browser holding `binding`, for the Family's organization `organizationId` if it has one. */
+  stateOf(binding: string, organizationId: string | null): (secrets: SignInSecrets) => string;
   /** Who `token` hands over to this Family, for the browser holding `binding`, once; null otherwise. */
   take(token: string, binding: string): AdmittedIdentity | null;
 };
@@ -138,7 +138,7 @@ const sessionCookie = "fb_session";
 export const handoverPath = "/sso/handover";
 
 /** The refusals the one callback of the deployment names on a Family's sign-in page. */
-const relayedProblems = ["sso-failed", "sso-not-in-group", "sso-no-family", "sso-other-family", "sso-email-unverified"] as const;
+const relayedProblems = ["sso-failed", "sso-not-in-group", "sso-no-family", "sso-other-family", "sso-not-member", "sso-email-unverified"] as const;
 
 function isRelayedProblem(text: string | undefined): text is (typeof relayedProblems)[number] {
   return (relayedProblems as readonly (string | undefined)[]).includes(text);
@@ -567,7 +567,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
   app.get("/sso/start", async (c) => {
     const relay = options.signInRelay;
     const binding = randomBytes(32).toString("base64url");
-    const begun = await singleSignOn.begin(requestBaseOf(c), relay?.stateOf(binding));
+    const begun = await singleSignOn.begin(requestBaseOf(c), relay?.stateOf(binding, await singleSignOn.organizationId()));
     if (!begun) return c.notFound();
     setCookie(c, singleSignOnCookie, relay ? binding : JSON.stringify(begun.pending), singleSignOnCookieOptions(c));
     return c.redirect(begun.authorizationUrl, 303);

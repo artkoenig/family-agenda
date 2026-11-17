@@ -9,16 +9,19 @@ describe("the OIDC client", () => {
   const client = new OidcIdentityProviderClient();
   let groupsClaim = "groups";
   let familyIdClaim: string | undefined;
+  let organizations: { scope: string; claim: string } | undefined;
   const connection = () => ({
     issuerUrl: provider.issuer,
     clientId: "family-agenda",
     clientSecret: "s3cret",
     groupsClaim,
     ...(familyIdClaim === undefined ? {} : { familyIdClaim }),
+    ...(organizations === undefined ? {} : { organizations }),
   });
   beforeEach(async () => {
     groupsClaim = "groups";
     familyIdClaim = undefined;
+    organizations = undefined;
     provider = await FakeIdentityProvider.start();
   });
   afterEach(async () => {
@@ -72,6 +75,7 @@ describe("the OIDC client", () => {
       emailVerified: true,
       groups: ["homelab-admin"],
       familyId: null,
+      organizations: [],
     });
   });
 
@@ -92,6 +96,25 @@ describe("the OIDC client", () => {
       const { result } = await signIn();
       expect((await result)?.familyId).toBeNull();
     }
+  });
+
+  it("reads the organizations from their claim, and asks for their scope as well", async () => {
+    organizations = { scope: "urn:logto:scope:organizations", claim: "organizations" };
+    provider.claims = { sub: "sub-6", organizations: ["org-1", 7, "org-2"] };
+
+    const { query, result } = await signIn();
+
+    expect(query.get("scope")).toBe("openid email profile groups urn:logto:scope:organizations");
+    expect((await result)?.organizations).toEqual(["org-1", "org-2"]);
+  });
+
+  it("reads organizations that are no list as none", async () => {
+    organizations = { scope: "urn:logto:scope:organizations", claim: "organizations" };
+    provider.claims = { sub: "sub-7", organizations: "org-1" };
+
+    const { result } = await signIn();
+
+    expect((await result)?.organizations).toEqual([]);
   });
 
   it("reads the groups from the configured claim, and asks for it as a scope", async () => {
@@ -115,6 +138,7 @@ describe("the OIDC client", () => {
       emailVerified: false,
       groups: [],
       familyId: null,
+      organizations: [],
     });
   });
 

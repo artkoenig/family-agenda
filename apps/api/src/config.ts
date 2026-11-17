@@ -1,5 +1,5 @@
-import { parseFamilyId, type FamilyId } from "@family-agenda/adapters";
-import { parseFamilyIdClaim, parseIdentityDirectorySettings, parseIdentityProviderConnection, parseIdentityProviderSettings, type IdentityDirectorySettings, type IdentityProviderConnectionSettings, type IdentityProviderSettings } from "@family-agenda/application";
+import { logtoOrganizations, parseFamilyId, type FamilyId } from "@family-agenda/adapters";
+import { parseFamilyIdClaim, parseIdentityDirectorySettings, parseIdentityProviderConnection, parseIdentityProviderSettings, type IdentityDirectorySettings, type IdentityProviderConnectionSettings, type OrganizationsClaim, type IdentityProviderSettings } from "@family-agenda/application";
 import { parsePluginUrls, type PluginBinding } from "./plugin-containers/bindings";
 import { versionOf } from "./version";
 
@@ -131,6 +131,8 @@ export type SuppliedConfig = Omit<Config, FixedOnly | "publicUrl" | "identityPro
 /** The Identity Provider all Families of a core in supplied mode sign in through, with the dotted path of the claim that names the Family. */
 export type SuppliedIdentityProvider = IdentityProviderConnectionSettings & {
   familyIdClaim: string;
+  /** With a management API: the organizations claim, which decides instead of the Family claim (ADR-0010). */
+  organizations?: OrganizationsClaim;
   /** The one redirect URI of the deployment, from `OIDC_CALLBACK_URL`: every Family's sign-in returns there. */
   callbackUrl: string;
 };
@@ -144,7 +146,8 @@ export function readSuppliedConfig(env: NodeJS.ProcessEnv = process.env): Suppli
     if (env[variable]) throw new Error(`${variable} must not be set with CONTEXT_MODE=supplied: ${reason}`);
   }
   const { port, ...shared } = sharedConfigOf(env);
-  return { ...shared, identityProvider: suppliedIdentityProviderOf(env), contextKey: env.CONTEXT_KEY ?? "", callerPort: callerPortOf(env.CALLER_PORT, port) };
+  const identityProvider = withOrganizations(suppliedIdentityProviderOf(env), shared.identityDirectory);
+  return { ...shared, identityProvider, contextKey: env.CONTEXT_KEY ?? "", callerPort: callerPortOf(env.CALLER_PORT, port) };
 }
 
 /** The one Identity Provider of a core in supplied mode, which it requires. */
@@ -175,14 +178,25 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): Config {
   if (env.OIDC_CALLBACK_URL) throw new Error("OIDC_CALLBACK_URL is set, but CONTEXT_MODE is not supplied: in fixed mode the redirect URI is <PUBLIC_URL>/sso/callback; unset it");
   const databaseUrl = env.DATABASE_URL;
   if (!databaseUrl) throw new Error("DATABASE_URL is not set");
+  const shared = sharedConfigOf(env);
+  const { publicUrl, identityProvider } = addressConfigOf(env);
   return {
     databaseUrl,
     ...familyIdConfigOf(env.FAMILY_ID),
     masterKeyFile: env.MASTER_KEY_FILE ?? "/var/lib/family-agenda/master-key/master.key",
     blobDirectory: env.BLOB_DIRECTORY ?? "/var/lib/family-agenda/blobs",
-    ...sharedConfigOf(env),
-    ...addressConfigOf(env),
+    ...shared,
+    publicUrl,
+    identityProvider: identityProvider && withOrganizations(identityProvider, shared.identityDirectory),
   };
+}
+
+/**
+ * With a management API, sign-in asks for the user's organizations and admits members of the
+ * Family's organization alone, in either mode (ADR-0010); the group or Family claim no longer decides.
+ */
+function withOrganizations<T extends object>(provider: T, directory: IdentityDirectorySettings | null): T {
+  return directory === null ? provider : { ...provider, organizations: logtoOrganizations };
 }
 
 /** The address and Identity Provider of the one Family of a fixed core; in supplied mode, each Context carries its own. */

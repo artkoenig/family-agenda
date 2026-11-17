@@ -411,7 +411,7 @@ describe("a core in supplied mode", () => {
       const header = response.headers.getSetCookie().find((cookie) => cookie.startsWith(`${name}=`)) ?? "";
       return { pair: header.split(";")[0] ?? "", path: /Path=([^;]*)/i.exec(header)?.[1] };
     };
-    const anna = { subject: "sub-anna", email: "anna@example.org", emailVerified: true, groups: ["homelab-admin"], familyId: null as string | null };
+    const anna = { subject: "sub-anna", email: "anna@example.org", emailVerified: true, groups: ["homelab-admin"], familyId: null as string | null, organizations: [] as string[] };
 
     it("shows each Family its Agenda's days in its own time zone", async () => {
       // The core's clock says 07:00 in UTC on Monday: Monday in Berlin, still Sunday in Pago Pago.

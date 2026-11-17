@@ -9,10 +9,16 @@ import type {
 
 /**
  * The scopes asked for: the standard ones, and the one named like the claim that decides, the first
- * segment of the Family claim's path (such as `custom_data`) if there is one, else the groups claim.
+ * segment of the Family claim's path (such as `custom_data`) if there is one, else the groups claim;
+ * and the organizations' scope with a management API.
  */
 const scopeOf = (connection: IdentityProviderConnection) =>
-  `openid email profile ${connection.familyIdClaim?.split(".")[0] ?? connection.groupsClaim}`;
+  [`openid email profile ${connection.familyIdClaim?.split(".")[0] ?? connection.groupsClaim}`, connection.organizations?.scope]
+    .filter((scope) => scope !== undefined)
+    .join(" ");
+
+/** The strings in the list `value`; none if it is no list. */
+const stringsOf = (value: unknown): string[] => (Array.isArray(value) ? value.filter((item) => typeof item === "string") : []);
 
 /** The string at the dotted `path` of `claims`, such as `custom_data.familyId`; null if it is none. */
 function stringAt(claims: Record<string, unknown>, path: string): string | null {
@@ -91,15 +97,13 @@ export class OidcIdentityProviderClient implements IdentityProviderClient {
       );
       const claims = tokens.claims();
       if (!claims) return null;
-      const groups = claims[connection.groupsClaim];
       return {
         subject: claims.sub,
         email: typeof claims.email === "string" ? claims.email : null,
         emailVerified: claims.email_verified === true,
-        groups: Array.isArray(groups)
-          ? groups.filter((group) => typeof group === "string")
-          : [],
+        groups: stringsOf(claims[connection.groupsClaim]),
         familyId: connection.familyIdClaim === undefined ? null : stringAt(claims, connection.familyIdClaim),
+        organizations: connection.organizations === undefined ? [] : stringsOf(claims[connection.organizations.claim]),
       };
     } catch {
       return null;
