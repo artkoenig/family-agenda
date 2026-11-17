@@ -285,3 +285,41 @@ describe("the mode of the core", () => {
     expect(() => readSuppliedConfig(base)).toThrow(/CONTEXT_MODE=supplied/);
   });
 });
+
+describe("the LLM endpoint in the environment", () => {
+  const llm = { LLM_BASE_URL: "https://llm.example.org/v1/", LLM_MODEL: "gpt-5-mini", LLM_API_KEY: "sk-operator" };
+  const supplied = { CONTEXT_MODE: "supplied", CONTEXT_KEY: "a-context-key-of-at-least-32-characters", CALLER_PORT: "3002", ...suppliedOidc };
+
+  it("is none without any LLM_* variable", () => {
+    expect(readConfig(base).suppliedLlmEndpoint).toBeNull();
+  });
+
+  it("is read in either mode", () => {
+    const endpoint = { baseUrl: "https://llm.example.org/v1", model: "gpt-5-mini", apiKey: "sk-operator" };
+    expect(readConfig({ ...base, ...llm }).suppliedLlmEndpoint).toEqual(endpoint);
+    expect(readSuppliedConfig({ ...supplied, ...llm }).suppliedLlmEndpoint).toEqual(endpoint);
+  });
+
+  it("needs no API key, as a server on the home network asks none", () => {
+    expect(readConfig({ ...base, ...llm, LLM_API_KEY: "" }).suppliedLlmEndpoint).toMatchObject({ apiKey: null });
+  });
+
+  it("reads the API key from LLM_API_KEY_FILE", async () => {
+    const { mkdtemp, writeFile } = await import("node:fs/promises");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const file = join(await mkdtemp(join(tmpdir(), "llm-key-")), "key");
+    await writeFile(file, "sk-from-file\n");
+
+    expect(readConfig({ ...base, ...llm, LLM_API_KEY: undefined, LLM_API_KEY_FILE: file }).suppliedLlmEndpoint).toMatchObject({ apiKey: "sk-from-file" });
+    expect(() => readConfig({ ...base, ...llm, LLM_API_KEY_FILE: file })).toThrow(/^LLM_API_KEY and LLM_API_KEY_FILE/);
+    expect(() => readConfig({ ...base, ...llm, LLM_API_KEY: undefined, LLM_API_KEY_FILE: join(file, "missing") })).toThrow(/^LLM_API_KEY_FILE cannot be read/);
+  });
+
+  it("stops the start when only part is set, naming what is missing", () => {
+    expect(() => readConfig({ ...base, LLM_BASE_URL: llm.LLM_BASE_URL })).toThrow(/^LLM_MODEL must be set when LLM_BASE_URL is/);
+    expect(() => readConfig({ ...base, LLM_MODEL: llm.LLM_MODEL })).toThrow(/^LLM_BASE_URL must be set when LLM_MODEL is/);
+    expect(() => readConfig({ ...base, LLM_API_KEY: "sk" })).toThrow(/^LLM_BASE_URL must be set when LLM_API_KEY is/);
+    expect(() => readConfig({ ...base, ...llm, LLM_BASE_URL: "ftp://llm" })).toThrow(/^LLM_BASE_URL must be an http or https address/);
+  });
+});

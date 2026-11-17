@@ -6,6 +6,8 @@ export type LlmEndpointDeps = {
   endpoints: LlmEndpointRepository;
   secrets: SecretStore;
   extractor: Extractor;
+  /** The endpoint the operator supplies for every Family, which replaces the Family's own; null for none. */
+  supplied?: LlmEndpoint | null;
 };
 
 export type LlmEndpointSummary = {
@@ -39,22 +41,23 @@ const maximumModelLength = 200;
 
 export function createLlmEndpointAccess(deps: LlmEndpointDeps) {
   const { clock, endpoints, secrets } = deps;
+  const supplied = deps.supplied ?? null;
+  const endpointOf = () => familyEndpointOf({ endpoints, secrets, supplied });
 
   return {
+    /** Whether the operator supplies the endpoint, which the Family can then neither see nor change. */
+    supplied: supplied !== null,
+
     async current(): Promise<LlmEndpointSummary | null> {
+      if (supplied) return summaryOf({ baseUrl: supplied.baseUrl, model: supplied.model, hasApiKey: supplied.apiKey !== null });
       const stored = await endpoints.find();
       if (!stored) return null;
-      return {
-        baseUrl: stored.baseUrl,
-        model: stored.model,
-        hasApiKey: stored.apiKey !== null,
-        local: isLocalHost(new URL(stored.baseUrl).hostname),
-      };
+      return summaryOf({ baseUrl: stored.baseUrl, model: stored.model, hasApiKey: stored.apiKey !== null });
     },
 
     /** Whether the saved endpoint answers, with the models it offers to choose from; null if none is saved. */
     async check(): Promise<EndpointCheck | null> {
-      const endpoint = await llmEndpointOf({ endpoints, secrets });
+      const endpoint = await endpointOf();
       return endpoint ? deps.extractor.check(endpoint) : null;
     },
 
@@ -107,6 +110,19 @@ export function createLlmEndpointAccess(deps: LlmEndpointDeps) {
 }
 
 export type LlmEndpointAccess = ReturnType<typeof createLlmEndpointAccess>;
+
+function summaryOf(endpoint: Omit<LlmEndpointSummary, "local">): LlmEndpointSummary {
+  return { ...endpoint, local: isLocalHost(new URL(endpoint.baseUrl).hostname) };
+}
+
+/** The endpoint the Family extracts through: the one the operator supplies, else its own saved one. */
+export async function familyEndpointOf(deps: {
+  endpoints: LlmEndpointRepository;
+  secrets: SecretStore;
+  supplied: LlmEndpoint | null;
+}): Promise<LlmEndpoint | null> {
+  return deps.supplied ?? llmEndpointOf(deps);
+}
 
 /** The Family's LLM endpoint with its API key, or null if none is configured. */
 export async function llmEndpointOf(deps: { endpoints: LlmEndpointRepository; secrets: SecretStore }): Promise<LlmEndpoint | null> {

@@ -15,7 +15,7 @@ import {
   type SourceId,
 } from "@family-agenda/domain";
 import type { ActivityLog } from "./activity";
-import { llmEndpointOf } from "./llm-endpoint";
+import { familyEndpointOf } from "./llm-endpoint";
 import type {
   AttachmentProblem,
   BlobStore,
@@ -44,6 +44,8 @@ export type ExtractionDeps = {
   families: FamilyRepository;
   endpoints: LlmEndpointRepository;
   secrets: SecretStore;
+  /** The endpoint the operator supplies for every Family, read in place of the Family's own; null for none. */
+  suppliedEndpoint?: LlmEndpoint | null;
   items: ItemRepository;
   blobs: BlobStore;
   extractor: Extractor;
@@ -163,7 +165,7 @@ export function createExtraction(deps: ExtractionDeps) {
      */
     async extractPending(): Promise<ExtractionReport> {
       const report: ExtractionReport = { extracted: [], dropped: [], failed: [] };
-      const endpoint = await llmEndpointOf(deps);
+      const endpoint = await familyEndpointOf({ ...deps, supplied: deps.suppliedEndpoint ?? null });
       if (!endpoint) return report;
       const pending = await items.pendingMessages(batchSize);
       if (pending.length === 0) return report;

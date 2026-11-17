@@ -3890,6 +3890,8 @@ function ChoiceField(props: {
 export function LlmEndpointPage(props: {
   admin: SignedInAdmin;
   endpoint: LlmEndpointSummary | null;
+  /** Whether the operator supplies the endpoint: then no connection is shown, nor can one be changed. */
+  supplied?: boolean;
   /** The OCR languages, which read what the endpoint's model cannot. */
   languages: LanguageSettings;
   /** How many messages wait to be read. */
@@ -3912,15 +3914,19 @@ export function LlmEndpointPage(props: {
         description={l.description}
       />
       <Problem message={props.problem} />
-      <form method="post" action={href(prefix, "/admin/llm")} class="fam-sheet fam-sheet__form">
-        <Group title={l.connection} level={2}>
-          <ConnectionFields shown={shown} endpoint={endpoint} />
-        </Group>
-        <OptionsGroup configured={endpoint !== null} />
-      </form>
-      {endpoint ? (
-        <form method="post" action={href(prefix, "/admin/llm/remove")} id="remove-llm" />
-      ) : null}
+      {props.supplied ? null : (
+        <>
+          <form method="post" action={href(prefix, "/admin/llm")} class="fam-sheet fam-sheet__form">
+            <Group title={l.connection} level={2}>
+              <ConnectionFields shown={shown} endpoint={endpoint} />
+            </Group>
+            <OptionsGroup configured={endpoint !== null} />
+          </form>
+          {endpoint ? (
+            <form method="post" action={href(prefix, "/admin/llm/remove")} id="remove-llm" />
+          ) : null}
+        </>
+      )}
       {endpoint && props.waiting > 0 ? (
         <section class="fam-sheet">
           <WaitingGroup label={l.waitingTitle} waiting={props.waiting} />
