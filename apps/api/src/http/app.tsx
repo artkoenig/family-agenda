@@ -39,6 +39,7 @@ import { createMiddleware } from "hono/factory";
 import {
   sessionLifetimeMs,
   type AdmittedIdentity,
+  type InvitationSignIn,
   type PendingSignIn,
   type SignInSecrets,
 } from "@family-agenda/application";
@@ -148,14 +149,25 @@ function isRelayedProblem(text: string | undefined): text is (typeof relayedProb
   return (relayedProblems as readonly (string | undefined)[]).includes(text);
 }
 
+/** The query parameters of an invitation link, which `/sso/start` hands on to the Identity Provider as Logto reads them (ADR-0011). */
+const invitationParameters = ["one_time_token", "login_hint"] as const;
+
+/** The invitation link: the Family's sign-in start with the invitee's one-time token and email (ADR-0011). */
+function invitationLinkOf(base: string, signIn: InvitationSignIn): string {
+  return `${base}/sso/start?${new URLSearchParams({ one_time_token: signIn.oneTimeToken, login_hint: signIn.email }).toString()}`;
+}
+
 /**
  * The authorization URL, opening the Identity Provider's sign-up screen when `signUp` (ADR-0010):
- * `first_screen=register`, as Logto reads it.
+ * `first_screen=register`, as Logto reads it; with an invitation link's one-time token and email.
  */
-function withSignUpScreen(authorizationUrl: string, signUp: boolean): string {
-  if (!signUp) return authorizationUrl;
+function authorizationUrlOf(authorizationUrl: string, signUp: boolean, query: (name: string) => string | undefined): string {
   const url = new URL(authorizationUrl);
-  url.searchParams.set("first_screen", "register");
+  if (signUp) url.searchParams.set("first_screen", "register");
+  for (const name of invitationParameters) {
+    const value = query(name);
+    if (value) url.searchParams.set(name, value);
+  }
   return url.href;
 }
 
@@ -588,7 +600,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     if (!begun) return c.notFound();
     setCookie(c, singleSignOnCookie, relay ? binding : JSON.stringify(begun.pending), singleSignOnCookieOptions(c));
     const signUp = c.req.query("screen") === "register" && (await application.registration.isOpen());
-    return c.redirect(withSignUpScreen(begun.authorizationUrl, signUp), 303);
+    return c.redirect(authorizationUrlOf(begun.authorizationUrl, signUp, (name) => c.req.query(name)), 303);
   });
 
   app.get("/sso/callback", async (c) => {
@@ -849,7 +861,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
   app.get("/admin/admins", (c) => adminsPage(c));
 
   app.post("/admin/admins/invitations", async (c) => {
-    const result = await application.familyAdmins.invite(field(await c.req.parseBody(), "email"), requestBaseOf(c) + "/admin/sign-in");
+    const result = await application.familyAdmins.invite(field(await c.req.parseBody(), "email"), (signIn) => invitationLinkOf(requestBaseOf(c), signIn));
     return result.ok ? seeOther(c, "/admin/admins") : adminsPage(c, result.problem);
   });
 

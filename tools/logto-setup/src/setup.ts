@@ -174,11 +174,11 @@ async function ensureSmtpConnector(api: ManagementApi, smtp: SmtpSettings): Prom
 
 /** The SMTP connector's settings, with a code template for each email Logto sends. */
 export function smtpConfig(smtp: SmtpSettings): Record<string, unknown> {
-  const template = (usageType: string, subject: string) => ({
+  const template = (usageType: string, subject: string, content = `Your Family Agenda code is {{code}}. It expires in 10 minutes.`) => ({
     usageType,
     contentType: "text/plain",
     subject,
-    content: `Your Family Agenda code is {{code}}. It expires in 10 minutes.`,
+    content,
   });
   return {
     host: smtp.host,
@@ -193,6 +193,12 @@ export function smtpConfig(smtp: SmtpSettings): Record<string, unknown> {
       template("SignIn", "Your Family Agenda sign-in code"),
       template("Register", "Your Family Agenda code"),
       template("Generic", "Your Family Agenda code"),
+      // Logto fills {{link}} from the invitation's messagePayload: the core's link with a one-time token (ADR-0011).
+      template(
+        "OrganizationInvitation",
+        "You are invited to a Family Agenda",
+        `You are invited to manage a Family Agenda as an Admin. Open this link to sign in, or to create your account: {{link}}\n\nThe link works once and expires in 7 days.`,
+      ),
     ],
   };
 }

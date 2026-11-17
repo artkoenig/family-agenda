@@ -217,12 +217,16 @@ describe("opening registration (ADR-0010)", () => {
 });
 
 describe("the SMTP connector's settings", () => {
-  it("has a code template for every email Logto requires, and logs in only with a user", () => {
+  it("has a template for every email Logto sends, and logs in only with a user", () => {
     const config = smtpConfig(smtp);
     const anonymous = smtpConfig({ host: "relay.lan", port: 465, fromEmail: "agenda@example.org" });
 
-    expect((config.templates as { usageType: string; content: string }[]).map((t) => t.usageType)).toEqual(["ForgotPassword", "SignIn", "Register", "Generic"]);
-    expect((config.templates as { content: string }[]).every((t) => t.content.includes("{{code}}"))).toBe(true);
+    const templates = config.templates as { usageType: string; content: string }[];
+    expect(templates.map((t) => t.usageType)).toEqual(["ForgotPassword", "SignIn", "Register", "Generic", "OrganizationInvitation"]);
+    // Codes in every one but the invitation, which carries the link with a one-time token (ADR-0011).
+    expect(templates.slice(0, 4).every((t) => t.content.includes("{{code}}"))).toBe(true);
+    expect(templates[4]?.content).toContain("{{link}}");
+    expect(templates[4]?.content).not.toContain("{{code}}");
     expect(config).toMatchObject({ host: "mail.example.org", port: 587, secure: false, auth: { type: "login", user: "agenda", pass: "mail-password" } });
     expect(anonymous).toMatchObject({ secure: true, auth: { type: "login" } });
     expect(anonymous.auth).not.toHaveProperty("user");

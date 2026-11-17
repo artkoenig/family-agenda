@@ -12,6 +12,8 @@ export class StubLogto {
   readonly organizations = new Map<string, { name: string; customData: unknown; members: Map<string, string[]> }>();
   readonly users = new Map<string, { primaryEmail: string | null; lastSignInAt: number | null }>();
   readonly invitations = new Map<string, Invitation>();
+  /** The bodies of `POST /api/one-time-tokens`, by the token handed out. */
+  readonly oneTimeTokens = new Map<string, Json>();
   roles = [{ id: "role-admin", name: "admin" }, { id: "role-other", name: "admin-like" }];
   /** The tokens handed out, and the requests made with each. */
   readonly tokenRequests: { authorization: string; form: URLSearchParams }[] = [];
@@ -113,6 +115,11 @@ export class StubLogto {
       case "DELETE organizations/:/users/:":
         this.organizations.get(parts[1] ?? "")?.members.delete(parts[3] ?? "");
         return [204];
+      case "POST one-time-tokens": {
+        const token = this.id("ott");
+        this.oneTimeTokens.set(token, body);
+        return [201, { id: this.id("ott-id"), token, ...body }];
+      }
       case "GET organization-roles":
         return [200, this.roles.filter((role) => role.name.includes(url.searchParams.get("q") ?? ""))];
       case "POST organization-invitations": {

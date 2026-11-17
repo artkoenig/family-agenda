@@ -1,5 +1,5 @@
 import type { FamilyLanguage } from "@family-agenda/domain";
-import type { DirectoryInvitation, DirectoryMember, IdentityDirectory } from "./identity-directory";
+import type { DirectoryInvitation, DirectoryMember, IdentityDirectory, InvitationSignIn } from "./identity-directory";
 import type { Clock, FamilyRepository } from "./ports";
 
 /** How long an invitation's accept link stays valid (ADR-0010). */
@@ -53,8 +53,11 @@ export function createFamilyAdmins(deps: FamilyAdminsDeps) {
       return at && listingOf(at.directory, at.organizationId);
     },
 
-    /** Invites `email` as an Admin; the Identity Provider mails `link` in the Family Language, valid for 7 days. */
-    async invite(email: string, link: string): Promise<InvitationResult> {
+    /**
+     * Invites `email` as an Admin, valid for 7 days; the Identity Provider mails the link `linkOf`
+     * makes from a one-time token for the invitee (ADR-0011), in the Family Language.
+     */
+    async invite(email: string, linkOf: (signIn: InvitationSignIn) => string): Promise<InvitationResult> {
       const at = await organizationOf();
       if (at === null) throw new Error("No Admins page without the Family's organization in a management API");
       const invitee = email.trim().toLowerCase();
@@ -63,6 +66,8 @@ export function createFamilyAdmins(deps: FamilyAdminsDeps) {
       if (admins.some((admin) => admin.email?.toLowerCase() === invitee)) return { ok: false, problem: "already-admin" };
       if (invitations.some((invitation) => invitation.email.toLowerCase() === invitee)) return { ok: false, problem: "already-invited" };
       const expiresAt = new Date(clock.now().getTime() + invitationLifetimeMs);
+      const oneTimeToken = await at.directory.createSignInToken(invitee, expiresAt);
+      const link = linkOf({ email: invitee, oneTimeToken });
       await at.directory.invite(at.organizationId, invitee, { expiresAt, link, locale: await familyLanguage() });
       return { ok: true };
     },

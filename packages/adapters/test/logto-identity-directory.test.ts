@@ -99,6 +99,13 @@ describe("the Logto Identity Directory", () => {
     await expect(directory.addMember(organizationId, "user-1")).rejects.toThrow(/no organization role "admin"/);
   });
 
+  it("creates a one-time token for the invitee, valid until the invitation expires, without a JIT organization (ADR-0011)", async () => {
+    const token = await directory.createSignInToken("ben@example.org", new Date(clock + 7 * 24 * 3600 * 1000 + 1));
+    expect(logto.oneTimeTokens.get(token)).toEqual({ email: "ben@example.org", expiresIn: 7 * 24 * 3600 + 1 });
+    const late = await directory.createSignInToken("ben@example.org", new Date(clock - 5000));
+    expect(logto.oneTimeTokens.get(late)).toEqual({ email: "ben@example.org", expiresIn: 1 });
+  });
+
   it("invites by email as an admin, with the expiry and the link for the email, and lists the pending invitations", async () => {
     const organizationId = await directory.createOrganization(familyId, "A");
     const invitation = await directory.invite(organizationId, "ben@example.org", details);

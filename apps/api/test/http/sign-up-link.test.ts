@@ -56,4 +56,15 @@ describe("the link to the Identity Provider's sign-up (ADR-0010)", () => {
     expect(page).not.toContain("screen=register");
     expect(new URL(start.headers.get("location") ?? "http://x").searchParams.has("first_screen")).toBe(false);
   });
+
+  it("hands an invitation link's one-time token and email on to the Identity Provider, even with registration closed (ADR-0011)", async () => {
+    const closed = await boot(false);
+
+    const start = await closed.get("/sso/start?one_time_token=ott-1&login_hint=carla%40example.org");
+    const plain = await closed.get("/sso/start");
+
+    const authorization = new URL(start.headers.get("location") ?? "http://x").searchParams;
+    expect([authorization.get("one_time_token"), authorization.get("login_hint")]).toEqual(["ott-1", "carla@example.org"]);
+    expect(new URL(plain.headers.get("location") ?? "http://x").searchParams.has("one_time_token")).toBe(false);
+  });
 });
