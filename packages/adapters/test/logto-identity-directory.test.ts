@@ -80,6 +80,12 @@ describe("the Logto Identity Directory", () => {
     expect(listed.at(-1)?.userId).toBe("user-149");
   });
 
+  it("closes registration by setting the sign-in experience to sign-in only", async () => {
+    await directory.closeRegistration();
+    expect(logto.signInMode).toBe("SignIn");
+    expect(logto.requests.at(-1)).toMatchObject({ method: "PATCH", path: "/api/sign-in-exp" });
+  });
+
   it("removes a member", async () => {
     const organizationId = await directory.createOrganization(familyId, "A");
     await directory.addMember(organizationId, "user-1");

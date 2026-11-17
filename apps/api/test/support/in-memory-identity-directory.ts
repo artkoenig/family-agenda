@@ -8,6 +8,10 @@ export class InMemoryIdentityDirectory implements IdentityDirectory {
   readonly organizations = new Map<string, Organization>();
   /** The users a test knows, by id: what a member listing shows of them. */
   readonly users = new Map<string, { email: string | null; lastSignInAt: Date | null }>();
+  /** Whether the Identity Provider takes registrations. */
+  registrationOpen = true;
+  /** Fails creating an organization while set, as an Identity Provider that is down. */
+  failing = false;
 
   /** The organization with the id, which a test expects to exist. */
   organization(organizationId: string): Organization {
@@ -17,6 +21,7 @@ export class InMemoryIdentityDirectory implements IdentityDirectory {
   }
 
   createOrganization(familyId: string, name: string): Promise<string> {
+    if (this.failing) return Promise.reject(new Error("the Identity Provider is down"));
     const id = randomUUID();
     this.organizations.set(id, { familyId, name, members: new Map(), invitations: new Map() });
     return Promise.resolve(id);
@@ -49,6 +54,11 @@ export class InMemoryIdentityDirectory implements IdentityDirectory {
 
   revokeInvitation(organizationId: string, invitationId: string): Promise<void> {
     if (!this.organization(organizationId).invitations.delete(invitationId)) return Promise.reject(new Error(`Invitation ${invitationId} is not one of organization ${organizationId}`));
+    return Promise.resolve();
+  }
+
+  closeRegistration(): Promise<void> {
+    this.registrationOpen = false;
     return Promise.resolve();
   }
 }

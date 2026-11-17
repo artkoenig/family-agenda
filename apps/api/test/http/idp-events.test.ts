@@ -26,6 +26,9 @@ class RecordingRegistration implements Registration {
     this.events.push(event);
     return Promise.resolve();
   }
+  isOpen(): Promise<boolean> {
+    return Promise.resolve(true);
+  }
 }
 
 describe("registration events from the Identity Provider (ADR-0010)", () => {

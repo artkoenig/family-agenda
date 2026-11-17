@@ -26,6 +26,8 @@ export interface IdentityDirectory {
   /** The invitations still pending. */
   listInvitations(organizationId: string): Promise<DirectoryInvitation[]>;
   revokeInvitation(organizationId: string, invitationId: string): Promise<void>;
+  /** Turns registration off, leaving only sign-in (Logto: `signInMode: SignIn`); doing it again changes nothing. */
+  closeRegistration(): Promise<void>;
 }
 
 /** The management API the `IDP_MANAGEMENT_*` variables name; `logto` is the only adapter. */

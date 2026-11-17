@@ -47,7 +47,7 @@ import type {
   AgendaLayout,
 } from "@family-agenda/domain";
 import { defaultFamilyLanguage, isFamilyLanguage } from "@family-agenda/domain";
-import { and, asc, eq, gt, inArray, lt, lte, sql, type SQL } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, isNull, lt, lte, sql, type SQL } from "drizzle-orm";
 import { uuidPattern } from "../uuid";
 import type { Database } from "./database";
 import {
@@ -117,6 +117,20 @@ export class PostgresFamilyRepository implements FamilyRepository {
 
   async saveOcrEnabled(enabled: boolean): Promise<void> {
     await this.db.update(family).set({ ocrEnabled: enabled });
+  }
+
+  async organizationId(): Promise<string | null> {
+    const [row] = await this.db.select({ organizationId: family.organizationId }).from(family);
+    return row?.organizationId ?? null;
+  }
+
+  async recordOrganizationId(organizationId: string): Promise<boolean> {
+    const recorded = await this.db
+      .update(family)
+      .set({ organizationId })
+      .where(isNull(family.organizationId))
+      .returning({ organizationId: family.organizationId });
+    return recorded.length > 0;
   }
 }
 

@@ -19,6 +19,8 @@ export class StubLogto {
   /** Answers the next API request with this status instead. */
   failNext: number | null = null;
   refuseToken = false;
+  /** The sign-in experience's mode, as `PATCH /api/sign-in-exp` sets it. */
+  signInMode = "SignInAndRegister";
   tokenLifetimeSeconds = 3600;
   private nextId = 1;
 
@@ -138,6 +140,9 @@ export class StubLogto {
         invitation.status = String(body.status);
         return [200, invitation];
       }
+      case "PATCH sign-in-exp":
+        this.signInMode = String(body.signInMode);
+        return [200, { signInMode: this.signInMode }];
       default:
         return [404];
     }

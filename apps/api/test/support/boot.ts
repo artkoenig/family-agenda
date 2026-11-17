@@ -57,6 +57,8 @@ export type TestOptions = {
   idpWebhookSecret?: string | null;
   /** Replaces what a registration does, such as with a recording one. */
   registration?: NonNullable<ApplicationConfig["registration"]>;
+  /** Replaces the Identity Provider's management API, such as with an `InMemoryIdentityDirectory`; none by default. */
+  identityDirectoryClient?: NonNullable<ApplicationConfig["identityDirectoryClient"]>;
   /** Test plugins served before the first boot, as plugin containers. */
   sourcePlugins?: TestPluginPackage[];
 };

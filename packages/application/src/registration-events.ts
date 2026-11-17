@@ -7,10 +7,12 @@ export type RegistrationEvent = { userId: string; email: string };
 /** What a registration does: create the Family and make the user its first Admin (ADR-0010). */
 export interface Registration {
   register(event: RegistrationEvent): Promise<void>;
+  /** Whether a registration would create a Family now, for the sign-in page to offer sign-up. */
+  isOpen(): Promise<boolean>;
 }
 
-/** Registration until the Family is created from it: does nothing. */
-export const noRegistration: Registration = { register: async () => {} };
+/** No registration, without a management API or in supplied mode for now: does nothing, never open. */
+export const noRegistration: Registration = { register: async () => {}, isOpen: () => Promise.resolve(false) };
 
 /**
  * What became of an event: `handled` by registration, `ignored` as not a registration with a

@@ -51,6 +51,10 @@ export interface FamilyRepository {
   /** Whether OCR reads the scanned pages of attachments. */
   ocrEnabled(): Promise<boolean>;
   saveOcrEnabled(enabled: boolean): Promise<void>;
+  /** The id of the Family's organization in the Identity Provider (ADR-0010); null until registration creates it. */
+  organizationId(): Promise<string | null>;
+  /** Records the organization id unless one is recorded already; whether it was recorded. */
+  recordOrganizationId(organizationId: string): Promise<boolean>;
 }
 
 export interface FamilyMemberRepository {

@@ -110,6 +110,10 @@ export class LogtoIdentityDirectory implements IdentityDirectory {
     await this.call("PUT", `${path}/status`, { status: "Revoked" });
   }
 
+  async closeRegistration(): Promise<void> {
+    await this.call("PATCH", "/api/sign-in-exp", { signInMode: "SignIn" });
+  }
+
   private async adminRoleIdOf(): Promise<string> {
     if (this.adminRoleId !== null) return this.adminRoleId;
     const roles = await this.call<{ id: string; name: string }[]>("GET", `/api/organization-roles?q=${adminRole}`);
