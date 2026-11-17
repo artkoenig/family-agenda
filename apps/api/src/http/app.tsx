@@ -12,6 +12,9 @@ import {
   type Showing,
   type TimelineDays,
   type AgendaAccessPolicy,
+  eventOutcomeStatus,
+  idpEventsPath,
+  idpSignatureHeader,
 } from "@family-agenda/application";
 import {
   isAcceptableTimelineRange,
@@ -337,11 +340,9 @@ export function createHttpApp(application: Application, options: HttpOptions) {
   if (application.registrationEvents) {
     const events = application.registrationEvents;
     // Before the CSRF check: the Identity Provider posts from no page, and its signature authenticates it.
-    app.post("/idp/events", async (c) => {
-      const outcome = await events.receive(await c.req.text(), c.req.header("logto-signature-sha-256"));
-      if (outcome === "unsigned") return c.body(null, 401);
-      if (outcome === "malformed") return c.body(null, 400);
-      return c.body(null, 204);
+    app.post(idpEventsPath, async (c) => {
+      const outcome = await events.receive(await c.req.text(), c.req.header(idpSignatureHeader));
+      return c.body(null, eventOutcomeStatus[outcome]);
     });
   }
 

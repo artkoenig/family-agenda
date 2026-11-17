@@ -6,6 +6,7 @@ import type { SuppliedConfig } from "../config";
 import { createHttpApp } from "../http/app";
 import { serveSuppliedTriggers, type TriggerLog } from "../triggered-operations";
 import { OidcIdentityProviderClient } from "@family-agenda/adapters";
+import { startSuppliedRegistration } from "./supplied-registration";
 import { SignInRelay } from "./sign-in-relay";
 import { SuppliedFamilies } from "./supplied-families";
 import { suppliedFetch, type FamilyFetch } from "./supplied-http";
@@ -20,7 +21,8 @@ const sweepEveryMs = 60_000;
  * with the Context of its Family too; the core runs no schedule and prepares no Family of its own.
  */
 export async function serveSupplied(config: SuppliedConfig, log: TriggerLog) {
-  const shared = await bootShared(config);
+  const registering = await startSuppliedRegistration(await bootShared(config), config.familyWebhook, log);
+  const { shared } = registering;
   const client = new OidcIdentityProviderClient();
   const relay = new SignInRelay({ contextKey: config.contextKey, identityProvider: config.identityProvider, client });
   const families = new SuppliedFamilies({
@@ -44,7 +46,7 @@ export async function serveSupplied(config: SuppliedConfig, log: TriggerLog) {
   const sweeping = setInterval(() => void families.sweep(), sweepEveryMs);
   sweeping.unref();
   const signInCallback = { path: relay.callbackPath, answer: (request: Request) => relay.callback(request) };
-  const fetch = suppliedFetch({ contextKey: config.contextKey, families, version: config.version, log, signInCallback });
+  const fetch = suppliedFetch({ contextKey: config.contextKey, families, version: config.version, log, signInCallback, registrationEvents: registering.events });
   const { server, port } = await new Promise<{ server: ReturnType<typeof serve>; port: number }>((resolve) => {
     const listening = serve({ fetch, port: config.callerPort }, (info) => {
       log.info(`Family Agenda listening on caller port ${info.port} in supplied mode`);
@@ -60,7 +62,7 @@ export async function serveSupplied(config: SuppliedConfig, log: TriggerLog) {
       new Promise<void>((resolve) => {
         clearInterval(sweeping);
         triggers?.close();
-        server.close(() => void families.close().then(resolve));
+        server.close(() => void families.close().then(() => registering.close()).then(resolve));
       }),
   };
 }

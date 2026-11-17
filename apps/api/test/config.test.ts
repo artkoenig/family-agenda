@@ -61,6 +61,51 @@ describe("the Identity Provider's management API in the environment", () => {
   });
 });
 
+describe("the family.created webhook in the environment (ADR-0010)", () => {
+  const management = {
+    IDP_MANAGEMENT_API: "logto",
+    IDP_MANAGEMENT_ENDPOINT: "https://id.example.org",
+    IDP_MANAGEMENT_CLIENT_ID: "m2m",
+    IDP_MANAGEMENT_CLIENT_SECRET: "s3cret",
+    IDP_WEBHOOK_SECRET: "logto-signing-key",
+  };
+  const webhook = {
+    FAMILY_WEBHOOK_URL: "https://platform.example.org/hooks/family",
+    FAMILY_WEBHOOK_SECRET: "a-webhook-secret-of-at-least-32-chars",
+    REGISTRATION_DATABASE_URL: "postgres://registration",
+  };
+  const supplied = { CONTEXT_MODE: "supplied", CONTEXT_KEY: "a-context-key-of-at-least-32-characters", CALLER_PORT: "3002", ...suppliedOidc };
+
+  it("is off without FAMILY_WEBHOOK_URL", () => {
+    expect(readSuppliedConfig({ ...supplied, ...management }).familyWebhook).toBeNull();
+  });
+
+  it("is read in supplied mode with its secret and the registration database", () => {
+    expect(readSuppliedConfig({ ...supplied, ...management, ...webhook }).familyWebhook).toEqual({
+      url: "https://platform.example.org/hooks/family",
+      secret: "a-webhook-secret-of-at-least-32-chars",
+      registrationDatabaseUrl: "postgres://registration",
+    });
+  });
+
+  it("stops the start naming what is missing or wrong", () => {
+    const all = { ...supplied, ...management, ...webhook };
+    expect(() => readSuppliedConfig({ ...all, FAMILY_WEBHOOK_URL: "ftp://x" })).toThrow(/^FAMILY_WEBHOOK_URL must be an http or https address/);
+    expect(() => readSuppliedConfig({ ...all, FAMILY_WEBHOOK_SECRET: "" })).toThrow(/^FAMILY_WEBHOOK_SECRET must be set/);
+    expect(() => readSuppliedConfig({ ...all, FAMILY_WEBHOOK_SECRET: "short" })).toThrow(/^FAMILY_WEBHOOK_SECRET must be at least 32 characters/);
+    expect(() => readSuppliedConfig({ ...all, REGISTRATION_DATABASE_URL: "" })).toThrow(/^REGISTRATION_DATABASE_URL must be set/);
+    expect(() => readSuppliedConfig({ ...supplied, ...webhook })).toThrow(/^FAMILY_WEBHOOK_URL is set, but IDP_MANAGEMENT_API is not/);
+    expect(() => readSuppliedConfig({ ...supplied, ...management, FAMILY_WEBHOOK_SECRET: webhook.FAMILY_WEBHOOK_SECRET })).toThrow(/^FAMILY_WEBHOOK_SECRET is set, but FAMILY_WEBHOOK_URL is not/);
+    expect(() => readSuppliedConfig({ ...supplied, ...management, REGISTRATION_DATABASE_URL: "postgres://registration" })).toThrow(/^REGISTRATION_DATABASE_URL is set, but FAMILY_WEBHOOK_URL is not/);
+  });
+
+  it("is refused in fixed mode, where the first registration creates the one Family", () => {
+    for (const variable of Object.keys(webhook)) {
+      expect(() => readConfig({ ...base, [variable]: "x" })).toThrow(new RegExp(`^${variable} is set, but CONTEXT_MODE is not supplied`));
+    }
+  });
+});
+
 describe("the Identity Provider in the environment", () => {
   it("is none without OIDC_ISSUER_URL", () => {
     expect(readConfig(base).identityProvider).toBeNull();

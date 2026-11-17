@@ -20,6 +20,15 @@ export const noRegistration: Registration = { register: async () => {}, isOpen: 
  */
 export type EventOutcome = "handled" | "ignored" | "unsigned" | "malformed";
 
+/** The HTTP status `POST /idp/events` answers an outcome with: the Identity Provider retries only a failure. */
+export const eventOutcomeStatus = { handled: 204, ignored: 204, unsigned: 401, malformed: 400 } as const satisfies Record<EventOutcome, number>;
+
+/** The header Logto signs its events in. */
+export const idpSignatureHeader = "logto-signature-sha-256";
+
+/** The path the Identity Provider posts its events to. */
+export const idpEventsPath = "/idp/events";
+
 export type RegistrationEventDeps = {
   clock: Clock;
   /** The key the Identity Provider signs its events with (`IDP_WEBHOOK_SECRET`). */

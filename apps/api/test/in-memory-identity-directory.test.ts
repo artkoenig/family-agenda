@@ -21,6 +21,7 @@ describe("the in-memory Identity Directory", () => {
 
     const invitation = await directory.invite(organizationId, "ben@example.org", details);
     expect(await directory.listInvitations(organizationId)).toEqual([invitation]);
+    expect([await directory.wasInvited("ben@example.org"), await directory.wasInvited("eve@example.org")]).toEqual([true, false]);
     const other = await directory.createOrganization("family-2", "Others");
     await expect(directory.revokeInvitation(other, invitation.invitationId)).rejects.toThrow(/is not one of/);
     await directory.revokeInvitation(organizationId, invitation.invitationId);
