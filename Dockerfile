@@ -12,12 +12,14 @@ RUN npm install --global corepack@0.36.0 && corepack enable
 WORKDIR /app
 
 COPY . .
+# The wrappers run TypeScript through tsx, a production dependency of apps/api only, so each starts
+# there: `--import tsx` resolves from the working directory.
 RUN pnpm install --frozen-lockfile --prod \
   && printf '#!/bin/sh\ncd /app/apps/api && exec node --import tsx src/cli.ts "$@"\n' > /usr/local/bin/family-agenda \
   && chmod +x /usr/local/bin/family-agenda \
   && printf '#!/bin/sh\ncd /app/apps/api && exec node --import tsx src/plugins-cli.ts "$@"\n' > /usr/local/bin/plugins \
   && chmod +x /usr/local/bin/plugins \
-  && printf '#!/bin/sh\ncd /app && exec node --import tsx tools/logto-setup/src/main.ts "$@"\n' > /usr/local/bin/logto-setup \
+  && printf '#!/bin/sh\ncd /app/apps/api && exec node --import tsx /app/tools/logto-setup/src/main.ts "$@"\n' > /usr/local/bin/logto-setup \
   && chmod +x /usr/local/bin/logto-setup \
   && mkdir -p /var/lib/family-agenda/master-key /var/lib/family-agenda/blobs /var/lib/family-agenda/tessdata \
   && chown node:node /var/lib/family-agenda/master-key /var/lib/family-agenda/blobs /var/lib/family-agenda/tessdata \
