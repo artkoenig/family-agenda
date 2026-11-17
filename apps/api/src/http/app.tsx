@@ -557,7 +557,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
       c,
       <SignInPage
         singleSignOn={singleSignOn.isOfferedAt(requestBaseOf(c))}
-        signUp={application.registrationEvents !== null}
+        signUp={await application.registration.isOpen()}
         {...(problem ? { problem } : {})}
       />,
       problem ? 401 : 200,
@@ -585,7 +585,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     const begun = await singleSignOn.begin(requestBaseOf(c), relay?.stateOf(binding, await singleSignOn.organizationId()));
     if (!begun) return c.notFound();
     setCookie(c, singleSignOnCookie, relay ? binding : JSON.stringify(begun.pending), singleSignOnCookieOptions(c));
-    const signUp = application.registrationEvents !== null && c.req.query("screen") === "register";
+    const signUp = c.req.query("screen") === "register" && (await application.registration.isOpen());
     return c.redirect(withSignUpScreen(begun.authorizationUrl, signUp), 303);
   });
 
