@@ -63,6 +63,8 @@ export const family = pgTable(
     ocrLanguages: text("ocr_languages").array().notNull().default(sql`'{eng}'::text[]`),
     /** Whether OCR reads the scanned pages of attachments; the LLM only ever receives text. */
     ocrEnabled: boolean("ocr_enabled").notNull().default(true),
+    /** The id of the Family's organization in the Identity Provider (ADR-0010); null until the first registration creates it. */
+    organizationId: text("organization_id"),
   },
   (table) => [
     singleRow("family", table.id),

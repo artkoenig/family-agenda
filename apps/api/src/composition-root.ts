@@ -25,6 +25,7 @@ import {
   PostgresLlmEndpointRepository,
   PostgresProcessedEventRepository,
   OidcIdentityProviderClient,
+  LogtoIdentityDirectory,
   PostgresSourceAddingRepository,
   PostgresSourceRunTurns,
   PostgresSourceRepository,
@@ -61,7 +62,10 @@ import {
   createTaskAccess,
   createAgendaAccess,
   createRegistrationEvents,
+  createFamilyRegistration,
   noRegistration,
+  type IdentityDirectory,
+  type IdentityDirectorySettings,
   type Registration,
   type RegistrationEvents,
   type AdminAccess,
@@ -132,8 +136,12 @@ export type SharedConfig = {
    * ADR-0010); without it, no events are received.
    */
   idpWebhookSecret?: string | null;
-  /** Replaces what a registration does, such as with a recording one; nothing yet. */
+  /** Replaces what a registration does, such as with a recording one. */
   registration?: Registration;
+  /** The Identity Provider's management API (`IDP_MANAGEMENT_*`, ADR-0010); none if left out. */
+  identityDirectory?: IdentityDirectorySettings | null;
+  /** Replaces the adapter of the management API, such as with an in-memory one. */
+  identityDirectoryClient?: IdentityDirectory;
 };
 
 /** Where the key of a Family's Source credentials comes from. */
@@ -185,7 +193,10 @@ export type SharedWiring = {
   textExtractor: TextExtractor;
   ocrModels: TessdataDirectory;
   idpWebhookSecret: string | null;
-  registration: Registration;
+  /** What replaces registration, as a test does; null for the one the Family's mode gives. */
+  registration: Registration | null;
+  /** The Identity Provider's management API; null without one, and then no registration. */
+  directory: IdentityDirectory | null;
 };
 
 /** What preparing the Family did: the Family id it has. */
@@ -227,6 +238,8 @@ export type Application = {
   messages: MessageAccess;
   /** The Identity Provider's registration events (ADR-0010); null without `IDP_WEBHOOK_SECRET`. */
   registrationEvents: RegistrationEvents | null;
+  /** What a registration does, and whether it is open (ADR-0010). */
+  registration: Registration;
   close(): Promise<void>;
 };
 
@@ -264,18 +277,32 @@ export async function bootShared(config: SharedConfig): Promise<SharedWiring> {
 }
 
 /** How a process receives the Identity Provider's registration events, the same for all its Families. */
-function registrationWiringOf(config: SharedConfig): Pick<SharedWiring, "idpWebhookSecret" | "registration"> {
-  return { idpWebhookSecret: config.idpWebhookSecret ?? null, registration: config.registration ?? noRegistration };
+function registrationWiringOf(config: SharedConfig): Pick<SharedWiring, "idpWebhookSecret" | "registration" | "directory"> {
+  return {
+    idpWebhookSecret: config.idpWebhookSecret ?? null,
+    registration: config.registration ?? null,
+    directory: config.identityDirectoryClient ?? (config.identityDirectory ? new LogtoIdentityDirectory(config.identityDirectory) : null),
+  };
+}
+
+/**
+ * How a Family is registered: in fixed mode with a management API, the first registration creates
+ * it (ADR-0010); in supplied mode not yet, nor without a management API.
+ */
+function registrationOf(shared: SharedWiring, families: PostgresFamilyRepository, mode: "fixed" | "supplied"): Registration {
+  if (shared.registration !== null) return shared.registration;
+  if (shared.directory === null || mode === "supplied") return noRegistration;
+  return createFamilyRegistration({ families, directory: shared.directory });
 }
 
 /** A Family's registration events, recorded in its database; none without the webhook secret. */
-function registrationEventsOf(shared: SharedWiring, postgres: PostgresConnection): RegistrationEvents | null {
+function registrationEventsOf(shared: SharedWiring, postgres: PostgresConnection, registration: Registration): RegistrationEvents | null {
   if (shared.idpWebhookSecret === null) return null;
   return createRegistrationEvents({
     clock: shared.clock,
     secret: shared.idpWebhookSecret,
     processedEvents: new PostgresProcessedEventRepository(postgres.db),
-    registration: shared.registration,
+    registration,
   });
 }
 
@@ -307,7 +334,7 @@ export async function bootFamily(shared: SharedWiring, config: FamilyConfig): Pr
     const { familyId } = await prepareOn(shared, postgres, config.familyId, ownBlobDirectory(config));
     return { masterKey: await familyKeyOf(postgres, config), familyId };
   });
-  return wireFamily(shared, config, postgres, masterKey, familyId);
+  return wireFamily(shared, config, postgres, masterKey, familyId, "fixed");
 }
 
 /** A database that holds no prepared Family: empty, or with a schema other than this version's. */
@@ -336,7 +363,7 @@ export async function openPreparedFamily(shared: SharedWiring, config: FamilyCon
     await startSourceTypes(shared, postgres, config.familyId);
     return familyKeyOf(postgres, config);
   });
-  return wireFamily(shared, config, postgres, masterKey, config.familyId);
+  return wireFamily(shared, config, postgres, masterKey, config.familyId, "supplied");
 }
 
 /**
@@ -407,6 +434,7 @@ function wireFamily(
   postgres: PostgresConnection,
   masterKey: Buffer,
   familyId: FamilyId,
+  mode: "fixed" | "supplied",
 ): Application {
   const { clock, extractor, textExtractor, ocrModels } = shared;
   const timeZone = config.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -526,6 +554,7 @@ function wireFamily(
     activity,
   });
   const messages = createMessageAccess({ items, blobs });
+  const registration = registrationOf(shared, families, mode);
   return {
     familyId,
     timeZone,
@@ -548,7 +577,8 @@ function wireFamily(
     singleSignOn,
     extraction,
     messages,
-    registrationEvents: registrationEventsOf(shared, postgres),
+    registrationEvents: registrationEventsOf(shared, postgres, registration),
+    registration,
     close: () => postgres.close(),
   };
 }

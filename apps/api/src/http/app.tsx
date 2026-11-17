@@ -671,6 +671,8 @@ export function createHttpApp(application: Application, options: HttpOptions) {
       await next();
       return;
     }
+    // Until registration creates the Family, the Instance shows only sign-in and sign-up (ADR-0010).
+    if (await application.registration.isOpen()) return c.redirect(href(prefix, "/admin/sign-in"));
     const token = getCookie(c, sessionCookie);
     const admin = token ? await admins.authenticate(token) : null;
     // Without a session, or once it expired, through the Identity Provider again: silently while its own session lasts.

@@ -36,6 +36,8 @@ CREATE TABLE family (
   ocr_enabled                BOOLEAN NOT NULL DEFAULT true,
   ocr_languages              TEXT[] NOT NULL DEFAULT '{eng}',
   recovery_kit_confirmed_at  TIMESTAMPTZ,
+  -- The Family's organization in the Identity Provider; null until the first registration (ADR-0010).
+  organization_id            TEXT,
   CONSTRAINT family_single_row CHECK (id),
   CONSTRAINT family_language_known CHECK (language IN ('en', 'de')),
   CONSTRAINT family_ocr_languages_not_empty CHECK (cardinality(ocr_languages) > 0)
