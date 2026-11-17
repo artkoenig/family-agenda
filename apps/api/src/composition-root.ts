@@ -50,6 +50,8 @@ import {
   createLlmEndpointAccess,
   createSingleSignOn,
   createFamilyAdmins,
+  createInvitationAcceptance,
+  type InvitationAcceptance,
   type FamilyAdmins,
   createMessageAccess,
   createRecoveryKitAccess,
@@ -287,6 +289,11 @@ function registrationWiringOf(config: SharedConfig): Pick<SharedWiring, "idpWebh
     registration: config.registration ?? null,
     directory: config.identityDirectoryClient ?? (config.identityDirectory ? new LogtoIdentityDirectory(config.identityDirectory) : null),
   };
+}
+
+/** With a management API, sign-in accepts an invitee's invitation (ADR-0010); nothing without one. */
+export function invitationAcceptanceOf(shared: Pick<SharedWiring, "clock" | "directory">): { acceptInvitation?: InvitationAcceptance } {
+  return shared.directory ? { acceptInvitation: createInvitationAcceptance({ clock: shared.clock, directory: shared.directory }) } : {};
 }
 
 /**
@@ -542,6 +549,7 @@ function wireFamily(
     client: config.identityProviderClient ?? new OidcIdentityProviderClient(),
     admins,
     organizationId: () => families.organizationId(),
+    ...invitationAcceptanceOf(shared),
   });
   const retention = createRetention({ clock, items, blobs });
   const secretSweep = createSecretSweep({

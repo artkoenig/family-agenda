@@ -1,5 +1,5 @@
 import { createCipheriv, createDecipheriv, createHash, hkdfSync, randomBytes, timingSafeEqual } from "node:crypto";
-import { completeSignIn, type AdmittedIdentity, type IdentityProviderClient, type SignInSecrets } from "@family-agenda/application";
+import { completeSignIn, type AdmittedIdentity, type IdentityProviderClient, type InvitationAcceptance, type SignInSecrets } from "@family-agenda/application";
 import { z } from "zod";
 import type { SuppliedIdentityProvider } from "../config";
 import { handoverPath, type FamilySignInRelay } from "../http/app";
@@ -17,6 +17,8 @@ export type SignInRelayOptions = {
   contextKey: string;
   identityProvider: SuppliedIdentityProvider;
   client: IdentityProviderClient;
+  /** With a management API: admits an invitee who is not yet a member of the Family's organization (ADR-0010). */
+  acceptInvitation?: InvitationAcceptance;
   now?: () => number;
 };
 
@@ -149,6 +151,7 @@ export class SignInRelay {
       query,
       { state: new URLSearchParams(query).get("state") ?? "", nonce: state.nonce, codeVerifier: state.codeVerifier },
       state.organizationId,
+      this.#options.acceptInvitation,
     );
     if (!admitted.ok) return answer(303, { location: `${state.returnTo}/admin/sign-in?problem=${admitted.problem}` });
     const handover = seal(this.#options.contextKey, "handover", {

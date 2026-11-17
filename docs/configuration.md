@@ -198,6 +198,8 @@ The return address comes from the Context, never from the browser, so the callba
 
 **Registration in supplied mode (ADR-0010).** Off unless `FAMILY_WEBHOOK_URL` is set; then each registration not made through an invitation creates a new Family, an organization with the user as its Admin, and posts `family.created` to the platform.
 
+**Accepting an invitation (ADR-0010).** The invitation email links to the Family's sign-in page (`<publicUrl>/admin/sign-in`), not to a route of its own: the invitation id need not travel, since the invitee's verified email finds it. Someone who signs in there, is not yet a member of the Family's organization and whose verified email has a pending, unexpired invitation to it becomes a member with the role `admin`, and the invitation turns `Accepted` (Logto: `PUT /api/organization-invitations/{id}/status`, which adds the member with the invitation's roles). An expired or revoked invitation, or one to another organization, admits no one. In both modes; their `PostRegister` event creates no Family.
+
 | Variable | Meaning |
 |---|---|
 | `FAMILY_WEBHOOK_URL` | http(s) address the core posts `{"event":"family.created","familyId","organizationId","email"}` to. Requires `IDP_MANAGEMENT_API` and `IDP_WEBHOOK_SECRET`. Refused in fixed mode |

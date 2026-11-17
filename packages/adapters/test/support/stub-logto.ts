@@ -138,6 +138,8 @@ export class StubLogto {
         const invitation = this.invitations.get(parts[1] ?? "");
         if (!invitation) return [404];
         invitation.status = String(body.status);
+        // As Logto: accepting adds the user to the organization with the invitation's roles.
+        if (invitation.status === "Accepted") this.organizations.get(invitation.organizationId)?.members.set(String(body.acceptedUserId), invitation.organizationRoleIds);
         return [200, invitation];
       }
       case "PATCH sign-in-exp":

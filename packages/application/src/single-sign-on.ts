@@ -1,4 +1,5 @@
 import type { AdminAccess } from "./admin-access";
+import type { InvitationAcceptance } from "./invitation-acceptance";
 import type { IdentityProviderClient, OrganizationsClaim, PendingSignIn, SignInSecrets, VerifiedIdentity } from "./ports";
 
 /** The one Identity Provider, as the operator configured it in the environment (ADR-0007). */
@@ -39,6 +40,8 @@ export type SingleSignOnDeps = {
   admins: AdminAccess;
   /** The id of the Family's organization at the Identity Provider; null before registration created it. */
   organizationId?: () => Promise<string | null>;
+  /** With a management API: admits someone not yet a member who holds a pending invitation (ADR-0010). */
+  acceptInvitation?: InvitationAcceptance;
 };
 
 /** Where the Identity Provider sends an Admin back to, below the public base URL and so below its path prefix. */
@@ -100,7 +103,7 @@ export function createSingleSignOn(deps: SingleSignOnDeps) {
     async complete(input: { baseUrl: string; query: string; pending: PendingSignIn }): Promise<SingleSignOnSignInResult> {
       const offered = at(input.baseUrl);
       if (!offered) return { ok: false, problem: "sso-failed" };
-      const admitted = await completeSignIn(client, offered, input.query, input.pending, await organizationId());
+      const admitted = await completeSignIn(client, offered, input.query, input.pending, await organizationId(), deps.acceptInvitation);
       return admitted.ok ? { ok: true, sessionToken: await admins.startSession(admitted.identity) } : admitted;
     },
   };
@@ -134,16 +137,30 @@ export async function completeSignIn(
   query: string,
   pending: PendingSignIn,
   organizationId: string | null = null,
+  acceptInvitation: InvitationAcceptance = () => Promise.resolve(false),
 ): Promise<SignInAdmission> {
   const redirectUri = redirectUriOf(offered);
   const identity = await client.complete(connectionOf(offered), redirectUri, redirectUri + query, pending);
   if (!identity) return { ok: false, problem: "sso-failed" };
+  const verified = verifiedIdentityOf(identity);
   // Checked at every sign-in; leaving the group or Family ends a running session only when it expires.
   const refused = admissionProblemOf(offered, identity, organizationId);
+  const invitee = refused === "sso-not-member" ? await accepted(verified, organizationId, acceptInvitation) : null;
+  if (invitee) return { ok: true, identity: invitee };
   if (refused) return { ok: false, problem: refused };
+  return verified ? { ok: true, identity: verified } : { ok: false, problem: "sso-email-unverified" };
+}
+
+/** Who `identity` is with a verified email address; null without one. */
+function verifiedIdentityOf(identity: VerifiedIdentity): AdmittedIdentity | null {
   const email = identity.email?.trim() ?? "";
-  if (email === "" || !identity.emailVerified) return { ok: false, problem: "sso-email-unverified" };
-  return { ok: true, identity: { subject: identity.subject, email } };
+  return email !== "" && identity.emailVerified ? { subject: identity.subject, email } : null;
+}
+
+/** An invitee is not a member yet, nor does their token say so: their verified email accepts their invitation (ADR-0010). */
+async function accepted(identity: AdmittedIdentity | null, organizationId: string | null, acceptInvitation: InvitationAcceptance): Promise<AdmittedIdentity | null> {
+  if (identity === null || organizationId === null) return null;
+  return (await acceptInvitation(organizationId, identity)) ? identity : null;
 }
 
 /**

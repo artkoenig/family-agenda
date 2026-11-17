@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { InvitationAcceptance } from "@family-agenda/application";
 import { SignInRelay } from "../../src/context/sign-in-relay";
 import { ScriptedIdentityProviderClient } from "../support/scripted-identity-provider";
 
@@ -17,9 +18,9 @@ const identityProvider = {
 const anna = { subject: "sub-anna", email: "anna@example.org", emailVerified: true, groups: [], familyId: "family-1" };
 
 describe("the one callback of a supplied core with a management API (ADR-0010)", () => {
-  const signIn = async (organizationId: string | null, organizations: string[]) => {
+  const signIn = async (organizationId: string | null, organizations: string[], acceptInvitation?: InvitationAcceptance) => {
     const client = new ScriptedIdentityProviderClient();
-    const relay = new SignInRelay({ contextKey: "a-context-key-of-at-least-32-characters", identityProvider, client });
+    const relay = new SignInRelay({ contextKey: "a-context-key-of-at-least-32-characters", identityProvider, client, ...(acceptInvitation ? { acceptInvitation } : {}) });
     const begun = await client.begin(identityProvider, callbackUrl, relay.stateOf("family-1", returnTo, "binding", organizationId));
     const back = await relay.callback(new Request(callbackUrl + client.returnWith(begun.pending, { ...anna, organizations })));
     return back.headers.get("location") ?? "";
@@ -27,6 +28,16 @@ describe("the one callback of a supplied core with a management API (ADR-0010)",
 
   it("hands over a member of the organization the Family's state names", async () => {
     expect(await signIn("org-1", ["org-1"])).toMatch(/^https:\/\/one\.example\.org\/sso\/handover\?token=/);
+  });
+
+  it("hands over an invitee once their invitation to the Family's organization is accepted", async () => {
+    const accepted: unknown[] = [];
+    const accepting: InvitationAcceptance = (organizationId, identity) => {
+      accepted.push([organizationId, identity]);
+      return Promise.resolve(organizationId === "org-1");
+    };
+    expect(await signIn("org-1", [], accepting)).toMatch(/^https:\/\/one\.example\.org\/sso\/handover\?token=/);
+    expect(accepted).toEqual([["org-1", { subject: "sub-anna", email: "anna@example.org" }]]);
   });
 
   it("refuses anyone else, the Family claim notwithstanding, and anyone before the Family has an organization", async () => {
