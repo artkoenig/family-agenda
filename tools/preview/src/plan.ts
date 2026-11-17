@@ -28,6 +28,16 @@ const largestPullRequest = 9999;
 const previewPrefix = "fa-pr-";
 
 /**
+ * What a preview runs: a pull request by its number, or `main`, the code every visitor can try
+ * with demo data. `main` takes the slot below the first pull request: ports 9000 and 20000.
+ */
+export type PreviewTarget = number | "main";
+
+function slotOf(target: PreviewTarget): number {
+  return target === "main" ? 0 : target;
+}
+
+/**
  * What it takes to run a pull request's code as an Instance of its own, and to remove it again:
  * its own Compose project, port, worktree and image, so that previews of several pull requests
  * run side by side and beside the real Instance. `repoRoot` is the clone `pnpm preview` runs in,
@@ -35,18 +45,21 @@ const previewPrefix = "fa-pr-";
  * The plugin containers come from the pull request's own generator (`plugins generate`), run in
  * its image as `user` (uid:gid), so that it writes into the worktree as the developer.
  */
-export function planPreview(pullRequest: number, repoRoot: string, user: string): PreviewPlan {
-  if (!Number.isInteger(pullRequest) || pullRequest < 1 || pullRequest > largestPullRequest) {
-    throw new Error(`"${pullRequest}" is no pull request number`);
+export function planPreview(target: PreviewTarget, repoRoot: string, user: string): PreviewPlan {
+  if (target !== "main" && (!Number.isInteger(target) || target < 1 || target > largestPullRequest)) {
+    throw new Error(`"${target}" is no pull request number`);
   }
-  const project = `${previewPrefix}${pullRequest}`;
-  const port = firstPort + pullRequest;
+  const slot = slotOf(target);
+  const name = `pr-${target}`;
+  const project = `fa-${name}`;
+  const port = firstPort + slot;
   const url = `http://localhost:${port}`;
-  const worktree = join(repoRoot, ".previews", `pr-${pullRequest}`);
-  const image = `family-agenda-preview:pr-${pullRequest}`;
-  const demoImage = `family-agenda-demo-source-preview:pr-${pullRequest}`;
-  const ref = `refs/previews/pr-${pullRequest}`;
-  const idpPort = firstIdpPort + pullRequest;
+  const worktree = join(repoRoot, ".previews", name);
+  const image = `family-agenda-preview:${name}`;
+  const demoImage = `family-agenda-demo-source-preview:${name}`;
+  const ref = `refs/previews/${name}`;
+  const source = target === "main" ? "refs/heads/main" : `pull/${target}/head`;
+  const idpPort = firstIdpPort + slot;
 
   const env = {
     PORT: String(port),
@@ -85,7 +98,7 @@ export function planPreview(pullRequest: number, repoRoot: string, user: string)
     demoImage,
     idpPort,
     up: [
-      { file: "git", args: ["fetch", "origin", `+pull/${pullRequest}/head:${ref}`] },
+      { file: "git", args: ["fetch", "origin", `+${source}:${ref}`] },
       { file: "git", args: ["worktree", "add", "--force", "--detach", worktree, ref] },
       { file: "cp", args: [join(repoRoot, "tools", "preview", "plugins.yml"), join(worktree, "plugins.yml")] },
       composeBase("build", "api", "plugin-demo"),
@@ -107,9 +120,14 @@ export function describePreviews(composeLs: string): string[] {
   const projects = JSON.parse(composeLs) as { Name: string; Status: string }[];
   return projects
     .flatMap(({ Name, Status }) => {
-      const pullRequest = new RegExp(`^${previewPrefix}(\\d+)$`).exec(Name)?.[1];
-      return pullRequest === undefined ? [] : [{ pullRequest: Number(pullRequest), Status }];
+      const found = new RegExp(`^${previewPrefix}(\\d+|main)$`).exec(Name)?.[1];
+      if (found === undefined) return [];
+      const target: PreviewTarget = found === "main" ? "main" : Number(found);
+      return [{ target, Status }];
     })
-    .sort((a, b) => a.pullRequest - b.pullRequest)
-    .map(({ pullRequest, Status }) => `PR ${pullRequest}  http://localhost:${firstPort + pullRequest}  ${Status}`);
+    .sort((a, b) => slotOf(a.target) - slotOf(b.target))
+    .map(({ target, Status }) => {
+      const label = target === "main" ? "main" : `PR ${target}`;
+      return `${label}  http://localhost:${firstPort + slotOf(target)}  ${Status}`;
+    });
 }

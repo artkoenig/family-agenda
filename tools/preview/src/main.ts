@@ -1,5 +1,5 @@
 /**
- * `pnpm preview up <pr> | down <pr> | list`: runs a pull request's code as a throwaway Instance
+ * `pnpm preview up <pr>|main | down <pr>|main | list`: runs a pull request's code, or main's, as a throwaway Instance
  * with demo data, to try a change by hand before it is merged. The plan is in plan.ts.
  */
 import { spawnSync } from "node:child_process";
@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 import { describePreviews, planPreview, type Command } from "./plan";
 
 const repoRoot = fileURLToPath(new URL("../../..", import.meta.url));
-const usage = "Usage: pnpm preview up <pull-request> | down <pull-request> | list";
+const usage = "Usage: pnpm preview up <pull-request>|main | down <pull-request>|main | list";
 
 function run({ file, args, env }: Command): number {
   console.log(`\n$ ${[file, ...args].join(" ")}`);
@@ -19,7 +19,7 @@ function pullRequestOf(value: string | undefined) {
   // The generator writes into the worktree as the developer, not as the image's user.
   // Previews need Docker on Linux or macOS, where these exist.
   const user = `${process.getuid?.() ?? 1000}:${process.getgid?.() ?? 1000}`;
-  return planPreview(Number(value), repoRoot, user);
+  return planPreview(value === "main" ? "main" : Number(value), repoRoot, user);
 }
 
 function up(value: string | undefined): number {
@@ -35,7 +35,7 @@ function up(value: string | undefined): number {
       return status;
     }
   }
-  console.log(`\nPreview of pull request ${value} is running at ${plan.url}`);
+  console.log(`\nPreview of ${value === "main" ? "main" : `pull request ${value}`} is running at ${plan.url}`);
   console.log(`Admin area: ${plan.url}/admin: sign in with any name on the mock Identity Provider's page, no password`);
   console.log(`Remove it with: pnpm preview down ${value}`);
   return 0;
