@@ -196,6 +196,16 @@ Most providers, Logto among them, take only exact redirect URIs, but every Famil
 
 The return address comes from the Context, never from the browser, so the callback redirects nowhere else.
 
+**Registration in supplied mode (ADR-0010).** Off unless `FAMILY_WEBHOOK_URL` is set; then each registration not made through an invitation creates a new Family, an organization with the user as its Admin, and posts `family.created` to the platform.
+
+| Variable | Meaning |
+|---|---|
+| `FAMILY_WEBHOOK_URL` | http(s) address the core posts `{"event":"family.created","familyId","organizationId","email"}` to. Requires `IDP_MANAGEMENT_API` and `IDP_WEBHOOK_SECRET`. Refused in fixed mode |
+| `FAMILY_WEBHOOK_SECRET` | Required with the URL, 32 characters or more. Header `family-agenda-signature-sha-256`: hex HMAC-SHA256 of the body. Header `idempotency-key`: the Family id |
+| `REGISTRATION_DATABASE_URL` | Required with the URL. One Postgres database shared by all cores of the deployment, migrated as a Family's: it holds the processed Identity Provider events and the pending deliveries |
+
+The trusted caller forwards the Identity Provider's `POST /idp/events` to the caller port **without** a Context. A delivery not answered with 2xx is retried by any core, after 10 s, doubling, at most hourly, until it is.
+
 The Instance must reach the Identity Provider (discovery, keys, token endpoint). Outbound only.
 
 ### With the bundled Logto

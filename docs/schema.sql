@@ -206,6 +206,16 @@ CREATE TABLE processed_idp_event (
   processed_at  TIMESTAMPTZ NOT NULL
 );
 
+-- The family.created webhooks the platform has not yet answered 2xx (ADR-0010); used only in the
+-- registration database of a core in supplied mode. Deleted once delivered.
+CREATE TABLE family_created_delivery (
+  family_id         UUID PRIMARY KEY,             -- also the idempotency key of the webhook
+  organization_id   TEXT NOT NULL,
+  email             TEXT NOT NULL,                -- the first Admin's verified email
+  attempts          INTEGER NOT NULL DEFAULT 0,
+  next_attempt_at   TIMESTAMPTZ NOT NULL
+);
+
 -- ---------------------------------------------------------------------------------------------
 -- Source Attributes and their assignment
 -- ---------------------------------------------------------------------------------------------

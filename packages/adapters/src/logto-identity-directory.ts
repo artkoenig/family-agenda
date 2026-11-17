@@ -105,6 +105,11 @@ export class LogtoIdentityDirectory implements IdentityDirectory {
     return invitations.filter((invitation) => invitation.status === "Pending").map(invitationOf);
   }
 
+  async wasInvited(email: string): Promise<boolean> {
+    const invitations = await this.call<LogtoInvitation[]>("GET", `/api/organization-invitations?invitee=${encodeURIComponent(email)}`);
+    return invitations.some((invitation) => invitation.status === "Pending" || invitation.status === "Accepted");
+  }
+
   /** Refuses an invitation of another organization. */
   async revokeInvitation(organizationId: string, invitationId: string): Promise<void> {
     const path = `/api/organization-invitations/${encodeURIComponent(invitationId)}`;

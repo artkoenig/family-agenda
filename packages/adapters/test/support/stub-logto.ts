@@ -129,7 +129,7 @@ export class StubLogto {
         return [201, invitation];
       }
       case "GET organization-invitations":
-        return [200, [...this.invitations.values()].filter((invitation) => invitation.organizationId === url.searchParams.get("organizationId"))];
+        return [200, [...this.invitations.values()].filter((invitation) => [["organizationId", invitation.organizationId], ["invitee", invitation.invitee]].every(([key, value]) => !url.searchParams.has(key ?? "") || url.searchParams.get(key ?? "") === value))];
       case "GET organization-invitations/:": {
         const invitation = this.invitations.get(parts[1] ?? "");
         return invitation ? [200, invitation] : [404];

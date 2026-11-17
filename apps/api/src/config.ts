@@ -126,7 +126,52 @@ export type SuppliedConfig = Omit<Config, FixedOnly | "publicUrl" | "identityPro
    * requests with their Context; never published. No listener opens on `PORT`.
    */
   callerPort: number;
+  /** The `family.created` webhook to the platform (ADR-0010); null keeps registration off. */
+  familyWebhook: FamilyWebhookConfig | null;
 };
+
+/** Where a supplied core tells the platform of a new Family, and where it keeps what is pending. */
+export type FamilyWebhookConfig = {
+  /** `FAMILY_WEBHOOK_URL`. */
+  url: string;
+  /** `FAMILY_WEBHOOK_SECRET`, the key the webhook is signed with. */
+  secret: string;
+  /**
+   * `REGISTRATION_DATABASE_URL`: the database of registrations, which belong to no Family yet: the
+   * events processed and the deliveries pending. Migrated as a Family's database is.
+   */
+  registrationDatabaseUrl: string;
+};
+
+/** What only supplied mode reads, as every registration there creates a Family. */
+const familyWebhookVariables = ["FAMILY_WEBHOOK_URL", "FAMILY_WEBHOOK_SECRET", "REGISTRATION_DATABASE_URL"] as const;
+
+/** The `family.created` webhook, none without `FAMILY_WEBHOOK_URL`; it needs the management API, its secret and the registration database. */
+function familyWebhookOf(env: NodeJS.ProcessEnv, identityDirectory: IdentityDirectorySettings | null): FamilyWebhookConfig | null {
+  const url = env.FAMILY_WEBHOOK_URL ?? "";
+  if (url === "") return refuseWebhookPartsWithoutUrl(env);
+  if (identityDirectory === null) throw new Error("FAMILY_WEBHOOK_URL is set, but IDP_MANAGEMENT_API is not: registration needs the management API");
+  if (parsePublicUrl(url) === null) throw new Error("FAMILY_WEBHOOK_URL must be an http or https address, such as https://platform.example.org/hooks/family");
+  return { url, secret: familyWebhookSecretOf(env.FAMILY_WEBHOOK_SECRET ?? ""), registrationDatabaseUrl: registrationDatabaseUrlOf(env.REGISTRATION_DATABASE_URL ?? "") };
+}
+
+/** No webhook: refuses its secret or database without it. */
+function refuseWebhookPartsWithoutUrl(env: NodeJS.ProcessEnv): null {
+  const given = familyWebhookVariables.find((variable) => env[variable]);
+  if (given) throw new Error(`${given} is set, but FAMILY_WEBHOOK_URL is not: set FAMILY_WEBHOOK_URL, or unset ${given}`);
+  return null;
+}
+
+function familyWebhookSecretOf(secret: string): string {
+  if (secret === "") throw new Error("FAMILY_WEBHOOK_SECRET must be set with FAMILY_WEBHOOK_URL: the webhook is signed with it");
+  if (secret.length < minimumKeyLength) throw new Error(`FAMILY_WEBHOOK_SECRET must be at least ${minimumKeyLength} characters long`);
+  return secret;
+}
+
+function registrationDatabaseUrlOf(url: string): string {
+  if (url === "") throw new Error("REGISTRATION_DATABASE_URL must be set with FAMILY_WEBHOOK_URL: it keeps the events processed and the deliveries pending");
+  return url;
+}
 
 /** The Identity Provider all Families of a core in supplied mode sign in through, with the dotted path of the claim that names the Family. */
 export type SuppliedIdentityProvider = IdentityProviderConnectionSettings & {
@@ -147,7 +192,13 @@ export function readSuppliedConfig(env: NodeJS.ProcessEnv = process.env): Suppli
   }
   const { port, ...shared } = sharedConfigOf(env);
   const identityProvider = withOrganizations(suppliedIdentityProviderOf(env), shared.identityDirectory);
-  return { ...shared, identityProvider, contextKey: env.CONTEXT_KEY ?? "", callerPort: callerPortOf(env.CALLER_PORT, port) };
+  return {
+    ...shared,
+    identityProvider,
+    contextKey: env.CONTEXT_KEY ?? "",
+    callerPort: callerPortOf(env.CALLER_PORT, port),
+    familyWebhook: familyWebhookOf(env, shared.identityDirectory),
+  };
 }
 
 /** The one Identity Provider of a core in supplied mode, which it requires. */
@@ -172,10 +223,17 @@ function callerPortOf(value: string | undefined, pagesPort: number): number {
   return port;
 }
 
-export function readConfig(env: NodeJS.ProcessEnv = process.env): Config {
-  if (readMode(env) === "supplied") throw new Error("CONTEXT_MODE=supplied: in supplied mode this core has no Family of its own, only the Contexts requests supply");
+/** Refuses in fixed mode what only supplied mode reads. */
+function refuseSuppliedOnly(env: NodeJS.ProcessEnv): void {
   if (env.OIDC_FAMILY_ID_CLAIM) throw new Error("OIDC_FAMILY_ID_CLAIM is set, but CONTEXT_MODE is not supplied: in fixed mode OIDC_REQUIRED_GROUP decides who may sign in; unset it");
   if (env.OIDC_CALLBACK_URL) throw new Error("OIDC_CALLBACK_URL is set, but CONTEXT_MODE is not supplied: in fixed mode the redirect URI is <PUBLIC_URL>/sso/callback; unset it");
+  const webhook = familyWebhookVariables.find((variable) => env[variable]);
+  if (webhook) throw new Error(`${webhook} is set, but CONTEXT_MODE is not supplied: in fixed mode the first registration creates the one Family; unset it`);
+}
+
+export function readConfig(env: NodeJS.ProcessEnv = process.env): Config {
+  if (readMode(env) === "supplied") throw new Error("CONTEXT_MODE=supplied: in supplied mode this core has no Family of its own, only the Contexts requests supply");
+  refuseSuppliedOnly(env);
   const databaseUrl = env.DATABASE_URL;
   if (!databaseUrl) throw new Error("DATABASE_URL is not set");
   const shared = sharedConfigOf(env);

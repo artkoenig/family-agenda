@@ -629,3 +629,17 @@ export const processedIdpEvents = pgTable("processed_idp_event", {
   eventId: text("event_id").primaryKey(),
   processedAt: timestamptz("processed_at").notNull(),
 });
+
+/**
+ * The `family.created` webhooks not yet answered `2xx` by the platform (ADR-0010), kept in the
+ * registration database of a core in supplied mode; retried until delivered, then deleted.
+ */
+export const familyCreatedDeliveries = pgTable("family_created_delivery", {
+  familyId: uuid("family_id").primaryKey(),
+  organizationId: text("organization_id").notNull(),
+  email: text("email").notNull(),
+  /** The tries so far, which lengthen the wait before the next. */
+  attempts: integer("attempts").notNull().default(0),
+  /** When the next try is due; a core taking it pushes this ahead first, so that another core does not try at once. */
+  nextAttemptAt: timestamptz("next_attempt_at").notNull(),
+});

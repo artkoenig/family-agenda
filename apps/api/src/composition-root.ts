@@ -291,7 +291,8 @@ function registrationWiringOf(config: SharedConfig): Pick<SharedWiring, "idpWebh
 
 /**
  * How a Family is registered: in fixed mode with a management API, the first registration creates
- * it (ADR-0010); in supplied mode not yet, nor without a management API.
+ * it (ADR-0010). In supplied mode the deployment's registration, which `shared.registration`
+ * carries (see `openSuppliedRegistration`), creates every Family; none without it.
  */
 function registrationOf(shared: SharedWiring, families: PostgresFamilyRepository, mode: "fixed" | "supplied"): Registration {
   if (shared.registration !== null) return shared.registration;
@@ -299,9 +300,13 @@ function registrationOf(shared: SharedWiring, families: PostgresFamilyRepository
   return createFamilyRegistration({ families, directory: shared.directory });
 }
 
-/** A Family's registration events, recorded in its database; none without the webhook secret. */
-function registrationEventsOf(shared: SharedWiring, postgres: PostgresConnection, registration: Registration): RegistrationEvents | null {
-  if (shared.idpWebhookSecret === null) return null;
+/**
+ * A fixed Family's registration events, recorded in its database; none without the webhook secret.
+ * None for a supplied Family either: a registration there belongs to no Family yet, so the caller
+ * port receives it, recorded in the registration database (ADR-0010).
+ */
+function registrationEventsOf(shared: SharedWiring, postgres: PostgresConnection, registration: Registration, mode: "fixed" | "supplied"): RegistrationEvents | null {
+  if (shared.idpWebhookSecret === null || mode === "supplied") return null;
   return createRegistrationEvents({
     clock: shared.clock,
     secret: shared.idpWebhookSecret,
@@ -583,7 +588,7 @@ function wireFamily(
     singleSignOn,
     extraction,
     messages,
-    registrationEvents: registrationEventsOf(shared, postgres, registration),
+    registrationEvents: registrationEventsOf(shared, postgres, registration, mode),
     registration,
     familyAdmins,
     close: () => postgres.close(),

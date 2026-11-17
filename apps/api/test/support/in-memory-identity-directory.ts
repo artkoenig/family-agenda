@@ -57,6 +57,10 @@ export class InMemoryIdentityDirectory implements IdentityDirectory {
     return Promise.resolve();
   }
 
+  wasInvited(email: string): Promise<boolean> {
+    return Promise.resolve([...this.organizations.values()].some((organization) => [...organization.invitations.values()].some((invitation) => invitation.email === email)));
+  }
+
   closeRegistration(): Promise<void> {
     this.registrationOpen = false;
     return Promise.resolve();

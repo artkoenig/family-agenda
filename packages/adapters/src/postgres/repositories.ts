@@ -18,6 +18,9 @@ import type {
   LlmEndpointRepository,
   PlainConfig,
   ProcessedEventRepository,
+  FamilyCreated,
+  FamilyCreatedDeliveryRepository,
+  PendingDelivery,
   SecretRef,
   Source,
   SourceAttribute,
@@ -59,6 +62,7 @@ import {
   familyMembers,
   llmEndpoints,
   processedIdpEvents,
+  familyCreatedDeliveries,
   sourceAttributeMembers,
   sourceAttributes,
   sourceRecordAttributes,
@@ -736,5 +740,43 @@ export class PostgresProcessedEventRepository implements ProcessedEventRepositor
 
   async forget(eventId: string): Promise<void> {
     await this.db.delete(processedIdpEvents).where(eq(processedIdpEvents.eventId, eventId));
+  }
+}
+
+/** The pending `family.created` deliveries, in the registration database of a core in supplied mode (ADR-0010). */
+export class PostgresFamilyCreatedDeliveryRepository implements FamilyCreatedDeliveryRepository {
+  constructor(private readonly db: Database) {}
+
+  async add(created: FamilyCreated, dueAt: Date): Promise<void> {
+    await this.db.insert(familyCreatedDeliveries).values({ ...created, nextAttemptAt: dueAt }).onConflictDoNothing();
+  }
+
+  async takeDue(now: Date, leaseUntil: Date, limit: number): Promise<PendingDelivery[]> {
+    // Skips rows another core is taking at the same moment; each is pushed ahead as it is taken.
+    const due = this.db
+      .select({ familyId: familyCreatedDeliveries.familyId })
+      .from(familyCreatedDeliveries)
+      .where(lte(familyCreatedDeliveries.nextAttemptAt, now))
+      .orderBy(asc(familyCreatedDeliveries.nextAttemptAt))
+      .limit(limit)
+      .for("update", { skipLocked: true });
+    return this.db
+      .update(familyCreatedDeliveries)
+      .set({ nextAttemptAt: leaseUntil })
+      .where(inArray(familyCreatedDeliveries.familyId, due))
+      .returning({
+        familyId: familyCreatedDeliveries.familyId,
+        organizationId: familyCreatedDeliveries.organizationId,
+        email: familyCreatedDeliveries.email,
+        attempts: familyCreatedDeliveries.attempts,
+      });
+  }
+
+  async delivered(familyId: string): Promise<void> {
+    await this.db.delete(familyCreatedDeliveries).where(eq(familyCreatedDeliveries.familyId, familyId));
+  }
+
+  async retryAt(familyId: string, attempts: number, at: Date): Promise<void> {
+    await this.db.update(familyCreatedDeliveries).set({ attempts, nextAttemptAt: at }).where(eq(familyCreatedDeliveries.familyId, familyId));
   }
 }

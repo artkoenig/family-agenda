@@ -121,6 +121,23 @@ describe("the Logto Identity Directory", () => {
     expect(await directory.listInvitations(organizationId)).toEqual([]);
   });
 
+  it("knows an email invited to any organization, pending or accepted, and not one revoked or never invited", async () => {
+    const organizationId = await directory.createOrganization(familyId, "A");
+    await directory.invite(organizationId, "ben@example.org", details);
+    const accepted = await directory.invite(organizationId, "carl@example.org", details);
+    const revoked = await directory.invite(organizationId, "dora@example.org", details);
+    const acceptedInvitation = logto.invitations.get(accepted.invitationId);
+    const revokedInvitation = logto.invitations.get(revoked.invitationId);
+    if (!acceptedInvitation || !revokedInvitation) throw new Error("no invitations");
+    acceptedInvitation.status = "Accepted";
+    revokedInvitation.status = "Revoked";
+    expect(await directory.wasInvited("ben@example.org")).toBe(true);
+    expect(await directory.wasInvited("carl@example.org")).toBe(true);
+    expect(await directory.wasInvited("dora@example.org")).toBe(false);
+    expect(await directory.wasInvited("eve@example.org")).toBe(false);
+    expect(logto.requests.at(-1)?.path).toBe("/api/organization-invitations?invitee=eve%40example.org");
+  });
+
   it("refuses to revoke another organization's invitation", async () => {
     const organizationId = await directory.createOrganization(familyId, "A");
     const other = await directory.createOrganization(familyId, "B");

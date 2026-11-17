@@ -1,3 +1,4 @@
+import { eventOutcomeStatus, idpEventsPath, idpSignatureHeader, type RegistrationEvents } from "@family-agenda/application";
 import type { HealthResponse } from "@family-agenda/contracts";
 import { contextHeader, openContextOutcome } from "./context";
 import type { SuppliedFamilies } from "./supplied-families";
@@ -18,6 +19,11 @@ export type SuppliedHttpOptions = {
    * Identity Provider's redirect, which names no Family until its `state` is opened. None in tests that sign in to nothing.
    */
   signInCallback?: { path: string; answer(request: Request): Promise<Response> };
+  /**
+   * The deployment's registration events (ADR-0010), posted to `/idp/events` without a Context: a
+   * registration belongs to no Family yet. None keeps registration off.
+   */
+  registrationEvents?: RegistrationEvents | null;
   now?: () => number;
 };
 
@@ -29,7 +35,7 @@ const refusal = (status: 400 | 401 | 403 | 409 | 503, text: string) =>
  * header, which opens the Family it is for; the Family's pages then answer it, the header removed.
  * Only the health check and the one sign-in callback, which name no Family, answer without one.
  */
-export function suppliedFetch({ contextKey, families, version, log, signInCallback, now = Date.now }: SuppliedHttpOptions) {
+export function suppliedFetch({ contextKey, families, version, log, signInCallback, registrationEvents, now = Date.now }: SuppliedHttpOptions) {
   return async (request: Request, env?: unknown): Promise<Response> => {
     const { pathname } = new URL(request.url);
     if (pathname === "/api/health") {
@@ -37,6 +43,10 @@ export function suppliedFetch({ contextKey, families, version, log, signInCallba
     }
     const text = request.headers.get(contextHeader);
     if (text === null && request.method === "GET" && signInCallback?.path === pathname) return signInCallback.answer(request);
+    if (text === null && request.method === "POST" && pathname === idpEventsPath && registrationEvents) {
+      const outcome = await registrationEvents.receive(await request.text(), request.headers.get(idpSignatureHeader) ?? undefined);
+      return new Response(null, { status: eventOutcomeStatus[outcome] });
+    }
     const outcome = text === null ? { ok: false as const, problem: null } : openContextOutcome(contextKey, text, now());
     if (!outcome.ok && outcome.problem !== null) {
       // Sealed with the Context key, so by the trusted caller: it learns what is wrong, never a value.
