@@ -12,6 +12,34 @@ const oidc = {
 
 const suppliedOidc = { OIDC_ISSUER_URL: "https://id.example.ts.net", OIDC_CLIENT_ID: "family-agenda", OIDC_CLIENT_SECRET: "s3cret", OIDC_CALLBACK_URL: "https://sign-in.example.org/sso/callback/" };
 
+describe("the Identity Provider's management API in the environment", () => {
+  const management = {
+    IDP_MANAGEMENT_API: "logto",
+    IDP_MANAGEMENT_ENDPOINT: "https://id.example.org/",
+    IDP_MANAGEMENT_CLIENT_ID: "m2m",
+    IDP_MANAGEMENT_CLIENT_SECRET: "s3cret",
+  };
+  const supplied = { CONTEXT_MODE: "supplied", CONTEXT_KEY: "a-context-key-of-at-least-32-characters", CALLER_PORT: "3002", ...suppliedOidc };
+
+  it("is off without any IDP_MANAGEMENT_* variable", () => {
+    expect(readConfig(base).identityDirectory).toBeNull();
+    expect(readSuppliedConfig(supplied).identityDirectory).toBeNull();
+  });
+
+  it("is read in either mode", () => {
+    const settings = { api: "logto", endpoint: "https://id.example.org", clientId: "m2m", clientSecret: "s3cret" };
+    expect(readConfig({ ...base, ...management }).identityDirectory).toEqual(settings);
+    expect(readSuppliedConfig({ ...supplied, ...management }).identityDirectory).toEqual(settings);
+  });
+
+  it("stops the start naming the variable that is missing or wrong", () => {
+    expect(() => readConfig({ ...base, ...management, IDP_MANAGEMENT_API: "keycloak" })).toThrow(/^IDP_MANAGEMENT_API must be logto/);
+    expect(() => readConfig({ ...base, ...management, IDP_MANAGEMENT_ENDPOINT: undefined })).toThrow(/^IDP_MANAGEMENT_ENDPOINT must be/);
+    expect(() => readConfig({ ...base, ...management, IDP_MANAGEMENT_CLIENT_ID: "" })).toThrow(/^IDP_MANAGEMENT_CLIENT_ID must be set/);
+    expect(() => readConfig({ ...base, ...management, IDP_MANAGEMENT_CLIENT_SECRET: undefined })).toThrow(/^IDP_MANAGEMENT_CLIENT_SECRET must be set/);
+  });
+});
+
 describe("the Identity Provider in the environment", () => {
   it("is none without OIDC_ISSUER_URL", () => {
     expect(readConfig(base).identityProvider).toBeNull();

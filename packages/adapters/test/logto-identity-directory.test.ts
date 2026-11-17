@@ -1,0 +1,125 @@
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { defaultLogtoManagementResource, LogtoIdentityDirectory } from "../src";
+import { StubLogto } from "./support/stub-logto";
+
+const familyId = "0b4f9c1e-2a3d-4e5f-8a9b-0c1d2e3f4a5b";
+const details = { expiresAt: new Date("2026-11-24T10:00:00Z"), link: "https://agenda.example.org/invitation" };
+
+describe("the Logto Identity Directory", () => {
+  let logto: StubLogto;
+  let clock: number;
+  let directory: LogtoIdentityDirectory;
+  beforeEach(async () => {
+    logto = await StubLogto.start();
+    clock = 1_000_000;
+    directory = new LogtoIdentityDirectory(
+      { api: "logto", endpoint: logto.endpoint, clientId: "m2m-client", clientSecret: "m2m:secret" },
+      { now: () => clock },
+    );
+  });
+  afterEach(async () => {
+    await logto.stop();
+  });
+
+  it("creates a Family's organization with the Family id in its customData", async () => {
+    const organizationId = await directory.createOrganization(familyId, "The Müllers");
+    expect(logto.organizations.get(organizationId)).toMatchObject({ name: "The Müllers", customData: { familyId } });
+  });
+
+  it("signs in with client credentials for the Management API, and reuses the token until shortly before it expires", async () => {
+    await directory.createOrganization(familyId, "A");
+    await directory.createOrganization(familyId, "B");
+    expect(logto.tokenRequests).toHaveLength(1);
+    const [request] = logto.tokenRequests;
+    expect(request?.authorization).toBe(`Basic ${Buffer.from("m2m-client:m2m%3Asecret").toString("base64")}`);
+    expect(Object.fromEntries(request?.form ?? [])).toEqual({ grant_type: "client_credentials", resource: defaultLogtoManagementResource, scope: "all" });
+    expect(logto.requests.map((call) => call.authorization)).toEqual(["Bearer token-1", "Bearer token-1"]);
+
+    clock += 3_540_000;
+    await directory.createOrganization(familyId, "C");
+    expect(logto.tokenRequests).toHaveLength(2);
+    expect(logto.requests.at(-1)?.authorization).toBe("Bearer token-2");
+  });
+
+  it("asks for the resource it is given", async () => {
+    const cloud = new LogtoIdentityDirectory({ api: "logto", endpoint: logto.endpoint, clientId: "c", clientSecret: "s" }, { resource: "https://tenant.logto.app/api" });
+    await cloud.createOrganization(familyId, "A");
+    expect(logto.tokenRequests[0]?.form.get("resource")).toBe("https://tenant.logto.app/api");
+  });
+
+  it("fails when Logto refuses the credentials", async () => {
+    logto.refuseToken = true;
+    await expect(directory.createOrganization(familyId, "A")).rejects.toThrow(/refused the management client's credentials with 401/);
+  });
+
+  it("fails naming the request Logto refused", async () => {
+    logto.failNext = 500;
+    await expect(directory.createOrganization(familyId, "A")).rejects.toThrow(/answered POST \/api\/organizations with 500/);
+  });
+
+  it("adds a member with the role admin, and lists the members with email and last sign-in", async () => {
+    const organizationId = await directory.createOrganization(familyId, "A");
+    logto.users.set("user-1", { primaryEmail: "anna@example.org", lastSignInAt: Date.parse("2026-11-01T08:00:00Z") });
+    logto.users.set("user-2", { primaryEmail: null, lastSignInAt: null });
+    await directory.addMember(organizationId, "user-1");
+    await directory.addMember(organizationId, "user-2");
+    expect(logto.organizations.get(organizationId)?.members.get("user-1")).toEqual(["role-admin"]);
+    expect(logto.requests.filter((call) => call.path.startsWith("/api/organization-roles"))).toHaveLength(1);
+    expect(await directory.listMembers(organizationId)).toEqual([
+      { userId: "user-1", email: "anna@example.org", lastSignInAt: new Date("2026-11-01T08:00:00Z") },
+      { userId: "user-2", email: null, lastSignInAt: null },
+    ]);
+  });
+
+  it("lists members across pages", async () => {
+    const organizationId = await directory.createOrganization(familyId, "A");
+    const members = logto.organizations.get(organizationId)?.members;
+    for (let index = 0; index < 150; index++) members?.set(`user-${index}`, []);
+    const listed = await directory.listMembers(organizationId);
+    expect(listed).toHaveLength(150);
+    expect(listed.at(-1)?.userId).toBe("user-149");
+  });
+
+  it("removes a member", async () => {
+    const organizationId = await directory.createOrganization(familyId, "A");
+    await directory.addMember(organizationId, "user-1");
+    await directory.removeMember(organizationId, "user-1");
+    expect(await directory.listMembers(organizationId)).toEqual([]);
+  });
+
+  it("fails when Logto has no organization role admin", async () => {
+    logto.roles = [{ id: "role-other", name: "admin-like" }];
+    const organizationId = await directory.createOrganization(familyId, "A");
+    await expect(directory.addMember(organizationId, "user-1")).rejects.toThrow(/no organization role "admin"/);
+  });
+
+  it("invites by email as an admin, with the expiry and the link for the email, and lists the pending invitations", async () => {
+    const organizationId = await directory.createOrganization(familyId, "A");
+    const invitation = await directory.invite(organizationId, "ben@example.org", details);
+    expect(invitation).toMatchObject({ email: "ben@example.org", expiresAt: details.expiresAt });
+    expect(logto.invitations.get(invitation.invitationId)).toMatchObject({
+      organizationId,
+      organizationRoleIds: ["role-admin"],
+      messagePayload: { link: details.link },
+    });
+    const other = await directory.createOrganization(familyId, "B");
+    await directory.invite(other, "carl@example.org", details);
+    expect(await directory.listInvitations(organizationId)).toEqual([invitation]);
+  });
+
+  it("revokes an invitation, which is then no longer pending", async () => {
+    const organizationId = await directory.createOrganization(familyId, "A");
+    const invitation = await directory.invite(organizationId, "ben@example.org", details);
+    await directory.revokeInvitation(organizationId, invitation.invitationId);
+    expect(logto.invitations.get(invitation.invitationId)?.status).toBe("Revoked");
+    expect(await directory.listInvitations(organizationId)).toEqual([]);
+  });
+
+  it("refuses to revoke another organization's invitation", async () => {
+    const organizationId = await directory.createOrganization(familyId, "A");
+    const other = await directory.createOrganization(familyId, "B");
+    const invitation = await directory.invite(other, "ben@example.org", details);
+    await expect(directory.revokeInvitation(organizationId, invitation.invitationId)).rejects.toThrow(/is not one of organization/);
+    expect(logto.invitations.get(invitation.invitationId)?.status).toBe("Pending");
+  });
+});

@@ -1,5 +1,5 @@
 import { parseFamilyId, type FamilyId } from "@family-agenda/adapters";
-import { parseFamilyIdClaim, parseIdentityProviderConnection, parseIdentityProviderSettings, type IdentityProviderConnectionSettings, type IdentityProviderSettings } from "@family-agenda/application";
+import { parseFamilyIdClaim, parseIdentityDirectorySettings, parseIdentityProviderConnection, parseIdentityProviderSettings, type IdentityDirectorySettings, type IdentityProviderConnectionSettings, type IdentityProviderSettings } from "@family-agenda/application";
 import { parsePluginUrls, type PluginBinding } from "./plugin-containers/bindings";
 import { versionOf } from "./version";
 
@@ -32,6 +32,11 @@ export type Config = {
   publicUrl: string | null;
   /** The Identity Provider from the `OIDC_*` variables, below `PUBLIC_URL`; null when `OIDC_ISSUER_URL` is not set. */
   identityProvider: IdentityProviderSettings | null;
+  /**
+   * The Identity Provider's management API from the `IDP_MANAGEMENT_*` variables (ADR-0010), which
+   * switches on registration and the Admins page; null when none of them is set.
+   */
+  identityDirectory: IdentityDirectorySettings | null;
   /** The release the image was built from, such as `0.3.1` or `main-1a2b3c4`; `dev` for a build from the working tree. */
   version: string;
 };
@@ -193,6 +198,7 @@ function sharedConfigOf(env: NodeJS.ProcessEnv): Omit<Config, Exclude<FixedOnly,
     port: Number(env.PORT ?? 3000),
     trigger: triggerConfigOf(env),
     trustProxy: env.TRUST_PROXY === "true",
+    identityDirectory: identityDirectoryOf(env),
     version: versionOf(env),
   };
 }
@@ -237,6 +243,25 @@ function publicUrlOf(value: string | undefined): string | null {
   const publicUrl = parsePublicUrl(value);
   if (publicUrl === null) throw new Error("PUBLIC_URL must be an http or https address, such as http://192.168.1.10:8080 or https://home.example.org/agenda");
   return publicUrl;
+}
+
+const identityDirectoryProblems = {
+  "invalid-api": "IDP_MANAGEMENT_API must be logto when any IDP_MANAGEMENT_* variable is set",
+  "invalid-endpoint": "IDP_MANAGEMENT_ENDPOINT must be an http or https address without query, such as https://id.example.org",
+  "client-id-missing": "IDP_MANAGEMENT_CLIENT_ID must be set when IDP_MANAGEMENT_API is",
+  "client-secret-missing": "IDP_MANAGEMENT_CLIENT_SECRET must be set when IDP_MANAGEMENT_API is",
+} as const;
+
+/** The management API of ADR-0010, none without any `IDP_MANAGEMENT_*` variable; refuses an incomplete or wrong one, naming the variable. */
+function identityDirectoryOf(env: NodeJS.ProcessEnv): IdentityDirectorySettings | null {
+  const parsed = parseIdentityDirectorySettings({
+    api: env.IDP_MANAGEMENT_API,
+    endpoint: env.IDP_MANAGEMENT_ENDPOINT,
+    clientId: env.IDP_MANAGEMENT_CLIENT_ID,
+    clientSecret: env.IDP_MANAGEMENT_CLIENT_SECRET,
+  });
+  if (!parsed.ok) throw new Error(identityDirectoryProblems[parsed.problem]);
+  return parsed.settings;
 }
 
 const identityProviderProblems = {
