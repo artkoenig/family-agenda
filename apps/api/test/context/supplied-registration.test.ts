@@ -201,18 +201,16 @@ describe("registration in supplied mode (ADR-0010)", () => {
     expect([1, 2, 3, 20].map(retryDelayMs)).toEqual([10_000, 20_000, 40_000, 3_600_000]);
   });
 
-  it("starts off without the webhook, and on with it, offering sign-up to every Family", async () => {
+  it("starts off without the webhook, and on with it", async () => {
     await boot();
     const shared = await bootShared({ tessdataDirectory: tessdata, bundledTessdataDirectory: null, clock, idpWebhookSecret: idpSecret, identityDirectoryClient: directory });
     const off = await startSuppliedRegistration(shared, null, { error: () => {} });
     expect(off.events).toBeNull();
-    expect(off.shared).toBe(shared);
     await off.close();
     const second = await acquirePostgres();
     try {
       const on = await startSuppliedRegistration(shared, { url: webhookUrl, secret: webhookSecret, registrationDatabaseUrl: "postgres://unused" }, { error: () => {} }, () => second.connect());
       expect(on.events).not.toBeNull();
-      expect(await on.shared.registration?.isOpen()).toBe(true);
       await on.close();
     } finally {
       await second.release();

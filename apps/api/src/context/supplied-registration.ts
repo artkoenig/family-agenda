@@ -32,8 +32,6 @@ export type SuppliedRegistration = {
 export const deliverEveryMs = 10_000;
 
 export type StartedRegistration = {
-  /** The shared wiring, with the deployment's registration while it is on: every Family's sign-in page then offers sign-up. */
-  shared: SharedWiring;
   /** The events the caller port receives; null while registration is off. */
   events: RegistrationEvents | null;
   close(): Promise<void>;
@@ -42,7 +40,7 @@ export type StartedRegistration = {
 /**
  * Starts a supplied core's registration from `FAMILY_WEBHOOK_*` (ADR-0010), retrying pending
  * deliveries every `deliverEveryMs`, whichever core of the deployment comes first. Off without the
- * webhook: no events are received and no sign-up is offered.
+ * webhook: no events are received.
  */
 export async function startSuppliedRegistration(
   shared: SharedWiring,
@@ -51,7 +49,7 @@ export async function startSuppliedRegistration(
   connect: (databaseUrl: string) => PostgresConnection = connectPostgres,
 ): Promise<StartedRegistration> {
   const opened = settings && (await openSuppliedRegistration({ shared, webhook: settings, database: connect(settings.registrationDatabaseUrl) }));
-  if (!opened) return { shared, events: null, close: () => Promise.resolve() };
+  if (!opened) return { events: null, close: () => Promise.resolve() };
   const delivering = setInterval(() => {
     opened.webhook.deliverDue().catch((error: unknown) => {
       log.error(`Could not deliver the pending family.created webhooks${error instanceof Error ? ` (${error.name})` : ""}`);
@@ -59,7 +57,6 @@ export async function startSuppliedRegistration(
   }, deliverEveryMs);
   delivering.unref();
   return {
-    shared: { ...shared, registration: opened.registration },
     events: opened.events,
     close: () => {
       clearInterval(delivering);
