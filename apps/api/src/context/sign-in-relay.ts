@@ -1,8 +1,8 @@
 import { createCipheriv, createDecipheriv, createHash, hkdfSync, randomBytes, timingSafeEqual } from "node:crypto";
-import { completeSignIn, signedOutPath, type AdmittedIdentity, type IdentityProviderClient, type InvitationAcceptance, type SignInSecrets } from "@family-agenda/application";
+import { completeSignIn, type AdmittedIdentity, type IdentityProviderClient, type InvitationAcceptance, type SignInSecrets } from "@family-agenda/application";
 import { z } from "zod";
 import type { SuppliedIdentityProvider } from "../config";
-import { handoverPath, type FamilySignInRelay } from "../http/app";
+import { handoverPath, signInStartPath, type FamilySignInRelay } from "../http/app";
 import type { Context } from "./context";
 
 /** How long a sign-in may stay at the Identity Provider: its `state` is refused after. */
@@ -155,9 +155,10 @@ export class SignInRelay {
     const query = new URL(request.url).search;
     const sealed = new URLSearchParams(query).get("state") ?? "";
     const state = opened(this.#options.contextKey, "state", stateSchema, sealed, this.#now());
-    // The one callback is the post-logout redirect URI as well: back to the sign-in of the Family that signed out.
+    // The one callback is the post-logout redirect URI as well: back to the Identity Provider's sign-in
+    // screen for the Family that signed out. Its session has ended there, so no one is signed in silently.
     const signedOut = state === null ? opened(this.#options.contextKey, "signed-out", signedOutSchema, sealed, this.#now()) : null;
-    if (signedOut !== null) return answer(303, { location: `${signedOut.returnTo}${signedOutPath}` });
+    if (signedOut !== null) return answer(303, { location: `${signedOut.returnTo}${signInStartPath}` });
     if (state === null) return answer(400, { "content-type": "text/plain; charset=utf-8" }, "The sign-in could not be completed. Start it again.");
     const { familyIdClaim, ...connection } = this.#options.identityProvider;
     const admitted = await completeSignIn(

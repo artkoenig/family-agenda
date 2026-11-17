@@ -145,6 +145,9 @@ const sessionCookie = "fb_session";
 /** Where a Family takes the handover from the one callback of the deployment (supplied mode). */
 export const handoverPath = "/sso/handover";
 
+/** Where a Family sends an Admin to sign in at the Identity Provider. */
+export const signInStartPath = "/sso/start";
+
 /** The refusals the one callback of the deployment names on a Family's sign-in page. */
 const relayedProblems = ["sso-failed", "sso-not-in-group", "sso-no-family", "sso-other-family", "sso-not-member", "sso-email-unverified"] as const;
 
@@ -596,7 +599,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
    * nonce and PKCE verifier; in supplied mode they travel sealed in the `state` to the one callback,
    * and the cookie holds only what binds the handover back to this browser.
    */
-  app.get("/sso/start", async (c) => {
+  app.get(signInStartPath, async (c) => {
     const relay = options.signInRelay;
     const binding = randomBytes(32).toString("base64url");
     const begun = await singleSignOn.begin(requestBaseOf(c), relay?.stateOf(binding, await singleSignOn.organizationId()));
@@ -711,7 +714,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     const admin = token ? await admins.authenticate(token) : null;
     // Without a session, or once it expired, through the Identity Provider again: silently while its own session lasts.
     if (!admin)
-      return c.redirect(href(prefix, singleSignOn.isOfferedAt(requestBaseOf(c)) ? "/sso/start" : "/admin/sign-in"));
+      return c.redirect(href(prefix, singleSignOn.isOfferedAt(requestBaseOf(c)) ? signInStartPath : "/admin/sign-in"));
     c.set("admin", { ...admin, settings: await settings() });
     await next();
   });
