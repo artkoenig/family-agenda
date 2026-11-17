@@ -54,7 +54,7 @@ describe("setting up Logto", () => {
       customCss: "body {}",
       forgotPasswordMethods: [],
     });
-    expect(logto.idTokenConfig()).toEqual({ enabledExtendedClaims: ["roles", "custom_data"] });
+    expect(logto.idTokenConfig()).toEqual({ enabledExtendedClaims: ["roles", "custom_data", "organizations"] });
   });
 
   it("can run again without creating anything twice, keeping the first Admin's password", async () => {

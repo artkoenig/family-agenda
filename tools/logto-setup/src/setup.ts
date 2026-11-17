@@ -69,9 +69,9 @@ export async function setUpLogto(api: ManagementApi, input: SetupInput, newPassw
   if (input.smtp) await ensureSmtpConnector(api, input.smtp);
   const registration = await registrationOutcome(api, input);
   await applySignInExperience(api, input, registration);
-  // Logto puts roles and custom data in the ID token only when they are enabled as extended
-  // claims, besides the scopes `roles` and `custom_data` the core asks for.
-  await api.put("/api/configs/id-token", { enabledExtendedClaims: ["roles", "custom_data"] });
+  // Logto puts roles, custom data and organizations in the ID token only when they are enabled as
+  // extended claims, besides the scopes the core asks for; sign-in reads `organizations` (ADR-0010).
+  await api.put("/api/configs/id-token", { enabledExtendedClaims: ["roles", "custom_data", "organizations"] });
   const idp = input.registration && (registration === "open" || registration === "family-exists") ? await setUpRegistration(api, input.registration) : undefined;
   // Without registration the first Admin is created here (ADR-0009); with it, registration creates them.
   const firstAdminPassword = idp ? undefined : await ensureFirstAdmin(api, input.firstAdmin, roleId, newPassword);

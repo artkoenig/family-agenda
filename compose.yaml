@@ -92,6 +92,9 @@ services:
       ENDPOINT: ${LOGTO_ENDPOINT:-http://localhost:3001}
       ADMIN_ENDPOINT: ${LOGTO_ADMIN_ENDPOINT:-http://localhost:3002}
       TRUST_PROXY_HEADER: ${TRUST_PROXY:-false}
+      # Logto refuses to call private addresses, such as the core's webhook at <PUBLIC_URL>/idp/events
+      # on the home network or the Compose network. IP addresses or CIDR ranges, comma-separated.
+      SSRF_ALLOWED_ADDRESSES: ${LOGTO_SSRF_ALLOWED_ADDRESSES:-10.0.0.0/8,172.16.0.0/12,192.168.0.0/16}
     ports:
       - "${LOGTO_PORT:-3001}:3001"
       - "127.0.0.1:${LOGTO_ADMIN_PORT:-3002}:3002"
