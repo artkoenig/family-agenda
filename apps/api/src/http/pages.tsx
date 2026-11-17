@@ -3914,7 +3914,9 @@ export function LlmEndpointPage(props: {
         description={l.description}
       />
       <Problem message={props.problem} />
-      {props.supplied ? null : (
+      {props.supplied ? (
+        <HeaderStatusLoader />
+      ) : (
         <>
           <form method="post" action={href(prefix, "/admin/llm")} class="fam-sheet fam-sheet__form">
             <Group title={l.connection} level={2}>
@@ -3947,6 +3949,23 @@ export function LlmStatusFragment(props: {
       <ModelField shown={props.shown} check={props.check} oob />
       <LlmHealthStatus ok={props.check.ok} tested={false} />
     </>
+  );
+}
+
+/** What `/admin/llm/status` answers for an endpoint the operator supplies: only its status in the header. */
+export function LlmSuppliedStatusFragment(props: { check: EndpointCheck }) {
+  return <LlmHealthStatus ok={props.check.ok} tested={false} />;
+}
+
+/** Loads the supplied endpoint's status into the header after the page; empty, as nothing else changes. */
+function HeaderStatusLoader() {
+  return (
+    <div
+      id="llm-status-loader"
+      hx-get={href(usePathPrefix(), "/admin/llm/status")}
+      hx-trigger="load"
+      hx-swap="none"
+    ></div>
   );
 }
 

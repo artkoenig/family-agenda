@@ -29,12 +29,31 @@ describe("the AI page with an LLM endpoint the operator supplies", () => {
     expect(page).toContain("/admin/llm/ocr");
   });
 
+  it("loads the supplied endpoint's status into the header, without a model field", async () => {
+    const extractor = new ScriptedExtractor();
+    extractor.offerModels("operator-model");
+    await instance.close();
+    instance = await bootHttpForTest({}, {
+      extractor,
+      suppliedLlmEndpoint: { baseUrl: "https://llm.operator.example/v1", model: "operator-model", apiKey: "sk-operator" },
+    });
+    await instance.app.recoveryKit.confirm();
+    cookie = await signedInCookie(instance);
+
+    const page = await (await instance.get("/admin/llm", { cookie })).text();
+    const status = await (await instance.get("/admin/llm/status", { cookie })).text();
+
+    expect(page).toContain('hx-get="/admin/llm/status"');
+    expect(status).toContain('id="llm-status"');
+    expect(status).toContain("fam-chip--ok");
+    expect(status).not.toContain('id="model-field"');
+  });
+
   it("refuses saving, testing and removing an endpoint", async () => {
     const form = { baseUrl: "http://ollama:11434/v1", model: "gemma3", apiKey: "" };
     expect((await instance.post("/admin/llm", form, { cookie })).status).toBe(404);
     expect((await instance.post("/admin/llm/test", form, { cookie })).status).toBe(404);
     expect((await instance.post("/admin/llm/remove", {}, { cookie })).status).toBe(404);
-    expect((await instance.get("/admin/llm/status", { cookie })).status).toBe(404);
     expect(await instance.app.llmEndpoint.current()).toMatchObject({ model: "operator-model" });
   });
 });

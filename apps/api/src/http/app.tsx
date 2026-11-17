@@ -59,6 +59,7 @@ import {
   LlmEndpointPage,
   LlmNavSummary,
   LlmStatusFragment,
+  LlmSuppliedStatusFragment,
   LlmTestFragment,
   MessagePage,
   RecoveryKitPage,
@@ -1703,9 +1704,9 @@ export function createHttpApp(application: Application, options: HttpOptions) {
   // The saved endpoint's models and status, loaded after the AI page; `model` is the one to keep selected.
   app.get("/admin/llm/status", async (c) => {
     const endpoint = await llmEndpoint.current();
-    if (llmEndpoint.supplied) return c.notFound();
     const check = endpoint ? await llmCheckOf(c, endpoint, false) : null;
     if (!endpoint || !check) return c.notFound();
+    if (llmEndpoint.supplied) return render(c, <LlmSuppliedStatusFragment check={check} />);
     return render(
       c,
       <LlmStatusFragment
