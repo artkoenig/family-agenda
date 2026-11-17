@@ -22,6 +22,7 @@ const idle: PGlite[] = [];
 /** Takes an emptied database, or loads a new one from the migrated snapshot. */
 export async function acquirePostgres(): Promise<InProcessPostgres> {
   const postgres = idle.pop() ?? (await load());
+  let released = false;
   return {
     connect() {
       const db = drizzle(postgres, { schema: postgresSchema });
@@ -39,6 +40,9 @@ export async function acquirePostgres(): Promise<InProcessPostgres> {
       return (await postgres.query<Record<string, unknown>>(sql)).rows;
     },
     async release() {
+      // Handed back twice, the pool would give it to two tests at once.
+      if (released) throw new Error("This database has been released already.");
+      released = true;
       await postgres.exec(inject("postgresReset"));
       idle.push(postgres);
     },

@@ -25,6 +25,8 @@ type Sent = { url: string; headers: Record<string, string>; body: string };
 
 describe("registration in supplied mode (ADR-0010)", () => {
   let database: InProcessPostgres;
+  /** Whether this test booted; one that boots nothing has nothing to hand back. */
+  let booted = false;
   let directory: InMemoryIdentityDirectory;
   let clock: FakeClock;
   let registering: SuppliedRegistration;
@@ -43,6 +45,7 @@ describe("registration in supplied mode (ADR-0010)", () => {
   const boot = async () => {
     tessdata = await mkdtemp(join(tmpdir(), "family-agenda-registration-"));
     database = await acquirePostgres();
+    booted = true;
     directory = new InMemoryIdentityDirectory();
     clock = new FakeClock(new Date("2026-11-17T07:00:00Z"));
     sent = [];
@@ -59,6 +62,8 @@ describe("registration in supplied mode (ADR-0010)", () => {
     fetch(new Request("http://core/idp/events", { method: "POST", body, headers: { "logto-signature-sha-256": signature, ...headers } }));
 
   afterEach(async () => {
+    if (!booted) return;
+    booted = false;
     await registering.close();
     await database.release();
     await rm(tessdata, { recursive: true, force: true });
