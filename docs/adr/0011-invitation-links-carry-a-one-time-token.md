@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 ---
 
 # Invitation links carry a one-time token

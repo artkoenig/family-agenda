@@ -23,6 +23,13 @@ x-app: &app
     OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
     OIDC_REQUIRED_GROUP: ${OIDC_REQUIRED_GROUP:-homelab-admin}
     OIDC_GROUPS_CLAIM: ${OIDC_GROUPS_CLAIM:-groups}
+    # The Identity Provider's management API (ADR-0010), as logto-setup prints it: set together,
+    # they switch on registration, the Admins page and POST /idp/events; none while all are empty.
+    IDP_MANAGEMENT_API: ${IDP_MANAGEMENT_API:-}
+    IDP_MANAGEMENT_ENDPOINT: ${IDP_MANAGEMENT_ENDPOINT:-}
+    IDP_MANAGEMENT_CLIENT_ID: ${IDP_MANAGEMENT_CLIENT_ID:-}
+    IDP_MANAGEMENT_CLIENT_SECRET: ${IDP_MANAGEMENT_CLIENT_SECRET:-}
+    IDP_WEBHOOK_SECRET: ${IDP_WEBHOOK_SECRET:-}
     MASTER_KEY_FILE: /var/lib/family-agenda/master-key/master.key
     BLOB_DIRECTORY: /var/lib/family-agenda/blobs
     TESSDATA_DIRECTORY: /var/lib/family-agenda/tessdata

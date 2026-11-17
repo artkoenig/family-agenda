@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 ---
 
 # Messengers are read through Matrix bridges, behind one singleton Matrix plugin

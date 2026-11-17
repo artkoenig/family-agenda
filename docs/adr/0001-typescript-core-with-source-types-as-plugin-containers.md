@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 ---
 
 # The core is TypeScript in Clean Architecture; Source Types are plugin containers it calls over REST

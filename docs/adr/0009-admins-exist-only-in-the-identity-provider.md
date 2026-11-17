@@ -1,10 +1,12 @@
 ---
-status: proposed
+status: accepted
 ---
 
 # Admins exist only in the Identity Provider; the core keeps no accounts
 
 The core no longer manages people. It stores no passwords and has no table of Admins: whoever the one OpenID Connect Identity Provider vouches for is an Admin, for as long as a session lasts. An Identity Provider is therefore required. For households that run none, the stack ships Logto as an optional container. This supersedes the password half of ADR-0004, and ADR-0007's amendments "in supplied mode, the Context names the Identity Provider" and "sign-in only for known Admins".
+
+Amended by ADR-0010: with a management API, membership in the Family's organization decides who is an Admin, in both modes, instead of the required group and the Family claim; Admins are added and removed on the Admins page, and the first registration creates the Family.
 
 ## Decision
 
@@ -21,7 +23,7 @@ The core no longer manages people. It stores no passwords and has no table of Ad
 - **Startup.** It runs under the Compose profile `idp` (`docker compose --profile idp up`). Its own database `logto` lives on the stack's existing Postgres (Logto needs 14 or later). Its admin console is not published to the outside by default.
 - **One command sets it up** and can be repeated. It:
   - creates the OIDC client (traditional web app) with its redirect URIs, and the role `homelab-admin`
-  - turns self-registration off (`signInMode: SignIn`)
+  - turns self-registration off (`signInMode: SignIn`); amended by ADR-0010: with a management API it stays open until the first registration created the Family
   - applies the sign-in branding: logo, colours, and the versioned `deploy/idp/logto-sign-in.css` as custom CSS
   - configures the SMTP connector only when `SMTP_*` is set
   - creates the first user with the role and prints a one-time password
