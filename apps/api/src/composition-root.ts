@@ -361,21 +361,42 @@ export class FamilyNotPreparedError extends Error {
   }
 }
 
+/** A Context naming another organization than the one the Family's database holds (ADR-0010). */
+export class OrganizationIdConflictError extends Error {
+  constructor() {
+    super("The database holds another organization of the Family than the Context names; nothing was changed.");
+    this.name = "OrganizationIdConflictError";
+  }
+}
+
+/**
+ * Records the Family's organization a Context names while the database holds none, as registration
+ * does in fixed mode; refuses one that differs from the organization recorded.
+ */
+async function recordSuppliedOrganizationId(postgres: PostgresConnection, organizationId: string): Promise<void> {
+  const families = new PostgresFamilyRepository(postgres.db);
+  if (await families.recordOrganizationId(organizationId)) return;
+  if ((await families.organizationId()) !== organizationId) throw new OrganizationIdConflictError();
+}
+
 /**
  * Wires the Family `familyId` names on its database, as a core in supplied mode opens one from a
  * Context (ADR-0003). A database that holds no Family, or one an older release prepared, is refused
  * as not prepared, for the core to prepare it first; one a newer release migrated, one of the old
  * data model, or one that holds another Family id, is refused with the error that says so. Each is
  * refused before anything is written. On a prepared one it migrates nothing, writes no Family id
- * and moves no blobs; it only records the Source Types seen for the first time, as starting does.
+ * and moves no blobs; it only records the Source Types seen for the first time, as starting does,
+ * and the Family's organization `organizationId` names while it has none; one that differs from the
+ * organization recorded is refused before anything is written.
  */
-export async function openPreparedFamily(shared: SharedWiring, config: FamilyConfig & { familyId: FamilyId }): Promise<Application> {
+export async function openPreparedFamily(shared: SharedWiring, config: FamilyConfig & { familyId: FamilyId; organizationId?: string }): Promise<Application> {
   const postgres = connectionOf(config);
   const masterKey = await withDatabase(postgres, async () => {
     await checkPreparedSchema(postgres);
     const stored = await storedFamilyId(postgres.db);
     if (stored === null) throw new FamilyNotPreparedError();
     if (stored !== config.familyId) throw new FamilyIdConflictError(stored, config.familyId);
+    if (config.organizationId !== undefined) await recordSuppliedOrganizationId(postgres, config.organizationId);
     await startSourceTypes(shared, postgres, config.familyId);
     return familyKeyOf(postgres, config);
   });

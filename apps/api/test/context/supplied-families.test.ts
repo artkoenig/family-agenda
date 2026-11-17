@@ -205,6 +205,45 @@ describe("a core in supplied mode", () => {
     expect((await request(a)).status).toBe(200);
   });
 
+  describe("with the Family's organization in its Context", () => {
+    const organizationOf = async (context: Context) => (await databases.get(context.databaseUrl)!.query("select organization_id from family"))[0]?.organization_id;
+
+    it("records it on opening while the database has none, for sign-in to find", async () => {
+      const withOrganization = { ...a, organizationId: "org-a" };
+
+      expect((await request(withOrganization)).status).toBe(200);
+
+      expect(await organizationOf(a)).toBe("org-a");
+      expect(await on(withOrganization, (application) => application.singleSignOn.organizationId())).toBe("org-a");
+    });
+
+    it("records it on the opening that prepares an empty database", async () => {
+      others.set("postgres://empty", await PGlite.create());
+      const empty = { ...a, databaseUrl: "postgres://empty", organizationId: "org-a" };
+
+      expect((await request(empty)).status).toBe(200);
+
+      expect(await on(empty, (application) => application.singleSignOn.organizationId())).toBe("org-a");
+    });
+
+    it("refuses one that differs from the organization recorded, writing nothing", async () => {
+      await request({ ...a, organizationId: "org-a" });
+
+      const answer = await request({ ...b, ...a, organizationId: "org-b" });
+
+      expect(answer.status).toBe(403);
+      expect(await organizationOf(a)).toBe("org-a");
+      expect(warnings.join()).toContain("organization-id-differs");
+    });
+
+    it("keeps the organization recorded for a Context without one", async () => {
+      await request({ ...a, organizationId: "org-a" });
+
+      expect((await request(a)).status).toBe(200);
+      expect(await organizationOf(a)).toBe("org-a");
+    });
+  });
+
   it("answers 503 for a database it cannot reach, and tries again with the next request", async () => {
     const lost = { ...a, databaseUrl: "postgres://lost" };
     expect((await request(lost)).status).toBe(503);

@@ -67,6 +67,7 @@ export function suppliedFetch({ contextKey, families, version, log, signInCallba
 
 const refusalOf = {
   "family-id-differs": () => refusal(403, "The Context names a database of another Family."),
+  "organization-id-differs": () => refusal(403, "organization-id-differs: the Context names another organization than the one the Family's database holds."),
   "migrated-by-newer-release": () => refusal(409, "migrated-by-newer-release: a newer release migrated the database the Context names; another core may serve it."),
   "old-data-model": () => refusal(409, "old-data-model: the database the Context names holds the data model from before its rebuild."),
   migrating: () => refusal(503, "migrating: the Family's database is being prepared; try again shortly."),

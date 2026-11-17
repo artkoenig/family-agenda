@@ -3,8 +3,11 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { retryDelayMs, type WebhookPost } from "@family-agenda/application";
+import { PGlite } from "@electric-sql/pglite";
+import { migrateFamily, migrationsFolder, parseFamilyId, postgresSchema, type FamilyId } from "@family-agenda/adapters";
+import { drizzle } from "drizzle-orm/pglite";
 import { afterEach, describe, expect, it } from "vitest";
-import { bootShared } from "../../src/composition-root";
+import { bootShared, type SharedWiring } from "../../src/composition-root";
 import { contextHeader } from "../../src/context/context";
 import { SuppliedFamilies } from "../../src/context/supplied-families";
 import { suppliedFetch } from "../../src/context/supplied-http";
@@ -35,6 +38,7 @@ describe("registration in supplied mode (ADR-0010)", () => {
   let answers: (number | Error)[];
   let fetch: (request: Request) => Promise<Response>;
   let tessdata: string;
+  let shared: SharedWiring;
 
   const post: WebhookPost = (url, init) => {
     sent.push({ url, ...init });
@@ -50,7 +54,7 @@ describe("registration in supplied mode (ADR-0010)", () => {
     clock = new FakeClock(new Date("2026-11-17T07:00:00Z"));
     sent = [];
     answers = [];
-    const shared = await bootShared({ tessdataDirectory: tessdata, bundledTessdataDirectory: null, clock, idpWebhookSecret: idpSecret, identityDirectoryClient: directory });
+    shared = await bootShared({ tessdataDirectory: tessdata, bundledTessdataDirectory: null, clock, idpWebhookSecret: idpSecret, identityDirectoryClient: directory });
     const opened = await openSuppliedRegistration({ shared, webhook: { url: webhookUrl, secret: webhookSecret }, database: database.connect(), post });
     if (opened === null) throw new Error("registration is off");
     registering = opened;
@@ -94,6 +98,41 @@ describe("registration in supplied mode (ADR-0010)", () => {
     });
     expect(organizations[0]?.[1].familyId).not.toBe(organizations[1]?.[1].familyId);
     expect(await database.query("select * from family_created_delivery")).toEqual([]);
+  });
+
+  it("lets the platform hand the organization of family.created to the new Family's empty database through its Context, for sign-in to find", async () => {
+    await boot();
+    await send(postRegister("user-anna", "anna@example.org"));
+    const created = JSON.parse(sent[0]?.body ?? "") as { familyId: string; organizationId: string };
+    // The platform creates an empty database for the Family, and supplies a Context naming both.
+    const empty = await PGlite.create();
+    const families = new SuppliedFamilies({
+      shared,
+      serving: () => () => new Response("a Family"),
+      connectDatabase: () => {
+        const db = drizzle(empty, { schema: postgresSchema });
+        return { db, migrate: (options: { familyId?: FamilyId } = {}) => migrateFamily(db, migrationsFolder, options.familyId), close: () => Promise.resolve() };
+      },
+    });
+    try {
+      const context = {
+        familyId: parseFamilyId(created.familyId) as FamilyId,
+        databaseUrl: "postgres://family",
+        familyKey: Buffer.alloc(32).toString("base64url"),
+        blobDirectory: tessdata,
+        timeZone: "Europe/Berlin",
+        publicUrl: "https://agenda.example.org/anna",
+        organizationId: created.organizationId,
+        expiresAt: clock.now().getTime() + 60_000,
+      } as const;
+      const opening = await families.serve(context, (family) => family.application.singleSignOn.organizationId());
+
+      expect(opening).toEqual({ ok: true, family: created.organizationId });
+      expect(directory.organizations.get(created.organizationId)?.members.has("user-anna")).toBe(true);
+    } finally {
+      await families.close();
+      await empty.close();
+    }
   });
 
   it("does nothing for an event seen before, a wrong signature or an unverified email", async () => {
