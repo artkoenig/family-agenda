@@ -106,6 +106,7 @@ export const de: Catalogue = {
     intro: "Admins melden sich über den Identity Provider dieser Instanz an.",
     noIdentityProvider: "Kein Identity Provider ist verbunden, daher kann sich niemand anmelden. Setze OIDC_ISSUER_URL, OIDC_CLIENT_ID und OIDC_CLIENT_SECRET.",
     singleSignOn: "Mit Passkey anmelden",
+    signUp: "Neu hier? Registrieren",
   },
 
 

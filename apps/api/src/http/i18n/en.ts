@@ -122,6 +122,7 @@ export const en = {
     intro: "Admins sign in through the Identity Provider of this Instance.",
     noIdentityProvider: "No Identity Provider is connected, so no one can sign in. Set OIDC_ISSUER_URL, OIDC_CLIENT_ID and OIDC_CLIENT_SECRET.",
     singleSignOn: "Sign in with passkey",
+    signUp: "New here? Register",
   },
 
 
