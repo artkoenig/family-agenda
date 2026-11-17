@@ -100,6 +100,8 @@ export function SignInPage(props: {
   problem?: string;
   /** Whether an Identity Provider is offered at the address the request came to. */
   singleSignOn: boolean;
+  /** Whether the Identity Provider takes registrations (ADR-0010): then a link to its sign-up screen. */
+  signUp?: boolean;
 }) {
   const prefix = usePathPrefix();
   const { t } = useTranslation();
@@ -114,6 +116,11 @@ export function SignInPage(props: {
           <a href={href(prefix, "/sso/start")} class="fam-button fam-button--primary">
             {t.signIn.singleSignOn}
           </a>
+          {props.signUp ? (
+            <a href={href(prefix, "/sso/start?screen=register")} class="fam-button">
+              {t.signIn.signUp}
+            </a>
+          ) : null}
         </div>
       ) : null}
     </EntrancePage>

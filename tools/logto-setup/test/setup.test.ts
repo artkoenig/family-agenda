@@ -13,6 +13,12 @@ const input: SetupInput = {
 const smtp = { host: "mail.example.org", port: 587, user: "agenda", password: "mail-password", fromEmail: "agenda@example.org" };
 let passwords = 0;
 const newPassword = () => `one-time-${String(++passwords)}`;
+/** `setup` without a first Admin, as when registration creates them. */
+const noFirstAdmin = (setup: SetupInput): SetupInput => {
+  const copy = { ...setup };
+  delete copy.firstAdmin;
+  return copy;
+};
 
 describe("setting up Logto", () => {
   it("creates the client, the role and the first Admin with that role, and prints the OIDC values", async () => {
@@ -118,6 +124,95 @@ describe("setting up Logto", () => {
     expect(result.oidc).toMatchObject({ OIDC_FAMILY_ID_CLAIM: "custom_data.familyId" });
     expect(result.oidc).not.toHaveProperty("OIDC_GROUPS_CLAIM");
     expect(result.oidc).not.toHaveProperty("OIDC_REQUIRED_GROUP");
+  });
+});
+
+describe("opening registration (ADR-0010)", () => {
+  const registration = {
+    eventsUrl: "https://agenda.example.org/idp/events",
+    management: { endpoint: "https://sign-in.example.org", clientId: "core", clientSecret: "core-secret" },
+  };
+  const registering: SetupInput = { ...input, smtp, registration };
+  const withoutFirstAdmin = noFirstAdmin(registering);
+
+  it("opens sign-up by email with a required verification, and creates no first Admin", async () => {
+    const logto = fakeManagementApi();
+
+    const result = await setUpLogto(logto.api, withoutFirstAdmin, newPassword);
+
+    expect(result.registration).toBe("open");
+    expect(logto.signInExperience()).toMatchObject({
+      signInMode: "SignInAndRegister",
+      signUp: { identifiers: ["email"], password: true, verify: true },
+      signIn: { methods: [expect.objectContaining({ identifier: "email", password: true }), expect.objectContaining({ identifier: "username", password: true })] },
+    });
+    expect(logto.tables.users).toEqual([]);
+    expect(result.firstAdminPassword).toBeUndefined();
+  });
+
+  it("registers the PostRegister webhook to the core, makes the organization role admin, and prints the IDP values", async () => {
+    const logto = fakeManagementApi();
+
+    const result = await setUpLogto(logto.api, registering, newPassword);
+
+    const [hook] = logto.tables.hooks ?? [];
+    expect(hook).toMatchObject({ name: "Family Agenda", events: ["PostRegister"], config: { url: registration.eventsUrl } });
+    expect(logto.tables["organization-roles"]).toEqual([expect.objectContaining({ name: "admin" })]);
+    expect(result.idp).toEqual({
+      IDP_MANAGEMENT_API: "logto",
+      IDP_MANAGEMENT_ENDPOINT: "https://sign-in.example.org",
+      IDP_MANAGEMENT_CLIENT_ID: "core",
+      IDP_MANAGEMENT_CLIENT_SECRET: "core-secret",
+      IDP_WEBHOOK_SECRET: `signing-key-of-${hook?.id ?? ""}`,
+    });
+  });
+
+  it("can run again without a second webhook or role, keeping the webhook's key and following a new address", async () => {
+    const logto = fakeManagementApi();
+    const first = await setUpLogto(logto.api, registering, newPassword);
+
+    const second = await setUpLogto(logto.api, { ...registering, registration: { ...registration, eventsUrl: "https://new.example.org/idp/events" } }, newPassword);
+
+    expect(logto.tables.hooks).toHaveLength(1);
+    expect(logto.tables.hooks?.[0]).toMatchObject({ config: { url: "https://new.example.org/idp/events" } });
+    expect(logto.tables["organization-roles"]).toHaveLength(1);
+    expect(second.idp).toEqual(first.idp);
+  });
+
+  it("keeps registration closed in fixed mode once a Family exists, but not in supplied mode", async () => {
+    const logto = fakeManagementApi();
+    logto.tables.organizations?.push({ id: "org-1", name: "Family", customData: { familyId: "family-1" } });
+    const supplied = fakeManagementApi();
+    supplied.tables.organizations?.push({ id: "org-1", name: "Family" });
+
+    const result = await setUpLogto(logto.api, registering, newPassword);
+    const cloud = await setUpLogto(supplied.api, { ...registering, suppliedMode: true }, newPassword);
+
+    expect(result.registration).toBe("family-exists");
+    expect(logto.signInExperience()).toMatchObject({ signInMode: "SignIn" });
+    expect(result.idp).toHaveProperty("IDP_WEBHOOK_SECRET");
+    expect(cloud.registration).toBe("open");
+  });
+
+  it("keeps ADR-0009's setup without SMTP, as Logto cannot verify an email then", async () => {
+    const logto = fakeManagementApi();
+
+    const result = await setUpLogto(logto.api, { ...input, registration }, newPassword);
+
+    expect(result.registration).toBe("needs-smtp");
+    expect(result.idp).toBeUndefined();
+    expect(logto.signInExperience()).toMatchObject({ signInMode: "SignIn" });
+    expect(logto.signInExperience()).not.toHaveProperty("signUp");
+    expect(logto.tables.hooks).toEqual([]);
+    expect(logto.tables.users).toHaveLength(1);
+  });
+
+  it("is off without a management API", async () => {
+    expect((await setUpLogto(fakeManagementApi().api, { ...input, smtp }, newPassword)).registration).toBe("off");
+  });
+
+  it("refuses to run without a first Admin when registration stays closed", async () => {
+    await expect(setUpLogto(fakeManagementApi().api, noFirstAdmin(input), newPassword)).rejects.toThrow("FIRST_ADMIN_USERNAME");
   });
 });
 

@@ -144,6 +144,17 @@ function isRelayedProblem(text: string | undefined): text is (typeof relayedProb
   return (relayedProblems as readonly (string | undefined)[]).includes(text);
 }
 
+/**
+ * The authorization URL, opening the Identity Provider's sign-up screen when `signUp` (ADR-0010):
+ * `first_screen=register`, as Logto reads it.
+ */
+function withSignUpScreen(authorizationUrl: string, signUp: boolean): string {
+  if (!signUp) return authorizationUrl;
+  const url = new URL(authorizationUrl);
+  url.searchParams.set("first_screen", "register");
+  return url.href;
+}
+
 /** What the single sign-on cookie holds, or null if it is missing or not what `/sso/start` set. */
 function pendingSignInOf(cookie: string | undefined): PendingSignIn | null {
   try {
@@ -544,7 +555,11 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     const problem = options.signInRelay && isRelayedProblem(relayed) ? problemIn(c, relayed) : undefined;
     return render(
       c,
-      <SignInPage singleSignOn={singleSignOn.isOfferedAt(requestBaseOf(c))} {...(problem ? { problem } : {})} />,
+      <SignInPage
+        singleSignOn={singleSignOn.isOfferedAt(requestBaseOf(c))}
+        signUp={application.registrationEvents !== null}
+        {...(problem ? { problem } : {})}
+      />,
       problem ? 401 : 200,
     );
   });
@@ -570,7 +585,8 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     const begun = await singleSignOn.begin(requestBaseOf(c), relay?.stateOf(binding, await singleSignOn.organizationId()));
     if (!begun) return c.notFound();
     setCookie(c, singleSignOnCookie, relay ? binding : JSON.stringify(begun.pending), singleSignOnCookieOptions(c));
-    return c.redirect(begun.authorizationUrl, 303);
+    const signUp = application.registrationEvents !== null && c.req.query("screen") === "register";
+    return c.redirect(withSignUpScreen(begun.authorizationUrl, signUp), 303);
   });
 
   app.get("/sso/callback", async (c) => {

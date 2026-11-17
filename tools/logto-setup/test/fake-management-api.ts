@@ -9,7 +9,16 @@ type Row = Record<string, unknown> & { id: string };
 export function fakeManagementApi() {
   let next = 0;
   const id = () => `id-${String(++next)}`;
-  const tables: Record<string, Row[]> = { applications: [], roles: [], connectors: [], users: [], secrets: [] };
+  const tables: Record<string, Row[]> = {
+    applications: [],
+    roles: [],
+    connectors: [],
+    users: [],
+    secrets: [],
+    "organization-roles": [],
+    organizations: [],
+    hooks: [],
+  };
   const userRoles: Record<string, string[]> = {};
   let signInExperience: Record<string, unknown> = {};
   let idTokenConfig: unknown;
@@ -42,6 +51,8 @@ export function fakeManagementApi() {
       }
       const created = insert(path.replace("/api/", ""), row);
       // Logto gives a new traditional web app a secret of its own.
+      // Logto signs a new webhook's events with a key of its own making.
+      if (path === "/api/hooks") created.signingKey = `signing-key-of-${created.id}`;
       if (path === "/api/applications") insert("secrets", { applicationId: created.id, value: `secret-of-${created.id}` });
       return Promise.resolve(created);
     },
