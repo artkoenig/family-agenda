@@ -3910,13 +3910,15 @@ export function LlmEndpointPage(props: {
       {/* The status comes with the models, which `/admin/llm/status` loads after the page. */}
       <SectionHeader
         title={l.title}
-        status={<span id="llm-status"></span>}
+        status={
+          <span id="llm-status">
+            {props.supplied ? <HeaderStatusLoader /> : null}
+          </span>
+        }
         description={l.description}
       />
       <Problem message={props.problem} />
-      {props.supplied ? (
-        <HeaderStatusLoader />
-      ) : (
+      {props.supplied ? null : (
         <>
           <form method="post" action={href(prefix, "/admin/llm")} class="fam-sheet fam-sheet__form">
             <Group title={l.connection} level={2}>
@@ -3957,15 +3959,14 @@ export function LlmSuppliedStatusFragment(props: { check: EndpointCheck }) {
   return <LlmHealthStatus ok={props.check.ok} tested={false} />;
 }
 
-/** Loads the supplied endpoint's status into the header after the page; empty, as nothing else changes. */
+/** Loads the supplied endpoint's status into its place in the header, which the chip replaces. */
 function HeaderStatusLoader() {
   return (
-    <div
-      id="llm-status-loader"
+    <span
       hx-get={href(usePathPrefix(), "/admin/llm/status")}
       hx-trigger="load"
       hx-swap="none"
-    ></div>
+    ></span>
   );
 }
 
