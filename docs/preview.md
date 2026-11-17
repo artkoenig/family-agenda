@@ -6,13 +6,14 @@
 pnpm preview up 189      # check out PR 189, build it, start it, seed it
 pnpm preview list        # running previews, their addresses and state
 pnpm preview down 189    # remove its containers, volumes, image and worktree
+pnpm preview up main     # the same for main: a demo with made-up data, at http://localhost:9000
 ```
 
-`up` prints the address, `http://localhost:<9000 + the pull request number>`. Admins sign in only through an Identity Provider (ADR-0009), so a preview brings its own: [mock-oauth2-server](https://github.com/navikt/mock-oauth2-server) at `http://localhost:<20000 + the pull request number>`. Signing in to the Admin area leads to its page: type any name and press sign in, no password or passkey. Whoever signs in there gets the group `homelab-admin`, so is an Admin.
+`up` prints the address, `http://localhost:<9000 + the pull request number>` (9000 for `main`). Admins sign in only through an Identity Provider (ADR-0009), so a preview brings its own: [mock-oauth2-server](https://github.com/navikt/mock-oauth2-server) at `http://localhost:<20000 + the pull request number>` (20000 for `main`). Signing in to the Admin area leads to its page: type any name and press sign in, no password or passkey. Whoever signs in there gets the group `homelab-admin`, so is an Admin.
 
 ## What it does
 
-1. Fetches `pull/<n>/head` and checks it out into `.previews/pr-<n>`, a git worktree, so your working directory stays untouched.
+1. Fetches `pull/<n>/head` (or `main`) and checks it out into `.previews/pr-<n>` (or `.previews/pr-main`), a git worktree, so your working directory stays untouched.
 2. Builds the pull request's image and the demo Source's plugin container (`tools/demo-source/Dockerfile`, from your clone).
 3. Copies `tools/preview/plugins.yml` into the worktree and runs the pull request's own generator on it (`plugins generate`, see [configuration.md](configuration.md#plugins)), which writes `compose.plugins.yaml`, and the ticket key of the egress proxies in `.env`, into the worktree.
 4. Starts the pull request's `compose.yaml`, the generated `compose.plugins.yaml` and the overlay `tools/preview/compose.preview.yaml` as the Compose project `fa-pr-<n>`, with its own port, images and volumes, and without the `mdns` service. The overlay names the preview's own images, also for the egress proxies (`EGRESS_PROXY_IMAGE`), and adds the mock Identity Provider `idp`, which the Instance's `OIDC_*` variables point at. It shares the network of `api`, so its issuer `http://localhost:<port>/preview` is the same address for your browser and for `api`. `down` removes it with the rest. Previews of several pull requests run side by side and beside the real Instance.

@@ -122,14 +122,32 @@ describe("planning a preview of a pull request", () => {
   });
 });
 
+describe("planning a preview of main", () => {
+  it("runs main's code on the slot below the first pull request, apart from every pull request's preview", () => {
+    const main = planPreview("main", repo, user);
+
+    expect(main).toMatchObject({
+      project: "fa-pr-main",
+      port: 9000,
+      idpPort: 20_000,
+      worktree: "/work/family-agenda/.previews/pr-main",
+      image: "family-agenda-preview:pr-main",
+    });
+    expect(main.port).toBeLessThan(planPreview(1, repo, user).port);
+    expect(main.up[0]?.args).toEqual(["fetch", "origin", "+refs/heads/main:refs/previews/pr-main"]);
+    expect(main.down.at(-1)?.args).toEqual(["update-ref", "-d", "refs/previews/pr-main"]);
+  });
+});
+
 describe("listing the previews", () => {
   it("names the pull request, address and state of each running project, and ignores other projects", () => {
     const composeLs = JSON.stringify([
       { Name: "fa-pr-190", Status: "running(3)" },
       { Name: "family-agenda", Status: "running(4)" },
       { Name: "fa-pr-189", Status: "exited(1)" },
+      { Name: "fa-pr-main", Status: "running(5)" },
     ]);
 
-    expect(describePreviews(composeLs)).toEqual(["PR 189  http://localhost:9189  exited(1)", "PR 190  http://localhost:9190  running(3)"]);
+    expect(describePreviews(composeLs)).toEqual(["main  http://localhost:9000  running(5)", "PR 189  http://localhost:9189  exited(1)", "PR 190  http://localhost:9190  running(3)"]);
   });
 });

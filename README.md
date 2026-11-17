@@ -2,7 +2,9 @@
 
 # 🏠 Family Agenda
 
-**Who has to be where, when, with what, in one calm overview.**
+**Honey, I shrunk the mental load.**
+
+Timetables, school mails and parent chats, read for you. The whole week on one page.
 
 Self-hosted · Local-first · No cloud needed
 
@@ -15,6 +17,18 @@ Self-hosted · Local-first · No cloud needed
 </div>
 
 ---
+
+## ⚡ Try it with demo data
+
+Requires Docker with Compose, Node ≥22.12 and pnpm. No Identity Provider, mail account or LLM needed: a demo Family with a week of made-up Events, Lessons and Tasks is seeded for you.
+
+```sh
+git clone https://github.com/artkoenig/family-agenda.git && cd family-agenda
+pnpm install
+pnpm preview up main
+```
+
+Open `http://localhost:9000` and sign in with any name, no password. Confirm the Recovery Kit, then open an Agenda under **Agendas**. Remove it again with `pnpm preview down main`.
 
 ## ✨ What it does
 
