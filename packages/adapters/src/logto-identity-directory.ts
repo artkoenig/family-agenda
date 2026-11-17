@@ -70,7 +70,7 @@ export class LogtoIdentityDirectory implements IdentityDirectory {
       organizationId,
       expiresAt: details.expiresAt.getTime(),
       organizationRoleIds: [await this.adminRoleIdOf()],
-      messagePayload: { link: details.link },
+      messagePayload: { link: details.link, locale: details.locale },
     });
     return invitationOf(invitation);
   }

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { InMemoryIdentityDirectory } from "./support/in-memory-identity-directory";
 
-const details = { expiresAt: new Date("2026-11-24T10:00:00Z"), link: "https://agenda.example.org/invitation" };
+const details = { expiresAt: new Date("2026-11-24T10:00:00Z"), link: "https://agenda.example.org/invitation", locale: "en" };
 
 describe("the in-memory Identity Directory", () => {
   it("keeps organizations with their Family id, members and pending invitations", async () => {

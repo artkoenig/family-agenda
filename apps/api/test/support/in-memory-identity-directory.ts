@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { DirectoryInvitation, DirectoryMember, IdentityDirectory, InvitationDetails } from "@family-agenda/application";
 
-type Organization = { familyId: string; name: string; members: Map<string, DirectoryMember>; invitations: Map<string, DirectoryInvitation & { link: string }> };
+type Organization = { familyId: string; name: string; members: Map<string, DirectoryMember>; invitations: Map<string, DirectoryInvitation & { link: string; locale: string }> };
 
 /** Keeps the organizations of an Identity Provider in memory, for tests that do not care which one it is. */
 export class InMemoryIdentityDirectory implements IdentityDirectory {
@@ -35,7 +35,7 @@ export class InMemoryIdentityDirectory implements IdentityDirectory {
 
   invite(organizationId: string, email: string, details: InvitationDetails): Promise<DirectoryInvitation> {
     const invitation = { invitationId: randomUUID(), email, expiresAt: details.expiresAt };
-    this.organization(organizationId).invitations.set(invitation.invitationId, { ...invitation, link: details.link });
+    this.organization(organizationId).invitations.set(invitation.invitationId, { ...invitation, link: details.link, locale: details.locale });
     return Promise.resolve(invitation);
   }
 

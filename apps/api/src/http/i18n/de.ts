@@ -71,6 +71,10 @@ export const de: Catalogue = {
       "Dein Konto beim Identity Provider gehört nicht zu den Admins dieser Familie. Bitte eine Person, die die Familie schon verwaltet, dich einzuladen.",
     "sso-email-unverified":
       "Der Identity Provider hat keine E-Mail-Adresse für dein Konto bestätigt.",
+    "invalid-email": "Gib eine E-Mail-Adresse ein.",
+    "already-admin": "Diese Adresse ist schon Admin der Familie.",
+    "already-invited": "Diese Adresse ist schon eingeladen.",
+    "last-admin": "Die Familie behält mindestens einen Admin: Der letzte Admin kann nicht entfernt werden.",
     "invalid-interval": `Das Abrufintervall muss zwischen ${pollIntervalRange.minSeconds / 60} Minute und ${pollIntervalRange.maxSeconds / 86_400} Tagen liegen.`,
   },
   problemsWith: {
@@ -157,6 +161,24 @@ export const de: Catalogue = {
     confirm: "Ich habe das Wiederherstellungs-Kit ausgedruckt oder gespeichert.",
     confirmTitle: "Bestätigen",
     continue: "Weiter",
+  },
+
+  admins: {
+    title: "Admins",
+    description: "Wer die Familie verwaltet. Eine Einladung schickt eine E-Mail mit einem Link zur Anmeldung der Familie.",
+    count: (count: number) => plural(count, { one: `${count} Admin`, other: `${count} Admins` }),
+    you: "Du",
+    noEmail: "Keine E-Mail-Adresse",
+    lastSignIn: (date: string) => `Zuletzt angemeldet am ${date}`,
+    neverSignedIn: "Noch nie angemeldet",
+    remove: "Entfernen",
+    invitations: "Offene Einladungen",
+    noInvitations: "Keine offenen Einladungen.",
+    expires: (date: string) => `Läuft ab am ${date}`,
+    revoke: "Zurückziehen",
+    invite: "Einladen",
+    email: "E-Mail-Adresse",
+    inviteHint: "Die Einladung gilt 7 Tage.",
   },
 
   members: {

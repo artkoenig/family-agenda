@@ -27,3 +27,4 @@ export * from "./egress-hosts";
 export * from "./identity-directory";
 export * from "./registration-events";
 export * from "./family-registration";
+export * from "./family-admins";

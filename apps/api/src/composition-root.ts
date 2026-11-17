@@ -49,6 +49,8 @@ import {
   createLanguageAccess,
   createLlmEndpointAccess,
   createSingleSignOn,
+  createFamilyAdmins,
+  type FamilyAdmins,
   createMessageAccess,
   createRecoveryKitAccess,
   createRetention,
@@ -240,6 +242,8 @@ export type Application = {
   registrationEvents: RegistrationEvents | null;
   /** What a registration does, and whether it is open (ADR-0010). */
   registration: Registration;
+  /** The Family's Admins in the Identity Provider, for the Admins page (ADR-0010). */
+  familyAdmins: FamilyAdmins;
   close(): Promise<void>;
 };
 
@@ -556,6 +560,7 @@ function wireFamily(
   });
   const messages = createMessageAccess({ items, blobs });
   const registration = registrationOf(shared, families, mode);
+  const familyAdmins = createFamilyAdmins({ clock, families, directory: shared.directory, familyLanguage: () => languages.familyLanguage() });
   return {
     familyId,
     timeZone,
@@ -580,6 +585,7 @@ function wireFamily(
     messages,
     registrationEvents: registrationEventsOf(shared, postgres, registration),
     registration,
+    familyAdmins,
     close: () => postgres.close(),
   };
 }

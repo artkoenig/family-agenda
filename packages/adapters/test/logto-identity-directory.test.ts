@@ -3,7 +3,7 @@ import { defaultLogtoManagementResource, LogtoIdentityDirectory } from "../src";
 import { StubLogto } from "./support/stub-logto";
 
 const familyId = "0b4f9c1e-2a3d-4e5f-8a9b-0c1d2e3f4a5b";
-const details = { expiresAt: new Date("2026-11-24T10:00:00Z"), link: "https://agenda.example.org/invitation" };
+const details = { expiresAt: new Date("2026-11-24T10:00:00Z"), link: "https://agenda.example.org/invitation", locale: "de" };
 
 describe("the Logto Identity Directory", () => {
   let logto: StubLogto;
@@ -106,7 +106,7 @@ describe("the Logto Identity Directory", () => {
     expect(logto.invitations.get(invitation.invitationId)).toMatchObject({
       organizationId,
       organizationRoleIds: ["role-admin"],
-      messagePayload: { link: details.link },
+      messagePayload: { link: details.link, locale: "de" },
     });
     const other = await directory.createOrganization(familyId, "B");
     await directory.invite(other, "carl@example.org", details);
