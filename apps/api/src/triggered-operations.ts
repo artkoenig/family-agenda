@@ -107,6 +107,7 @@ export type SuppliedTriggerOptions = {
 
 const openingRefusals: Record<OpeningProblem, () => Refused> = {
   "family-id-differs": () => new Refused(403, { error: "family-id-differs" }),
+  "organization-id-differs": () => new Refused(403, { error: "organization-id-differs" }),
   "migrated-by-newer-release": () => new Refused(409, { error: "migrated-by-newer-release" }),
   "old-data-model": () => new Refused(409, { error: "old-data-model" }),
   migrating: () => new Refused(503, { error: "migrating" }),

@@ -25,6 +25,12 @@ export type Context = {
    */
   publicUrl: string;
   /**
+   * The Family's organization at the Identity Provider, which the caller learned from
+   * `family.created` (ADR-0010): the core records it while the database has none, and refuses a
+   * Context naming another. Left out by a caller that registers no Families.
+   */
+  organizationId?: string;
+  /**
    * Milliseconds since the epoch; the Context is refused from then on, after a little skew, and
    * when it lies further ahead than `maximumContextLifetimeMs`.
    */
@@ -75,12 +81,13 @@ const contextSchema = z
     publicUrl: z.string({ error: problems.publicUrl }).transform((text, context) => parsePublicUrl(text) ?? custom(context, problems.publicUrl)),
     // Named when refused, so that a caller still sealing one learns where the Identity Provider went.
     identityProvider: z.unknown().refine((value) => value === undefined, problems.identityProvider).optional(),
+    organizationId: z.string().min(1).optional(),
     expiresAt: z.number(),
   })
   // Nothing of it is kept: it was refused unless absent.
-  .transform((parsed): Context => {
+  .transform(({ organizationId, ...parsed }): Context => {
     delete parsed.identityProvider;
-    return parsed;
+    return organizationId === undefined ? parsed : { ...parsed, organizationId };
   });
 
 const version = "v1";

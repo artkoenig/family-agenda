@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import type { IdentityProviderSettings } from "@family-agenda/application";
 import { connectPostgres, FamilyIdConflictError, NewerMigrationHistoryError, OldMigrationHistoryError, type PostgresConnection } from "@family-agenda/adapters";
-import { checkPreparedSchema, FamilyNotPreparedError, openPreparedFamily, prepareFamily, type Application, type FamilyConfig, type SharedWiring } from "../composition-root";
+import { checkPreparedSchema, FamilyNotPreparedError, OrganizationIdConflictError, openPreparedFamily, prepareFamily, type Application, type FamilyConfig, type SharedWiring } from "../composition-root";
 import type { SuppliedIdentityProvider } from "../config";
 import type { Context } from "./context";
 
@@ -38,7 +38,7 @@ export type SuppliedFamiliesOptions = {
 };
 
 /** Why a Context that opened opens no Family. */
-export type OpeningProblem = "family-id-differs" | "migrated-by-newer-release" | "old-data-model" | "migrating" | "unavailable";
+export type OpeningProblem = "family-id-differs" | "organization-id-differs" | "migrated-by-newer-release" | "old-data-model" | "migrating" | "unavailable";
 
 export type Opening<T> = { ok: true; family: T } | { ok: false; problem: OpeningProblem; error?: unknown };
 
@@ -257,6 +257,7 @@ export class SuppliedFamilies {
       familyKey: Buffer.from(context.familyKey, "base64url"),
       blobDirectory: context.blobDirectory,
       familyId: context.familyId,
+      ...(context.organizationId === undefined ? {} : { organizationId: context.organizationId }),
       // All Families of the core share the OCR models, so removing a language leaves its model.
       keepOcrModels: true,
     });
@@ -280,6 +281,7 @@ function failureOf(error: unknown): Refused | NotPrepared {
 /** Why opening or preparing a Family refused it, by the error it stopped with. */
 function refusalOf(error: unknown): OpeningProblem {
   if (error instanceof FamilyIdConflictError) return "family-id-differs";
+  if (error instanceof OrganizationIdConflictError) return "organization-id-differs";
   if (error instanceof NewerMigrationHistoryError) return "migrated-by-newer-release";
   return error instanceof OldMigrationHistoryError ? "old-data-model" : "unavailable";
 }
@@ -293,8 +295,8 @@ export function databaseKeyOf({ databaseUrl }: Pick<Context, "databaseUrl">): st
  * What opens a Family and what it is wired with, hashed so that the key holds no secret; the expiry
  * is no part of it. A Context with other settings for the same Family opens it anew.
  */
-function keyOf({ familyId, databaseUrl, familyKey, blobDirectory, timeZone, publicUrl }: Context): string {
-  return createHash("sha256").update(JSON.stringify([familyId, databaseUrl, familyKey, blobDirectory, timeZone, publicUrl])).digest("hex");
+function keyOf({ familyId, databaseUrl, familyKey, blobDirectory, timeZone, publicUrl, organizationId }: Context): string {
+  return createHash("sha256").update(JSON.stringify([familyId, databaseUrl, familyKey, blobDirectory, timeZone, publicUrl, organizationId ?? null])).digest("hex");
 }
 
 async function closeEntry(entry: Entry): Promise<void> {

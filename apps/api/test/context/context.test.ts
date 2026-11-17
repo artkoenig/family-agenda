@@ -86,6 +86,15 @@ describe("a Context", () => {
     expect(openContext(key, sealContext(key, { ...context, publicUrl: "https://a.example.org/agenda/" }), 1_000)).toEqual(context);
   });
 
+  it("carries the Family's organization when the caller names it, and none otherwise", () => {
+    expect(openContext(key, sealContext(key, { ...context, organizationId: "org-1" }), 1_000)).toEqual({ ...context, organizationId: "org-1" });
+    expect(openContext(key, sealContext(key, context), 1_000)).not.toHaveProperty("organizationId");
+  });
+
+  it("is refused with an empty organization", () => {
+    expect(openContext(key, sealContext(key, { ...context, organizationId: "" }), 1_000)).toBeNull();
+  });
+
   it.each<[string, Partial<Record<keyof Context | "identityProvider", unknown>>, RegExp]>([
     ["without a time zone", { timeZone: undefined }, /timeZone must be/],
     ["with a time zone that is none", { timeZone: "Mars/Olympus" }, /timeZone must be/],
