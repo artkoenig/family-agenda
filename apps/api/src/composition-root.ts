@@ -298,12 +298,14 @@ export function invitationAcceptanceOf(shared: Pick<SharedWiring, "clock" | "dir
 
 /**
  * How a Family is registered: in fixed mode with a management API, the first registration creates
- * it (ADR-0010). In supplied mode the deployment's registration, which `shared.registration`
- * carries (see `openSuppliedRegistration`), creates every Family; none without it.
+ * it (ADR-0010). A supplied Family offers none: it exists once a Context opens it, and new Admins
+ * join by invitation; the deployment's registration (see `openSuppliedRegistration`) creates Families
+ * through the caller port, outside any Family.
  */
 function registrationOf(shared: SharedWiring, families: PostgresFamilyRepository, mode: "fixed" | "supplied"): Registration {
+  if (mode === "supplied") return noRegistration;
   if (shared.registration !== null) return shared.registration;
-  if (shared.directory === null || mode === "supplied") return noRegistration;
+  if (shared.directory === null) return noRegistration;
   return createFamilyRegistration({ families, directory: shared.directory });
 }
 

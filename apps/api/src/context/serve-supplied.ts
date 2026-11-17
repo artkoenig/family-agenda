@@ -21,8 +21,8 @@ const sweepEveryMs = 60_000;
  * with the Context of its Family too; the core runs no schedule and prepares no Family of its own.
  */
 export async function serveSupplied(config: SuppliedConfig, log: TriggerLog) {
-  const registering = await startSuppliedRegistration(await bootShared(config), config.familyWebhook, log);
-  const { shared } = registering;
+  const shared = await bootShared(config);
+  const registering = await startSuppliedRegistration(shared, config.familyWebhook, log);
   const client = new OidcIdentityProviderClient();
   const relay = new SignInRelay({ contextKey: config.contextKey, identityProvider: config.identityProvider, client, ...invitationAcceptanceOf(shared) });
   const families = new SuppliedFamilies({

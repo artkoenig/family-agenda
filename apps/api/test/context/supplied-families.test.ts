@@ -120,7 +120,10 @@ describe("a core in supplied mode", () => {
     seen = [];
     warnings = [];
     catalog = new FakeTessdataCatalog();
-    const shared = await bootShared({ tessdataDirectory: join(directory, "tessdata"), bundledTessdataDirectory: null, tessdataCatalog: catalog, clock: new FakeClock(new Date(now)) });
+    const shared = await bootShared({ tessdataDirectory: join(directory, "tessdata"), bundledTessdataDirectory: null, tessdataCatalog: catalog, clock: new FakeClock(new Date(now)),
+      // The deployment's registration, open as with `FAMILY_WEBHOOK_URL` set (ADR-0010).
+      registration: { isOpen: () => Promise.resolve(true), register: () => Promise.resolve() },
+    });
     provider = new ScriptedIdentityProviderClient();
     const supplied = { ...identityProvider, requiredGroup: "homelab-admin", groupsClaim: "groups", familyIdClaim: "custom_data.familyId", callbackUrl };
     const relay = new SignInRelay({ contextKey, identityProvider: supplied, client: provider, now: () => now });
@@ -528,6 +531,20 @@ describe("a core in supplied mode", () => {
         expect((await request(context, "/admin", { headers: { cookie: session.pair } })).headers.get("location")).toMatch(/\/admin\/recovery-kit$/);
       }
       expect(warnings.join()).not.toContain("s3cret");
+    });
+
+    it("offers no sign-up at a Family: its sign-in page has no Register link, and screen=register starts a plain sign-in", async () => {
+      const page = await (await request(a, "/admin/sign-in")).text();
+      expect(page).not.toContain("screen=register");
+      expect(page).not.toMatch(/>\s*Register\s*</);
+      const start = await request(a, "/sso/start?screen=register");
+      expect(new URL(start.headers.get("location") ?? "").searchParams.has("first_screen")).toBe(false);
+    });
+
+    it("still starts a sign-in from an invitation link, with its one-time token", async () => {
+      const start = await request(a, "/sso/start?one_time_token=ott-1&login_hint=carla%40example.org");
+      const authorization = new URL(start.headers.get("location") ?? "").searchParams;
+      expect([authorization.get("one_time_token"), authorization.get("login_hint")]).toEqual(["ott-1", "carla@example.org"]);
     });
 
     it("answers the Family's own callback path with nothing in supplied mode: sign-ins return to the one callback", async () => {
