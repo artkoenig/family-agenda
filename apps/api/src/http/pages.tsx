@@ -3890,6 +3890,8 @@ function ChoiceField(props: {
 export function LlmEndpointPage(props: {
   admin: SignedInAdmin;
   endpoint: LlmEndpointSummary | null;
+  /** Whether the operator supplies the endpoint: then no connection is shown, nor can one be changed. */
+  supplied: boolean;
   /** The OCR languages, which read what the endpoint's model cannot. */
   languages: LanguageSettings;
   /** How many messages wait to be read. */
@@ -3908,19 +3910,27 @@ export function LlmEndpointPage(props: {
       {/* The status comes with the models, which `/admin/llm/status` loads after the page. */}
       <SectionHeader
         title={l.title}
-        status={<span id="llm-status"></span>}
+        status={
+          <span id="llm-status">
+            {props.supplied ? <HeaderStatusLoader /> : null}
+          </span>
+        }
         description={l.description}
       />
       <Problem message={props.problem} />
-      <form method="post" action={href(prefix, "/admin/llm")} class="fam-sheet fam-sheet__form">
-        <Group title={l.connection} level={2}>
-          <ConnectionFields shown={shown} endpoint={endpoint} />
-        </Group>
-        <OptionsGroup configured={endpoint !== null} />
-      </form>
-      {endpoint ? (
-        <form method="post" action={href(prefix, "/admin/llm/remove")} id="remove-llm" />
-      ) : null}
+      {props.supplied ? null : (
+        <>
+          <form method="post" action={href(prefix, "/admin/llm")} class="fam-sheet fam-sheet__form">
+            <Group title={l.connection} level={2}>
+              <ConnectionFields shown={shown} endpoint={endpoint} />
+            </Group>
+            <OptionsGroup configured={endpoint !== null} />
+          </form>
+          {endpoint ? (
+            <form method="post" action={href(prefix, "/admin/llm/remove")} id="remove-llm" />
+          ) : null}
+        </>
+      )}
       {endpoint && props.waiting > 0 ? (
         <section class="fam-sheet">
           <WaitingGroup label={l.waitingTitle} waiting={props.waiting} />
@@ -3941,6 +3951,22 @@ export function LlmStatusFragment(props: {
       <ModelField shown={props.shown} check={props.check} oob />
       <LlmHealthStatus ok={props.check.ok} tested={false} />
     </>
+  );
+}
+
+/** What `/admin/llm/status` answers for an endpoint the operator supplies: only its status in the header. */
+export function LlmSuppliedStatusFragment(props: { check: EndpointCheck }) {
+  return <LlmHealthStatus ok={props.check.ok} tested={false} />;
+}
+
+/** Loads the supplied endpoint's status into its place in the header, which the chip replaces. */
+function HeaderStatusLoader() {
+  return (
+    <span
+      hx-get={href(usePathPrefix(), "/admin/llm/status")}
+      hx-trigger="load"
+      hx-swap="none"
+    ></span>
   );
 }
 

@@ -1,5 +1,6 @@
 import { logtoOrganizations, parseFamilyId, type FamilyId } from "@family-agenda/adapters";
-import { parseFamilyIdClaim, parseIdentityDirectorySettings, parseIdentityProviderConnection, parseIdentityProviderSettings, type IdentityDirectorySettings, type IdentityProviderConnectionSettings, type OrganizationsClaim, type IdentityProviderSettings } from "@family-agenda/application";
+import { readFileSync } from "node:fs";
+import { parseFamilyIdClaim, parseIdentityDirectorySettings, parseIdentityProviderConnection, parseIdentityProviderSettings, type IdentityDirectorySettings, type IdentityProviderConnectionSettings, type OrganizationsClaim, type IdentityProviderSettings, type LlmEndpoint } from "@family-agenda/application";
 import { parsePluginUrls, type PluginBinding } from "./plugin-containers/bindings";
 import { versionOf } from "./version";
 
@@ -42,6 +43,11 @@ export type Config = {
    * (ADR-0010); required with the management API, null without it, which leaves `POST /idp/events` off.
    */
   idpWebhookSecret: string | null;
+  /**
+   * The LLM endpoint every Family extracts through, from the `LLM_*` variables; null when none is set,
+   * and each Family's Admins save their own.
+   */
+  suppliedLlmEndpoint: LlmEndpoint | null;
   /** The release the image was built from, such as `0.3.1` or `main-1a2b3c4`; `dev` for a build from the working tree. */
   version: string;
 };
@@ -276,6 +282,7 @@ function sharedConfigOf(env: NodeJS.ProcessEnv): Omit<Config, Exclude<FixedOnly,
     trigger: triggerConfigOf(env),
     trustProxy: env.TRUST_PROXY === "true",
     ...identityDirectoryConfigOf(env),
+    suppliedLlmEndpoint: suppliedLlmEndpointOf(env),
     version: versionOf(env),
   };
 }
@@ -374,4 +381,31 @@ function identityProviderOf(env: NodeJS.ProcessEnv, publicUrl: string | null): I
   });
   if (!parsed.ok) throw new Error(identityProviderProblems[parsed.problem]);
   return parsed.settings;
+}
+
+/** What an LLM endpoint the operator supplies is read from; the API key may come from a file instead. */
+const llmVariables = ["LLM_BASE_URL", "LLM_MODEL", "LLM_API_KEY", "LLM_API_KEY_FILE"] as const;
+
+/** The LLM endpoint of every Family, none without any `LLM_*` variable; refuses a partial or wrong one, naming the variable. */
+function suppliedLlmEndpointOf(env: NodeJS.ProcessEnv): LlmEndpoint | null {
+  const given = llmVariables.find((variable) => env[variable]);
+  if (!given) return null;
+  const model = env.LLM_MODEL ?? "";
+  if (!env.LLM_BASE_URL) throw new Error(`LLM_BASE_URL must be set when ${given} is`);
+  if (model === "") throw new Error("LLM_MODEL must be set when LLM_BASE_URL is");
+  const baseUrl = parsePublicUrl(env.LLM_BASE_URL);
+  if (baseUrl === null) throw new Error("LLM_BASE_URL must be an http or https address without query, such as https://api.openai.com/v1");
+  return { baseUrl, model, apiKey: llmApiKeyOf(env) };
+}
+
+/** The API key from `LLM_API_KEY` or the file `LLM_API_KEY_FILE` names; null for none. */
+function llmApiKeyOf(env: NodeJS.ProcessEnv): string | null {
+  const file = env.LLM_API_KEY_FILE ?? "";
+  if (file === "") return env.LLM_API_KEY || null;
+  if (env.LLM_API_KEY) throw new Error("LLM_API_KEY and LLM_API_KEY_FILE must not both be set");
+  try {
+    return readFileSync(file, "utf8").trim() || null;
+  } catch (error) {
+    throw new Error(`LLM_API_KEY_FILE cannot be read: ${String(error)}`, { cause: error });
+  }
 }

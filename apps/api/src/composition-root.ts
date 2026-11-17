@@ -84,6 +84,7 @@ import {
   type LanguageAccess,
   type IdentityProviderClient,
   type IdentityProviderSettings,
+  type LlmEndpoint,
   type LlmEndpointAccess,
   type SingleSignOn,
   type MessageAccess,
@@ -146,6 +147,8 @@ export type SharedConfig = {
   identityDirectory?: IdentityDirectorySettings | null;
   /** Replaces the adapter of the management API, such as with an in-memory one. */
   identityDirectoryClient?: IdentityDirectory;
+  /** The LLM endpoint every Family extracts through (`LLM_*`); none if left out, and each Family saves its own. */
+  suppliedLlmEndpoint?: LlmEndpoint | null;
 };
 
 /** Where the key of a Family's Source credentials comes from. */
@@ -201,6 +204,8 @@ export type SharedWiring = {
   registration: Registration | null;
   /** The Identity Provider's management API; null without one, and then no registration. */
   directory: IdentityDirectory | null;
+  /** The LLM endpoint the operator supplies for every Family; null for none. */
+  suppliedLlmEndpoint: LlmEndpoint | null;
 };
 
 /** What preparing the Family did: the Family id it has. */
@@ -278,6 +283,7 @@ export async function bootShared(config: SharedConfig): Promise<SharedWiring> {
     extractor: config.extractor ?? new OpenAiCompatibleExtractor(),
     textExtractor: config.textExtractor ?? new CommandLineTextExtractor({ tessdataDirectory: config.tessdataDirectory }),
     ocrModels,
+    suppliedLlmEndpoint: config.suppliedLlmEndpoint ?? null,
     ...registrationWiringOf(config),
   };
 }
@@ -566,6 +572,7 @@ function wireFamily(
     endpoints,
     secrets,
     extractor,
+    supplied: shared.suppliedLlmEndpoint,
   });
   const singleSignOn = createSingleSignOn({
     settings: config.identityProvider ?? null,
@@ -587,6 +594,7 @@ function wireFamily(
     families,
     endpoints,
     secrets,
+    suppliedEndpoint: shared.suppliedLlmEndpoint,
     items,
     blobs,
     extractor,

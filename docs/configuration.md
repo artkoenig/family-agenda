@@ -124,6 +124,19 @@ For a provider serving many Families, not for a home Instance. With `CONTEXT_MOD
   | `503` `{ "error": "migrating" }` | a database being prepared for longer than the trigger waits: try again shortly |
   | `503` `{ "error": "unavailable" }` | a database that cannot be reached |
 
+## LLM endpoint
+
+By default each Family's Admins set the LLM endpoint on the Admin area's AI page. Optionally the operator supplies one for every Family, in either mode. Set `LLM_BASE_URL` and `LLM_MODEL` together; a partial set stops the start.
+
+| Variable | |
+|---|---|
+| `LLM_BASE_URL` | http(s) base URL of an OpenAI-compatible server, such as `https://api.openai.com/v1` or `http://ollama:11434/v1` |
+| `LLM_MODEL` | The model, such as `gpt-5-mini` |
+| `LLM_API_KEY` | Its API key; leave out for a server that asks none |
+| `LLM_API_KEY_FILE` | A file holding the API key, in place of `LLM_API_KEY` (not both) |
+
+With them, every Family extracts through that endpoint; a Family's own saved endpoint is not read, and cannot override it. The AI page shows no connection card (URL, model, API key, acknowledgement, test, switching the AI off); saving, testing and removing an endpoint answer `404`. No Family is asked to acknowledge that third parties' messages leave the house: the operator obtains that through their terms of service. The OCR options and waiting messages stay.
+
 ## Address of the Instance
 
 - **Home network only**: leave the defaults. `mdns` makes `http://family-agenda.local:8080` work from the home network. It needs a Linux host, not Docker Desktop.

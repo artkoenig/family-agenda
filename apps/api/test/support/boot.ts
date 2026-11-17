@@ -59,6 +59,8 @@ export type TestOptions = {
   registration?: NonNullable<ApplicationConfig["registration"]>;
   /** Replaces the Identity Provider's management API, such as with an `InMemoryIdentityDirectory`; none by default. */
   identityDirectoryClient?: NonNullable<ApplicationConfig["identityDirectoryClient"]>;
+  /** The LLM endpoint the operator supplies for every Family; none by default. */
+  suppliedLlmEndpoint?: NonNullable<ApplicationConfig["suppliedLlmEndpoint"]>;
   /** Test plugins served before the first boot, as plugin containers. */
   sourcePlugins?: TestPluginPackage[];
 };

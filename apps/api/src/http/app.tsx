@@ -59,6 +59,7 @@ import {
   LlmEndpointPage,
   LlmNavSummary,
   LlmStatusFragment,
+  LlmSuppliedStatusFragment,
   LlmTestFragment,
   MessagePage,
   RecoveryKitPage,
@@ -1644,6 +1645,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
       <LlmEndpointPage
         admin={c.get("admin")}
         endpoint={await llmEndpoint.current()}
+        supplied={llmEndpoint.supplied}
         languages={await languages.current()}
         waiting={await extraction.waiting()}
         {...(problem ? { problem } : {})}
@@ -1688,6 +1690,11 @@ export function createHttpApp(application: Application, options: HttpOptions) {
 
   app.get("/admin/llm", (c) => llmEndpointPage(c));
 
+  // An endpoint the operator supplies is theirs alone: no Admin saves, tests or removes one.
+  for (const path of ["/admin/llm", "/admin/llm/test", "/admin/llm/remove"]) {
+    app.post(path, async (c, next) => (llmEndpoint.supplied ? c.notFound() : next()));
+  }
+
   app.post("/admin/llm/remove", async (c) => {
     await llmEndpoint.remove();
     llmSaved++;
@@ -1699,6 +1706,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     const endpoint = await llmEndpoint.current();
     const check = endpoint ? await llmCheckOf(c, endpoint, false) : null;
     if (!endpoint || !check) return c.notFound();
+    if (llmEndpoint.supplied) return render(c, <LlmSuppliedStatusFragment check={check} />);
     return render(
       c,
       <LlmStatusFragment
@@ -1758,6 +1766,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
         <LlmEndpointPage
           admin={c.get("admin")}
           endpoint={await llmEndpoint.current()}
+          supplied={llmEndpoint.supplied}
           languages={await languages.current()}
           waiting={await extraction.waiting()}
           entered={entered}
