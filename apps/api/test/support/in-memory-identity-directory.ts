@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
 import type { DirectoryInvitation, DirectoryMember, IdentityDirectory, InvitationDetails } from "@family-agenda/application";
 
-type Organization = { familyId: string; name: string; members: Map<string, DirectoryMember>; invitations: Map<string, DirectoryInvitation & { link: string; locale: string }> };
+type SentInvitation = DirectoryInvitation & { link: string; locale: string };
+type Organization = { familyId: string; name: string; members: Map<string, DirectoryMember>; invitations: Map<string, SentInvitation>; accepted: SentInvitation[] };
 
 /** Keeps the organizations of an Identity Provider in memory, for tests that do not care which one it is. */
 export class InMemoryIdentityDirectory implements IdentityDirectory {
@@ -23,7 +24,7 @@ export class InMemoryIdentityDirectory implements IdentityDirectory {
   createOrganization(familyId: string, name: string): Promise<string> {
     if (this.failing) return Promise.reject(new Error("the Identity Provider is down"));
     const id = randomUUID();
-    this.organizations.set(id, { familyId, name, members: new Map(), invitations: new Map() });
+    this.organizations.set(id, { familyId, name, members: new Map(), invitations: new Map(), accepted: [] });
     return Promise.resolve(id);
   }
 
@@ -57,8 +58,19 @@ export class InMemoryIdentityDirectory implements IdentityDirectory {
     return Promise.resolve();
   }
 
+  acceptInvitation(organizationId: string, invitationId: string, userId: string): Promise<void> {
+    const organization = this.organization(organizationId);
+    const invitation = organization.invitations.get(invitationId);
+    if (!invitation) return Promise.reject(new Error(`Invitation ${invitationId} is not one of organization ${organizationId}`));
+    organization.invitations.delete(invitationId);
+    organization.accepted.push(invitation);
+    return this.addMember(organizationId, userId);
+  }
+
   wasInvited(email: string): Promise<boolean> {
-    return Promise.resolve([...this.organizations.values()].some((organization) => [...organization.invitations.values()].some((invitation) => invitation.email === email)));
+    return Promise.resolve(
+      [...this.organizations.values()].some((organization) => [...organization.invitations.values(), ...organization.accepted].some((invitation) => invitation.email === email)),
+    );
   }
 
   closeRegistration(): Promise<void> {

@@ -26,6 +26,11 @@ export interface IdentityDirectory {
   /** The invitations still pending. */
   listInvitations(organizationId: string): Promise<DirectoryInvitation[]>;
   revokeInvitation(organizationId: string, invitationId: string): Promise<void>;
+  /**
+   * Accepts the pending invitation for the user `userId`: makes them a member with the role
+   * `admin` and marks the invitation `Accepted`. Refuses an invitation of another organization.
+   */
+  acceptInvitation(organizationId: string, invitationId: string, userId: string): Promise<void>;
   /** Whether `email` was invited to any organization, pending or accepted: such a registration creates no Family (ADR-0010). */
   wasInvited(email: string): Promise<boolean>;
   /** Turns registration off, leaving only sign-in (Logto: `signInMode: SignIn`); doing it again changes nothing. */

@@ -138,6 +138,24 @@ describe("the Logto Identity Directory", () => {
     expect(logto.requests.at(-1)?.path).toBe("/api/organization-invitations?invitee=eve%40example.org");
   });
 
+  it("accepts an invitation: the user becomes a member with the role admin, and it is no longer pending", async () => {
+    const organizationId = await directory.createOrganization(familyId, "A");
+    const invitation = await directory.invite(organizationId, "ben@example.org", details);
+    await directory.acceptInvitation(organizationId, invitation.invitationId, "user-ben");
+    expect(logto.requests.at(-1)).toMatchObject({ method: "PUT", path: `/api/organization-invitations/${invitation.invitationId}/status` });
+    expect(logto.invitations.get(invitation.invitationId)?.status).toBe("Accepted");
+    expect(logto.organizations.get(organizationId)?.members.get("user-ben")).toEqual(["role-admin"]);
+    expect(await directory.listInvitations(organizationId)).toEqual([]);
+  });
+
+  it("refuses to accept another organization's invitation", async () => {
+    const organizationId = await directory.createOrganization(familyId, "A");
+    const other = await directory.createOrganization(familyId, "B");
+    const invitation = await directory.invite(other, "ben@example.org", details);
+    await expect(directory.acceptInvitation(organizationId, invitation.invitationId, "user-ben")).rejects.toThrow(/is not one of organization/);
+    expect(logto.invitations.get(invitation.invitationId)?.status).toBe("Pending");
+  });
+
   it("refuses to revoke another organization's invitation", async () => {
     const organizationId = await directory.createOrganization(familyId, "A");
     const other = await directory.createOrganization(familyId, "B");

@@ -112,10 +112,20 @@ export class LogtoIdentityDirectory implements IdentityDirectory {
 
   /** Refuses an invitation of another organization. */
   async revokeInvitation(organizationId: string, invitationId: string): Promise<void> {
+    await this.setStatus(organizationId, invitationId, { status: "Revoked" });
+  }
+
+  /** Logto itself adds the user to the organization, with the invitation's roles, when it turns `Accepted`. */
+  async acceptInvitation(organizationId: string, invitationId: string, userId: string): Promise<void> {
+    await this.setStatus(organizationId, invitationId, { status: "Accepted", acceptedUserId: userId });
+  }
+
+  /** Refuses an invitation of another organization. */
+  private async setStatus(organizationId: string, invitationId: string, status: { status: string; acceptedUserId?: string }): Promise<void> {
     const path = `/api/organization-invitations/${encodeURIComponent(invitationId)}`;
     const invitation = await this.call<LogtoInvitation>("GET", path);
     if (invitation.organizationId !== organizationId) throw new Error(`Invitation ${invitationId} is not one of organization ${organizationId}`);
-    await this.call("PUT", `${path}/status`, { status: "Revoked" });
+    await this.call("PUT", `${path}/status`, status);
   }
 
   async closeRegistration(): Promise<void> {

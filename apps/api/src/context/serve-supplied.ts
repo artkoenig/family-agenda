@@ -1,7 +1,7 @@
 import type { HttpBindings } from "@hono/node-server";
 import { serve } from "@hono/node-server";
 import { openAgendaAccess } from "@family-agenda/application";
-import { bootShared } from "../composition-root";
+import { bootShared, invitationAcceptanceOf } from "../composition-root";
 import type { SuppliedConfig } from "../config";
 import { createHttpApp } from "../http/app";
 import { serveSuppliedTriggers, type TriggerLog } from "../triggered-operations";
@@ -24,7 +24,7 @@ export async function serveSupplied(config: SuppliedConfig, log: TriggerLog) {
   const registering = await startSuppliedRegistration(await bootShared(config), config.familyWebhook, log);
   const { shared } = registering;
   const client = new OidcIdentityProviderClient();
-  const relay = new SignInRelay({ contextKey: config.contextKey, identityProvider: config.identityProvider, client });
+  const relay = new SignInRelay({ contextKey: config.contextKey, identityProvider: config.identityProvider, client, ...invitationAcceptanceOf(shared) });
   const families = new SuppliedFamilies({
     shared,
     settings: { identityProviderClient: client },

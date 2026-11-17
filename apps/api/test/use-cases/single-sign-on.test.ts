@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { bootForTest, type TestInstance } from "../support/boot";
 import { parseFamilyIdClaim, parseIdentityProviderSettings } from "@family-agenda/application";
 import { ScriptedIdentityProviderClient } from "../support/scripted-identity-provider";
+import { InMemoryIdentityDirectory } from "../support/in-memory-identity-directory";
 
 const origin = "https://agenda.example.ts.net";
 const settings = {
@@ -217,6 +218,53 @@ describe("Admins signing in through an Identity Provider", () => {
 
       await instance.query("update family set organization_id = 'org-1'");
       expect(await signInAs({ ...anna, organizations: ["org-2"] })).toEqual({ ok: false, problem: "sso-not-member" });
+    });
+
+    describe("an invitee, not yet a member", () => {
+      let directory: InMemoryIdentityDirectory;
+      let organizationId: string;
+      const week = 7 * 24 * 3_600_000;
+      const details = { link: `${origin}/admin/sign-in`, locale: "en" };
+      beforeEach(async () => {
+        directory = new InMemoryIdentityDirectory();
+        await instance.close();
+        instance = await bootForTest({ identityProviderClient: provider, identityProvider: { ...settings, organizations }, identityDirectoryClient: directory });
+        organizationId = await directory.createOrganization(familyId, "The Müllers");
+        await directory.createOrganization("another-family", "Others");
+        await instance.query(`update family set organization_id = '${organizationId}'`);
+      });
+      const invite = (email: string, expiresInMs = week) =>
+        directory.invite(organizationId, email, { ...details, expiresAt: new Date(instance.clock.now().getTime() + expiresInMs) });
+      const ben = { ...anna, subject: "user-ben", email: "Ben@Example.org", groups: [] };
+
+      it("becomes an Admin by signing in with the invited email: a member, the invitation accepted", async () => {
+        await invite("carl@example.org");
+        const invitation = await invite("ben@example.org");
+
+        expect((await signInAs(ben)).ok).toBe(true);
+        expect([...directory.organization(organizationId).members.keys()]).toEqual(["user-ben"]);
+        expect(directory.organization(organizationId).accepted.map((accepted) => accepted.invitationId)).toEqual([invitation.invitationId]);
+        expect((await directory.listInvitations(organizationId)).map((pending) => pending.email)).toEqual(["carl@example.org"]);
+      });
+
+      it("is refused with an expired invitation, a revoked one, one of another organization, or an unverified email", async () => {
+        await invite("ben@example.org", 1_000);
+        instance.clock.advance(1_000);
+        expect(await signInAs(ben)).toEqual({ ok: false, problem: "sso-not-member" });
+
+        const revoked = await invite("ben@example.org");
+        await directory.revokeInvitation(organizationId, revoked.invitationId);
+        expect(await signInAs(ben)).toEqual({ ok: false, problem: "sso-not-member" });
+
+        const [other] = [...directory.organizations.keys()].filter((id) => id !== organizationId);
+        await directory.invite(other ?? "", "ben@example.org", { ...details, expiresAt: new Date(instance.clock.now().getTime() + week) });
+        expect(await signInAs(ben)).toEqual({ ok: false, problem: "sso-not-member" });
+
+        await invite("ben@example.org");
+        expect(await signInAs({ ...ben, emailVerified: false })).toEqual({ ok: false, problem: "sso-not-member" });
+        expect(await signInAs({ ...ben, email: "  " })).toEqual({ ok: false, problem: "sso-not-member" });
+        expect(directory.organization(organizationId).members.size).toBe(0);
+      });
     });
 
     it("in supplied mode too, instead of the Family claim", async () => {
