@@ -206,4 +206,8 @@ _Avoid_: SSO server, login provider
 
 **Agenda Link**:
 A secret, revocable link that opens one Agenda from outside the home network.
-_Avoid_: Share link, token, magic link
+_Avoid_: Share link, token, magic link (a magic link signs someone in; an Agenda Link signs no one in)
+
+**Invitation link**:
+The link in the email inviting someone to become an Admin of a Family. It starts Single sign-on with a one-time token for the invitee's email, which verifies that email and lets someone without an account create one, even while registration is closed; it works once and expires with the invitation (ADR-0011).
+_Avoid_: Magic link, invite code, accept link

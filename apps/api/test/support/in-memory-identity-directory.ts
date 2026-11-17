@@ -34,6 +34,15 @@ export class InMemoryIdentityDirectory implements IdentityDirectory {
     return Promise.resolve();
   }
 
+  /** The one-time tokens handed out, by token. */
+  readonly signInTokens = new Map<string, { email: string; expiresAt: Date }>();
+
+  createSignInToken(email: string, expiresAt: Date): Promise<string> {
+    const token = `ott-${randomUUID()}`;
+    this.signInTokens.set(token, { email, expiresAt });
+    return Promise.resolve(token);
+  }
+
   invite(organizationId: string, email: string, details: InvitationDetails): Promise<DirectoryInvitation> {
     const invitation = { invitationId: randomUUID(), email, expiresAt: details.expiresAt };
     this.organization(organizationId).invitations.set(invitation.invitationId, { ...invitation, link: details.link, locale: details.locale });

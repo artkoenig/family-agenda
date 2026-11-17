@@ -19,6 +19,8 @@ describe("the in-memory Identity Directory", () => {
     await directory.removeMember(organizationId, "user-2");
     expect(await directory.listMembers(organizationId)).toHaveLength(1);
 
+    const token = await directory.createSignInToken("ben@example.org", details.expiresAt);
+    expect(directory.signInTokens.get(token)).toEqual({ email: "ben@example.org", expiresAt: details.expiresAt });
     const invitation = await directory.invite(organizationId, "ben@example.org", details);
     expect(await directory.listInvitations(organizationId)).toEqual([invitation]);
     expect([await directory.wasInvited("ben@example.org"), await directory.wasInvited("eve@example.org")]).toEqual([true, false]);

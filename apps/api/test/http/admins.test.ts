@@ -36,7 +36,7 @@ describe("the Admins page (ADR-0010)", () => {
 
   it("lists the Admins with their last sign-in, and the pending invitations", async () => {
     await boot();
-    await instance.app.familyAdmins.invite("carla@example.org", "https://x/admin/sign-in");
+    await instance.app.familyAdmins.invite("carla@example.org", () => "https://x/sso/start");
 
     const page = await get("/admin/admins");
 
@@ -45,13 +45,17 @@ describe("the Admins page (ADR-0010)", () => {
     expect(page).toContain("carla@example.org");
   });
 
-  it("invites by email with a link to the Family's sign-in, and names a refused address", async () => {
+  it("invites by email with a link to the Family's sign-in start carrying a one-time token, and names a refused address", async () => {
     await boot();
 
     const invited = await post("/admin/admins/invitations", { email: "carla@example.org" });
     expect(invited.status).toBe(303);
     expect(invited.headers.get("location")).toBe("/admin/admins");
-    expect([...(organization()?.invitations.values() ?? [])][0]).toMatchObject({ email: "carla@example.org", link: "http://localhost/admin/sign-in" });
+    const [token] = [...directory.signInTokens.keys()];
+    expect([...(organization()?.invitations.values() ?? [])][0]).toMatchObject({
+      email: "carla@example.org",
+      link: `http://localhost/sso/start?one_time_token=${token ?? ""}&login_hint=carla%40example.org`,
+    });
 
     const refused = await post("/admin/admins/invitations", { email: "anna@example.org" });
     expect(refused.status).toBe(400);
@@ -60,7 +64,7 @@ describe("the Admins page (ADR-0010)", () => {
 
   it("revokes an invitation", async () => {
     await boot();
-    await instance.app.familyAdmins.invite("carla@example.org", "https://x/admin/sign-in");
+    await instance.app.familyAdmins.invite("carla@example.org", () => "https://x/sso/start");
     const [invitationId] = [...(organization()?.invitations.keys() ?? [])];
 
     expect((await post(`/admin/admins/invitations/${invitationId}/revoke`)).status).toBe(303);

@@ -64,6 +64,16 @@ export class LogtoIdentityDirectory implements IdentityDirectory {
     await this.call("POST", `${path}/${encodeURIComponent(userId)}/roles`, { organizationRoleIds: [await this.adminRoleIdOf()] });
   }
 
+  /**
+   * Logto's one-time token, valid until `expiresAt` and at least a second. No JIT organization in its
+   * context: that would make the invitee a member without a role and refuse the invitation (ADR-0011).
+   */
+  async createSignInToken(email: string, expiresAt: Date): Promise<string> {
+    const expiresIn = Math.max(1, Math.ceil((expiresAt.getTime() - this.now()) / 1000));
+    const created = await this.call<{ token: string }>("POST", "/api/one-time-tokens", { email, expiresIn });
+    return created.token;
+  }
+
   async invite(organizationId: string, email: string, details: InvitationDetails): Promise<DirectoryInvitation> {
     const invitation = await this.call<LogtoInvitation>("POST", "/api/organization-invitations", {
       invitee: email,

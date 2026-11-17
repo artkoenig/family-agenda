@@ -7,6 +7,9 @@ export type DirectoryMember = { userId: string; email: string | null; lastSignIn
 /** A pending invitation to a Family's organization; the Identity Provider mails it. */
 export type DirectoryInvitation = { invitationId: string; email: string; expiresAt: Date };
 
+/** What an invitation link signs in with (ADR-0011): the invitee's email and a one-time token for it. */
+export type InvitationSignIn = { email: string; oneTimeToken: string };
+
 /** What an invitation carries besides the invitee: when it expires, the accept link its email shows, and the language it is written in. */
 export type InvitationDetails = { expiresAt: Date; link: string; locale: string };
 
@@ -19,6 +22,12 @@ export interface IdentityDirectory {
   createOrganization(familyId: string, name: string): Promise<string>;
   /** Makes the user a member of the organization, with the role `admin`. */
   addMember(organizationId: string, userId: string): Promise<void>;
+  /**
+   * A one-time token for `email`, valid until `expiresAt`, that the invitation link carries
+   * (ADR-0011): signing in with it verifies the email and lets someone without an account create
+   * one, though registration is closed. It makes no one a member; the invitation does.
+   */
+  createSignInToken(email: string, expiresAt: Date): Promise<string>;
   /** Invites `email` to the organization as an Admin; the Identity Provider sends the email. */
   invite(organizationId: string, email: string, details: InvitationDetails): Promise<DirectoryInvitation>;
   listMembers(organizationId: string): Promise<DirectoryMember[]>;
