@@ -53,6 +53,10 @@ export type TestOptions = {
   egressTicketKey?: string;
   /** Shorter turns of Sources' runs than in production, for a test that outlasts one. */
   sourceRunTurns?: NonNullable<ApplicationConfig["sourceRunTurns"]>;
+  /** The key the Identity Provider signs its registration events with; none by default. */
+  idpWebhookSecret?: string | null;
+  /** Replaces what a registration does, such as with a recording one. */
+  registration?: NonNullable<ApplicationConfig["registration"]>;
   /** Test plugins served before the first boot, as plugin containers. */
   sourcePlugins?: TestPluginPackage[];
 };

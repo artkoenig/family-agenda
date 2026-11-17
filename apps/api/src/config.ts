@@ -37,6 +37,11 @@ export type Config = {
    * switches on registration and the Admins page; null when none of them is set.
    */
   identityDirectory: IdentityDirectorySettings | null;
+  /**
+   * The key the Identity Provider signs its registration events with, from `IDP_WEBHOOK_SECRET`
+   * (ADR-0010); required with the management API, null without it, which leaves `POST /idp/events` off.
+   */
+  idpWebhookSecret: string | null;
   /** The release the image was built from, such as `0.3.1` or `main-1a2b3c4`; `dev` for a build from the working tree. */
   version: string;
 };
@@ -198,7 +203,7 @@ function sharedConfigOf(env: NodeJS.ProcessEnv): Omit<Config, Exclude<FixedOnly,
     port: Number(env.PORT ?? 3000),
     trigger: triggerConfigOf(env),
     trustProxy: env.TRUST_PROXY === "true",
-    identityDirectory: identityDirectoryOf(env),
+    ...identityDirectoryConfigOf(env),
     version: versionOf(env),
   };
 }
@@ -262,6 +267,19 @@ function identityDirectoryOf(env: NodeJS.ProcessEnv): IdentityDirectorySettings 
   });
   if (!parsed.ok) throw new Error(identityDirectoryProblems[parsed.problem]);
   return parsed.settings;
+}
+
+/** The management API and the webhook secret of its registration events, which come and go together. */
+function identityDirectoryConfigOf(env: NodeJS.ProcessEnv): Pick<Config, "identityDirectory" | "idpWebhookSecret"> {
+  const identityDirectory = identityDirectoryOf(env);
+  const idpWebhookSecret = env.IDP_WEBHOOK_SECRET || null;
+  if (identityDirectory !== null && idpWebhookSecret === null) {
+    throw new Error("IDP_WEBHOOK_SECRET must be set when IDP_MANAGEMENT_API is: the Identity Provider signs its registration events with it");
+  }
+  if (identityDirectory === null && idpWebhookSecret !== null) {
+    throw new Error("IDP_WEBHOOK_SECRET is set, but IDP_MANAGEMENT_API is not: registration needs the management API; set IDP_MANAGEMENT_*, or unset IDP_WEBHOOK_SECRET");
+  }
+  return { identityDirectory, idpWebhookSecret };
 }
 
 const identityProviderProblems = {

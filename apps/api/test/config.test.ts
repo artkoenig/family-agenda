@@ -18,6 +18,7 @@ describe("the Identity Provider's management API in the environment", () => {
     IDP_MANAGEMENT_ENDPOINT: "https://id.example.org/",
     IDP_MANAGEMENT_CLIENT_ID: "m2m",
     IDP_MANAGEMENT_CLIENT_SECRET: "s3cret",
+    IDP_WEBHOOK_SECRET: "logto-signing-key",
   };
   const supplied = { CONTEXT_MODE: "supplied", CONTEXT_KEY: "a-context-key-of-at-least-32-characters", CALLER_PORT: "3002", ...suppliedOidc };
 
@@ -37,6 +38,17 @@ describe("the Identity Provider's management API in the environment", () => {
     expect(() => readConfig({ ...base, ...management, IDP_MANAGEMENT_ENDPOINT: undefined })).toThrow(/^IDP_MANAGEMENT_ENDPOINT must be/);
     expect(() => readConfig({ ...base, ...management, IDP_MANAGEMENT_CLIENT_ID: "" })).toThrow(/^IDP_MANAGEMENT_CLIENT_ID must be set/);
     expect(() => readConfig({ ...base, ...management, IDP_MANAGEMENT_CLIENT_SECRET: undefined })).toThrow(/^IDP_MANAGEMENT_CLIENT_SECRET must be set/);
+  });
+
+  it("reads the webhook secret of registration events with it, and none without", () => {
+    expect(readConfig({ ...base, ...management }).idpWebhookSecret).toBe("logto-signing-key");
+    expect(readSuppliedConfig({ ...supplied, ...management }).idpWebhookSecret).toBe("logto-signing-key");
+    expect(readConfig(base).idpWebhookSecret).toBeNull();
+  });
+
+  it("requires IDP_WEBHOOK_SECRET with the management API, and refuses it without", () => {
+    expect(() => readConfig({ ...base, ...management, IDP_WEBHOOK_SECRET: "" })).toThrow(/^IDP_WEBHOOK_SECRET must be set when IDP_MANAGEMENT_API is/);
+    expect(() => readConfig({ ...base, IDP_WEBHOOK_SECRET: "logto-signing-key" })).toThrow(/^IDP_WEBHOOK_SECRET is set, but IDP_MANAGEMENT_API is not/);
   });
 });
 

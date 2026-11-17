@@ -23,6 +23,7 @@ import {
   PostgresFamilyRepository,
   PostgresItemRepository,
   PostgresLlmEndpointRepository,
+  PostgresProcessedEventRepository,
   OidcIdentityProviderClient,
   PostgresSourceAddingRepository,
   PostgresSourceRunTurns,
@@ -59,6 +60,10 @@ import {
   createSourceTypeAccess,
   createTaskAccess,
   createAgendaAccess,
+  createRegistrationEvents,
+  noRegistration,
+  type Registration,
+  type RegistrationEvents,
   type AdminAccess,
   type Cached,
   type CatalogueAccess,
@@ -122,6 +127,13 @@ export type SharedConfig = {
   extractor?: Extractor;
   /** Replaces the poppler and Tesseract command-line tools, such as with a fake. */
   textExtractor?: TextExtractor;
+  /**
+   * The key the Identity Provider signs its registration events with (`IDP_WEBHOOK_SECRET`,
+   * ADR-0010); without it, no events are received.
+   */
+  idpWebhookSecret?: string | null;
+  /** Replaces what a registration does, such as with a recording one; nothing yet. */
+  registration?: Registration;
 };
 
 /** Where the key of a Family's Source credentials comes from. */
@@ -172,6 +184,8 @@ export type SharedWiring = {
   extractor: Extractor;
   textExtractor: TextExtractor;
   ocrModels: TessdataDirectory;
+  idpWebhookSecret: string | null;
+  registration: Registration;
 };
 
 /** What preparing the Family did: the Family id it has. */
@@ -211,6 +225,8 @@ export type Application = {
   /** Extracts Items from the raw messages that wait for it, as part of due work. */
   extraction: ExtractionAccess;
   messages: MessageAccess;
+  /** The Identity Provider's registration events (ADR-0010); null without `IDP_WEBHOOK_SECRET`. */
+  registrationEvents: RegistrationEvents | null;
   close(): Promise<void>;
 };
 
@@ -243,7 +259,24 @@ export async function bootShared(config: SharedConfig): Promise<SharedWiring> {
     extractor: config.extractor ?? new OpenAiCompatibleExtractor(),
     textExtractor: config.textExtractor ?? new CommandLineTextExtractor({ tessdataDirectory: config.tessdataDirectory }),
     ocrModels,
+    ...registrationWiringOf(config),
   };
+}
+
+/** How a process receives the Identity Provider's registration events, the same for all its Families. */
+function registrationWiringOf(config: SharedConfig): Pick<SharedWiring, "idpWebhookSecret" | "registration"> {
+  return { idpWebhookSecret: config.idpWebhookSecret ?? null, registration: config.registration ?? noRegistration };
+}
+
+/** A Family's registration events, recorded in its database; none without the webhook secret. */
+function registrationEventsOf(shared: SharedWiring, postgres: PostgresConnection): RegistrationEvents | null {
+  if (shared.idpWebhookSecret === null) return null;
+  return createRegistrationEvents({
+    clock: shared.clock,
+    secret: shared.idpWebhookSecret,
+    processedEvents: new PostgresProcessedEventRepository(postgres.db),
+    registration: shared.registration,
+  });
 }
 
 async function withDatabase<T>(postgres: PostgresConnection, fn: () => Promise<T>): Promise<T> {
@@ -515,6 +548,7 @@ function wireFamily(
     singleSignOn,
     extraction,
     messages,
+    registrationEvents: registrationEventsOf(shared, postgres),
     close: () => postgres.close(),
   };
 }
