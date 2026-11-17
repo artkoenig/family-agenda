@@ -23,6 +23,8 @@ How to configure the containers, the address the Family opens, and single sign-o
 | `CALLER_PORT` | none | In supplied mode, required: the only port the core listens on, for the trusted caller; must differ from `PORT` and is never published |
 | `PLUGIN_URLS` | empty | Plugin containers (ADR-0001): `id=url` pairs separated by commas, such as `school-portal=http://school-portal:8080`. The core polls each over REST; one that does not answer shows as "Not reachable" in the Admin area. Set by `compose.plugins.yaml` (see [Plugins](#plugins)); by hand only without one |
 
+`compose.yaml` also sets paths inside the containers, which need no change: `DATABASE_URL`, `MASTER_KEY_FILE`, `BLOB_DIRECTORY`, `TESSDATA_DIRECTORY` (Tesseract models; the image's bundled ones come from `BUNDLED_TESSDATA_DIRECTORY`), and for `plugins generate` `DEPLOYMENT_DIRECTORY` (default `/deployment`).
+
 Data lives in named volumes (`postgres-data`, `master-key`, `blobs`, ...). How to back them up, restore and upgrade is in [upgrading.md](upgrading.md). Keep the Recovery Kit, without it Source credentials cannot be restored (ADR-0003).
 
 ## Plugins
@@ -181,6 +183,20 @@ Set these variables (ADR-0007) and restart. Wrong or missing ones stop the Insta
 
 Behind HTTPS also set `TRUST_PROXY=true` (see above).
 
+Optional, for registration and the Admins page (ADR-0010). Set all or none; the [Logto setup](#with-the-bundled-logto) prints them.
+
+| Variable | |
+|---|---|
+| `IDP_MANAGEMENT_API` | The Identity Provider's management API; only `logto`. Switches on registration, the [Admins page](#who-is-an-admin) and `POST /idp/events` |
+| `IDP_MANAGEMENT_ENDPOINT` | http(s) address of the management API, such as `https://id.example.org` |
+| `IDP_MANAGEMENT_CLIENT_ID` | Client of a machine-to-machine app allowed to use it |
+| `IDP_MANAGEMENT_CLIENT_SECRET` | Its secret |
+| `IDP_WEBHOOK_SECRET` | Key the Identity Provider signs its registration events with. Required with `IDP_MANAGEMENT_API`, refused without it |
+
+With them, organization membership replaces the group: `OIDC_REQUIRED_GROUP` no longer decides who is an Admin.
+
+**Registration in fixed mode.** While the Instance has no Family's organization yet, the sign-in page links to the Identity Provider's sign-up. The first registration creates the organization with that person as its first Admin; registration then closes, and further Admins come by invitation. The Identity Provider must reach `<PUBLIC_URL>/idp/events` (the port of `PORT`), where the core checks each event's signature with `IDP_WEBHOOK_SECRET`.
+
 <a id="in-supplied-mode"></a>In [supplied mode](#supplied-mode) one Identity Provider serves every Family of the deployment (ADR-0009): `OIDC_ISSUER_URL`, `OIDC_CLIENT_ID` and `OIDC_CLIENT_SECRET` are required. No group is checked, so `OIDC_REQUIRED_GROUP` and `OIDC_GROUPS_CLAIM` are refused; instead:
 
 | Variable | |
@@ -200,7 +216,7 @@ The return address comes from the Context, never from the browser, so the callba
 
 **Registration in supplied mode (ADR-0010).** Off unless `FAMILY_WEBHOOK_URL` is set; then each registration not made through an invitation creates a new Family, an organization with the user as its Admin, and posts `family.created` to the platform. The platform keeps its `organizationId` with the Family and puts it in every Context of that Family: the new Family's database is empty until the core prepares it, so only the Context brings the organization there.
 
-**Accepting an invitation (ADR-0010).** The invitation email carries the Invitation link (ADR-0011): `<publicUrl>/sso/start?one_time_token=<token>&login_hint=<email>`. Inviting creates the token through the management API (Logto: `POST /api/one-time-tokens` with the email and `expiresIn` up to the invitation's expiry, no JIT organization). `/sso/start` begins sign-in as usual and hands both parameters on to the Identity Provider, which verifies the email and lets an invitee without an account create one, even with registration closed. The token works once; afterwards the invitee signs in on the sign-in page. Logto mails the link through the SMTP connector's `OrganizationInvitation` template, which the setup defines. The invitation id need not travel, since the invitee's verified email finds it. Someone who signs in there, is not yet a member of the Family's organization and whose verified email has a pending, unexpired invitation to it becomes a member with the role `admin`, and the invitation turns `Accepted` (Logto: `PUT /api/organization-invitations/{id}/status`, which adds the member with the invitation's roles). An expired or revoked invitation, or one to another organization, admits no one. In both modes; their `PostRegister` event creates no Family.
+<a id="accepting-an-invitation"></a>**Accepting an invitation (ADR-0010).** The invitation email carries the Invitation link (ADR-0011): `<publicUrl>/sso/start?one_time_token=<token>&login_hint=<email>`. Inviting creates the token through the management API (Logto: `POST /api/one-time-tokens` with the email and `expiresIn` up to the invitation's expiry, no JIT organization). `/sso/start` begins sign-in as usual and hands both parameters on to the Identity Provider, which verifies the email and lets an invitee without an account create one, even with registration closed. The token works once; afterwards the invitee signs in on the sign-in page. Logto mails the link through the SMTP connector's `OrganizationInvitation` template, which the setup defines. The invitation id need not travel, since the invitee's verified email finds it. Someone who signs in there, is not yet a member of the Family's organization and whose verified email has a pending, unexpired invitation to it becomes a member with the role `admin`, and the invitation turns `Accepted` (Logto: `PUT /api/organization-invitations/{id}/status`, which adds the member with the invitation's roles). An expired or revoked invitation, or one to another organization, admits no one. In both modes; their `PostRegister` event creates no Family.
 
 | Variable | Meaning |
 |---|---|
@@ -217,11 +233,11 @@ The Instance must reach the Identity Provider (discovery, keys, token endpoint).
 Compose ships an optional [Logto](https://logto.io) 1.46.0 as Identity Provider, in the profile `idp`. It uses its own database `logto` on the existing Postgres, which it creates at first start. Idle with one signed-in Admin it takes about 305 MiB RAM (`docker stats`), besides Postgres.
 
 1. Set `LOGTO_ENDPOINT` to the address of Logto's sign-in, port `LOGTO_PORT` (default 3001). Browsers **and** the api container must reach it there, as the issuer is `<LOGTO_ENDPOINT>/oidc`; behind HTTPS also `TRUST_PROXY=true`. Start it: `docker compose --profile idp up -d`.
-2. The admin console listens only on `127.0.0.1:3002` (`LOGTO_ADMIN_PORT`); from elsewhere use an SSH tunnel (`ssh -L 3002:localhost:3002 <host>`). Open it, create the console administrator, then by hand: **Applications → Create → Machine-to-machine**, assign the role **Logto Management API access**, and note its App ID and App secret. Logto offers no way to create this app without the console.
+2. The admin console listens only on `127.0.0.1:3002` (`LOGTO_ADMIN_PORT`; its address `LOGTO_ADMIN_ENDPOINT`, default `http://localhost:3002`); from elsewhere use an SSH tunnel (`ssh -L 3002:localhost:3002 <host>`). Open it, create the console administrator, then by hand: **Applications → Create → Machine-to-machine**, assign the role **Logto Management API access**, and note its App ID and App secret. Logto offers no way to create this app without the console.
 3. Run the setup with `LOGTO_M2M_APP_ID`, `LOGTO_M2M_APP_SECRET`, `LOGTO_ENDPOINT`, `PUBLIC_URL` (or, in supplied mode, `OIDC_CALLBACK_URL`), `FIRST_ADMIN_USERNAME` and `FIRST_ADMIN_EMAIL` set, exported in the shell and passed through, for example `docker compose run --rm -e LOGTO_M2M_APP_ID -e LOGTO_M2M_APP_SECRET -e FIRST_ADMIN_USERNAME -e FIRST_ADMIN_EMAIL api logto-setup` (add `-e SMTP_HOST` and the like as needed; `LOGTO_ENDPOINT` and `PUBLIC_URL` too when they are not already in the api's environment), or `pnpm logto-setup` from a checkout (then `LOGTO_API_ENDPOINT=http://localhost:3001`; inside Compose it defaults to `http://logto:3001`).
 4. Put the printed `OIDC_*` values into `.env` and restart the api. Sign in with the first Admin and the one-time password it printed.
 
-The setup can run again at any time; it creates nothing twice. It creates the Traditional web app "Family Agenda" with the redirect URI and the post-logout redirect URI (`<PUBLIC_URL>/admin/sign-in`, in supplied mode `OIDC_CALLBACK_URL`), the role `OIDC_REQUIRED_GROUP` (default `homelab-admin`), turns self-registration off, applies the Family Agenda branding and `deploy/idp/logto-sign-in.css`, puts roles, custom data and organizations in the ID token, and creates the first Admin with the role, printing a one-time password only on the run that created them. More Admins: create users in the console and assign the role. It prints `OIDC_GROUPS_CLAIM=roles`.
+The setup can run again at any time; it creates nothing twice. It creates the Traditional web app "Family Agenda" with the redirect URI and the post-logout redirect URI (`<PUBLIC_URL>/admin/sign-in`, in supplied mode `OIDC_CALLBACK_URL`), the role `OIDC_REQUIRED_GROUP` (default `homelab-admin`), turns self-registration off, applies the Family Agenda branding (`LOGTO_LOGO_URL` replaces the logo) and `deploy/idp/logto-sign-in.css`, puts roles, custom data and organizations in the ID token, and creates the first Admin with the role, printing a one-time password only on the run that created them. More Admins: create users in the console and assign the role. It prints `OIDC_GROUPS_CLAIM=roles`. This is the setup without registration; with it (below), self-registration opens instead and more Admins come through invitations on the Admins page.
 
 **Forgotten passwords.** With `SMTP_HOST` and `SMTP_FROM` set (`SMTP_PORT` default 587, 465 for TLS; `SMTP_USER`, `SMTP_PASSWORD` optional), the setup configures Logto's SMTP connector and the sign-in page offers a reset by email code. Without SMTP there is no reset link: someone with the console resets the password under **User management**.
 
@@ -231,7 +247,9 @@ The setup can run again at any time; it creates nothing twice. It creates the Tr
 
 ### Who is an Admin
 
-Whoever signs in with a verified email and `OIDC_REQUIRED_GROUP` in the groups claim. Family Agenda stores no Admins, only sessions (the IdP's `sub` and email). Anyone else is refused with a message naming why. A session lasts 12 hours and is not refreshed; after that the browser goes through the Identity Provider again, which checks the group again. `OIDC_KNOWN_ADMINS_ONLY` is gone: the core refuses to start with it set.
+Whoever signs in with a verified email and `OIDC_REQUIRED_GROUP` in the groups claim; with `IDP_MANAGEMENT_API` set, instead whoever is a member of the Family's organization at the Identity Provider (the ID token's organizations), in either mode. Family Agenda stores no Admins, only sessions (the IdP's `sub` and email). Anyone else is refused with a message naming why. A session lasts 12 hours and is not refreshed; after that the browser goes through the Identity Provider again, which checks the group again. `OIDC_KNOWN_ADMINS_ONLY` is gone: the core refuses to start with it set.
+
+**Admins page** (`/admin/admins`, only with `IDP_MANAGEMENT_API`). Lists the Family's Admins and pending invitations. An Admin invites by email: the Identity Provider mails an Invitation link, valid 7 days, and the invitee becomes an Admin on first sign-in (see [Accepting an invitation](#accepting-an-invitation)). Pending invitations can be revoked, Admins removed from the organization.
 
 **Signing out** ends the session and, for a session from single sign-on, signs out at the Identity Provider too (RP-initiated logout, ADR-0009): the browser goes to the provider's `end_session_endpoint` with the ID token, and the provider sends it back to `<PUBLIC_URL>/admin/sign-in`, in supplied mode to `OIDC_CALLBACK_URL`, which hands it on to its Family's sign-in page. Register that address as a post-logout redirect URI with the provider: the Logto setup does so, so **run it again after upgrading** to this release. Without it Logto refuses the sign-out. A provider that names no end session endpoint keeps the old behaviour: only the core's session ends, and the next sign-in may go through silently as the same person.
 
@@ -255,6 +273,7 @@ Sessions are cookies bound to **one host**. The SSO button and the SSO session e
 |---|---|
 | No SSO button on the sign-in page | `OIDC_ISSUER_URL` unset, not on `PUBLIC_URL`, or `TRUST_PROXY` is not `true` behind HTTPS |
 | SSO refused with "not in the group" | User not in the required group, or the `groups` claim is missing |
+| SSO refused with "not among this Family's Admins" | With `IDP_MANAGEMENT_API`: user not a member of the Family's organization; invite them on the Admins page |
 | SSO refused with "belongs to no Family" or "another Family" (supplied mode) | The claim `OIDC_FAMILY_ID_CLAIM` names is missing from the ID token, its scope not enabled, or it holds another Family's id |
 | SSO refused, email problem | Email not verified at the Identity Provider |
 | Asked to sign in again on a link | Link opened on another host than the one signed in on, see "One address for Admins" |

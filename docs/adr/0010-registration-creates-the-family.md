@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 ---
 
 # Registration creates the Family; Admins are invited through the Identity Provider

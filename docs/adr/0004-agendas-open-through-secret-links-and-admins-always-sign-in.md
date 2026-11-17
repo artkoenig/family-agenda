@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 ---
 
 # Agendas open only through their secret Agenda Link; Admins always sign in, by password or OIDC

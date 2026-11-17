@@ -68,6 +68,8 @@ If you use plugin containers, generate `compose.plugins.yaml` again with the new
 
 Port `3001` of the `api`, which served that allowlist, now serves the [Triggered operations](configuration.md#triggered-operations) instead, and only with a `TRIGGER_TOKEN`, which generating `compose.plugins.yaml` again adds to `.env`. Remove any mapping that publishes port `3001` from your own compose files; if you want to reach it from the host, publish it bound to `127.0.0.1` only.
 
+With the bundled Logto, run its [setup](configuration.md#with-the-bundled-logto) again after upgrading: it adds what the new release needs, such as the post-logout redirect URI that signing out requires, and creates nothing twice. A core started with the retired `OIDC_KNOWN_ADMINS_ONLY` refuses to start; remove it from `.env`. For registration and the Admins page, set the `IDP_*` values the setup prints ([Single sign-on](configuration.md#in-family-agenda)); take the `compose.yaml` of the release, which passes them on.
+
 An Instance runs the release you named. `latest` is the newest release; it moves when a new release is published, and only after you pull. An exact version such as `0.3.1` never changes under you.
 
 Check the running version in the Admin area, below the settings list, or at `/api/health`.

@@ -23,8 +23,8 @@ Neither the kit nor the contract is published to a registry. Add both as git dep
 ```json
 {
   "dependencies": {
-    "@family-agenda/plugin-contract": "github:artkoenig/family-agenda#v0.2.0&path:/packages/plugin-contract",
-    "@family-agenda/plugin-kit": "github:artkoenig/family-agenda#v0.2.0&path:/packages/plugin-kit",
+    "@family-agenda/plugin-contract": "github:artkoenig/family-agenda#v0.8.1&path:/packages/plugin-contract",
+    "@family-agenda/plugin-kit": "github:artkoenig/family-agenda#v0.8.1&path:/packages/plugin-kit",
     "tsx": "^4"
   },
   "devDependencies": {

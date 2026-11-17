@@ -10,6 +10,8 @@ Because it is there before any Admin, the setup page of an empty Instance offers
 
 Superseded in part by ADR-0009: no Admin is made or stored, the setup page and `OIDC_KNOWN_ADMINS_ONLY` are gone, and whoever is in the required group is an Admin.
 
+Amended by ADR-0010: with a management API, the Family prepared at start has no organization yet; the first registration creates it at the Identity Provider and records its id with the Family.
+
 ## Considered Options
 
 - **Settings in the Admin area, as before.** Needs an Admin first, so a household that wants only the Identity Provider has to create a password Admin it does not want, then enter the client secret in a form. Rejected.

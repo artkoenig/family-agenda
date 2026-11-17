@@ -27,8 +27,24 @@ A person in the Family whom Items can concern, child or adult.
 _Avoid_: User, profile, kid
 
 **Admin**:
-A parent who signs in through the Identity Provider to manage settings and Sources, and to delete Items that should not be there. The Identity Provider alone decides who is one: by its required role or group in fixed mode, by the Family id it names in supplied mode, where each Admin belongs to exactly one Family. The core keeps no accounts and no passwords.
+A parent who signs in through the Identity Provider to manage settings and Sources, and to delete Items that should not be there. The Identity Provider alone decides who is one: by its required role or group in fixed mode, by the Family id it names in supplied mode, where each Admin belongs to exactly one Family. With a Management API, membership in the Family's Organization decides instead, named by the ID token's organizations claim, in either mode. The core keeps no accounts and no passwords.
 _Avoid_: Owner, superuser, parent account
+
+**Organization**:
+The Family's counterpart in the Identity Provider, created by its Registration; its members are the Family's Admins. Only with a Management API.
+_Avoid_: Tenant, group, team
+
+**Registration**:
+A parent signing up at the Identity Provider, which creates a new Family with them as its first Admin. Self-hosted, only the first one does; registration then closes, and further Admins join by Invitation. Only with a Management API.
+_Avoid_: Sign-up form, onboarding
+
+**Invitation**:
+A pending invite, sent by an Admin by email through the Identity Provider, to become an Admin of the Family; listed and revocable on the Admins page, it expires after 7 days. Accepting it creates no Family.
+_Avoid_: Invite code, membership request
+
+**Admins page**:
+The page in the Admin area that lists the Family's Admins and pending Invitations, invites by email, revokes an Invitation and removes an Admin, never the last one. Only with a Management API.
+_Avoid_: User management, members page
 
 **Agenda**:
 A perspective on the Family's Items, as a timeline of days or a Task List, opened without signing in and read-only except for ticking Tasks done. It is for chosen Family Members, showing only the Items that concern at least one of them, or for the whole Family, showing every Item.
@@ -129,7 +145,7 @@ _Avoid_: Late, expired, missed
 ### Operation
 
 **Context**:
-What a core in supplied mode needs to open the Family one request is for: its Family id, its database, its family key and its blob location, and the settings that are the Family's own: its time zone and its public address (the path prefix included), with an expiry at most a day ahead, encrypted and signed by a trusted caller in front with the Context key. It reaches the core only on the caller port; without a valid one the core refuses the request and opens nothing. It opens only a Family that is already prepared, and writes nothing; only the Triggered operation that prepares the Family writes to its database, with the Context's Family id.
+What a core in supplied mode needs to open the Family one request is for: its Family id, its database, its family key and its blob location, and the settings that are the Family's own: its time zone and its public address (the path prefix included), with an expiry at most a day ahead, encrypted and signed by a trusted caller in front with the Context key. It reaches the core only on the caller port; without a valid one the core refuses the request and opens nothing. It may also carry the Family's Organization id. It opens only a Family that is already prepared, and writes nothing but that Organization id, recorded while none is and refused when it differs; only the Triggered operation that prepares the Family writes to its database, with the Context's Family id.
 _Avoid_: Tenant context, session, family token
 
 **Context key**:
@@ -201,8 +217,12 @@ Signing in as an Admin through the Identity Provider, the only way to sign in. T
 _Avoid_: SSO login, passkey login
 
 **Identity Provider**:
-The one OIDC server of a deployment that Admins sign in through, configured in the environment: the household's own, or the optional Logto container the stack ships. It holds the Admins, their passwords and their roles.
+The one OIDC server of a deployment that Admins sign in through, configured in the environment: the household's own, or the optional Logto container the stack ships. It holds the Admins, their passwords and their roles; with a Management API, also the Families' Organizations.
 _Avoid_: SSO server, login provider
+
+**Management API**:
+The Identity Provider's optional management interface, set by the `IDP_MANAGEMENT_*` variables, that the core reaches through its `IdentityDirectory` port; it switches on Registration and the Admins page. Without it, Admins are managed in the Identity Provider itself.
+_Avoid_: Admin API, IdP API
 
 **Agenda Link**:
 A secret, revocable link that opens one Agenda from outside the home network.
