@@ -613,7 +613,7 @@ describe("a core in supplied mode", () => {
       expect((await handOver(a, second.back.headers.get("location") ?? "", second.sso.pair)).status).toBe(401);
     });
 
-    it("signs out at the Identity Provider too, which returns through the one callback to the Family's sign-in", async () => {
+    it("signs out at the Identity Provider too, which returns through the one callback to the Identity Provider's sign-in screen of the Family", async () => {
       const begun = await begin(a);
       const back = await callback(provider.returnWith(begun.pending, { ...anna, groups: [], familyId: a.familyId, idToken: "ey.anna" }));
       const session = cookieOf(await handOver(a, back.headers.get("location") ?? "", begun.sso.pair), "fb_session");
@@ -626,7 +626,7 @@ describe("a core in supplied mode", () => {
       expect(atProvider.searchParams.get("post_logout_redirect_uri")).toBe(callbackUrl);
       const returned = await callback(`?state=${encodeURIComponent(atProvider.searchParams.get("state") ?? "")}`);
       expect(returned.status).toBe(303);
-      expect(returned.headers.get("location")).toBe(`${a.publicUrl}/admin/sign-in`);
+      expect(returned.headers.get("location")).toBe(`${a.publicUrl}/sso/start`);
 
       // A sign-out state is no sign-in state, and expires.
       now += signInStateLifetimeMs;
