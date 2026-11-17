@@ -55,7 +55,7 @@ export function createLlmEndpointAccess(deps: LlmEndpointDeps) {
       return summaryOf({ baseUrl: stored.baseUrl, model: stored.model, hasApiKey: stored.apiKey !== null });
     },
 
-    /** Whether the saved endpoint answers, with the models it offers to choose from; null if none is saved. */
+    /** Whether the Family's endpoint, supplied or saved, answers, with the models it offers; null if there is none. */
     async check(): Promise<EndpointCheck | null> {
       const endpoint = await endpointOf();
       return endpoint ? deps.extractor.check(endpoint) : null;
@@ -111,6 +111,7 @@ export function createLlmEndpointAccess(deps: LlmEndpointDeps) {
 
 export type LlmEndpointAccess = ReturnType<typeof createLlmEndpointAccess>;
 
+/** What the Admin area shows of an endpoint: never its API key, only whether it has one. */
 function summaryOf(endpoint: Omit<LlmEndpointSummary, "local">): LlmEndpointSummary {
   return { ...endpoint, local: isLocalHost(new URL(endpoint.baseUrl).hostname) };
 }

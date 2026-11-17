@@ -34,6 +34,7 @@ describe("the AI page with an LLM endpoint the operator supplies", () => {
     expect((await instance.post("/admin/llm", form, { cookie })).status).toBe(404);
     expect((await instance.post("/admin/llm/test", form, { cookie })).status).toBe(404);
     expect((await instance.post("/admin/llm/remove", {}, { cookie })).status).toBe(404);
+    expect((await instance.get("/admin/llm/status", { cookie })).status).toBe(404);
     expect(await instance.app.llmEndpoint.current()).toMatchObject({ model: "operator-model" });
   });
 });

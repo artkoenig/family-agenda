@@ -30,7 +30,7 @@ x-app: &app
     IDP_MANAGEMENT_CLIENT_ID: ${IDP_MANAGEMENT_CLIENT_ID:-}
     IDP_MANAGEMENT_CLIENT_SECRET: ${IDP_MANAGEMENT_CLIENT_SECRET:-}
     IDP_WEBHOOK_SECRET: ${IDP_WEBHOOK_SECRET:-}
-    # An LLM endpoint for the Family, set by the operator in place of the AI page; none while all
+    # An LLM endpoint for every Family the Instance serves, set by the operator in place of the AI page; none while all
     # are empty. LLM_BASE_URL and LLM_MODEL go together.
     LLM_BASE_URL: ${LLM_BASE_URL:-}
     LLM_MODEL: ${LLM_MODEL:-}

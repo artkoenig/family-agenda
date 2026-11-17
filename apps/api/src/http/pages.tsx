@@ -3891,7 +3891,7 @@ export function LlmEndpointPage(props: {
   admin: SignedInAdmin;
   endpoint: LlmEndpointSummary | null;
   /** Whether the operator supplies the endpoint: then no connection is shown, nor can one be changed. */
-  supplied?: boolean;
+  supplied: boolean;
   /** The OCR languages, which read what the endpoint's model cannot. */
   languages: LanguageSettings;
   /** How many messages wait to be read. */
