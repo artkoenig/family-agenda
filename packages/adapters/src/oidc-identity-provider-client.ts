@@ -4,6 +4,7 @@ import type {
   IdentityProviderConnection,
   PendingSignIn,
   SignInSecrets,
+  SignOutRequest,
   VerifiedIdentity,
 } from "@family-agenda/application";
 
@@ -104,10 +105,25 @@ export class OidcIdentityProviderClient implements IdentityProviderClient {
         groups: stringsOf(claims[connection.groupsClaim]),
         familyId: connection.familyIdClaim === undefined ? null : stringAt(claims, connection.familyIdClaim),
         organizations: connection.organizations === undefined ? [] : stringsOf(claims[connection.organizations.claim]),
+        ...(tokens.id_token === undefined ? {} : { idToken: tokens.id_token }),
       };
     } catch {
       return null;
     }
+  }
+
+  /** Null too when discovery fails: signing out of the Instance never waits on the provider. */
+  async signOutUrl(connection: IdentityProviderConnection, request: SignOutRequest): Promise<string | null> {
+    const configuration = await configurationOf(connection).catch(() => null);
+    if (configuration === null) return null;
+    if (configuration.serverMetadata().end_session_endpoint === undefined) return null;
+    const parameters: Record<string, string> = {
+      client_id: connection.clientId,
+      post_logout_redirect_uri: request.postLogoutRedirectUri,
+      id_token_hint: request.idToken,
+    };
+    if (request.state !== undefined) parameters.state = request.state;
+    return oidc.buildEndSessionUrl(configuration, parameters).href;
   }
 }
 

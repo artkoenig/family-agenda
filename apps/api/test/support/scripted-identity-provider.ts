@@ -4,6 +4,7 @@ import type {
   IdentityProviderConnection,
   PendingSignIn,
   SignInSecrets,
+  SignOutRequest,
   VerifiedIdentity,
 } from "@family-agenda/application";
 
@@ -16,6 +17,8 @@ export class ScriptedIdentityProviderClient implements IdentityProviderClient {
     connection: IdentityProviderConnection;
     redirectUri: string;
   }[] = [];
+  /** Whether the provider names an end session endpoint; set to false for one that names none. */
+  endSession = true;
   private readonly identities = new Map<string, VerifiedIdentity>();
 
   discover(): Promise<{ ok: true } | { ok: false; message: string }> {
@@ -53,5 +56,16 @@ export class ScriptedIdentityProviderClient implements IdentityProviderClient {
     ).then((identity) =>
       query.get("state") === pending.state ? identity : null,
     );
+  }
+
+  /** `<issuer>/session/end` with the request's parameters, as an OIDC client builds it. */
+  signOutUrl(connection: IdentityProviderConnection, request: SignOutRequest): Promise<string | null> {
+    if (!this.endSession) return Promise.resolve(null);
+    const url = new URL(`${connection.issuerUrl}/session/end`);
+    url.searchParams.set("client_id", connection.clientId);
+    url.searchParams.set("post_logout_redirect_uri", request.postLogoutRedirectUri);
+    url.searchParams.set("id_token_hint", request.idToken);
+    if (request.state !== undefined) url.searchParams.set("state", request.state);
+    return Promise.resolve(url.href);
   }
 }

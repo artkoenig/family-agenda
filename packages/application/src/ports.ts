@@ -103,6 +103,11 @@ export type AdminSession = {
   subject: string;
   /** The verified email address the Identity Provider gave. */
   email: string;
+  /**
+   * The ID token the sign-in returned, the `id_token_hint` of signing out at the Identity Provider
+   * too; null for a session begun without one, such as by an older core.
+   */
+  idToken: string | null;
   expiresAt: Date;
 };
 
@@ -756,7 +761,12 @@ export type VerifiedIdentity = {
   familyId: string | null;
   /** The strings in the connection's organizations claim; none without one, or if it is missing or not a list. */
   organizations: string[];
+  /** The ID token itself, kept with the session to sign out at the provider too; absent if the client gave none. */
+  idToken?: string;
 };
+
+/** Where the provider sends the browser after signing out there, the ID token that signed in, and the `state` it hands back. */
+export type SignOutRequest = { postLogoutRedirectUri: string; idToken: string; state?: string };
 
 /** An OIDC client: authorization code flow with PKCE, scopes `openid email profile` and the groups claim. */
 export interface IdentityProviderClient {
@@ -777,6 +787,11 @@ export interface IdentityProviderClient {
     callbackUrl: string,
     pending: PendingSignIn,
   ): Promise<VerifiedIdentity | null>;
+  /**
+   * Where to send the browser to end its session at the provider too (RP-initiated logout), or null
+   * if the provider names no `end_session_endpoint`.
+   */
+  signOutUrl(connection: IdentityProviderConnection, request: SignOutRequest): Promise<string | null>;
 }
 
 /** An Event a message states, as the model reads it; code resolves its date and checks it. */

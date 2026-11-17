@@ -1,5 +1,5 @@
 import { createCipheriv, createDecipheriv, createHash, hkdfSync, randomBytes, timingSafeEqual } from "node:crypto";
-import { completeSignIn, type AdmittedIdentity, type IdentityProviderClient, type InvitationAcceptance, type SignInSecrets } from "@family-agenda/application";
+import { completeSignIn, signedOutPath, type AdmittedIdentity, type IdentityProviderClient, type InvitationAcceptance, type SignInSecrets } from "@family-agenda/application";
 import { z } from "zod";
 import type { SuppliedIdentityProvider } from "../config";
 import { handoverPath, type FamilySignInRelay } from "../http/app";
@@ -7,6 +7,9 @@ import type { Context } from "./context";
 
 /** How long a sign-in may stay at the Identity Provider: its `state` is refused after. */
 export const signInStateLifetimeMs = 10 * 60_000;
+
+/** How long a sign-out may stay at the Identity Provider before it returns through the one callback: it is sent nowhere after. */
+export const signOutStateLifetimeMs = 10 * 60_000;
 
 /** How long the handover from the one callback to the Family's address may take: it is refused after. */
 export const handoverLifetimeMs = 60_000;
@@ -42,11 +45,19 @@ const handoverSchema = z.strictObject({
   familyId: z.string().min(1),
   subject: z.string().min(1),
   email: z.string().min(1),
+  /** The ID token of the sign-in, for the Family to sign out at the Identity Provider too. */
+  idToken: z.string().min(1).optional(),
   binding: z.string().min(1),
   expiresAt: z.number(),
 });
 
-type Purpose = "state" | "handover";
+/** Where a browser that signed out at the Identity Provider returns to: its Family's address, sealed into the `state` of the sign-out. */
+const signedOutSchema = z.strictObject({
+  returnTo: z.string().min(1),
+  expiresAt: z.number(),
+});
+
+type Purpose = "state" | "handover" | "signed-out";
 
 const version = "v1";
 const ivLength = 12;
@@ -142,14 +153,18 @@ export class SignInRelay {
    */
   async callback(request: Request): Promise<Response> {
     const query = new URL(request.url).search;
-    const state = opened(this.#options.contextKey, "state", stateSchema, new URLSearchParams(query).get("state") ?? "", this.#now());
+    const sealed = new URLSearchParams(query).get("state") ?? "";
+    const state = opened(this.#options.contextKey, "state", stateSchema, sealed, this.#now());
+    // The one callback is the post-logout redirect URI as well: back to the sign-in of the Family that signed out.
+    const signedOut = state === null ? opened(this.#options.contextKey, "signed-out", signedOutSchema, sealed, this.#now()) : null;
+    if (signedOut !== null) return answer(303, { location: `${signedOut.returnTo}${signedOutPath}` });
     if (state === null) return answer(400, { "content-type": "text/plain; charset=utf-8" }, "The sign-in could not be completed. Start it again.");
     const { familyIdClaim, ...connection } = this.#options.identityProvider;
     const admitted = await completeSignIn(
       this.#options.client,
       { ...connection, publicBaseUrl: state.returnTo, family: { claim: familyIdClaim, familyId: state.familyId } },
       query,
-      { state: new URLSearchParams(query).get("state") ?? "", nonce: state.nonce, codeVerifier: state.codeVerifier },
+      { state: sealed, nonce: state.nonce, codeVerifier: state.codeVerifier },
       state.organizationId,
       this.#options.acceptInvitation,
     );
@@ -176,7 +191,12 @@ export class SignInRelay {
     if (handover === null || handover.familyId !== familyId || binding === "" || !sameHash(handover.binding, hashOf(binding))) return null;
     if (this.#taken.has(handover.id)) return null;
     this.#taken.set(handover.id, handover.expiresAt);
-    return { subject: handover.subject, email: handover.email };
+    return { subject: handover.subject, email: handover.email, idToken: handover.idToken };
+  }
+
+  /** The `state` of a sign-out at the Identity Provider by the Family at `returnTo`, which the one callback sends back there. */
+  signedOutState(returnTo: string): string {
+    return seal(this.#options.contextKey, "signed-out", { returnTo, expiresAt: this.#now() + signOutStateLifetimeMs } satisfies z.infer<typeof signedOutSchema>);
   }
 
   /** The relay as the Family of `context` uses it: its `state` returns to its address, and it takes only handovers for it. */
@@ -184,6 +204,7 @@ export class SignInRelay {
     return {
       stateOf: (binding, organizationId) => this.stateOf(context.familyId, context.publicUrl, binding, organizationId),
       take: (token, binding) => this.take(token, context.familyId, binding),
+      signedOutState: () => this.signedOutState(context.publicUrl),
     };
   }
 

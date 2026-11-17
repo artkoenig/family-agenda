@@ -557,6 +557,26 @@ describe("a core in supplied mode", () => {
       expect((await handOver(a, second.back.headers.get("location") ?? "", second.sso.pair)).status).toBe(401);
     });
 
+    it("signs out at the Identity Provider too, which returns through the one callback to the Family's sign-in", async () => {
+      const begun = await begin(a);
+      const back = await callback(provider.returnWith(begun.pending, { ...anna, groups: [], familyId: a.familyId, idToken: "ey.anna" }));
+      const session = cookieOf(await handOver(a, back.headers.get("location") ?? "", begun.sso.pair), "fb_session");
+
+      const signedOut = await request(a, "/admin/sign-out", { method: "POST", headers: { cookie: session.pair, origin: new URL(a.publicUrl).origin } });
+      expect(signedOut.status).toBe(303);
+      const atProvider = new URL(signedOut.headers.get("location") ?? "");
+      expect(`${atProvider.origin}${atProvider.pathname}`).toBe(`${identityProvider.issuerUrl}/session/end`);
+      expect(atProvider.searchParams.get("id_token_hint")).toBe("ey.anna");
+      expect(atProvider.searchParams.get("post_logout_redirect_uri")).toBe(callbackUrl);
+      const returned = await callback(`?state=${encodeURIComponent(atProvider.searchParams.get("state") ?? "")}`);
+      expect(returned.status).toBe(303);
+      expect(returned.headers.get("location")).toBe(`${a.publicUrl}/admin/sign-in`);
+
+      // A sign-out state is no sign-in state, and expires.
+      now += signInStateLifetimeMs;
+      expect((await callback(`?state=${encodeURIComponent(atProvider.searchParams.get("state") ?? "")}`)).status).toBe(400);
+    });
+
     it("opens a Family anew for a Context with other settings, and keeps it apart from the one opened before", async () => {
       await request(a);
       await request({ ...a, publicUrl: "http://core/elsewhere" });

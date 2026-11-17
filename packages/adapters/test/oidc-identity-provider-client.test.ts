@@ -76,6 +76,7 @@ describe("the OIDC client", () => {
       groups: ["homelab-admin"],
       familyId: null,
       organizations: [],
+      idToken: expect.stringMatching(/^ey/) as unknown,
     });
   });
 
@@ -139,6 +140,7 @@ describe("the OIDC client", () => {
       groups: [],
       familyId: null,
       organizations: [],
+      idToken: expect.any(String) as unknown,
     });
   });
 
@@ -187,5 +189,28 @@ describe("the OIDC client", () => {
         forSecret.pending,
       ),
     ).toBeNull();
+  });
+
+  describe("signing out at the provider", () => {
+    const back = "https://agenda.example.ts.net/admin/sign-in";
+
+    it("sends the browser to the end session endpoint with the ID token, the client and where to return", async () => {
+      const url = new URL((await client.signOutUrl(connection(), { postLogoutRedirectUri: back, idToken: "ey.token", state: "s1" })) ?? "");
+
+      expect(`${url.origin}${url.pathname}`).toBe(`${provider.issuer}/session/end`);
+      expect(Object.fromEntries(url.searchParams)).toEqual({ client_id: "family-agenda", post_logout_redirect_uri: back, id_token_hint: "ey.token", state: "s1" });
+    });
+
+    it("leaves out the state when there is none", async () => {
+      const url = new URL((await client.signOutUrl(connection(), { postLogoutRedirectUri: back, idToken: "ey.token" })) ?? "");
+
+      expect(url.searchParams.has("state")).toBe(false);
+    });
+
+    it("gives none when the provider names no end session endpoint, or cannot be discovered", async () => {
+      provider.endSession = false;
+      expect(await client.signOutUrl(connection(), { postLogoutRedirectUri: back, idToken: "ey.token" })).toBeNull();
+      expect(await client.signOutUrl({ ...connection(), issuerUrl: "http://127.0.0.1:1" }, { postLogoutRedirectUri: back, idToken: "ey.token" })).toBeNull();
+    });
   });
 });

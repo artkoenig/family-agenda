@@ -35,6 +35,8 @@ const defaultClaims: IdTokenClaims = {
 export class FakeIdentityProvider {
   /** The claims the next sign-in's ID token carries; set them per test. */
   claims: IdTokenClaims = { ...defaultClaims };
+  /** Whether discovery names an end session endpoint, for RP-initiated logout. */
+  endSession = true;
   private readonly grants = new Map<string, Grant>();
   private server: Server | null = null;
   private key!: CryptoKey;
@@ -101,6 +103,7 @@ export class FakeIdentityProvider {
         response_types_supported: ["code"],
         subject_types_supported: ["public"],
         code_challenge_methods_supported: ["S256"],
+        ...(this.endSession ? { end_session_endpoint: `${this.issuer}/session/end` } : {}),
       });
     },
     "/jwks": (_url, _request, response) => {

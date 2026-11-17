@@ -132,6 +132,37 @@ describe("single sign-on over HTTP", () => {
     expect(opened.status).toBe(200);
   });
 
+  describe("signing out", () => {
+    const signedIn = async () => {
+      const { ssoCookie, callback } = await startSignIn();
+      return sessionOf(await instance.get(callback, { cookie: ssoCookie }));
+    };
+
+    it("ends the session and signs out at the Identity Provider too, which returns to the sign-in page", async () => {
+      const session = await signedIn();
+
+      const signedOut = await instance.post("/admin/sign-out", {}, { cookie: session });
+
+      expect(signedOut.status).toBe(303);
+      const atProvider = new URL(signedOut.headers.get("location") ?? "");
+      expect(`${atProvider.origin}${atProvider.pathname}`).toBe(`${provider.issuer}/session/end`);
+      expect(atProvider.searchParams.get("id_token_hint")).toMatch(/^ey/);
+      expect(atProvider.searchParams.get("client_id")).toBe("family-agenda");
+      expect(atProvider.searchParams.get("post_logout_redirect_uri")).toBe("http://localhost/admin/sign-in");
+      expect((await instance.get("/admin", { cookie: session })).status).toBe(302);
+    });
+
+    it("only ends the session when the provider names no end session endpoint, or the session holds no ID token", async () => {
+      provider.endSession = false;
+      const withoutEndpoint = await instance.post("/admin/sign-out", {}, { cookie: await signedIn() });
+      expect(withoutEndpoint.headers.get("location")).toBe("/admin/sign-in");
+
+      provider.endSession = true;
+      const withoutIdToken = await instance.post("/admin/sign-out", {}, { cookie });
+      expect(withoutIdToken.headers.get("location")).toBe("/admin/sign-in");
+    });
+  });
+
   it("refuses someone outside the required group", async () => {
     const { ssoCookie, callback } = await startSignIn({
       ...anna,

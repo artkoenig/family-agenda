@@ -47,3 +47,12 @@ The core no longer manages people. It stores no passwords and has no table of Ad
 - **Tests and previews** use an in-process fake Identity Provider that signs tokens. Preview Instances (`pnpm preview`) use `mock-oauth2-server`, so trying a PR needs no passkeys or passwords.
 - **Logto's own limits apply.** Its docs recommend generous hardware (2 vCPU, 8 GiB). Measured idle with one signed-in Admin (Logto 1.46.0, `docker stats`): about 305 MiB RAM and near-zero CPU, besides the shared Postgres. In the open-source edition, Logto's console has one console administrator without a Logto licence; household Admins are ordinary Logto users and are not limited.
 - **The `OIDC_*` set changes.** New: `OIDC_GROUPS_CLAIM`, `OIDC_FAMILY_ID_CLAIM`, `OIDC_CALLBACK_URL`. Gone: `OIDC_KNOWN_ADMINS_ONLY`. In supplied mode the variables are now required rather than refused, and a Context with `identityProvider` is refused.
+
+## Amendment: signing out signs out at the Identity Provider too
+
+Ending only the core's session left the Identity Provider's session running. The next sign-in, or an Invitation link with a one-time token (ADR-0011), then went through silently as the Admin before, so on a shared computer the next person became someone else. Signing out now uses OIDC RP-initiated logout.
+
+- **The session keeps the ID token.** `admin_session.id_token` (nullable, expand only) holds the ID token of the sign-in; in supplied mode it travels in the sealed handover.
+- **Sign-out sends the browser on.** It deletes the core's session, then redirects to the provider's `end_session_endpoint` from discovery with `id_token_hint`, `client_id` and `post_logout_redirect_uri`. A session without an ID token (begun by an older core), a provider that names no end session endpoint or cannot be discovered, keeps the old behaviour: back to the sign-in page.
+- **Where the provider returns to.** In fixed mode `<PUBLIC_URL>/admin/sign-in`. In supplied mode the provider takes only exact URIs, as for the callback, so it returns to the one callback `OIDC_CALLBACK_URL` with a `state` the Family seals with its address (10 minutes). The callback hands the browser on to that Family's sign-in page; a `state` it did not seal, or an expired one, gets `400` as before.
+- **The setup registers these URIs** as the client's post-logout redirect URIs, so it must run again after the upgrade.

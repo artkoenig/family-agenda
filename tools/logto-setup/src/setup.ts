@@ -5,6 +5,8 @@ export interface SetupInput {
   /** The address browsers and the core reach Logto at; the issuer is `<endpoint>/oidc`. */
   publicEndpoint: string;
   redirectUris: string[];
+  /** Where Logto may send a browser after signing out there (RP-initiated logout). */
+  postLogoutRedirectUris: string[];
   adminRole: string;
   /** Created with a one-time password unless registration creates the Family; then it may be absent. */
   firstAdmin?: { username: string; email: string };
@@ -64,7 +66,7 @@ interface Hook { id: string; name: string; signingKey: string }
  * missing or differs, so it can run any number of times without creating anything twice.
  */
 export async function setUpLogto(api: ManagementApi, input: SetupInput, newPassword: () => string): Promise<SetupResult> {
-  const application = await ensureApplication(api, input.redirectUris);
+  const application = await ensureApplication(api, input.redirectUris, input.postLogoutRedirectUris);
   const roleId = await ensureRole(api, input.adminRole);
   if (input.smtp) await ensureSmtpConnector(api, input.smtp);
   const registration = await registrationOutcome(api, input);
@@ -123,8 +125,8 @@ async function ensureRegistrationHook(api: ManagementApi, url: string): Promise<
   return (await api.post("/api/hooks", { name: clientName, ...settings })) as Hook;
 }
 
-async function ensureApplication(api: ManagementApi, redirectUris: string[]): Promise<Application> {
-  const oidcClientMetadata = { redirectUris, postLogoutRedirectUris: [] };
+async function ensureApplication(api: ManagementApi, redirectUris: string[], postLogoutRedirectUris: string[]): Promise<Application> {
+  const oidcClientMetadata = { redirectUris, postLogoutRedirectUris };
   const existing = ((await api.get("/api/applications?page_size=100")) as Application[]).find((app) => app.name === clientName && app.type === "Traditional");
   if (existing) {
     await api.patch(`/api/applications/${existing.id}`, { oidcClientMetadata });

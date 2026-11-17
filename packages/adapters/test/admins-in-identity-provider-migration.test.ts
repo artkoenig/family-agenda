@@ -17,7 +17,7 @@ describe("the migration to Admins only in the Identity Provider", () => {
     const tables = await postgres.query<{ name: string }>("SELECT table_name AS name FROM information_schema.tables WHERE table_name IN ('admin', 'sign_in_failure')");
     expect(tables.rows).toEqual([]);
     const columns = await postgres.query<{ name: string }>("SELECT column_name AS name FROM information_schema.columns WHERE table_name = 'admin_session' ORDER BY column_name");
-    expect(columns.rows.map((row) => row.name)).toEqual(["email", "expires_at", "id", "subject"]);
+    expect(columns.rows.map((row) => row.name)).toEqual(["email", "expires_at", "id", "id_token", "subject"]);
     expect((await postgres.query("SELECT * FROM admin_session")).rows).toEqual([]);
   });
 });
