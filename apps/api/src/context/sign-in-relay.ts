@@ -29,6 +29,8 @@ const stateSchema = z.strictObject({
   codeVerifier: z.string().min(1),
   /** The hash of what the browser that began it holds in a cookie below the Family's address. */
   binding: z.string().min(1),
+  /** The id of the Family's organization at the Identity Provider, which the token's organizations must contain (ADR-0010); null before there is one. */
+  organizationId: z.string().min(1).nullable(),
   expiresAt: z.number(),
 });
 
@@ -119,13 +121,14 @@ export class SignInRelay {
    * How the Family at `returnTo` makes the `state` of a sign-in, bound to the browser holding
    * `binding`. The address comes from the Context, so it is never one a browser chose.
    */
-  stateOf(familyId: string, returnTo: string, binding: string): (secrets: SignInSecrets) => string {
+  stateOf(familyId: string, returnTo: string, binding: string, organizationId: string | null = null): (secrets: SignInSecrets) => string {
     return (secrets) =>
       seal(this.#options.contextKey, "state", {
         familyId,
         returnTo,
         ...secrets,
         binding: hashOf(binding),
+        organizationId,
         expiresAt: this.#now() + signInStateLifetimeMs,
       } satisfies z.infer<typeof stateSchema>);
   }
@@ -145,6 +148,7 @@ export class SignInRelay {
       { ...connection, publicBaseUrl: state.returnTo, family: { claim: familyIdClaim, familyId: state.familyId } },
       query,
       { state: new URLSearchParams(query).get("state") ?? "", nonce: state.nonce, codeVerifier: state.codeVerifier },
+      state.organizationId,
     );
     if (!admitted.ok) return answer(303, { location: `${state.returnTo}/admin/sign-in?problem=${admitted.problem}` });
     const handover = seal(this.#options.contextKey, "handover", {
@@ -175,7 +179,7 @@ export class SignInRelay {
   /** The relay as the Family of `context` uses it: its `state` returns to its address, and it takes only handovers for it. */
   forFamily(context: Pick<Context, "familyId" | "publicUrl">): FamilySignInRelay {
     return {
-      stateOf: (binding) => this.stateOf(context.familyId, context.publicUrl, binding),
+      stateOf: (binding, organizationId) => this.stateOf(context.familyId, context.publicUrl, binding, organizationId),
       take: (token, binding) => this.take(token, context.familyId, binding),
     };
   }

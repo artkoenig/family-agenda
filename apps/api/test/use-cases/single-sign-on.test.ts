@@ -18,6 +18,7 @@ const anna = {
   emailVerified: true,
   groups: ["homelab-admin"],
   familyId: null as string | null,
+  organizations: [] as string[],
 };
 
 describe("Admins signing in through an Identity Provider", () => {
@@ -182,6 +183,48 @@ describe("Admins signing in through an Identity Provider", () => {
     it("refuses a token without the Family claim, and one naming another Family", async () => {
       expect(await signInAs(anna)).toEqual({ ok: false, problem: "sso-no-family" });
       expect(await signInAs({ ...anna, familyId: "another" })).toEqual({ ok: false, problem: "sso-other-family" });
+    });
+  });
+
+  describe("with a management API, where membership of the Family's organization decides (ADR-0010)", () => {
+    const organizations = { scope: "urn:logto:scope:organizations", claim: "organizations" };
+    const familyId = "0d6c4c3e-6a4f-4a4e-9a8e-2f5a3c1b7e10";
+    const boot = async (family?: { claim: string; familyId: string }) => {
+      await instance.close();
+      instance = await bootForTest({
+        identityProviderClient: provider,
+        identityProvider: { ...settings, organizations, ...(family ? { family } : {}) },
+      });
+    };
+
+    it("asks the provider for the organizations claim", async () => {
+      await boot();
+      await sso().begin(origin);
+
+      expect(provider.begun[0]?.connection.organizations).toEqual(organizations);
+    });
+
+    it("signs in a member of the Family's organization, in no group", async () => {
+      await boot();
+      await instance.query("update family set organization_id = 'org-1'");
+
+      expect((await signInAs({ ...anna, groups: [], organizations: ["org-0", "org-1"] })).ok).toBe(true);
+    });
+
+    it("refuses someone of another organization, the required group notwithstanding, and anyone before the Family's organization exists", async () => {
+      await boot();
+      expect(await signInAs({ ...anna, organizations: ["org-1"] })).toEqual({ ok: false, problem: "sso-not-member" });
+
+      await instance.query("update family set organization_id = 'org-1'");
+      expect(await signInAs({ ...anna, organizations: ["org-2"] })).toEqual({ ok: false, problem: "sso-not-member" });
+    });
+
+    it("in supplied mode too, instead of the Family claim", async () => {
+      await boot({ claim: "custom_data.familyId", familyId });
+      await instance.query("update family set organization_id = 'org-1'");
+
+      expect((await signInAs({ ...anna, organizations: ["org-1"] })).ok).toBe(true);
+      expect(await signInAs({ ...anna, familyId, organizations: [] })).toEqual({ ok: false, problem: "sso-not-member" });
     });
   });
 

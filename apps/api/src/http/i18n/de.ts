@@ -67,6 +67,8 @@ export const de: Catalogue = {
       "Dein Konto beim Identity Provider gehört zu keiner Familie. Bitte die Person, die den Identity Provider betreibt, es dieser Familie zuzuordnen.",
     "sso-other-family":
       "Dein Konto beim Identity Provider gehört zu einer anderen Familie, nicht zu dieser. Melde dich unter der Adresse deiner eigenen Familie an.",
+    "sso-not-member":
+      "Dein Konto beim Identity Provider gehört nicht zu den Admins dieser Familie. Bitte eine Person, die die Familie schon verwaltet, dich einzuladen.",
     "sso-email-unverified":
       "Der Identity Provider hat keine E-Mail-Adresse für dein Konto bestätigt.",
     "invalid-interval": `Das Abrufintervall muss zwischen ${pollIntervalRange.minSeconds / 60} Minute und ${pollIntervalRange.maxSeconds / 86_400} Tagen liegen.`,

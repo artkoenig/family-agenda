@@ -1,5 +1,5 @@
 import type { AdminAccess } from "./admin-access";
-import type { IdentityProviderClient, PendingSignIn, SignInSecrets, VerifiedIdentity } from "./ports";
+import type { IdentityProviderClient, OrganizationsClaim, PendingSignIn, SignInSecrets, VerifiedIdentity } from "./ports";
 
 /** The one Identity Provider, as the operator configured it in the environment (ADR-0007). */
 export type IdentityProviderSettings = {
@@ -22,6 +22,11 @@ export type IdentityProviderSettings = {
    * in fixed mode, where the redirect URI lies below `publicBaseUrl`.
    */
   callbackUrl?: string;
+  /**
+   * With a management API (ADR-0010): the ID token's organizations must contain the Family's
+   * organization, in either mode, and neither group nor Family claim is checked.
+   */
+  organizations?: OrganizationsClaim;
 };
 
 /** The Family a sign-in must belong to, and the dotted path of the claim naming it, such as `custom_data.familyId`. */
@@ -32,6 +37,8 @@ export type SingleSignOnDeps = {
   settings: IdentityProviderSettings | null;
   client: IdentityProviderClient;
   admins: AdminAccess;
+  /** The id of the Family's organization at the Identity Provider; null before registration created it. */
+  organizationId?: () => Promise<string | null>;
 };
 
 /** Where the Identity Provider sends an Admin back to, below the public base URL and so below its path prefix. */
@@ -47,11 +54,12 @@ export type SingleSignOnSignInResult =
   | { ok: true; sessionToken: string }
   | {
       ok: false;
-      problem: "sso-failed" | "sso-not-in-group" | "sso-no-family" | "sso-other-family" | "sso-email-unverified";
+      problem: "sso-failed" | "sso-not-in-group" | "sso-no-family" | "sso-other-family" | "sso-not-member" | "sso-email-unverified";
     };
 
 export function createSingleSignOn(deps: SingleSignOnDeps) {
   const { settings, client, admins } = deps;
+  const organizationId = deps.organizationId ?? (() => Promise.resolve(null));
 
   const at = (baseUrl: string): IdentityProviderSettings | null =>
     settings !== null && settings.publicBaseUrl === baseUrl ? settings : null;
@@ -77,6 +85,9 @@ export function createSingleSignOn(deps: SingleSignOnDeps) {
       return client.begin(connectionOf(offered), redirectUriOf(offered), stateOf);
     },
 
+    /** The id of the Family's organization, for the `state` of a sign-in that returns elsewhere; null before there is one. */
+    organizationId,
+
     /** Signs in someone the one callback of the deployment vouched for and handed over (supplied mode). */
     async signInHandedOver(identity: AdmittedIdentity): Promise<string> {
       return admins.startSession(identity);
@@ -89,7 +100,7 @@ export function createSingleSignOn(deps: SingleSignOnDeps) {
     async complete(input: { baseUrl: string; query: string; pending: PendingSignIn }): Promise<SingleSignOnSignInResult> {
       const offered = at(input.baseUrl);
       if (!offered) return { ok: false, problem: "sso-failed" };
-      const admitted = await completeSignIn(client, offered, input.query, input.pending);
+      const admitted = await completeSignIn(client, offered, input.query, input.pending, await organizationId());
       return admitted.ok ? { ok: true, sessionToken: await admins.startSession(admitted.identity) } : admitted;
     },
   };
@@ -106,6 +117,7 @@ const connectionOf = (offered: IdentityProviderSettings) => ({
   clientSecret: offered.clientSecret,
   groupsClaim: offered.groupsClaim,
   ...(offered.family ? { familyIdClaim: offered.family.claim } : {}),
+  ...(offered.organizations ? { organizations: offered.organizations } : {}),
 });
 
 /** The one callback of the deployment in supplied mode, else the callback below the public base URL. */
@@ -121,20 +133,25 @@ export async function completeSignIn(
   offered: IdentityProviderSettings,
   query: string,
   pending: PendingSignIn,
+  organizationId: string | null = null,
 ): Promise<SignInAdmission> {
   const redirectUri = redirectUriOf(offered);
   const identity = await client.complete(connectionOf(offered), redirectUri, redirectUri + query, pending);
   if (!identity) return { ok: false, problem: "sso-failed" };
   // Checked at every sign-in; leaving the group or Family ends a running session only when it expires.
-  const refused = admissionProblemOf(offered, identity);
+  const refused = admissionProblemOf(offered, identity, organizationId);
   if (refused) return { ok: false, problem: refused };
   const email = identity.email?.trim() ?? "";
   if (email === "" || !identity.emailVerified) return { ok: false, problem: "sso-email-unverified" };
   return { ok: true, identity: { subject: identity.subject, email } };
 }
 
-/** Why `identity` may not administer the Family: in supplied mode its Family claim decides, else the required group. */
-function admissionProblemOf(offered: IdentityProviderSettings, identity: VerifiedIdentity): SingleSignOnRefusal | null {
+/**
+ * Why `identity` may not administer the Family: with a management API membership of the Family's
+ * organization `organizationId` decides, none before it exists; else in supplied mode the Family claim, else the required group.
+ */
+function admissionProblemOf(offered: IdentityProviderSettings, identity: VerifiedIdentity, organizationId: string | null): SingleSignOnRefusal | null {
+  if (offered.organizations) return organizationId !== null && identity.organizations.includes(organizationId) ? null : "sso-not-member";
   if (!offered.family) return identity.groups.includes(offered.requiredGroup) ? null : "sso-not-in-group";
   if (identity.familyId === null) return "sso-no-family";
   return identity.familyId === offered.family.familyId ? null : "sso-other-family";
@@ -171,7 +188,7 @@ const maximumTextLength = 200;
 type SettingsProblem = Extract<ParsedIdentityProviderSettings, { ok: false }>["problem"];
 
 /** The settings any Identity Provider has, wherever its redirect URI lies. */
-export type IdentityProviderConnectionSettings = Omit<IdentityProviderSettings, "publicBaseUrl" | "family" | "callbackUrl">;
+export type IdentityProviderConnectionSettings = Omit<IdentityProviderSettings, "publicBaseUrl" | "family" | "callbackUrl" | "organizations">;
 
 type Checkers<T> = { [K in keyof T]-?: [SettingsProblem, (variables: IdentityProviderVariables) => string | null] };
 
@@ -184,7 +201,7 @@ const connectionCheckers: Checkers<IdentityProviderConnectionSettings> = {
   groupsClaim: ["invalid-groups-claim", (v) => claimName(v.groupsClaim ?? defaultGroupsClaim)],
 };
 
-const settingCheckers: Checkers<Omit<IdentityProviderSettings, "family" | "callbackUrl">> = {
+const settingCheckers: Checkers<Omit<IdentityProviderSettings, "family" | "callbackUrl" | "organizations">> = {
   ...connectionCheckers,
   publicBaseUrl: ["invalid-public-url", (v) => httpUrl(v.publicBaseUrl ?? "")],
 };

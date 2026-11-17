@@ -10,6 +10,9 @@ import {
 /** The resource indicator of a self-hosted Logto's Management API. */
 export const defaultLogtoManagementResource = "https://default.logto.app/api";
 
+/** The scope and ID token claim of a Logto user's organizations, which sign-in checks with a management API (ADR-0010). */
+export const logtoOrganizations = { scope: "urn:logto:scope:organizations", claim: "organizations" } as const;
+
 /** How many members one page of Logto's list holds, its largest. */
 const pageSize = 100;
 

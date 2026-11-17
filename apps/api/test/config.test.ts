@@ -46,6 +46,15 @@ describe("the Identity Provider's management API in the environment", () => {
     expect(readConfig(base).idpWebhookSecret).toBeNull();
   });
 
+  it("makes sign-in ask for the organizations, in either mode, and not without it (ADR-0010)", () => {
+    const organizations = { scope: "urn:logto:scope:organizations", claim: "organizations" };
+    expect(readConfig({ ...oidc, ...management }).identityProvider?.organizations).toEqual(organizations);
+    expect(readSuppliedConfig({ ...supplied, ...management }).identityProvider.organizations).toEqual(organizations);
+    expect(readConfig(oidc).identityProvider?.organizations).toBeUndefined();
+    expect(readSuppliedConfig(supplied).identityProvider.organizations).toBeUndefined();
+    expect(readConfig({ ...base, ...management }).identityProvider).toBeNull();
+  });
+
   it("requires IDP_WEBHOOK_SECRET with the management API, and refuses it without", () => {
     expect(() => readConfig({ ...base, ...management, IDP_WEBHOOK_SECRET: "" })).toThrow(/^IDP_WEBHOOK_SECRET must be set when IDP_MANAGEMENT_API is/);
     expect(() => readConfig({ ...base, IDP_WEBHOOK_SECRET: "logto-signing-key" })).toThrow(/^IDP_WEBHOOK_SECRET is set, but IDP_MANAGEMENT_API is not/);
