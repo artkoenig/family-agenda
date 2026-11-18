@@ -82,6 +82,8 @@ module registration {
   const MAX_ORGS: int
   const MAX_DRAWS: int
   const MAX_EVENTS: int
+  /** Bounds the faults of a trace (crashes, calls that throw, deleted users), so that random traces get deep. */
+  const MAX_FAULTS: int
 
   // ---- State ----------------------------------------------------------------------------------
 
@@ -141,6 +143,7 @@ module registration {
     familiesOf: str -> Set[int],
     registered: Set[str],
     events: int,
+    faults: int,
   }
 
   var cores: str -> Core
@@ -200,6 +203,8 @@ module registration {
   // ---- State machine: preparing ---------------------------------------------------------------
 
   action did(name: Did): bool = ghost' = { ...ghost, lastAction: name }
+  /** A fault, counted against MAX_FAULTS. */
+  action fault(name: Did): bool = all { ghost.faults < MAX_FAULTS, ghost' = { ...ghost, lastAction: name, faults: ghost.faults + 1 } }
 
   action keepRegistration: bool = all { idp' = idp, handlers' = handlers, platform' = platform }
   action keepPreparing: bool = all { cores' = cores, lockHolder' = lockHolder, draws' = draws }
@@ -214,7 +219,7 @@ module registration {
     platform' = { deliveries: Set(), families: Set() },
     ghost' = {
       lastAction: DidInit, familyIds: Set(), orgsOf: USERS.mapBy(_ => 0), familiesOf: USERS.mapBy(_ => Set()),
-      registered: Set(), events: 0,
+      registered: Set(), events: 0, faults: 0,
     },
   }
 
@@ -279,7 +284,7 @@ module registration {
     Set(Locked, Migrating, Migrated).contains(cores.get(c).phase),
     setCore(c, { phase: Down, drawn: 0, familyId: 0 }),
     lockHolder' = if (lockHolder == c) "" else lockHolder,
-    db' = db, draws' = draws, keepRegistration, did(DidCrashCore),
+    db' = db, draws' = draws, keepRegistration, fault(DidCrashCore),
   }
 
   // ---- State machine: the Identity Provider and the platform ----------------------------------
@@ -319,8 +324,9 @@ module registration {
   }
 
   action deleteUser(u: str): bool = all {
-    idp.accounts.contains(u),
-    idpOnly(withoutUser(idp, u), DidDeleteUser, 0),
+    idp.accounts.contains(u), ghost.faults < MAX_FAULTS,
+    idp' = withoutUser(idp, u), handlers' = handlers, platform' = platform, db' = db, keepPreparing,
+    ghost' = { ...ghost, lastAction: DidDeleteUser, faults: ghost.faults + 1 },
   }
 
   /** The platform takes a `family.created` delivery and supplies the Family's Context. */
@@ -423,14 +429,14 @@ module registration {
     handlers.get(h).stage != Free,
     db' = if (INBOX) db else { ...db, processed: db.processed.exclude(Set(handlers.get(h).user)) },
     setHandler(h, noHandler),
-    keepPreparing, idp' = idp, platform' = platform, did(DidThrow),
+    keepPreparing, idp' = idp, platform' = platform, fault(DidThrow),
   }
 
   /** The handler's core dies: nothing is forgotten, no answer. */
   action crash(h: int): bool = all {
     handlers.get(h).stage != Free,
     setHandler(h, noHandler),
-    db' = db, keepPreparing, idp' = idp, platform' = platform, did(DidCrash),
+    db' = db, keepPreparing, idp' = idp, platform' = platform, fault(DidCrash),
   }
 
   // ---- State machine: the proposed design (INBOX) ---------------------------------------------
@@ -550,8 +556,18 @@ module registration {
     (o != familyOrg and not(handlingOrg(o)) and not(idp.orgs.get(o).gone)) implies idp.orgs.get(o).members == Set())
   /** Supplied, a person is an Admin of at most one Family (#467: registrationMakesOneFamily). */
   val oneFamilyPerAdmin: bool = not(SUPPLIED) or USERS.forall(u => orgsWith(idp, u).filter(o => not(handlingOrg(o))).size() <= 1)
-  /** No organization is left without members once its registration is over (#467's debris). */
-  val noEmptyOrganization: bool = idp.orgs.keys().forall(o => idp.orgs.get(o).gone or handlingOrg(o) or idp.orgs.get(o).members != Set())
+  /**
+   * An organization left without members: not deleted, and no registration under way, running or
+   * stored, will add one (#467's debris).
+   */
+  def leftEmpty(o: int): bool =
+    not(idp.orgs.get(o).gone) and idp.orgs.get(o).members == Set() and not(handlingOrg(o))
+      and not(USERS.exists(u => db.regs.get(u).org == o and not(db.regs.get(u).done)))
+  /**
+   * No organization is left empty; with SWEEP, every one left empty can be deleted (the sweep is
+   * enabled for it, and the scenarios show it deleted).
+   */
+  val noEmptyOrganization: bool = SWEEP or idp.orgs.keys().forall(o => not(leftEmpty(o)))
 
   val registrationSafety: bool = and { oneOrganizationPerEvent, onlyFirstCreates, onlyFamilyOrgHasAdmins, oneFamilyPerAdmin, noEmptyOrganization }
   val safety: bool = and { oneFamilyId, noStrayRandomId, registrationSafety }

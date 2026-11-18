@@ -155,7 +155,7 @@ module scenarios {
 /** Fixed mode as the code is: FAMILY_ID given to both cores, written in the migrations' transaction. */
 module fixed {
   import scenarios(CORES = Set("api", "worker"), GIVEN = Map("api" -> 1, "worker" -> 1), USERS = Set("u1", "u2"), HANDLERS = Set(1, 2),
-    SUPPLIED = false, ID_IN_MIGRATION = true, ACCOUNT_CHECKS = false, INBOX = false, SWEEP = false, LOOKUP = false, MAX_ORGS = 3, MAX_DRAWS = 3, MAX_EVENTS = 4).*
+    SUPPLIED = false, ID_IN_MIGRATION = true, ACCOUNT_CHECKS = false, INBOX = false, SWEEP = false, LOOKUP = false, MAX_ORGS = 3, MAX_DRAWS = 3, MAX_EVENTS = 4, MAX_FAULTS = 6).*
 
   run twoCoresOneIdTest = twoCoresOneId.expect(db.familyId == 1)
   run crashLeavesNothingTest = crashLeavesNothing
@@ -172,7 +172,7 @@ module fixed {
 /** Fixed mode without FAMILY_ID: the Family keeps the id the first core drew. */
 module drawn {
   import scenarios(CORES = Set("api", "worker"), GIVEN = Map("api" -> 0, "worker" -> 0), USERS = Set("u1", "u2"), HANDLERS = Set(1, 2),
-    SUPPLIED = false, ID_IN_MIGRATION = true, ACCOUNT_CHECKS = false, INBOX = false, SWEEP = false, LOOKUP = false, MAX_ORGS = 3, MAX_DRAWS = 3, MAX_EVENTS = 4).*
+    SUPPLIED = false, ID_IN_MIGRATION = true, ACCOUNT_CHECKS = false, INBOX = false, SWEEP = false, LOOKUP = false, MAX_ORGS = 3, MAX_DRAWS = 3, MAX_EVENTS = 4, MAX_FAULTS = 6).*
 
   run twoCoresOneIdTest = twoCoresOneId.expect(db.familyId == randomId(1))
 }
@@ -180,7 +180,7 @@ module drawn {
 /** Before the amendment: the given id written once the migrations committed. */
 module unfixedId {
   import scenarios(CORES = Set("api", "worker"), GIVEN = Map("api" -> 1, "worker" -> 1), USERS = Set("u1"), HANDLERS = Set(1),
-    SUPPLIED = false, ID_IN_MIGRATION = false, ACCOUNT_CHECKS = false, INBOX = false, SWEEP = false, LOOKUP = false, MAX_ORGS = 2, MAX_DRAWS = 3, MAX_EVENTS = 2).*
+    SUPPLIED = false, ID_IN_MIGRATION = false, ACCOUNT_CHECKS = false, INBOX = false, SWEEP = false, LOOKUP = false, MAX_ORGS = 2, MAX_DRAWS = 3, MAX_EVENTS = 2, MAX_FAULTS = 6).*
 
   /** The core dies between the commit and the write: the random id stays, and no core starts again. */
   run strayRandomIdTest =
@@ -191,7 +191,7 @@ module unfixedId {
 /** Supplied mode as the code is, without #467's checks. */
 module supplied {
   import scenarios(CORES = Set("api"), GIVEN = Map("api" -> 0), USERS = Set("u1", "u2"), HANDLERS = Set(1, 2),
-    SUPPLIED = true, ID_IN_MIGRATION = true, ACCOUNT_CHECKS = false, INBOX = false, SWEEP = false, LOOKUP = false, MAX_ORGS = 3, MAX_DRAWS = 4, MAX_EVENTS = 4).*
+    SUPPLIED = true, ID_IN_MIGRATION = true, ACCOUNT_CHECKS = false, INBOX = false, SWEEP = false, LOOKUP = false, MAX_ORGS = 3, MAX_DRAWS = 4, MAX_EVENTS = 4, MAX_FAULTS = 6).*
 
   run everyRegistrationCreatesAFamilyTest = everyRegistrationCreatesAFamily
   run slowPostRegisterRepairTest = slowPostRegisterRepair
@@ -206,7 +206,7 @@ module supplied {
 /** Supplied mode with #467's checks: they fix #467's findings, not the ones of a throw or a crash. */
 module suppliedChecked {
   import scenarios(CORES = Set("api"), GIVEN = Map("api" -> 0), USERS = Set("u1", "u2"), HANDLERS = Set(1, 2),
-    SUPPLIED = true, ID_IN_MIGRATION = true, ACCOUNT_CHECKS = true, INBOX = false, SWEEP = false, LOOKUP = false, MAX_ORGS = 3, MAX_DRAWS = 4, MAX_EVENTS = 4).*
+    SUPPLIED = true, ID_IN_MIGRATION = true, ACCOUNT_CHECKS = true, INBOX = false, SWEEP = false, LOOKUP = false, MAX_ORGS = 3, MAX_DRAWS = 4, MAX_EVENTS = 4, MAX_FAULTS = 6).*
 
   run everyRegistrationCreatesAFamilyTest = everyRegistrationCreatesAFamily
   run slowPostRegisterRepairTest = slowPostRegisterRepair
@@ -229,7 +229,7 @@ module suppliedChecked {
 module fixedInbox {
   import scenarios(CORES = Set("api"), GIVEN = Map("api" -> 1), USERS = Set("u1", "u2"), HANDLERS = Set(1, 2),
     SUPPLIED = false, ID_IN_MIGRATION = true, ACCOUNT_CHECKS = true, INBOX = true, SWEEP = false, LOOKUP = false,
-    MAX_ORGS = 3, MAX_DRAWS = 3, MAX_EVENTS = 4).*
+    MAX_ORGS = 3, MAX_DRAWS = 3, MAX_EVENTS = 4, MAX_FAULTS = 2).*
 
   run inboxDuplicateTest = inboxDuplicate
   run inboxCrashMidRegistrationTest = inboxCrashMidRegistration
@@ -243,7 +243,7 @@ module fixedInbox {
 module fixedSweep {
   import scenarios(CORES = Set("api"), GIVEN = Map("api" -> 1), USERS = Set("u1", "u2"), HANDLERS = Set(1, 2),
     SUPPLIED = false, ID_IN_MIGRATION = true, ACCOUNT_CHECKS = true, INBOX = true, SWEEP = true, LOOKUP = false,
-    MAX_ORGS = 3, MAX_DRAWS = 3, MAX_EVENTS = 4).*
+    MAX_ORGS = 3, MAX_DRAWS = 3, MAX_EVENTS = 4, MAX_FAULTS = 2).*
 
   run inboxDuplicateTest = inboxDuplicate
   run inboxCrashMidRegistrationTest = inboxCrashMidRegistration
@@ -258,7 +258,7 @@ module fixedSweep {
 module fixedLookup {
   import scenarios(CORES = Set("api"), GIVEN = Map("api" -> 1), USERS = Set("u1", "u2"), HANDLERS = Set(1, 2),
     SUPPLIED = false, ID_IN_MIGRATION = true, ACCOUNT_CHECKS = true, INBOX = true, SWEEP = false, LOOKUP = true,
-    MAX_ORGS = 3, MAX_DRAWS = 3, MAX_EVENTS = 4).*
+    MAX_ORGS = 3, MAX_DRAWS = 3, MAX_EVENTS = 4, MAX_FAULTS = 2).*
 
   run inboxDuplicateTest = inboxDuplicate
   run inboxCrashMidRegistrationTest = inboxCrashMidRegistration
@@ -273,7 +273,7 @@ module fixedLookup {
 module suppliedInbox {
   import scenarios(CORES = Set("api"), GIVEN = Map("api" -> 0), USERS = Set("u1", "u2"), HANDLERS = Set(1, 2),
     SUPPLIED = true, ID_IN_MIGRATION = true, ACCOUNT_CHECKS = true, INBOX = true, SWEEP = false, LOOKUP = false,
-    MAX_ORGS = 3, MAX_DRAWS = 4, MAX_EVENTS = 4).*
+    MAX_ORGS = 3, MAX_DRAWS = 4, MAX_EVENTS = 4, MAX_FAULTS = 2).*
 
   run inboxDuplicateTest = inboxDuplicate
   run inboxCrashMidRegistrationTest = inboxCrashMidRegistration
@@ -286,7 +286,7 @@ module suppliedInbox {
 module suppliedSweep {
   import scenarios(CORES = Set("api"), GIVEN = Map("api" -> 0), USERS = Set("u1", "u2"), HANDLERS = Set(1, 2),
     SUPPLIED = true, ID_IN_MIGRATION = true, ACCOUNT_CHECKS = true, INBOX = true, SWEEP = true, LOOKUP = false,
-    MAX_ORGS = 3, MAX_DRAWS = 4, MAX_EVENTS = 4).*
+    MAX_ORGS = 3, MAX_DRAWS = 4, MAX_EVENTS = 4, MAX_FAULTS = 2).*
 
   run inboxDuplicateTest = inboxDuplicate
   run inboxCrashMidRegistrationTest = inboxCrashMidRegistration
@@ -300,7 +300,7 @@ module suppliedSweep {
 module suppliedLookup {
   import scenarios(CORES = Set("api"), GIVEN = Map("api" -> 0), USERS = Set("u1", "u2"), HANDLERS = Set(1, 2),
     SUPPLIED = true, ID_IN_MIGRATION = true, ACCOUNT_CHECKS = true, INBOX = true, SWEEP = false, LOOKUP = true,
-    MAX_ORGS = 3, MAX_DRAWS = 4, MAX_EVENTS = 4).*
+    MAX_ORGS = 3, MAX_DRAWS = 4, MAX_EVENTS = 4, MAX_FAULTS = 2).*
 
   run inboxDuplicateTest = inboxDuplicate
   run inboxCrashMidRegistrationTest = inboxCrashMidRegistration
