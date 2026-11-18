@@ -8,7 +8,7 @@ quint() { pnpm exec quint "$@"; }
 scenarios() {
   # Two cores preparing at once, a crash mid-migration, the first registration, a redelivery, two
   # registrations at once, a late one; and the counterexamples of the code as it is.
-  for main in fixed drawn unfixedId supplied; do
+  for main in fixed drawn unfixedId supplied suppliedChecked; do
     quint test registration_test.qnt --backend=typescript --main="$main" --max-samples=100
   done
 }
@@ -16,9 +16,9 @@ scenarios() {
 simulation() {
   # Random traces of two cores and two users with two handlers, in both modes. Only preparing holds
   # as the code is: registration's properties fail (see the counterexamples).
-  for main in fixed drawn supplied; do
+  for main in fixed drawn supplied suppliedChecked; do
     quint run registration_test.qnt --backend=typescript --main="$main" --invariants oneFamilyId noStrayRandomId coreCanStart \
-      --witnesses coreUp allUp crashedWhilePreparing familyWithAdmin registrationClosed lostTheRace redelivered throwsWitness crashed \
+      --witnesses coreUp allUp crashedWhilePreparing familyWithAdmin registrationClosed lostTheRace duplicated skipped signedInAgain invited userDeleted throwsWitness crashed \
       --max-samples=2000 --max-steps=30
   done
 }
