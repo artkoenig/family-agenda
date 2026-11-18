@@ -100,6 +100,17 @@ describe("the OpenAI-compatible Extractor", () => {
     expect(prompt).toContain("findet in Raum 104 statt.");
   });
 
+  it("tells the model to list nothing from the quoted text of a reply, but to read a forward", async () => {
+    server.answer(200, completion(JSON.stringify({ events: [], tasks: [] })));
+
+    await new OpenAiCompatibleExtractor().extract(request());
+
+    const system = JSON.stringify(server.received[0]?.body.messages);
+    expect(system).toContain("quotes the message it answers");
+    expect(system).toContain("Am 3. November 2026 um 08:12 schrieb");
+    expect(system).toContain("A forwarded message");
+  });
+
   it("sends no API key to an endpoint without one", async () => {
     server.answer(200, completion(JSON.stringify({ events: [], tasks: [] })));
 
