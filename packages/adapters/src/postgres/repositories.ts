@@ -516,13 +516,13 @@ export class PostgresSourceRepository implements SourceRepository {
 
   private async select(where?: SQL): Promise<Source[]> {
     const rows = await this.db
-      .select({ source: sources, run: sourceRuns, syncCursor: syncCursorAsText })
+      .select({ source: sources, run: sourceRuns, syncCursor: syncCursorAsText, failedMessages: failedMessagesOf })
       .from(sources)
       .innerJoin(sourceRuns, eq(sourceRuns.sourceId, sources.id))
       .where(where)
       .orderBy(asc(sources.position));
     const attributes = await this.attributesOf(rows.map((row) => row.source.id));
-    return rows.map(({ source, run, syncCursor }) => ({
+    return rows.map(({ source, run, syncCursor, failedMessages }) => ({
       id: source.id as SourceId,
       sourceTypeId: source.sourceTypeId as SourceTypeId,
       plain: source.config,
@@ -543,6 +543,7 @@ export class PostgresSourceRepository implements SourceRepository {
       lastNewRecordAt: run.lastNewRecordAt,
       invalidRecords: run.invalidRecords,
       unknownAttributes: run.unknownAttributes,
+      failedMessages,
       createdAt: source.createdAt,
     }));
   }
@@ -582,6 +583,14 @@ const secretRefsWith = (changed: Record<string, SecretRef>): SQL => sql`${source
 export const cursorToJson = (syncCursor: string | null): SQL => sql`to_jsonb(${syncCursor}::text)`;
 
 /** The plugin's sync cursor read back from `sync_cursor`, as text for the reason above. */
+/**
+ * How many of a Source's messages failed extraction for good and wait for an Admin's retry
+ * (ADR-0005): they make the Source Failing.
+ */
+const failedMessagesOf = sql<number>`(SELECT count(*)::int FROM ${sourceRecords} WHERE ${sourceRecords.sourceId} = ${sources.id}
+  AND ${sourceRecords.extractionFailedAt} IS NOT NULL AND ${sourceRecords.processedAt} IS NULL
+  AND ${sourceRecords.body} IS NOT NULL AND ${sourceRecords.withdrawnAt} IS NULL)`;
+
 const syncCursorAsText = sql<string | null>`${sourceRuns.syncCursor} #>> '{}'`;
 
 export function failureColumns(failure: SourceFailure | null) {

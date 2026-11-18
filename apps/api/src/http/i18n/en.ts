@@ -333,6 +333,10 @@ export const en = {
     invalidRecords: (count: number) =>
       count === 1 ? "1 entry is not valid, so it is not shown." : `${count} entries are not valid, so they are not shown.`,
     unknownAttributes: (ids: string) => `The Source named parts it never reported (${ids}), so those records were left out.`,
+    failedMessages: (count: number) =>
+      count === 1
+        ? "1 message could not be read; its Items are missing until you retry it."
+        : `${count} messages could not be read; their Items are missing until you retry them.`,
     lastRead: (when: string) => `Last read ${when}`,
     notReadYet: "Not read successfully yet",
     notInstalled: "Source Type not installed",
@@ -427,6 +431,10 @@ export const en = {
     description: "The original its Items were read from. Only Admins open it.",
     sent: "Sent",
     purged: "The content of this message is no longer kept.",
+    failed: "Reading this message failed several times, so it is no longer read. Retry once the LLM endpoint or its model has changed.",
+    retry: "Retry",
+    failedTitle: "Messages that could not be read",
+    failedHint: (sent: string) => `Sent ${sent}. Open it to retry.`,
     sender: "From",
     subject: "Subject",
     attributes: "Concerns",

@@ -5,6 +5,7 @@ import {
   type FamilyMemberSummary,
   type LanguageSettings,
   type EndpointCheck,
+  type FailedMessage,
   type LlmEndpointSummary,
   type MessageDetails,
   type MessageItemRows,
@@ -2196,6 +2197,8 @@ function SourceTimelineSection(props: {
   href: string;
   s: Translation["t"]["sources"];
   waiting: number | undefined;
+  failed: FailedMessage[];
+  timeZone: string;
 }) {
   const { source, href, s, waiting } = props;
   return (
@@ -2229,7 +2232,32 @@ function SourceTimelineSection(props: {
       {waiting !== undefined ? (
         <WaitingGroup label={s.waitingTitle} waiting={waiting} />
       ) : null}
+      <FailedMessagesGroup failed={props.failed} timeZone={props.timeZone} />
     </>
+  );
+}
+
+/** The messages whose extraction failed for good, each opening the message, where an Admin retries it. */
+function FailedMessagesGroup(props: { failed: FailedMessage[]; timeZone: string }) {
+  const { t, locale } = useTranslation();
+  const prefix = usePathPrefix();
+  if (props.failed.length === 0) return null;
+  const format = new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short", timeZone: props.timeZone });
+  return (
+    <Group title={t.message.failedTitle} level={2}>
+      <ul class="fam-rows">
+        {props.failed.map((message) => (
+          <li class="fam-row">
+            <span class="fam-row__main">
+              <a class="fam-row__label" href={href(prefix, `/admin/messages/${message.id}`)}>
+                {message.subject ?? message.sender ?? format.format(message.sentAt)}
+              </a>
+              <span class="fam-row__hint">{t.message.failedHint(format.format(message.sentAt))}</span>
+            </span>
+          </li>
+        ))}
+      </ul>
+    </Group>
   );
 }
 
@@ -2397,6 +2425,8 @@ export function SourcePage(props: {
   /** What the live setup steps of the Source being fixed show. */
   /** For a Source whose messages the LLM endpoint reads: how many wait to be read. */
   waiting?: number;
+  /** For such a Source: the messages whose extraction failed for good, for an Admin to retry. */
+  failed?: FailedMessage[];
   /** Whether its plugin is asked for its Source Attributes once the page is shown, with a spinner meanwhile. */
   attributesOnDemand?: boolean;
 }) {
@@ -2480,6 +2510,8 @@ export function SourcePage(props: {
           href={ownHref}
           s={s}
           waiting={props.waiting}
+          failed={props.failed ?? []}
+          timeZone={props.timeZone}
         />
         <SourceManagementSection href={ownHref} s={s} />
       </section>
@@ -3280,7 +3312,8 @@ function hasHealthDetails(health: SourceHealth): boolean {
     health.status !== "ok" ||
     health.problem !== null ||
     health.invalidRecords.length > 0 ||
-    health.unknownAttributes.length > 0
+    health.unknownAttributes.length > 0 ||
+    health.failedMessages > 0
   );
 }
 
@@ -3320,6 +3353,11 @@ function HealthDetails(props: { health: SourceHealth; timeZone: string }) {
       {health.unknownAttributes.length > 0 ? (
         <span class="fam-problem">
           {s.unknownAttributes(health.unknownAttributes.join(", "))}
+        </span>
+      ) : null}
+      {health.failedMessages > 0 ? (
+        <span class="fam-problem">
+          {s.failedMessages(health.failedMessages)}
         </span>
       ) : null}
     </>
@@ -4564,7 +4602,15 @@ export function MessagePage(props: {
       {message.purgedAt !== null ? (
         <p>{m.purged}</p>
       ) : (
-        <pre class="fam-message">{message.text}</pre>
+        <>
+          {message.extractionFailedAt !== null ? (
+            <form method="post" action={href(prefix, `/admin/messages/${message.id}/retry`)}>
+              <p class="fam-problem">{m.failed}</p>
+              <button type="submit" class="fam-button">{m.retry}</button>
+            </form>
+          ) : null}
+          <pre class="fam-message">{message.text}</pre>
+        </>
       )}
       {message.attachments.length > 0 ? (
         <>

@@ -73,7 +73,7 @@ A subdivision of a Source that the Source itself reports, such as a mailbox fold
 _Avoid_: Folder (for the domain concept), channel, sub-source, label
 
 **Source Status**:
-Whether a Source works: **OK**; **Failing** when it needs an Admin, at once on a definite error and after 6 hours of temporary ones; or **Silent** when a Source Type that declares it has brought no new Source Record for 14 days.
+Whether a Source works: **OK**; **Failing** when it needs an Admin, at once on a definite error, after 6 hours of temporary ones, and while a message of it failed Extraction; or **Silent** when a Source Type that declares it has brought no new Source Record for 14 days.
 _Avoid_: Health state, broken, stale (for the status)
 
 **Messenger**:
@@ -101,7 +101,7 @@ Where a Source resumes reading on its next run, such as the last mail read in ea
 _Avoid_: State, state blob, sync token, checkpoint
 
 **Extraction**:
-The one reading of a message by the LLM that finds its Items; a message edited later keeps what it found.
+The one reading of a message by the LLM that finds its Items; a message edited later keeps what it found. A message whose reading fails three times has failed, and waits for an Admin's retry.
 _Avoid_: Parsing, re-import, reprocessing
 
 ### Items

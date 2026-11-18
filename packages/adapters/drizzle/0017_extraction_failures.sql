@@ -1,0 +1,3 @@
+-- How often a message's extraction failed, and when it failed for good (ADR-0005). Expand only: columns with a default, which older cores neither write nor read; an older core still reads a failed message on every run, as it did.
+ALTER TABLE "source_record" ADD COLUMN "extraction_failures" integer DEFAULT 0 NOT NULL;--> statement-breakpoint
+ALTER TABLE "source_record" ADD COLUMN "extraction_failed_at" timestamp with time zone;
