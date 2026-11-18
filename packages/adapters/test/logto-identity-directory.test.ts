@@ -27,6 +27,23 @@ describe("the Logto Identity Directory", () => {
     expect(logto.organizations.get(organizationId)).toMatchObject({ name: "The Müllers", customData: { familyId } });
   });
 
+  it("records the founder with the organization, next to the Family id, and reads it back (#469)", async () => {
+    const organizationId = await directory.createOrganization(familyId, "The Müllers", "user-anna");
+    expect(logto.organizations.get(organizationId)).toMatchObject({ customData: { familyId, founderUserId: "user-anna" } });
+    expect(await directory.founderOf(organizationId)).toBe("user-anna");
+    expect(await directory.founderOf(await directory.createOrganization(familyId, "B"))).toBeNull();
+  });
+
+  it("deletes a user, ending their memberships (#469)", async () => {
+    const organizationId = await directory.createOrganization(familyId, "A");
+    logto.users.set("user-1", { primaryEmail: "ben@example.org", lastSignInAt: null });
+    await directory.addMember(organizationId, "user-1");
+    await directory.deleteUser("user-1");
+    expect(logto.requests.at(-1)).toMatchObject({ method: "DELETE", path: "/api/users/user-1" });
+    expect(await directory.listMembers(organizationId)).toEqual([]);
+    expect(await directory.organizationsOf("user-1")).toBeNull();
+  });
+
   it("signs in with client credentials for the Management API, and reuses the token until shortly before it expires", async () => {
     await directory.createOrganization(familyId, "A");
     await directory.createOrganization(familyId, "B");

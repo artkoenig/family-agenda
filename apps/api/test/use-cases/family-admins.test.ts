@@ -88,4 +88,14 @@ describe("the Admins of a Family with a management API (ADR-0010)", () => {
     expect(await admins().remove("user-anna")).toEqual({ ok: false, problem: "last-admin" });
     expect((await admins().list())?.admins.map((admin) => admin.userId)).toEqual(["user-anna"]);
   });
+
+  it("keeps the removed Admin's user and records no founder in fixed mode", async () => {
+    await boot();
+    const organizationId = [...directory.organizations.keys()][0] ?? "";
+    await directory.addMember(organizationId, "user-ben");
+
+    expect(await directory.founderOf(organizationId)).toBeNull();
+    expect(await admins().remove("user-anna")).toEqual({ ok: true });
+    expect(await directory.organizationsOf("user-anna")).toEqual([]);
+  });
 });

@@ -43,6 +43,8 @@ export interface RegistrationMode {
   isOpen(): Promise<boolean>;
   /** Fixed mode: at most one registration at a time, as the Family is one. */
   alone: boolean;
+  /** Supplied mode: the organization records the registering user as its founder, who is never removed (#469). */
+  recordsFounder: boolean;
   familyIdOf(registration: StoredRegistration): Promise<string>;
   /** Whether the registration creates nothing, looked at before an organization is created or reused. */
   createsNothing(registration: StoredRegistration): Promise<boolean>;
@@ -106,7 +108,7 @@ export function createRegistrationInbox(deps: RegistrationInboxDeps): Registrati
       await nothing(registration, familyId);
     } else {
       let organizationId = await organizationOf(registration, familyId);
-      organizationId ??= await directory.createOrganization(familyId, organizationName(familyId));
+      organizationId ??= await directory.createOrganization(familyId, organizationName(familyId), ...(mode.recordsFounder ? [registration.userId] : []));
       if (registration.organizationId === null) await registrations.noteOrganization(registration.userId, organizationId);
       await directory.addMember(organizationId, registration.userId);
       await mode.finish(registration, organizationId, familyId);

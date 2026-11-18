@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { DirectoryInvitation, DirectoryMember, IdentityDirectory, InvitationDetails } from "@family-agenda/application";
 
 type SentInvitation = DirectoryInvitation & { link: string; locale: string };
-type Organization = { familyId: string; name: string; members: Map<string, DirectoryMember>; invitations: Map<string, SentInvitation>; accepted: SentInvitation[] };
+type Organization = { familyId: string; name: string; founderUserId: string | null; members: Map<string, DirectoryMember>; invitations: Map<string, SentInvitation>; accepted: SentInvitation[] };
 
 /** Keeps the organizations of an Identity Provider in memory, for tests that do not care which one it is. */
 export class InMemoryIdentityDirectory implements IdentityDirectory {
@@ -25,11 +25,15 @@ export class InMemoryIdentityDirectory implements IdentityDirectory {
     return organization;
   }
 
-  createOrganization(familyId: string, name: string): Promise<string> {
+  createOrganization(familyId: string, name: string, founderUserId?: string): Promise<string> {
     if (this.failing) return Promise.reject(new Error("the Identity Provider is down"));
     const id = randomUUID();
-    this.organizations.set(id, { familyId, name, members: new Map(), invitations: new Map(), accepted: [] });
+    this.organizations.set(id, { familyId, name, founderUserId: founderUserId ?? null, members: new Map(), invitations: new Map(), accepted: [] });
     return Promise.resolve(id);
+  }
+
+  founderOf(organizationId: string): Promise<string | null> {
+    return Promise.resolve(this.organization(organizationId).founderUserId);
   }
 
   findOrganization(familyId: string): Promise<string | null> {
@@ -75,6 +79,14 @@ export class InMemoryIdentityDirectory implements IdentityDirectory {
 
   removeMember(organizationId: string, userId: string): Promise<void> {
     this.organization(organizationId).members.delete(userId);
+    return Promise.resolve();
+  }
+
+  /** Deletes the user, as Logto does with their memberships; they count as having deleted their account. */
+  deleteUser(userId: string): Promise<void> {
+    for (const organization of this.organizations.values()) organization.members.delete(userId);
+    this.users.delete(userId);
+    this.deleted.add(userId);
     return Promise.resolve();
   }
 

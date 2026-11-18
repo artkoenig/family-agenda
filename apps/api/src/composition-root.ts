@@ -602,7 +602,13 @@ function wireFamily(
     activity,
   });
   const messages = createMessageAccess({ items, blobs });
-  const familyAdmins = createFamilyAdmins({ clock, families, directory: shared.directory, familyLanguage: () => languages.familyLanguage() });
+  const familyAdmins = createFamilyAdmins({
+    clock,
+    families,
+    directory: shared.directory,
+    familyLanguage: () => languages.familyLanguage(),
+    deletesRemovedUsers: mode === "supplied",
+  });
   return {
     familyId,
     timeZone,

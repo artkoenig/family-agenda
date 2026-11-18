@@ -97,6 +97,7 @@ describe("registration in supplied mode (ADR-0010)", () => {
       "family-agenda-signature-sha-256": signed(first?.body ?? "", webhookSecret),
     });
     expect(organizations[0]?.[1].familyId).not.toBe(organizations[1]?.[1].familyId);
+    expect(organizations.map(([, organization]) => organization.founderUserId)).toEqual(["user-anna", "user-ben"]);
     expect(await database.query("select * from family_created_delivery")).toEqual([]);
   });
 
