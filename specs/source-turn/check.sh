@@ -1,6 +1,6 @@
 #!/bin/sh
 # Checks the model of the Source turn (ADR-0008). Run from the repo root through `pnpm specs [check]`:
-# without a check, all of them; CI runs each as its own job.
+# without a check, all of them.
 set -eu
 cd "$(dirname "$0")"
 quint() { pnpm exec quint "$@"; }
