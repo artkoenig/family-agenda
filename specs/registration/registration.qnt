@@ -67,6 +67,17 @@ module registration {
    * organization (#467). False is the code as it is.
    */
   const ACCOUNT_CHECKS: bool
+  /**
+   * The proposed design: a delivery is only stored, as a row with the Family id it will get, and
+   * answered 204; workers take a row under a lease and carry its registration to the end, noting on
+   * the row the organization it created, so that a retry goes on where the last one stopped. Fixed
+   * mode, one registration at a time. False is the code as it is.
+   */
+  const INBOX: bool
+  /** (INBOX) A sweep deletes organizations without members that no registration under way names. */
+  const SWEEP: bool
+  /** (INBOX) Before creating, a registration looks for an organization holding its Family id. */
+  const LOOKUP: bool
   /** Bound the organizations created, the ids drawn and the deliveries of events, so that the state space is finite. */
   const MAX_ORGS: int
   const MAX_DRAWS: int
@@ -79,11 +90,21 @@ module registration {
   /** A core preparing the database; `familyId` the id it serves once Up. */
   type Core = { phase: Phase, drawn: int, familyId: int }
 
-  /** The Family's database: migrated, `family.family_id` (0: no row yet), `organization_id`, `processed_idp_event`. */
-  type Db = { migrated: bool, familyId: int, organizationId: int, processed: Set[str] }
+  /**
+   * The core's database: migrated, `family.family_id` (0: no row yet), `organization_id`,
+   * `processed_idp_event`, and (INBOX) the stored registrations, in supplied mode in the
+   * registration database.
+   */
+  type Db = { migrated: bool, familyId: int, organizationId: int, processed: Set[str], regs: str -> Reg }
 
-  /** An organization in the Identity Provider, with the Family id in its customData. */
-  type Org = { familyId: int, members: Set[str] }
+  /** An organization in the Identity Provider, with the Family id in its customData; `gone` once deleted. */
+  type Org = { familyId: int, members: Set[str], gone: bool }
+
+  /**
+   * (INBOX) A stored registration: the Family id it gets (supplied: drawn when stored), the
+   * organization noted for it, whether it is done.
+   */
+  type Reg = { stored: bool, familyId: int, org: int, done: bool }
 
   /**
    * The Identity Provider: whether sign-up is open, the users with an account, the `PostRegister`
@@ -91,7 +112,7 @@ module registration {
    */
   type Idp = { signUpOpen: bool, accounts: Set[str], inFlight: str -> int, orgs: int -> Org }
 
-  type Stage = Free | ToCreate | ToAddMember | ToRecord | ToRemove | ToClose | ToSend
+  type Stage = Free | ToCheck | ToCreate | ToNote | ToAddMember | ToRecord | ToRemove | ToClose | ToSend
 
   /** A delivery of the webhook being handled; `org` and `familyId` what it created so far. */
   type Handler = { stage: Stage, user: str, org: int, familyId: int }
@@ -106,6 +127,7 @@ module registration {
     | DidInit | DidLock | DidCheck | DidDraw | DidCommit | DidWriteId | DidCrashCore | DidSignUp
     | DidDuplicate | DidSignIn | DidInvite | DidDeleteUser | DidReceive | DidSkip | DidCreate | DidAddMember
     | DidRecord | DidRemove | DidClose | DidSend | DidDeliver | DidThrow | DidCrash
+    | DidAccept | DidTake | DidDone | DidLookUp | DidNote | DidSweep
 
   /**
    * Ghost state: the last action; every Family id the database ever held; the organizations each
@@ -132,6 +154,7 @@ module registration {
 
   // ---- Functional logic -----------------------------------------------------------------------
 
+  val noReg: Reg = { stored: false, familyId: 0, org: 0, done: false }
   val noHandler: Handler = { stage: Free, user: "", org: 0, familyId: 0 }
   val GIVEN_IDS: Set[int] = CORES.map(c => GIVEN.get(c)).exclude(Set(0))
 
@@ -146,7 +169,7 @@ module registration {
     if (inMigration and given != 0) given else drawn
 
   /** The organizations `u` is a member of. */
-  pure def orgsWith(i: Idp, u: str): Set[int] = i.orgs.keys().filter(o => i.orgs.get(o).members.contains(u))
+  pure def orgsWith(i: Idp, u: str): Set[int] = i.orgs.keys().filter(o => not(i.orgs.get(o).gone) and i.orgs.get(o).members.contains(u))
 
   /** Logto deleting a user: the account and every membership go. */
   pure def withoutUser(i: Idp, u: str): Idp =
@@ -184,7 +207,7 @@ module registration {
   action init = all {
     cores' = CORES.mapBy(_ => { phase: Down, drawn: 0, familyId: 0 }),
     lockHolder' = "",
-    db' = { migrated: false, familyId: 0, organizationId: 0, processed: Set() },
+    db' = { migrated: false, familyId: 0, organizationId: 0, processed: Set(), regs: USERS.mapBy(_ => noReg) },
     draws' = 0,
     idp' = { signUpOpen: true, accounts: Set(), inFlight: USERS.mapBy(_ => 0), orgs: Map() },
     handlers' = HANDLERS.mapBy(_ => noHandler),
@@ -290,7 +313,7 @@ module registration {
 
   /** A user accepts an invitation to an organization with Admins (supplied mode). */
   action invite(u: str, o: int): bool = all {
-    SUPPLIED, idp.accounts.contains(u), idp.orgs.keys().contains(o), idp.orgs.get(o).members != Set(),
+    SUPPLIED, idp.accounts.contains(u), idp.orgs.keys().contains(o), not(idp.orgs.get(o).gone), idp.orgs.get(o).members != Set(),
     not(idp.orgs.get(o).members.contains(u)),
     idpOnly(withMember(idp, o, u, true), DidInvite, 0),
   }
@@ -320,7 +343,7 @@ module registration {
   action receive(h: int, u: str): bool = {
     val skips = db.processed.contains(u) or (SUPPLIED and ACCOUNT_CHECKS and not(mayCreateFor(idp, u)))
     all {
-      serving, handlers.get(h).stage == Free, idp.inFlight.get(u) > 0,
+      not(INBOX), serving, handlers.get(h).stage == Free, idp.inFlight.get(u) > 0,
       idp' = { ...idp, inFlight: idp.inFlight.setBy(u, n => n - 1) },
       db' = { ...db, processed: db.processed.union(Set(u)) },
       setHandler(h, if (skips) noHandler
@@ -332,13 +355,14 @@ module registration {
   /** createOrganization, with the Family's id, or in supplied mode a new random one. */
   action create(h: int): bool = {
     val handler = handlers.get(h)
-    val familyId = if (SUPPLIED) randomId(draws + 1) else db.familyId
+    val drawsAnew = SUPPLIED and not(INBOX)
+    val familyId = if (INBOX) handler.familyId else if (SUPPLIED) randomId(draws + 1) else db.familyId
     val org = idp.orgs.keys().size() + 1
     all {
-      handler.stage == ToCreate, org <= MAX_ORGS, not(SUPPLIED) or draws < MAX_DRAWS,
-      idp' = { ...idp, orgs: idp.orgs.put(org, { familyId: familyId, members: Set() }) },
-      setHandler(h, { ...handler, stage: ToAddMember, org: org, familyId: familyId }),
-      draws' = if (SUPPLIED) draws + 1 else draws,
+      handler.stage == ToCreate, org <= MAX_ORGS, not(drawsAnew) or draws < MAX_DRAWS,
+      idp' = { ...idp, orgs: idp.orgs.put(org, { familyId: familyId, members: Set(), gone: false }) },
+      setHandler(h, { ...handler, stage: if (INBOX) ToNote else ToAddMember, org: org, familyId: familyId }),
+      draws' = if (drawsAnew) draws + 1 else draws,
       cores' = cores, lockHolder' = lockHolder, db' = db, platform' = platform,
       ghost' = { ...ghost, lastAction: DidCreate, orgsOf: ghost.orgsOf.setBy(handler.user, n => n + 1) },
     }
@@ -361,7 +385,7 @@ module registration {
     all {
       handler.stage == ToRecord,
       db' = if (db.organizationId == 0) { ...db, organizationId: handler.org } else db,
-      setHandler(h, { ...handler, stage: if (db.organizationId == 0) ToClose else ToRemove }),
+      setHandler(h, { ...handler, stage: if (db.organizationId == 0 or db.organizationId == handler.org) ToClose else ToRemove }),
       keepPreparing, idp' = idp, platform' = platform, did(DidRecord),
     }
   }
@@ -380,7 +404,7 @@ module registration {
   action close(h: int): bool = all {
     handlers.get(h).stage == ToClose,
     idp' = { ...idp, signUpOpen: false }, setHandler(h, noHandler),
-    db' = db, keepPreparing, platform' = platform, did(DidClose),
+    db' = doneFor(handlers.get(h).user), keepPreparing, platform' = platform, did(DidClose),
   }
 
   /** FamilyCreatedDeliveryRepository.add, then the answer 204. */
@@ -390,14 +414,14 @@ module registration {
       handler.stage == ToSend,
       platform' = { ...platform, deliveries: platform.deliveries.union(Set({ familyId: handler.familyId, org: handler.org, user: handler.user })) },
       setHandler(h, noHandler),
-      db' = db, keepPreparing, idp' = idp, did(DidSend),
+      db' = doneFor(handler.user), keepPreparing, idp' = idp, did(DidSend),
     }
   }
 
   /** A call that throws: the event is forgotten and answered 500, which Logto never retries. */
   action throws(h: int): bool = all {
     handlers.get(h).stage != Free,
-    db' = { ...db, processed: db.processed.exclude(Set(handlers.get(h).user)) },
+    db' = if (INBOX) db else { ...db, processed: db.processed.exclude(Set(handlers.get(h).user)) },
     setHandler(h, noHandler),
     keepPreparing, idp' = idp, platform' = platform, did(DidThrow),
   }
@@ -409,6 +433,92 @@ module registration {
     db' = db, keepPreparing, idp' = idp, platform' = platform, did(DidCrash),
   }
 
+  // ---- State machine: the proposed design (INBOX) ---------------------------------------------
+
+  /** (INBOX) The registration of `u` done, if one is stored. */
+  def doneFor(u: str): Db =
+    if (INBOX) { ...db, regs: db.regs.setBy(u, r => { ...r, done: true }) } else db
+
+  /** A delivery reaches a replica, which stores the registration once (supplied: with a new Family id) and answers 204. */
+  action accept(u: str): bool = {
+    val drawsAnew = SUPPLIED and not(db.regs.get(u).stored)
+    all {
+      INBOX, serving, idp.inFlight.get(u) > 0, not(drawsAnew) or draws < MAX_DRAWS,
+      idp' = { ...idp, inFlight: idp.inFlight.setBy(u, n => n - 1) },
+      db' = if (db.regs.get(u).stored) db
+        else { ...db, regs: db.regs.set(u, { ...noReg, stored: true, familyId: if (SUPPLIED) randomId(draws + 1) else db.familyId }) },
+      draws' = if (drawsAnew) draws + 1 else draws,
+      cores' = cores, lockHolder' = lockHolder, handlers' = handlers, platform' = platform, did(DidAccept),
+    }
+  }
+
+  /**
+   * A worker takes a registration not done under a lease, which nobody else holds; a core dying
+   * lets it expire. Fixed mode, while no other registration is under way.
+   */
+  action take(h: int, u: str): bool = {
+    val reg = db.regs.get(u)
+    all {
+      INBOX, handlers.get(h).stage == Free, reg.stored, not(reg.done), not(handling(u)),
+      SUPPLIED or HANDLERS.forall(g => handlers.get(g).stage == Free),
+      setHandler(h, { stage: ToCheck, user: u, org: reg.org, familyId: reg.familyId }),
+      db' = db, keepPreparing, idp' = idp, platform' = platform, did(DidTake),
+    }
+  }
+
+  /** The organization holding the Family id `familyId`, if any (LOOKUP); 0 for none. */
+  def orgOf(familyId: int): int = {
+    val found = idp.orgs.keys().filter(o => not(idp.orgs.get(o).gone) and idp.orgs.get(o).familyId == familyId)
+    if (found == Set()) 0 else found.fold(MAX_ORGS + 1, (a, b) => if (a < b) a else b)
+  }
+
+  /**
+   * Where the registration goes on: a deleted user or a member of another organization gets
+   * nothing (done); fixed mode, a Family with another organization only closes again; the
+   * organization noted, or (LOOKUP) found by the Family id, gets its member; otherwise one is created.
+   */
+  action checkReg(h: int): bool = {
+    val handler = handlers.get(h)
+    val u = handler.user
+    val found = if (handler.org == 0 and LOOKUP) orgOf(handler.familyId) else 0
+    val nothing = not(idp.accounts.contains(u)) or orgsWith(idp, u).exists(o => o != handler.org)
+    all {
+      handler.stage == ToCheck,
+      if (nothing) all { setHandler(h, noHandler), db' = doneFor(u) }
+      else if (not(SUPPLIED) and familyOrg != 0 and familyOrg != handler.org) all { setHandler(h, { ...handler, stage: ToClose }), db' = db }
+      else if (handler.org != 0) all { setHandler(h, { ...handler, stage: ToAddMember }), db' = db }
+      else if (found != 0) all {
+        setHandler(h, { ...handler, stage: ToAddMember, org: found }),
+        db' = { ...db, regs: db.regs.setBy(u, r => { ...r, org: found }) },
+      }
+      else all { setHandler(h, { ...handler, stage: ToCreate }), db' = db },
+      keepPreparing, idp' = idp, platform' = platform,
+      did(if (nothing) DidDone else if (found != 0) DidLookUp else DidCheck),
+    }
+  }
+
+  /** The organization just created noted on the registration's row. */
+  action note(h: int): bool = {
+    val handler = handlers.get(h)
+    all {
+      handler.stage == ToNote,
+      db' = { ...db, regs: db.regs.setBy(handler.user, r => { ...r, org: handler.org }) },
+      setHandler(h, { ...handler, stage: ToAddMember }),
+      keepPreparing, idp' = idp, platform' = platform, did(DidNote),
+    }
+  }
+
+  /**
+   * (SWEEP) Deletes an organization without members that no registration under way names. The code
+   * would tell them apart by age, longer than any registration's lease; the model by the state.
+   */
+  action sweep(o: int): bool = all {
+    SWEEP, idp.orgs.keys().contains(o), not(idp.orgs.get(o).gone), idp.orgs.get(o).members == Set(),
+    not(handlingOrg(o)), not(USERS.exists(u => db.regs.get(u).org == o and not(db.regs.get(u).done))),
+    idp' = { ...idp, orgs: idp.orgs.setBy(o, org => { ...org, gone: true }) },
+    db' = db, keepPreparing, handlers' = handlers, platform' = platform, did(DidSweep),
+  }
+
   action step = any {
     nondet c = CORES.oneOf()
     any { lock(c), check(c), draw(c), commit(c), writeId(c), crashCore(c) },
@@ -417,7 +527,9 @@ module registration {
     any { signUp(u), duplicate(u), signIn(u), invite(u, o), deleteUser(u) },
     nondet h = HANDLERS.oneOf()
     nondet u = USERS.oneOf()
-    any { receive(h, u), create(h), addMember(h), record(h), remove(h), close(h), send(h), throws(h), crash(h) },
+    any { receive(h, u), accept(u), take(h, u), checkReg(h), note(h), create(h), addMember(h), record(h), remove(h), close(h), send(h), throws(h), crash(h) },
+    nondet o = 1.to(MAX_ORGS).oneOf()
+    sweep(o),
     nondet d = platform.deliveries.union(Set({ familyId: 0, org: 0, user: "" })).oneOf()
     deliver(d),
   }
@@ -435,11 +547,11 @@ module registration {
   val onlyFirstCreates: bool = SUPPLIED or idp.orgs.keys().size() <= 1
   /** Self-hosted, an Admin is a member of the Family's organization and of no other. */
   val onlyFamilyOrgHasAdmins: bool = SUPPLIED or idp.orgs.keys().forall(o =>
-    (o != familyOrg and not(handlingOrg(o))) implies idp.orgs.get(o).members == Set())
+    (o != familyOrg and not(handlingOrg(o)) and not(idp.orgs.get(o).gone)) implies idp.orgs.get(o).members == Set())
   /** Supplied, a person is an Admin of at most one Family (#467: registrationMakesOneFamily). */
   val oneFamilyPerAdmin: bool = not(SUPPLIED) or USERS.forall(u => orgsWith(idp, u).filter(o => not(handlingOrg(o))).size() <= 1)
   /** No organization is left without members once its registration is over (#467's debris). */
-  val noEmptyOrganization: bool = idp.orgs.keys().forall(o => handlingOrg(o) or idp.orgs.get(o).members != Set())
+  val noEmptyOrganization: bool = idp.orgs.keys().forall(o => idp.orgs.get(o).gone or handlingOrg(o) or idp.orgs.get(o).members != Set())
 
   val registrationSafety: bool = and { oneOrganizationPerEvent, onlyFirstCreates, onlyFamilyOrgHasAdmins, oneFamilyPerAdmin, noEmptyOrganization }
   val safety: bool = and { oneFamilyId, noStrayRandomId, registrationSafety }
@@ -453,9 +565,10 @@ module registration {
    * (supplied) the central sign-in will run `PostRegister` again and it will not be ignored.
    * Fixed mode, any Admin of the Family will do.
    */
-  def onTheWay(u: str): bool = idp.inFlight.get(u) > 0 or handling(u)
+  def onTheWay(u: str): bool =
+    idp.inFlight.get(u) > 0 or handling(u) or (db.regs.get(u).stored and not(db.regs.get(u).done))
   def reachesFamily(u: str): bool =
-    if (SUPPLIED) orgsWith(idp, u).exists(o => familyComes(o)) or (orgsWith(idp, u) == Set() and not(db.processed.contains(u)))
+    if (SUPPLIED) orgsWith(idp, u).exists(o => familyComes(o)) or (not(INBOX) and orgsWith(idp, u) == Set() and not(db.processed.contains(u)))
     else familyOrg != 0 and idp.orgs.get(familyOrg).members != Set()
   val eventCanFinish: bool = USERS.forall(u =>
     (ghost.registered.contains(u) and idp.accounts.contains(u)) implies (onTheWay(u) or reachesFamily(u)))
@@ -479,4 +592,8 @@ module registration {
   val userDeleted: bool = ghost.lastAction == DidDeleteUser
   val throwsWitness: bool = ghost.lastAction == DidThrow
   val crashed: bool = ghost.lastAction == DidCrash
+  val noted: bool = ghost.lastAction == DidNote
+  val lookedUp: bool = ghost.lastAction == DidLookUp
+  val swept: bool = ghost.lastAction == DidSweep
+  val doneWithNothing: bool = ghost.lastAction == DidDone
 }

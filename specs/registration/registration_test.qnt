@@ -101,12 +101,61 @@ module scenarios {
   /** A core dying after recordIfNew: the central sign-in reruns `PostRegister`, which is ignored. */
   run suppliedCrashMidRegistration =
     init.then(signUp("u1")).then(receive(1, "u1")).then(crash(1)).then(signIn("u1")).then(receive(1, "u1"))
+
+  // ---- The proposed design (INBOX) ----
+
+  /** `u` registers and the delivery is stored. */
+  action stored(u: str): bool = prepares("api").then(signUp(u)).then(accept(u))
+
+  /** Handler 1 finishes a registration whose member is added: the Family's organization recorded and closed, or `family.created` sent and taken. */
+  action finishes(u: str): bool =
+    if (SUPPLIED) send(1).then(deliverOf(u)) else record(1).then(close(1))
+
+  /** The registration of `u` taken and carried through on handler 1. */
+  action carriedThrough(u: str): bool =
+    take(1, u).then(checkReg(1)).then(create(1)).then(note(1)).then(addMember(1)).then(finishes(u))
+
+  /** Delivered twice, to two replicas: one row, one organization. */
+  run inboxDuplicate =
+    init.then(prepares("api")).then(signUp("u1")).then(duplicate("u1")).then(accept("u1")).then(accept("u1"))
+      .then(carriedThrough("u1"))
+      .expect(familyWithAdmin and idp.orgs.keys().size() == 1 and safety and progress)
+
+  /** A core dying mid-way: the lease expires and the next worker carries it through. */
+  run inboxCrashMidRegistration =
+    init.then(stored("u1")).then(take(1, "u1")).then(checkReg(1)).then(crash(1))
+      .expect(progress)
+      .then(carriedThrough("u1"))
+      .expect(familyWithAdmin and safety and progress)
+
+  /** A call failing after addMember: the retry finds the organization noted and finishes with it. */
+  run inboxThrowAfterAddMember =
+    init.then(stored("u1")).then(take(1, "u1")).then(checkReg(1)).then(create(1)).then(note(1)).then(addMember(1)).then(throws(1))
+      .then(take(1, "u1")).then(checkReg(1)).then(addMember(1)).then(finishes("u1"))
+      .expect(familyWithAdmin and idp.orgs.keys().size() == 1 and safety and progress)
+
+  /** The gap: a core dying between createOrganization and noting it. */
+  run theGap =
+    init.then(stored("u1")).then(take(1, "u1")).then(checkReg(1)).then(create(1)).then(crash(1))
+      .then(take(1, "u1")).then(checkReg(1))
+
+  /** A user deleted mid-way: the retry does nothing more, leaving the organization created empty. */
+  run inboxDeletedMidway =
+    init.then(stored("u1")).then(take(1, "u1")).then(checkReg(1)).then(create(1)).then(note(1))
+      .then(deleteUser("u1")).then(throws(1)).then(take(1, "u1")).then(checkReg(1))
+      .expect(db.regs.get("u1").done and oneOrganizationPerEvent and progress)
+
+  /** Self-hosted, two registrations: one at a time, the second only closes again. */
+  run inboxTwoRegistrations =
+    init.then(prepares("api")).then(signUp("u1")).then(signUp("u2")).then(accept("u2")).then(accept("u1"))
+      .then(carriedThrough("u1")).then(take(1, "u2")).then(checkReg(1)).then(close(1))
+      .expect(idp.orgs.keys().size() == 1 and familyWithAdmin and safety and progress)
 }
 
 /** Fixed mode as the code is: FAMILY_ID given to both cores, written in the migrations' transaction. */
 module fixed {
   import scenarios(CORES = Set("api", "worker"), GIVEN = Map("api" -> 1, "worker" -> 1), USERS = Set("u1", "u2"), HANDLERS = Set(1, 2),
-    SUPPLIED = false, ID_IN_MIGRATION = true, ACCOUNT_CHECKS = false, MAX_ORGS = 3, MAX_DRAWS = 3, MAX_EVENTS = 4).*
+    SUPPLIED = false, ID_IN_MIGRATION = true, ACCOUNT_CHECKS = false, INBOX = false, SWEEP = false, LOOKUP = false, MAX_ORGS = 3, MAX_DRAWS = 3, MAX_EVENTS = 4).*
 
   run twoCoresOneIdTest = twoCoresOneId.expect(db.familyId == 1)
   run crashLeavesNothingTest = crashLeavesNothing
@@ -123,7 +172,7 @@ module fixed {
 /** Fixed mode without FAMILY_ID: the Family keeps the id the first core drew. */
 module drawn {
   import scenarios(CORES = Set("api", "worker"), GIVEN = Map("api" -> 0, "worker" -> 0), USERS = Set("u1", "u2"), HANDLERS = Set(1, 2),
-    SUPPLIED = false, ID_IN_MIGRATION = true, ACCOUNT_CHECKS = false, MAX_ORGS = 3, MAX_DRAWS = 3, MAX_EVENTS = 4).*
+    SUPPLIED = false, ID_IN_MIGRATION = true, ACCOUNT_CHECKS = false, INBOX = false, SWEEP = false, LOOKUP = false, MAX_ORGS = 3, MAX_DRAWS = 3, MAX_EVENTS = 4).*
 
   run twoCoresOneIdTest = twoCoresOneId.expect(db.familyId == randomId(1))
 }
@@ -131,7 +180,7 @@ module drawn {
 /** Before the amendment: the given id written once the migrations committed. */
 module unfixedId {
   import scenarios(CORES = Set("api", "worker"), GIVEN = Map("api" -> 1, "worker" -> 1), USERS = Set("u1"), HANDLERS = Set(1),
-    SUPPLIED = false, ID_IN_MIGRATION = false, ACCOUNT_CHECKS = false, MAX_ORGS = 2, MAX_DRAWS = 3, MAX_EVENTS = 2).*
+    SUPPLIED = false, ID_IN_MIGRATION = false, ACCOUNT_CHECKS = false, INBOX = false, SWEEP = false, LOOKUP = false, MAX_ORGS = 2, MAX_DRAWS = 3, MAX_EVENTS = 2).*
 
   /** The core dies between the commit and the write: the random id stays, and no core starts again. */
   run strayRandomIdTest =
@@ -142,7 +191,7 @@ module unfixedId {
 /** Supplied mode as the code is, without #467's checks. */
 module supplied {
   import scenarios(CORES = Set("api"), GIVEN = Map("api" -> 0), USERS = Set("u1", "u2"), HANDLERS = Set(1, 2),
-    SUPPLIED = true, ID_IN_MIGRATION = true, ACCOUNT_CHECKS = false, MAX_ORGS = 3, MAX_DRAWS = 4, MAX_EVENTS = 4).*
+    SUPPLIED = true, ID_IN_MIGRATION = true, ACCOUNT_CHECKS = false, INBOX = false, SWEEP = false, LOOKUP = false, MAX_ORGS = 3, MAX_DRAWS = 4, MAX_EVENTS = 4).*
 
   run everyRegistrationCreatesAFamilyTest = everyRegistrationCreatesAFamily
   run slowPostRegisterRepairTest = slowPostRegisterRepair
@@ -157,7 +206,7 @@ module supplied {
 /** Supplied mode with #467's checks: they fix #467's findings, not the ones of a throw or a crash. */
 module suppliedChecked {
   import scenarios(CORES = Set("api"), GIVEN = Map("api" -> 0), USERS = Set("u1", "u2"), HANDLERS = Set(1, 2),
-    SUPPLIED = true, ID_IN_MIGRATION = true, ACCOUNT_CHECKS = true, MAX_ORGS = 3, MAX_DRAWS = 4, MAX_EVENTS = 4).*
+    SUPPLIED = true, ID_IN_MIGRATION = true, ACCOUNT_CHECKS = true, INBOX = false, SWEEP = false, LOOKUP = false, MAX_ORGS = 3, MAX_DRAWS = 4, MAX_EVENTS = 4).*
 
   run everyRegistrationCreatesAFamilyTest = everyRegistrationCreatesAFamily
   run slowPostRegisterRepairTest = slowPostRegisterRepair
@@ -172,4 +221,92 @@ module suppliedChecked {
   run suppliedThrowAfterCreateTest = suppliedThrowAfterCreate.expect(not(oneOrganizationPerEvent) and not(noEmptyOrganization))
   run suppliedThrowAfterAddMemberTest = suppliedThrowAfterAddMember.expect(not(eventCanFinish))
   run suppliedCrashMidRegistrationTest = suppliedCrashMidRegistration.expect(not(eventCanFinish))
+}
+
+// ---- The proposed design: stored, then carried to the end by workers (INBOX) ----
+
+/** Fixed mode with the proposed design, without anything for the organization a crash leaves unnoted. */
+module fixedInbox {
+  import scenarios(CORES = Set("api"), GIVEN = Map("api" -> 1), USERS = Set("u1", "u2"), HANDLERS = Set(1, 2),
+    SUPPLIED = false, ID_IN_MIGRATION = true, ACCOUNT_CHECKS = true, INBOX = true, SWEEP = false, LOOKUP = false,
+    MAX_ORGS = 3, MAX_DRAWS = 3, MAX_EVENTS = 4).*
+
+  run inboxDuplicateTest = inboxDuplicate
+  run inboxCrashMidRegistrationTest = inboxCrashMidRegistration
+  run inboxThrowAfterAddMemberTest = inboxThrowAfterAddMember
+  run inboxTwoRegistrationsTest = inboxTwoRegistrations
+  /** The gap: a second organization, the first left empty. */
+  run theGapTest = theGap.then(create(1)).expect(not(oneOrganizationPerEvent) and not(noEmptyOrganization) and progress)
+  run inboxDeletedMidwayTest = inboxDeletedMidway.expect(not(noEmptyOrganization))
+}
+
+module fixedSweep {
+  import scenarios(CORES = Set("api"), GIVEN = Map("api" -> 1), USERS = Set("u1", "u2"), HANDLERS = Set(1, 2),
+    SUPPLIED = false, ID_IN_MIGRATION = true, ACCOUNT_CHECKS = true, INBOX = true, SWEEP = true, LOOKUP = false,
+    MAX_ORGS = 3, MAX_DRAWS = 3, MAX_EVENTS = 4).*
+
+  run inboxDuplicateTest = inboxDuplicate
+  run inboxCrashMidRegistrationTest = inboxCrashMidRegistration
+  run inboxThrowAfterAddMemberTest = inboxThrowAfterAddMember
+  run inboxTwoRegistrationsTest = inboxTwoRegistrations
+  /** The gap: a second organization; the sweep deletes the first once empty. */
+  run theGapTest = theGap.then(create(1)).then(note(1)).then(addMember(1)).then(finishes("u1")).then(sweep(1))
+    .expect(not(oneOrganizationPerEvent) and noEmptyOrganization and familyWithAdmin and progress)
+  run inboxDeletedMidwayTest = inboxDeletedMidway.then(sweep(1)).expect(noEmptyOrganization and safety)
+}
+
+module fixedLookup {
+  import scenarios(CORES = Set("api"), GIVEN = Map("api" -> 1), USERS = Set("u1", "u2"), HANDLERS = Set(1, 2),
+    SUPPLIED = false, ID_IN_MIGRATION = true, ACCOUNT_CHECKS = true, INBOX = true, SWEEP = false, LOOKUP = true,
+    MAX_ORGS = 3, MAX_DRAWS = 3, MAX_EVENTS = 4).*
+
+  run inboxDuplicateTest = inboxDuplicate
+  run inboxCrashMidRegistrationTest = inboxCrashMidRegistration
+  run inboxThrowAfterAddMemberTest = inboxThrowAfterAddMember
+  run inboxTwoRegistrationsTest = inboxTwoRegistrations
+  /** The gap closed: the retry finds the organization by its Family id. */
+  run theGapTest = theGap.expect(lookedUp).then(addMember(1)).then(finishes("u1"))
+    .expect(idp.orgs.keys().size() == 1 and familyWithAdmin and safety and progress)
+  run inboxDeletedMidwayTest = inboxDeletedMidway.expect(not(noEmptyOrganization))
+}
+
+module suppliedInbox {
+  import scenarios(CORES = Set("api"), GIVEN = Map("api" -> 0), USERS = Set("u1", "u2"), HANDLERS = Set(1, 2),
+    SUPPLIED = true, ID_IN_MIGRATION = true, ACCOUNT_CHECKS = true, INBOX = true, SWEEP = false, LOOKUP = false,
+    MAX_ORGS = 3, MAX_DRAWS = 4, MAX_EVENTS = 4).*
+
+  run inboxDuplicateTest = inboxDuplicate
+  run inboxCrashMidRegistrationTest = inboxCrashMidRegistration
+  run inboxThrowAfterAddMemberTest = inboxThrowAfterAddMember
+  /** The gap: a second organization, the first left empty. */
+  run theGapTest = theGap.then(create(1)).expect(not(oneOrganizationPerEvent) and not(noEmptyOrganization) and progress)
+  run inboxDeletedMidwayTest = inboxDeletedMidway.expect(not(noEmptyOrganization))
+}
+
+module suppliedSweep {
+  import scenarios(CORES = Set("api"), GIVEN = Map("api" -> 0), USERS = Set("u1", "u2"), HANDLERS = Set(1, 2),
+    SUPPLIED = true, ID_IN_MIGRATION = true, ACCOUNT_CHECKS = true, INBOX = true, SWEEP = true, LOOKUP = false,
+    MAX_ORGS = 3, MAX_DRAWS = 4, MAX_EVENTS = 4).*
+
+  run inboxDuplicateTest = inboxDuplicate
+  run inboxCrashMidRegistrationTest = inboxCrashMidRegistration
+  run inboxThrowAfterAddMemberTest = inboxThrowAfterAddMember
+  /** The gap: a second organization; the sweep deletes the first once empty. */
+  run theGapTest = theGap.then(create(1)).then(note(1)).then(addMember(1)).then(finishes("u1")).then(sweep(1))
+    .expect(not(oneOrganizationPerEvent) and noEmptyOrganization and familyWithAdmin and progress)
+  run inboxDeletedMidwayTest = inboxDeletedMidway.then(sweep(1)).expect(noEmptyOrganization and safety)
+}
+
+module suppliedLookup {
+  import scenarios(CORES = Set("api"), GIVEN = Map("api" -> 0), USERS = Set("u1", "u2"), HANDLERS = Set(1, 2),
+    SUPPLIED = true, ID_IN_MIGRATION = true, ACCOUNT_CHECKS = true, INBOX = true, SWEEP = false, LOOKUP = true,
+    MAX_ORGS = 3, MAX_DRAWS = 4, MAX_EVENTS = 4).*
+
+  run inboxDuplicateTest = inboxDuplicate
+  run inboxCrashMidRegistrationTest = inboxCrashMidRegistration
+  run inboxThrowAfterAddMemberTest = inboxThrowAfterAddMember
+  /** The gap closed: the retry finds the organization by its Family id. */
+  run theGapTest = theGap.expect(lookedUp).then(addMember(1)).then(finishes("u1"))
+    .expect(idp.orgs.keys().size() == 1 and familyWithAdmin and safety and progress)
+  run inboxDeletedMidwayTest = inboxDeletedMidway.expect(not(noEmptyOrganization))
 }
