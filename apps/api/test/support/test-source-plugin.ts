@@ -79,6 +79,7 @@ const catalogueAsked = new Map<string, number>();
 const setupProgress = new Map<string, SetupProgress>();
 const addingFails = new Set<string>();
 const addingHeld = new Map<string, Promise<void>>();
+const duringCall = new Map<string, () => Promise<void>>();
 const askingFails = new Map<string, string>();
 /** Choice fields whose values the plugin cannot offer, by `<sourceTypeId>:<field>`. */
 const choiceFieldFails = new Map<string, string>();
@@ -146,6 +147,10 @@ export const testPluginControls = {
       addingHeld.delete(sourceTypeId);
       release();
     };
+  },
+  /** On its next run, the plugin does this before it answers, as if the call lasted that long. */
+  duringNextCall(sourceTypeId: string, meanwhile: () => Promise<void>): void {
+    duringCall.set(sourceTypeId, meanwhile);
   },
   /** What the plugin was told of removed Sources, oldest first. */
   removed(sourceTypeId: string): RunContext[] {
@@ -240,7 +245,10 @@ export function testSourcePlugin(plugin: TestPluginPackage): PluginImplementatio
       silentApplies: plugin.silentApplies ?? true,
       ...(plugin.catalogue ? { catalogue: { title: "Networks", configKey: plugin.catalogue.configKey } } : {}),
     },
-    poll: (context) => {
+    poll: async (context) => {
+      const meanwhile = duringCall.get(sourceTypeId);
+      duringCall.delete(sourceTypeId);
+      await meanwhile?.();
       runs.set(sourceTypeId, [...(runs.get(sourceTypeId) ?? []), contextOf(context)]);
       const own = ofSource(sourceTypeId, String(context.config.plain.url));
       const key = pending.has(own) ? own : sourceTypeId;

@@ -252,7 +252,9 @@ export function createSourcePolling(deps: PollingDeps) {
   async function recordRun(source: Source, now: Date, result: Extract<SourceRunResult, { ok: true }>, origins: Awaited<ReturnType<typeof buildOrigins>>) {
     try {
       return await items.recordRun(
-        { sourceId: source.id, holder, at: now, retainedSince: retainedSince(now), syncCursor: result.syncCursor, withdrawn: result.withdrawn, origins },
+        // Retention by the clock now, not the run's start: a purge during the plugin's call may have
+        // deleted the row of a message that has passed it since (specs/source-records).
+        { sourceId: source.id, holder, at: now, retainedSince: retainedSince(clock.now()), syncCursor: result.syncCursor, withdrawn: result.withdrawn, origins },
         readStated,
       );
     } catch (error) {

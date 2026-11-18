@@ -205,6 +205,27 @@ describe("Retention: purging the content of messages", () => {
     expect(blobs.size).toBe(0);
   });
 
+  // Found by the model of Source Records (specs/source-records): a run judged retention by the clock
+  // it read before its plugin's call, so a purge during the call deleted a row the run then made anew.
+  it("does not read a message again whose row retention deleted while the run redelivering it called its plugin", async () => {
+    testPluginControls.emit("chat", [message("$m1", "Am Freitag, 18.09., ist der Wandertag.")]);
+    await run();
+    await instance.query("DELETE FROM item");
+    // The run starts just before the message passes its retention; the purge during its call deletes the row.
+    instance.clock.advance(180 * days - 2 * 60 * minutes);
+    testPluginControls.emit("chat", [message("$m1", "Am Freitag, 18.09., ist der Wandertag.")]);
+    let purgedMeanwhile = {};
+    testPluginControls.duringNextCall("chat", async () => {
+      instance.clock.advance(60 * minutes);
+      purgedMeanwhile = await instance.app.retention.purge();
+    });
+    await run();
+
+    expect(purgedMeanwhile).toEqual({ purged: 1, deleted: 1 });
+    expect(await records()).toEqual([]);
+    expect(await instance.query("SELECT count(*)::int AS n FROM item")).toEqual([{ n: 0 }]);
+  });
+
   it("leaves stated Source Records untouched", async () => {
     testPluginControls.emit("calendar", [calendarEntry]);
     await run();
