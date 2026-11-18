@@ -31,3 +31,9 @@ The model of this protocol ([`specs/source-turn`](../../specs/source-turn), ADR-
 Both writes now lock the turn's row, as recording does, and write nothing unless the run still holds it unexpired; the run is then reported as lost, and the secrets it stored for nothing are removed. Secrets stored while the turn was held stay even if the run loses its turn before it records: they were read afresh in the turn, and the plugin may have rotated the old ones.
 
 The model then found the same for the Source Attributes a plugin declares and archives during its call: a stalled run could replace the attributes of the run that took over. Those writes now lock the turn's row as well; the first one that finds the turn lost makes the run lost, and it writes no more.
+
+## Amendment: due work in the model
+
+The model ([`specs/source-turn`](../../specs/source-turn)) now covers due work too: rounds that containers begin at once, each polling the Sources it finds due, and the in-memory queue that lets only one run of a Source per container ask the database for the turn. It checks that a due Source is polled at most once per round across containers, since a run reads its Source afresh in its turn and leaves it once it is no longer due, and that every due Source is polled within a bound once containers keep time (found by simulation). It assumes the containers' clocks agree on when a Source is due.
+
+The model found that the queue is what makes one holder per container safe: without it, a second run of a Source in the same container takes the turn the first let expire, and the stalled first run, whose writes check only the holder, writes in the second's turn. An integration test in `plugin-containers.test.ts` holds this.

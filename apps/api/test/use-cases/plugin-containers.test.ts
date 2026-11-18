@@ -437,6 +437,33 @@ describe("A Source Type whose plugin receives pushed payloads", () => {
       expect((await instance.query("SELECT sync_cursor FROM source_run"))[0]?.sync_cursor).toBeNull();
     });
 
+    // Found by the model of the turn (specs/source-turn): runs of one container share its holder, so
+    // a second run that took an expired turn would let the first, stalled one write in its turn.
+    it("lets a second run of a Source in the same api container wait for the first, even once the first's turn expired", async () => {
+      const cursors: (string | null)[] = [];
+      let answer = () => {};
+      receive = async ({ context, payload: sent }) => {
+        cursors.push(context.syncCursor);
+        if (sent === "Zmlyc3Q=") await new Promise<void>((resolve) => (answer = resolve));
+        return { sourceRecords: [], syncCursor: sent };
+      };
+      const first = instance.app.polling.receive(sourceId, new TextEncoder().encode("first"));
+      await vi.waitFor(() => {
+        expect(cursors).toHaveLength(1);
+      });
+
+      // The first run stalls past its turn's expiry; the second must not take the turn meanwhile.
+      await instance.query("UPDATE source_run_turn SET expires_at = now() - interval '1 second'");
+      const second = instance.app.polling.receive(sourceId, payload);
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      expect(cursors).toHaveLength(1);
+      answer();
+
+      expect(await first).toMatchObject({ ok: true, report: { ran: [], lost: [sourceId] } });
+      expect(await second).toMatchObject({ ok: true, report: { ran: [sourceId] } });
+      expect(cursors).toEqual([null, null]);
+    });
+
     /**
      * Holds the plugin's answer until another container has taken the turn, as after a stall
      * between two renewals, so that the run has not yet noticed it lost the turn.
