@@ -1439,7 +1439,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
         {...((await sourceTypes.list()).find(
           (type) => type.id === source.sourceTypeId,
         )?.needsLlm
-          ? { waiting: await extraction.waiting({ sourceId: source.id }) }
+          ? { waiting: await extraction.waiting({ sourceId: source.id }), failed: await messages.failed(source.id) }
           : {})}
       />
     );
@@ -1796,6 +1796,13 @@ export function createHttpApp(application: Application, options: HttpOptions) {
         timeZone={timeZone}
       />,
     );
+  });
+
+  // A message whose extraction failed for good waits to be read again by the next run (ADR-0005).
+  app.post("/admin/messages/:id/retry", async (c) => {
+    const id = c.req.param("id") as RawMessageId;
+    if (!(await messages.retryExtraction(id))) return c.notFound();
+    return seeOther(c, `/admin/messages/${id}`);
   });
 
   // An Admin's only correction of an Item is deleting it (ADR-0005); back to the message it came from.

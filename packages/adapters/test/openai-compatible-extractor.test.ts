@@ -119,6 +119,22 @@ describe("the OpenAI-compatible Extractor", () => {
     server = await startServer();
   });
 
+  it("tells an endpoint that does not answer in time, which counts against the message", async () => {
+    const silent = createServer(() => {
+      // Never answers.
+    });
+    await new Promise<void>((resolve) => silent.listen(0, "127.0.0.1", resolve));
+    const { port } = silent.address() as AddressInfo;
+    try {
+      const extractor = new OpenAiCompatibleExtractor({ timeoutMs: 50 });
+      const result = await extractor.extract({ ...request(), endpoint: { ...request().endpoint, baseUrl: `http://127.0.0.1:${port}/v1` } });
+      expect(result).toEqual({ ok: false, problem: "timeout", message: "The LLM endpoint did not answer within 0.05 s." });
+    } finally {
+      silent.closeAllConnections();
+      await new Promise((resolve) => silent.close(resolve));
+    }
+  });
+
   it("refuses an answer that does not fit the schema, or was cut off", async () => {
     const extractor = new OpenAiCompatibleExtractor();
     for (const content of [

@@ -316,6 +316,10 @@ export const de: Catalogue = {
     invalidRecords: (count) =>
       count === 1 ? "1 Eintrag ist ungültig und wird deshalb nicht angezeigt." : `${count} Einträge sind ungültig und werden deshalb nicht angezeigt.`,
     unknownAttributes: (ids) => `Die Quelle nannte Teile, die sie nie gemeldet hat (${ids}); diese Einträge wurden ausgelassen.`,
+    failedMessages: (count) =>
+      count === 1
+        ? "1 Nachricht konnte nicht gelesen werden; ihre Einträge fehlen, bis du es erneut versuchst."
+        : `${count} Nachrichten konnten nicht gelesen werden; ihre Einträge fehlen, bis du es erneut versuchst.`,
     lastRead: (when) => `Zuletzt gelesen ${when}`,
     notReadYet: "Noch nicht erfolgreich gelesen",
     notInstalled: "Quellentyp nicht installiert",
@@ -411,6 +415,10 @@ export const de: Catalogue = {
     description: "Das Original, aus dem seine Einträge gelesen wurden. Nur Admins öffnen es.",
     sent: "Gesendet",
     purged: "Der Inhalt dieser Nachricht wird nicht mehr aufbewahrt.",
+    failed: "Das Lesen dieser Nachricht ist mehrmals fehlgeschlagen, deshalb wird sie nicht mehr gelesen. Versuche es erneut, sobald sich der LLM-Endpunkt oder sein Modell geändert hat.",
+    retry: "Erneut versuchen",
+    failedTitle: "Nachrichten, die nicht gelesen werden konnten",
+    failedHint: (sent) => `Gesendet ${sent}. Öffne sie, um es erneut zu versuchen.`,
     sender: "Von",
     subject: "Betreff",
     attributes: "Betrifft",

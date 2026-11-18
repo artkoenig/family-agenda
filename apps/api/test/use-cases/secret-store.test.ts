@@ -1,9 +1,10 @@
 import { randomBytes } from "node:crypto";
 import { readFile, rm, writeFile } from "node:fs/promises";
 import { afterEach, describe, expect, it } from "vitest";
-import type { SecretRef } from "@family-agenda/application";
+import { createSecretSweep, type SecretRef } from "@family-agenda/application";
 import { bootForTest, type TestInstance } from "../support/boot";
 import { InMemorySecretStore } from "../support/in-memory-secret-store";
+import { testPluginControls } from "../support/test-source-plugin";
 
 describe.each([
   { store: "envelope encryption", boot: () => bootForTest() },
@@ -66,7 +67,69 @@ describe("the secret sweep", () => {
     expect(await llmEndpoint.current()).toMatchObject({ hasApiKey: true });
     expect((await secrets.list()).length).toBe(2);
   });
+
+  // Found by the model of the sweep (specs/sweep): it read the references before the clock, so a
+  // sweep stalling in between judged a secret referred to meanwhile by its old snapshot.
+  it("spares a secret referred to while it stalled after reading the references", async () => {
+    instance = await bootForTest();
+    const { secrets, llmEndpoint } = instance.app;
+    const endpoint = { baseUrl: "https://llm.example.org/v1", model: "large", thirdPartiesAcknowledged: true };
+    await llmEndpoint.save({ ...endpoint, apiKey: "sk-old" });
+    const apiKeyRef = async () => (await instance.query("SELECT api_key_ref AS ref FROM llm_endpoint"))[0]?.ref as SecretRef;
+    const sweep = createSecretSweep({
+      clock: instance.clock,
+      secrets,
+      sources: { list: () => Promise.resolve([]) } as never,
+      endpoints: {
+        find: async () => {
+          const read = { ...endpoint, apiKey: await apiKeyRef(), acknowledgedAt: null, savedAt: instance.clock.now() };
+          // The worker stalls; meanwhile an Admin enters a new key, and two hours pass.
+          await llmEndpoint.save({ ...endpoint, apiKey: "sk-new" });
+          await instance.query(`UPDATE secret SET created_at = '${instance.clock.now().toISOString()}'`);
+          instance.clock.advance(2 * 60 * 60 * 1000);
+          return read;
+        },
+      } as never,
+    });
+
+    await sweep.sweep();
+
+    expect(await secrets.get(await apiKeyRef())).toBe("sk-new");
+  });
+
+  // Found by the model of the sweep (specs/sweep): a commit wrote all of a Source's secret fields as
+  // it had read them, so a run refreshing one wrote back another that an Admin replaced meanwhile.
+  it("keeps the secret an Admin entered during a run that refreshed another one", async () => {
+    instance = await bootForTest();
+    await instance.installPlugin({
+      sourceTypeId: "ics",
+      configuration: {
+        version: 1,
+        fields: [
+          { key: "token", label: "Token", secret: true, required: true },
+          { key: "password", label: "Password", secret: true, required: true },
+        ],
+      },
+    });
+    await instance.restart();
+    await instance.app.sourceTypes.enable("ics");
+    const added = await instance.app.sources.add({ sourceTypeId: "ics", plain: {}, secrets: { token: "t1", password: "p1" } });
+    if (!added.ok) throw new Error(`adding failed: ${added.problem}`);
+    testPluginControls.refreshSecrets("ics", { token: "t2" });
+    testPluginControls.duringNextCall("ics", async () => {
+      await instance.app.sources.edit(added.id, { plain: {}, secrets: { token: "", password: "p2" } });
+    });
+    instance.clock.advance(60 * 60 * 1000);
+
+    await instance.app.polling.pollDue();
+
+    const [row] = await instance.query("SELECT secret_refs AS refs FROM source");
+    const refs = row?.refs as Record<string, SecretRef>;
+    expect(await instance.app.secrets.get(refs.token!)).toBe("t2");
+    expect(await instance.app.secrets.get(refs.password!)).toBe("p2");
+  });
 });
+
 
 describe("secrets at rest", () => {
   let instance: TestInstance;

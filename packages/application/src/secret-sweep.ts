@@ -28,10 +28,12 @@ export function createSecretSweep(deps: SecretSweepDeps) {
   return {
     /** Returns how many secrets it removed. */
     async sweep(): Promise<number> {
+      // The clock first: a secret older than an hour that the references, read after it, miss was
+      // referred to by nothing, or by a transaction that took more than an hour (specs/sweep).
+      const before = clock.now().getTime() - unreferencedSecretGraceMs;
       const referenced = new Set<SecretRef>((await sources.list()).flatMap((source) => Object.values(source.secrets)));
       const apiKey = (await endpoints.find())?.apiKey;
       if (apiKey) referenced.add(apiKey);
-      const before = clock.now().getTime() - unreferencedSecretGraceMs;
       const unreferenced = (await secrets.list()).filter(
         (secret) => !referenced.has(secret.ref) && secret.storedAt.getTime() < before,
       );

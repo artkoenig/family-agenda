@@ -1,5 +1,6 @@
 import type {
   Extraction,
+  FailedMessage,
   InvalidRecord,
   ItemDetails,
   ItemRepository,
@@ -15,7 +16,7 @@ import type {
 } from "@family-agenda/application";
 import { TurnLost } from "@family-agenda/application";
 import type { BlobRef, Event, FamilyMemberId, ItemId, StatedTask, LocalDate, RawMessageId, SourceId, SourceTypeId, TimeSpan, TimetableChangeKind } from "@family-agenda/domain";
-import { and, asc, eq, gte, inArray, isNotNull, isNull, lt, lte, ne, or, sql, type SQL, type SQLWrapper } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lt, lte, ne, or, sql, type SQL, type SQLWrapper } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { uuidPattern } from "../uuid";
 import type { Database } from "./database";
@@ -45,8 +46,14 @@ type StatedOutcome = { written: string[]; invalid: InvalidRecord[] };
 /** The Source Attributes of a Source by external id, as `recordRun` resolves what Origins name. */
 type KnownAttributes = Map<string, { id: string; archived: boolean }>;
 
+/** A message, with its text, not yet extracted: waiting, or failed until an Admin retries it. */
+const unextractedMessage = and(isNull(sourceRecords.processedAt), isNotNull(sourceRecords.body), isNull(sourceRecords.withdrawnAt));
+
 /** A message, with its text, waiting for its one successful extraction. */
-const pendingMessage = and(isNull(sourceRecords.processedAt), isNotNull(sourceRecords.body), isNull(sourceRecords.withdrawnAt));
+const pendingMessage = and(unextractedMessage, isNull(sourceRecords.extractionFailedAt));
+
+/** A message whose extraction failed for good, which an Admin can retry while it has its text. */
+const failedMessage = and(unextractedMessage, isNotNull(sourceRecords.extractionFailedAt));
 
 /** A Copy of a message (ADR-0005), in another Source of its Source Type. */
 const copy = alias(sourceRecords, "copy");
@@ -286,13 +293,19 @@ export class PostgresItemRepository implements ItemRepository {
     return row?.count ?? 0;
   }
 
+  async isPendingMessage(id: RawMessageId): Promise<boolean> {
+    const [row] = await this.db.select({ id: sourceRecords.id }).from(sourceRecords).where(and(eq(sourceRecords.id, id), pendingMessage));
+    return row !== undefined;
+  }
+
   async recordExtraction(extraction: Extraction): Promise<void> {
     await this.db.transaction(async (tx) => {
       // Only the first successful extraction counts, should two runs overlap, and none of a message withdrawn meanwhile.
+      // One another run failed meanwhile is extracted all the same (specs/extraction).
       const [message] = await tx
         .update(sourceRecords)
-        .set({ processedAt: extraction.at })
-        .where(and(eq(sourceRecords.id, extraction.messageId), pendingMessage))
+        .set({ processedAt: extraction.at, extractionFailedAt: null })
+        .where(and(eq(sourceRecords.id, extraction.messageId), unextractedMessage))
         .returning({ recordId: sourceRecords.id });
       if (!message) return;
       for (const { position, problem } of extraction.attachmentProblems) {
@@ -303,6 +316,44 @@ export class PostgresItemRepository implements ItemRepository {
       }
       for (const item of extraction.items) await insertItem(tx, message.recordId, item, extraction.at);
     });
+  }
+
+  async recordExtractionFailure(id: RawMessageId, at: Date, maxFailures: number): Promise<boolean> {
+    // Only against a message still waiting: not one read or failed meanwhile on another run.
+    const [row] = await this.db
+      .update(sourceRecords)
+      .set({
+        extractionFailures: sql`${sourceRecords.extractionFailures} + 1`,
+        extractionFailedAt: sql`CASE WHEN ${sourceRecords.extractionFailures} + 1 >= ${maxFailures} THEN ${at.toISOString()}::timestamptz END`,
+      })
+      .where(and(eq(sourceRecords.id, id), pendingMessage))
+      .returning({ failedAt: sourceRecords.extractionFailedAt });
+    return row?.failedAt != null;
+  }
+
+  async failedMessages(sourceId: SourceId): Promise<FailedMessage[]> {
+    const rows = await this.db
+      .select({
+        id: sourceRecords.id,
+        sentAt: arrivedAt,
+        sender: sourceRecords.sender,
+        subject: sourceRecords.subject,
+        failedAt: sql<Date>`${sourceRecords.extractionFailedAt}`.mapWith(sourceRecords.extractionFailedAt),
+      })
+      .from(sourceRecords)
+      .where(and(eq(sourceRecords.sourceId, sourceId), failedMessage))
+      .orderBy(desc(sourceRecords.extractionFailedAt));
+    return rows.map((row) => ({ ...row, id: row.id as RawMessageId }));
+  }
+
+  async retryExtraction(id: RawMessageId): Promise<boolean> {
+    if (!uuidPattern.test(id)) return false;
+    const rows = await this.db
+      .update(sourceRecords)
+      .set({ extractionFailures: 0, extractionFailedAt: null })
+      .where(and(eq(sourceRecords.id, id), failedMessage))
+      .returning({ id: sourceRecords.id });
+    return rows.length > 0;
   }
 
   async findMessage(id: RawMessageId): Promise<RawMessage | null> {
@@ -331,6 +382,8 @@ export class PostgresItemRepository implements ItemRepository {
       attributes: attributes.map((attribute) => attribute.name),
       body: row.body ?? "",
       purgedAt: row.purgedAt,
+      extractionFailures: row.extractionFailures,
+      extractionFailedAt: row.extractionFailedAt,
       attachments: attachments.map(({ position, filename, mediaType, size, blob, conversionProblem }) => ({
         position,
         filename,

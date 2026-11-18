@@ -63,6 +63,14 @@ export class ScriptedExtractor implements Extractor {
     this.scripts.unshift({ contains: "", result: { ok: false, problem, message: `the endpoint is ${problem}` } });
   }
 
+  /** Makes the endpoint fail with `problem` for every message containing `contains`, on every reading. */
+  failFor(contains: string, problem: Extract<ExtractionResult, { ok: false }>["problem"]): void {
+    this.scripts.unshift({ contains, result: { ok: false, problem, message: `the endpoint is ${problem}` } });
+  }
+
+  /** Runs once, before the next reading answers: what happens meanwhile, such as another run. */
+  meanwhile: ((request: ExtractionRequest) => Promise<void>) | null = null;
+
   recover(): void {
     const failing = this.scripts.findIndex((script) => script.contains === "");
     if (failing >= 0) this.scripts.splice(failing, 1);
@@ -82,13 +90,16 @@ export class ScriptedExtractor implements Extractor {
     this.healthResult = { ok: true };
   }
 
-  extract(request: ExtractionRequest): Promise<ExtractionResult> {
+  async extract(request: ExtractionRequest): Promise<ExtractionResult> {
     this.requests.push(request);
+    const meanwhile = this.meanwhile;
+    this.meanwhile = null;
+    if (meanwhile) await meanwhile(request);
     const script = this.scripts.find(({ contains }) => request.message.text.includes(contains));
     const result = script?.result ?? { ok: true, events: [], tasks: [] };
     const next = script?.then?.shift();
     if (script && next) script.result = next;
-    return Promise.resolve(result);
+    return result;
   }
 
   check(endpoint: LlmEndpoint): Promise<EndpointCheck> {

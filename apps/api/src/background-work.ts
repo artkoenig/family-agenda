@@ -42,6 +42,9 @@ function logExtracted(report: ExtractionReport, log: WorkLog): void {
   for (const failure of report.failed) {
     log.warn(`Extracting message ${failure.messageId} failed (${failure.problem}): ${failure.message}`);
   }
+  for (const messageId of report.gaveUp) {
+    log.warn(`Extracting message ${messageId} failed too often; it is no longer read until an Admin retries it`);
+  }
   for (const dropped of report.dropped) {
     log.warn(`An Item "${dropped.title ?? ""}" of message ${dropped.messageId} failed a check twice and is not written: ${dropped.problem}`);
   }

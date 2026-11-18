@@ -308,6 +308,8 @@ CREATE TABLE source_record (
   stated        JSONB,
   link          TEXT,                      -- an http(s) address of the original, if there is one
   processed_at  TIMESTAMPTZ,
+  extraction_failures   INT NOT NULL DEFAULT 0,  -- readings of a message that failed (invalid output, a timeout); an Admin's retry resets it
+  extraction_failed_at  TIMESTAMPTZ,             -- when it failed for good: no longer read until an Admin retries it
   withdrawn_at  TIMESTAMPTZ,
   purged_at     TIMESTAMPTZ,
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),

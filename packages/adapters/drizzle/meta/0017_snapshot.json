@@ -1,5 +1,5 @@
 {
-  "id": "2f49fcec-2bcf-41f2-a7dc-7fb19f65f646",
+  "id": "be00166d-cc5d-4a69-b9d5-d543d4b63c5b",
   "prevId": "1c465f8f-bcc6-40da-974e-9616fa221c4c",
   "version": "7",
   "dialect": "postgresql",
@@ -996,68 +996,6 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.registration": {
-      "name": "registration",
-      "schema": "",
-      "columns": {
-        "user_id": {
-          "name": "user_id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "email": {
-          "name": "email",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "family_id": {
-          "name": "family_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "organization_id": {
-          "name": "organization_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "attempts": {
-          "name": "attempts",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "next_attempt_at": {
-          "name": "next_attempt_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "leased_until": {
-          "name": "leased_until",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "done_at": {
-          "name": "done_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
     "public.secret": {
       "name": "secret",
       "schema": "",
@@ -1519,6 +1457,19 @@
         },
         "processed_at": {
           "name": "processed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "extraction_failures": {
+          "name": "extraction_failures",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "extraction_failed_at": {
+          "name": "extraction_failed_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false

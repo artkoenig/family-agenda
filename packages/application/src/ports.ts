@@ -409,6 +409,8 @@ export type Source = {
   invalidRecords: string[];
   /** The Source Attribute ids that Source Records named without their being declared, or after they were archived. */
   unknownAttributes: string[];
+  /** How many of its messages failed extraction for good and wait for an Admin's retry. */
+  failedMessages: number;
   createdAt: Date;
 };
 
@@ -456,9 +458,11 @@ export interface SourceRepository {
   migrateConfig(id: SourceId, fromVersion: number, plain: PlainConfig, configVersion: number): Promise<void>;
   /**
    * Stores what an Admin edited: the configuration, the polling interval, and the time of the last
-   * run, which an edit clears so that the Source runs again on the next tick.
+   * run, which an edit clears so that the Source runs again on the next tick. Of its secret fields it
+   * writes only `changedSecrets`, not `source.secrets`: an edit read the others before, and a run may
+   * have replaced and removed one of them meanwhile (ADR-0005, specs/sweep).
    */
-  update(source: Source): Promise<void>;
+  update(source: Source, changedSecrets: Record<string, SecretRef>): Promise<void>;
   /**
    * Records a run that failed, which keeps the sync cursor for the next one. The Source fails since the
    * first failed run after its last successful one, and definitely once any of them did.
@@ -470,10 +474,11 @@ export interface SourceRepository {
    */
   recordFailedRunInTurn(id: SourceId, holder: string, at: Date, error: RunError): Promise<boolean>;
   /**
-   * Points the Source's secret fields at these references, such as after its plugin refreshed a
-   * token, but only while `holder` holds the Source's turn unexpired (ADR-0008); whether it did.
+   * Points these secret fields of the Source at these references, such as after its plugin refreshed
+   * a token, leaving its other secret fields as they are, but only while `holder` holds the Source's
+   * turn unexpired (ADR-0008); whether it did.
    */
-  replaceSecretsInTurn(id: SourceId, holder: string, secrets: Record<string, SecretRef>): Promise<boolean>;
+  replaceSecretsInTurn(id: SourceId, holder: string, changed: Record<string, SecretRef>): Promise<boolean>;
   /** Shows or hides the Source's Items on the timeline and in the feeds. */
   setShown(id: SourceId, shown: boolean): Promise<void>;
   /** Names the Source as an Admin calls it; null for the name derived from its settings. */
@@ -581,6 +586,9 @@ export type PendingMessage = {
 export type PendingAttachment = { position: number; filename: string; contentType: string; blob: BlobRef };
 
 /** A raw message as an Admin opens it. */
+/** A message whose extraction failed for good, as the Admin area lists it. */
+export type FailedMessage = { id: RawMessageId; sentAt: Date; sender: string | null; subject: string | null; failedAt: Date };
+
 export type RawMessage = {
   id: RawMessageId;
   sourceId: SourceId;
@@ -593,6 +601,9 @@ export type RawMessage = {
   body: string;
   /** When its content was deleted after the retention period or because nothing needed it; null while it is kept. */
   purgedAt: Date | null;
+  /** How many of its readings failed, and when it failed for good, which an Admin can retry; null if it did not. */
+  extractionFailures: number;
+  extractionFailedAt: Date | null;
   attachments: {
     position: number;
     filename: string;
@@ -676,11 +687,23 @@ export interface ItemRepository {
   pendingMessages(limit: number): Promise<PendingMessage[]>;
   /** How many raw messages, of one Source or of all, wait for extraction. */
   pendingMessageCount(scope: { sourceId?: SourceId }): Promise<number>;
+  /** Whether the message still waits for extraction: another run may have read it meanwhile. */
+  isPendingMessage(id: RawMessageId): Promise<boolean>;
   /**
    * Records a message's one extraction in one transaction: its Items, and the message as
-   * extracted, so that it is never read again. A message extracted already is left as it is.
+   * extracted, so that it is never read again. A message extracted already is left as it is; one
+   * that failed meanwhile on another run is extracted all the same.
    */
   recordExtraction(extraction: Extraction): Promise<void>;
+  /**
+   * Counts a failed reading against a message still waiting; at `maxFailures` it has failed, and is
+   * no longer read until an Admin retries it. Returns whether it failed now.
+   */
+  recordExtractionFailure(id: RawMessageId, at: Date, maxFailures: number): Promise<boolean>;
+  /** The messages whose extraction failed for good and that an Admin can retry, of one Source, newest first. */
+  failedMessages(sourceId: SourceId): Promise<FailedMessage[]>;
+  /** Lets a failed message wait for extraction again, its failures forgotten. Returns whether it had failed. */
+  retryExtraction(id: RawMessageId): Promise<boolean>;
   findMessage(id: RawMessageId): Promise<RawMessage | null>;
   /** The Items written from a message, in the order they were, also those of a hidden Source. */
   itemsOfMessage(id: RawMessageId): Promise<ProjectedItem[]>;
@@ -835,7 +858,11 @@ export type ExtractionRequest = {
  * The endpoint could not be reached or refused the key, which says nothing about the message;
  * or it answered with output that does not fit the schema.
  */
-export type EndpointFailure = { ok: false; problem: "unreachable" | "unauthorized" | "invalid-output"; message: string };
+/**
+ * Why the LLM endpoint gave no reading: unreachable, refusing the key, answering what is no reading,
+ * or not answering in time. Invalid output and a timeout count as a failure of the message (ADR-0005).
+ */
+export type EndpointFailure = { ok: false; problem: "unreachable" | "unauthorized" | "invalid-output" | "timeout"; message: string };
 
 export type ExtractionResult = { ok: true; events: ExtractedEvent[]; tasks: ExtractedTask[] } | EndpointFailure;
 

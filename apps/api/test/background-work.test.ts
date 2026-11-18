@@ -23,6 +23,7 @@ describe("logging what due work did", () => {
           extracted: [],
           failed: [{ messageId: message, problem: "unreachable", message: "no answer" }],
           dropped: [{ messageId: message, title: null, problem: "date-mismatch" }],
+          gaveUp: [message],
         } },
       },
       { warn: (line) => lines.push(line), error: (line) => lines.push(line) },
@@ -34,6 +35,7 @@ describe("logging what due work did", () => {
       "Source s1 states an invalid Item for e1, which is not written: no title; no date",
       "Source s1 lost its turn to another process during its run, which is not recorded",
       "Extracting message m1 failed (unreachable): no answer",
+      "Extracting message m1 failed too often; it is no longer read until an Admin retries it",
       'An Item "" of message m1 failed a check twice and is not written: date-mismatch',
     ]);
   });
