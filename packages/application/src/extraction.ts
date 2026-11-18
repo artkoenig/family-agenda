@@ -61,12 +61,24 @@ export type ExtractionReport = {
   extracted: RawMessageId[];
   /** What failed an automatic check when a message was read a second time, and is not written. */
   dropped: { messageId: RawMessageId; title: string | null; problem: string }[];
-  /** The messages that wait for the next run. */
+  /** The messages whose reading failed; those not `gaveUp` wait for the next run. */
   failed: { messageId: RawMessageId; problem: Extract<ExtractionResult, { ok: false }>["problem"]; message: string }[];
+  /** The messages that failed for good, MAX_FAILURES times, and wait for an Admin's retry. */
+  gaveUp: RawMessageId[];
 };
 
 /** How many messages one run extracts at most, so that a run stays short. */
 const batchSize = 20;
+
+/**
+ * How many readings of a message may fail, by invalid output or a timeout, before it is no longer
+ * read until an Admin retries it, so that it cannot hold up the messages after it (specs/extraction).
+ */
+export const maxExtractionFailures = 3;
+
+/** Whether a failed reading is the message's own failure, counted against it: the endpoint answered, or took too long for it. */
+const countsAgainstMessage = (problem: Extract<ExtractionResult, { ok: false }>["problem"]) =>
+  problem === "invalid-output" || problem === "timeout";
 
 /**
  * Extraction of Items from raw messages (ADR-0005): once per message, through the Family's LLM
@@ -130,26 +142,46 @@ export function createExtraction(deps: ExtractionDeps) {
     return extractor.extract({ endpoint, message: { text, sent: { ...sent, weekday: weekdayOf(sent.date) } } });
   }
 
+  /**
+   * Reads a message unless another run read it meanwhile, as the schedule and a trigger may run at
+   * once; null if it no longer waits.
+   */
+  async function readIfPending(message: PendingMessage, text: string, endpoint: LlmEndpoint): Promise<ExtractionResult | null> {
+    return (await items.isPendingMessage(message.id)) ? read(message, text, endpoint) : null;
+  }
+
   async function extractOne(message: PendingMessage, text: string, problems: AttachmentProblem[], endpoint: LlmEndpoint) {
     const reading: Reading = { text, sentOn: localDateTime(message.sentAt, timeZone).date, timeZone };
-    let result = await read(message, text, endpoint);
-    if (!result.ok) return { result, dropped: [] };
+    let result = await readIfPending(message, text, endpoint);
+    if (!result?.ok) return { result, dropped: [] };
     let checkedItems = checkAll(result, reading);
     if (checkedItems.failing.length > 0) {
-      result = await read(message, text, endpoint);
-      if (!result.ok) return { result, dropped: [] };
+      result = await readIfPending(message, text, endpoint);
+      if (!result?.ok) return { result, dropped: [] };
       checkedItems = checkAll(result, reading);
     }
     await items.recordExtraction({ messageId: message.id, at: clock.now(), items: checkedItems.passing, attachmentProblems: problems });
     return { result, dropped: checkedItems.failing.map((failing) => ({ messageId: message.id, ...failing })) };
   }
 
-  /** Extracts one message; the failure, if it failed. */
-  async function extractMessage(message: PendingMessage, endpoint: LlmEndpoint, report: ExtractionReport): Promise<ExtractionReport["failed"][number] | null> {
+  /**
+   * Extracts one message, counting a failure of its own against it; the failure, if it failed,
+   * or `skipped` if another run read it meanwhile.
+   */
+  async function extractMessage(
+    message: PendingMessage,
+    endpoint: LlmEndpoint,
+    report: ExtractionReport,
+  ): Promise<ExtractionReport["failed"][number] | "skipped" | null> {
     const full = await fullTextOf(message, message.body);
     const { result, dropped } = await extractOne(message, full.text, full.problems, endpoint);
     report.dropped.push(...dropped);
-    return result.ok ? null : { messageId: message.id, problem: result.problem, message: result.message };
+    if (!result) return "skipped";
+    if (result.ok) return null;
+    if (countsAgainstMessage(result.problem) && (await items.recordExtractionFailure(message.id, clock.now(), maxExtractionFailures))) {
+      report.gaveUp.push(message.id);
+    }
+    return { messageId: message.id, problem: result.problem, message: result.message };
   }
 
   return {
@@ -160,11 +192,12 @@ export function createExtraction(deps: ExtractionDeps) {
 
     /**
      * Extracts the messages that wait for it, as the worker does on each tick. Without an LLM
-     * endpoint they keep waiting; when the endpoint cannot be reached or refuses the key, the rest
-     * wait for the next run, since they would fail the same way.
+     * endpoint they keep waiting; when the endpoint cannot be reached, refuses the key or times
+     * out, the rest wait for the next run, since they would fail the same way. Invalid output and
+     * a timeout count against the message, which after `maxExtractionFailures` waits for an Admin.
      */
     async extractPending(): Promise<ExtractionReport> {
-      const report: ExtractionReport = { extracted: [], dropped: [], failed: [] };
+      const report: ExtractionReport = { extracted: [], dropped: [], failed: [], gaveUp: [] };
       const endpoint = await familyEndpointOf({ ...deps, supplied: deps.suppliedEndpoint ?? null });
       if (!endpoint) return report;
       const pending = await items.pendingMessages(batchSize);
@@ -173,10 +206,11 @@ export function createExtraction(deps: ExtractionDeps) {
       try {
         for (const message of pending) {
           const failure = await extractMessage(message, endpoint, report);
-          if (failure) report.failed.push(failure);
-          else report.extracted.push(message.id);
+          if (failure === null) report.extracted.push(message.id);
+          else if (failure !== "skipped") report.failed.push(failure);
           await progress.advance();
-          if (failure && failure.problem !== "invalid-output") break;
+          // The endpoint would fail the same way for the rest: unreachable, refusing the key, or slow.
+          if (failure !== null && failure !== "skipped" && failure.problem !== "invalid-output") break;
         }
       } finally {
         await progress.end();

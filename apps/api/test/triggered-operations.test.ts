@@ -6,7 +6,7 @@ import { createTriggerApp, serveTriggers, type TriggeredWork } from "../src/trig
 
 const emptyReport: DueWorkReport = {
   polled: { ok: true, report: { ran: [], failed: [], refused: [], invalid: [], lost: [] } },
-  extracted: { ok: true, report: { extracted: [], failed: [], dropped: [] } },
+  extracted: { ok: true, report: { extracted: [], failed: [], dropped: [], gaveUp: [] } },
 };
 
 type Overrides = {

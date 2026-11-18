@@ -374,6 +374,13 @@ export const sourceRecords = pgTable(
     /** When its message was extracted, or its stated Item written; null while it waits, or if it was invalid. */
     processedAt: timestamptz("processed_at"),
     /**
+     * How many readings of a message failed, by invalid output or a timeout (ADR-0005). An Admin's
+     * retry sets it back to 0.
+     */
+    extractionFailures: integer("extraction_failures").notNull().default(0),
+    /** When its message failed for the last time it may, and is no longer read until an Admin retries it. */
+    extractionFailedAt: timestamptz("extraction_failed_at"),
+    /**
      * When the Source said it no longer has it, such as a redacted message: its Items are deleted
      * and its message's text and attachments are gone. Arriving again clears it.
      */

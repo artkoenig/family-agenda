@@ -226,4 +226,38 @@ describe("the LLM endpoint and mail over HTTP", () => {
     expect(row).toMatch(/<a href="\/admin\/messages\/[0-9a-f-]+">Open the message<\/a>/);
     expect(row).not.toContain("Admins only");
   });
+
+  it("lists a mail whose extraction failed for good on its Source, and lets an Admin retry it", async () => {
+    await instance.app.sourceTypes.enable("school-mail");
+    const added = await instance.app.sources.add({ sourceTypeId: "school-mail", plain: { url: "imap.example.org" }, secrets: {} });
+    if (!added.ok) throw new Error("adding failed");
+    await instance.app.llmEndpoint.save({ baseUrl: "http://ollama:11434/v1", model: "qwen3.5:9b", apiKey: "" });
+    extractor.failFor("Wandertag", "invalid-output");
+    testPluginControls.emit("school-mail", [
+      {
+        externalId: "m1",
+        occurredAt: new Date("2026-09-14T06:00:00Z"),
+        subject: "Wandertag",
+        attributes: ["main"],
+        content: { kind: "raw-message", text: "Morgen ist Wandertag.", attachments: [] },
+      },
+    ]);
+    await instance.app.polling.pollDue();
+    for (let run = 0; run < 3; run++) await instance.app.extraction.extractPending();
+
+    const source = await (await instance.get(`/admin/sources/${added.id}`, { cookie })).text();
+    expect(source).toContain("Messages that could not be read");
+    const link = /<a class="fam-row__label" href="(\/admin\/messages\/[0-9a-f-]+)">Wandertag<\/a>/.exec(source)?.[1];
+    expect(link).toBeDefined();
+    const message = await (await instance.get(link!, { cookie })).text();
+    expect(message).toContain("Reading this message failed several times");
+    expect(message).toContain(`action="${link}/retry"`);
+
+    const retried = await instance.post(`${link}/retry`, {}, { cookie });
+    expect(retried.status).toBe(303);
+    expect(retried.headers.get("location")).toBe(link);
+    expect(await (await instance.get(link!, { cookie })).text()).not.toContain("Reading this message failed several times");
+    expect((await instance.post(`${link}/retry`, {}, { cookie })).status, "it no longer has failed").toBe(404);
+    expect((await instance.post(`${link}/retry`, {})).headers.get("location")).toBe("/admin/sign-in");
+  });
 });

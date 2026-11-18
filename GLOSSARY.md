@@ -101,7 +101,7 @@ Where a Source resumes reading on its next run, such as the last mail read in ea
 _Avoid_: State, state blob, sync token, checkpoint
 
 **Extraction**:
-The one reading of a message by the LLM that finds its Items; a message edited later keeps what it found.
+The one reading of a message by the LLM that finds its Items; a message edited later keeps what it found. A message whose reading fails three times has failed, and waits for an Admin's retry.
 _Avoid_: Parsing, re-import, reprocessing
 
 ### Items

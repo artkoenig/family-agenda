@@ -174,6 +174,9 @@ export class OpenAiCompatibleExtractor implements Extractor {
         signal: AbortSignal.timeout(this.timeoutMs),
       });
     } catch (error) {
+      if (error instanceof DOMException && error.name === "TimeoutError") {
+        return { ok: false, problem: "timeout", message: `The LLM endpoint did not answer within ${this.timeoutMs / 1000} s.` };
+      }
       return { ok: false, problem: "unreachable", message: `The LLM endpoint could not be reached: ${reason(error)}` };
     }
     const statusProblem = statusProblemOf(response);

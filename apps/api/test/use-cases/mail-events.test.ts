@@ -202,7 +202,7 @@ describe("Events extracted from mail", () => {
       testPluginControls.emit("inbox", [mail("m1", "2026-09-14T06:12:00Z", invitation)]);
       await fresh.app.polling.pollDue();
 
-      expect(await fresh.app.extraction.extractPending()).toEqual({ extracted: [], dropped: [], failed: [] });
+      expect(await fresh.app.extraction.extractPending()).toEqual({ extracted: [], dropped: [], failed: [], gaveUp: [] });
 
       await fresh.app.llmEndpoint.save({ baseUrl: "http://localhost:11434/v1", model: "qwen3.5:9b", apiKey: "" });
       expect((await fresh.app.extraction.extractPending()).extracted).toHaveLength(1);
