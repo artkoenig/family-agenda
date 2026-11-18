@@ -98,6 +98,21 @@ describe("the first registration of a fixed Instance (ADR-0010)", () => {
     expect(await instance.query("select user_id, done_at is not null as done from registration")).toEqual([{ user_id: "user-anna", done: true }]);
   });
 
+  it("leaves an event to a core of the older version that recorded it, and records the ones it takes for them", async () => {
+    await boot();
+    await instance.query(`insert into processed_idp_event (event_id, processed_at) values ('PostRegister:user-anna', now())`);
+
+    await instance.app.registration.register(anna);
+    await instance.app.registration.register(ben);
+
+    expect([...([...directory.organizations.values()][0]?.members.keys() ?? [])]).toEqual(["user-ben"]);
+    expect(await instance.query("select event_id from processed_idp_event order by event_id")).toEqual([{ event_id: "PostRegister:user-anna" }, { event_id: "PostRegister:user-ben" }]);
+    expect(await instance.query("select user_id, done_at is not null as done from registration order by user_id")).toEqual([
+      { user_id: "user-anna", done: true },
+      { user_id: "user-ben", done: true },
+    ]);
+  });
+
   it("goes on with the organization noted when adding the Admin failed, creating no second one", async () => {
     await boot();
     directory.failingToAdd = true;

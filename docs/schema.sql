@@ -201,8 +201,9 @@ CREATE TABLE source_run_turn (
   expires_at  TIMESTAMPTZ NOT NULL            -- renewed while the run lasts; once passed, the run is over
 );
 
--- The events from the Identity Provider processed (ADR-0010), by cores of an older version: newer
--- ones keep registrations in registration instead. Dropped by a later release.
+-- The events from the Identity Provider processed (ADR-0010), as cores of an older version record
+-- them; newer ones record theirs here too, so that only one core of either version takes an event,
+-- and keep registrations in registration. Dropped by a later release.
 CREATE TABLE processed_idp_event (
   event_id      TEXT PRIMARY KEY,               -- such as PostRegister:<user id>
   processed_at  TIMESTAMPTZ NOT NULL

@@ -63,6 +63,7 @@ import {
   family,
   familyMembers,
   llmEndpoints,
+  processedIdpEvents,
   registrations,
   familyCreatedDeliveries,
   sourceAttributeMembers,
@@ -792,13 +793,23 @@ const registrationLockKey = 0x7265_6731;
 export class PostgresRegistrationInboxRepository implements RegistrationInboxRepository {
   constructor(private readonly db: Database) {}
 
-  async add(registration: { userId: string; email: string; familyId: string | null }, at: Date): Promise<boolean> {
-    const added = await this.db
-      .insert(registrations)
-      .values({ ...registration, nextAttemptAt: at })
-      .onConflictDoNothing()
-      .returning({ userId: registrations.userId });
-    return added.length > 0;
+  add(registration: { userId: string; email: string; familyId: string | null }, at: Date): Promise<boolean> {
+    return this.db.transaction(async (tx) => {
+      // Until a later release drops processed_idp_event, cores of the older version record events there:
+      // claiming the event there too lets one core of either version take it, not one of each.
+      const claimed = await tx
+        .insert(processedIdpEvents)
+        .values({ eventId: `PostRegister:${registration.userId}`, processedAt: at })
+        .onConflictDoNothing()
+        .returning({ eventId: processedIdpEvents.eventId });
+      // One an older core took is kept as done, so that a redelivery to this version does nothing either.
+      const added = await tx
+        .insert(registrations)
+        .values({ ...registration, nextAttemptAt: at, ...(claimed.length === 0 ? { doneAt: at } : {}) })
+        .onConflictDoNothing()
+        .returning({ userId: registrations.userId, doneAt: registrations.doneAt });
+      return added.some((row) => row.doneAt === null);
+    });
   }
 
   takeDue(now: Date, leaseUntil: Date, limit: number, alone: boolean): Promise<StoredRegistration[]> {
