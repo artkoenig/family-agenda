@@ -28,6 +28,7 @@ export function createFamilyRegistration(deps: FamilyRegistrationDeps): Registra
   const mode: RegistrationMode = {
     isOpen,
     alone: true,
+    recordsFounder: false,
     familyIdOf: () => families.familyId(),
     async createsNothing(registration) {
       const recorded = await families.organizationId();

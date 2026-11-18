@@ -11,13 +11,18 @@ export type FamilyAdminsDeps = {
   /** Null without a management API: then there is no Admins page. */
   directory: IdentityDirectory | null;
   familyLanguage: () => Promise<FamilyLanguage>;
+  /**
+   * Supplied mode (#469): removing an Admin deletes their user, so they cannot sign in again, and the
+   * founder, who holds the subscription, is never removed. Otherwise only the membership goes.
+   */
+  deletesRemovedUsers?: boolean;
 };
 
 export type AdminsListing = { admins: DirectoryMember[]; invitations: DirectoryInvitation[] };
 
 export type InvitationResult = { ok: true } | { ok: false; problem: "invalid-email" | "already-admin" | "already-invited" | "admin-elsewhere" };
 
-export type RemovalResult = { ok: true } | { ok: false; problem: "last-admin" };
+export type RemovalResult = { ok: true } | { ok: false; problem: "last-admin" | "founder" };
 
 /** A plausible email address: something, an `@`, a domain with a dot; no spaces. */
 const emailPattern = /^[^\s@]+@[^\s@.]+(?:\.[^\s@.]+)+$/;
@@ -27,7 +32,7 @@ const emailPattern = /^[^\s@]+@[^\s@.]+(?:\.[^\s@.]+)+$/;
  * listed, invited by email and removed through the management API, the last one never.
  */
 export function createFamilyAdmins(deps: FamilyAdminsDeps) {
-  const { clock, families, directory, familyLanguage } = deps;
+  const { clock, families, directory, familyLanguage, deletesRemovedUsers = false } = deps;
 
   /** The organization the page manages; null without a management API or before registration created it. */
   const organizationOf = async (): Promise<{ directory: IdentityDirectory; organizationId: string } | null> => {
@@ -80,14 +85,23 @@ export function createFamilyAdmins(deps: FamilyAdminsDeps) {
       if (at !== null) await at.directory.revokeInvitation(at.organizationId, invitationId);
     },
 
-    /** Removes the Admin `userId`, unless it is the last one; it takes effect at their next sign-in. */
+    /**
+     * Removes the Admin `userId`, unless it is the last one or, when removal deletes users, the
+     * founder; it takes effect at their next sign-in (ADR-0009). An organization without a founder
+     * recorded, created before #469, refuses no one as its founder.
+     */
     async remove(userId: string): Promise<RemovalResult> {
       const at = await organizationOf();
       if (at === null) return { ok: true };
       const admins = await at.directory.listMembers(at.organizationId);
       if (!admins.some((admin) => admin.userId === userId)) return { ok: true };
       if (admins.length <= 1) return { ok: false, problem: "last-admin" };
-      await at.directory.removeMember(at.organizationId, userId);
+      if (!deletesRemovedUsers) {
+        await at.directory.removeMember(at.organizationId, userId);
+        return { ok: true };
+      }
+      if ((await at.directory.founderOf(at.organizationId)) === userId) return { ok: false, problem: "founder" };
+      await at.directory.deleteUser(userId);
       return { ok: true };
     },
   };

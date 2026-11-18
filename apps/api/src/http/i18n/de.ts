@@ -74,6 +74,7 @@ export const de: Catalogue = {
     "invalid-email": "Gib eine E-Mail-Adresse ein.",
     "already-admin": "Diese Adresse ist schon Admin der Familie.",
     "already-invited": "Diese Adresse ist schon eingeladen.",
+    founder: "Wer die Familie registriert hat, kann nicht entfernt werden, sondern nur die Familie schließen und das Abo beenden.",
     "admin-elsewhere": "Diese Adresse ist schon Admin einer anderen Familie.",
     "last-admin": "Die Familie behält mindestens einen Admin: Der letzte Admin kann nicht entfernt werden.",
     "invalid-interval": `Das Abrufintervall muss zwischen ${pollIntervalRange.minSeconds / 60} Minute und ${pollIntervalRange.maxSeconds / 86_400} Tagen liegen.`,

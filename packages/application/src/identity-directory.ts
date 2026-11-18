@@ -18,8 +18,13 @@ export type InvitationDetails = { expiresAt: Date; link: string; locale: string 
  * the organization's members with the role `admin`.
  */
 export interface IdentityDirectory {
-  /** Creates the Family's organization, its Family id kept with it; resolves to the organization id. */
-  createOrganization(familyId: string, name: string): Promise<string>;
+  /**
+   * Creates the Family's organization, its Family id kept with it, and its founder's user id when
+   * given (supplied mode, #469); resolves to the organization id.
+   */
+  createOrganization(familyId: string, name: string, founderUserId?: string): Promise<string>;
+  /** The user who registered the organization's Family; null for none recorded, as before #469 or in fixed mode. */
+  founderOf(organizationId: string): Promise<string | null>;
   /** The organization created for the Family id `familyId`, found by the name it was given; null for none. */
   findOrganization(familyId: string): Promise<string | null>;
   /** Deletes an organization, such as one a registration created and then had no use for. */
@@ -40,6 +45,8 @@ export interface IdentityDirectory {
   invite(organizationId: string, email: string, details: InvitationDetails): Promise<DirectoryInvitation>;
   listMembers(organizationId: string): Promise<DirectoryMember[]>;
   removeMember(organizationId: string, userId: string): Promise<void>;
+  /** Deletes the user, and with them their memberships: they cannot sign in again (#469). */
+  deleteUser(userId: string): Promise<void>;
   /** The invitations still pending. */
   listInvitations(organizationId: string): Promise<DirectoryInvitation[]>;
   revokeInvitation(organizationId: string, invitationId: string): Promise<void>;

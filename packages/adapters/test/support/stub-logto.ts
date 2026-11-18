@@ -110,6 +110,16 @@ export class StubLogto {
         const found = [...this.organizations.entries()].filter(([id, organization]) => id.toLowerCase().includes(q) || organization.name.toLowerCase().includes(q));
         return [200, found.map(([id, organization]) => ({ id, name: organization.name, customData: organization.customData }))];
       }
+      case "GET organizations/:": {
+        const organization = this.organizations.get(parts[1] ?? "");
+        return organization ? [200, { id: parts[1], name: organization.name, customData: organization.customData }] : [404];
+      }
+      case "DELETE users/:": {
+        // As Logto: deleting a user ends their memberships.
+        if (!this.users.delete(parts[1] ?? "")) return [404];
+        for (const organization of this.organizations.values()) organization.members.delete(parts[1] ?? "");
+        return [204];
+      }
       case "DELETE organizations/:":
         this.organizations.delete(parts[1] ?? "");
         return [204];

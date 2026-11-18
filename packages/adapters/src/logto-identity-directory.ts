@@ -54,9 +54,16 @@ export class LogtoIdentityDirectory implements IdentityDirectory {
     this.now = options.now ?? Date.now;
   }
 
-  async createOrganization(familyId: string, name: string): Promise<string> {
-    const organization = await this.call<{ id: string }>("POST", "/api/organizations", { name, customData: { familyId } });
+  async createOrganization(familyId: string, name: string, founderUserId?: string): Promise<string> {
+    const customData = founderUserId === undefined ? { familyId } : { familyId, founderUserId };
+    const organization = await this.call<{ id: string }>("POST", "/api/organizations", { name, customData });
     return organization.id;
+  }
+
+  async founderOf(organizationId: string): Promise<string | null> {
+    const organization = await this.call<{ customData?: { founderUserId?: unknown } | null }>("GET", `/api/organizations/${encodeURIComponent(organizationId)}`);
+    const founder = organization.customData?.founderUserId;
+    return typeof founder === "string" ? founder : null;
   }
 
   async findOrganization(familyId: string): Promise<string | null> {
@@ -129,6 +136,11 @@ export class LogtoIdentityDirectory implements IdentityDirectory {
 
   async removeMember(organizationId: string, userId: string): Promise<void> {
     await this.call("DELETE", `/api/organizations/${encodeURIComponent(organizationId)}/users/${encodeURIComponent(userId)}`);
+  }
+
+  /** Logto deletes the user's memberships with them. */
+  async deleteUser(userId: string): Promise<void> {
+    await this.call("DELETE", `/api/users/${encodeURIComponent(userId)}`);
   }
 
   async listInvitations(organizationId: string): Promise<DirectoryInvitation[]> {

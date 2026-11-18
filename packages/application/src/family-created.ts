@@ -120,6 +120,7 @@ export function createSuppliedRegistration(deps: SuppliedRegistrationDeps): Regi
   const mode: RegistrationMode = {
     isOpen: () => Promise.resolve(true),
     alone: false,
+    recordsFounder: true,
     // Drawn as the registration was received, so that every try creates and finds the same.
     familyIdOf: (registration) => (registration.familyId === null ? Promise.reject(new Error(`Registration of ${registration.userId} has no Family id`)) : Promise.resolve(registration.familyId)),
     // An invitee joins the inviting Family; accepting creates no Family.
