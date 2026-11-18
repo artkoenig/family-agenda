@@ -199,13 +199,19 @@ export function createSourcePolling(deps: PollingDeps) {
       report.lost.push(source.id);
       return;
     }
+    // Every write of a run checks its turn in the database: `lost` is only as fresh as the last renewal.
     if (!result.ok) {
-      await sources.recordFailedRun(source.id, now, { kind: result.kind, message: result.message });
-      report.failed.push({ sourceId: source.id, kind: result.kind, message: result.message });
+      if (await sources.recordFailedRunInTurn(source.id, holder, now, { kind: result.kind, message: result.message })) {
+        report.failed.push({ sourceId: source.id, kind: result.kind, message: result.message });
+      } else report.lost.push(source.id);
       return;
     }
     // Changed secrets are stored before the cursor advances: a refreshed token must not be lost.
     const replacedSecrets = await storeChangedSecrets(source, result.secrets ?? {});
+    if (replacedSecrets === null) {
+      report.lost.push(source.id);
+      return;
+    }
     const origins = await buildOrigins(result.origins);
     const recorded = await recordRun(source, now, result, origins);
     if (!recorded) {
@@ -240,13 +246,25 @@ export function createSourcePolling(deps: PollingDeps) {
     }
   }
 
-  /** Stores the secrets a plugin changed, such as a refreshed token; returns the ones they replace, to remove once the run is recorded. */
-  async function storeChangedSecrets(source: Source, changed: Record<string, string>): Promise<SecretRef[]> {
+  /**
+   * Stores the secrets the plugin changed, such as a refreshed token, and points the Source at
+   * them; returns the references they replace, to remove once the run is recorded, or null if the
+   * run's turn was lost, which stores none of them.
+   */
+  async function storeChangedSecrets(source: Source, changed: Record<string, string>): Promise<SecretRef[] | null> {
     const entries = Object.entries(changed);
     if (entries.length === 0) return [];
     const refs = { ...source.secrets };
-    for (const [key, value] of entries) refs[key] = await secrets.put(value);
-    await sources.replaceSecrets(source.id, refs);
+    const stored: SecretRef[] = [];
+    for (const [key, value] of entries) {
+      const ref = await secrets.put(value);
+      refs[key] = ref;
+      stored.push(ref);
+    }
+    if (!(await sources.replaceSecretsInTurn(source.id, holder, refs))) {
+      for (const ref of stored) await secrets.remove(ref);
+      return null;
+    }
     return entries.flatMap(([key]) => source.secrets[key] ?? []);
   }
 

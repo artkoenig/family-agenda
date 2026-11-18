@@ -475,8 +475,16 @@ export interface SourceRepository {
    * first failed run after its last successful one, and definitely once any of them did.
    */
   recordFailedRun(id: SourceId, at: Date, error: RunError): Promise<void>;
-  /** Points the Source's secret fields at these references, such as after its plugin refreshed a token. */
-  replaceSecrets(id: SourceId, secrets: Record<string, SecretRef>): Promise<void>;
+  /**
+   * Records a failed run as `recordFailedRun` does, but only while `holder` holds the Source's turn
+   * unexpired (ADR-0008); whether it did.
+   */
+  recordFailedRunInTurn(id: SourceId, holder: string, at: Date, error: RunError): Promise<boolean>;
+  /**
+   * Points the Source's secret fields at these references, such as after its plugin refreshed a
+   * token, but only while `holder` holds the Source's turn unexpired (ADR-0008); whether it did.
+   */
+  replaceSecretsInTurn(id: SourceId, holder: string, secrets: Record<string, SecretRef>): Promise<boolean>;
   /** Shows or hides the Source's Items on the timeline and in the feeds. */
   setShown(id: SourceId, shown: boolean): Promise<void>;
   /** Names the Source as an Admin calls it; null for the name derived from its settings. */

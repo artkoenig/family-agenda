@@ -439,20 +439,18 @@ export class PostgresSourceRepository implements SourceRepository {
     });
   }
 
-  async replaceSecrets(id: SourceId, secrets: Record<string, SecretRef>): Promise<void> {
-    await this.db.update(sources).set({ secretRefs: secrets }).where(eq(sources.id, id));
+  async replaceSecretsInTurn(id: SourceId, holder: string, secrets: Record<string, SecretRef>): Promise<boolean> {
+    return inHeldTurn(this.db, id, holder, async (tx) => {
+      await tx.update(sources).set({ secretRefs: secrets }).where(eq(sources.id, id));
+    });
   }
 
   async recordFailedRun(id: SourceId, at: Date, error: RunError): Promise<void> {
-    await this.db
-      .update(sourceRuns)
-      .set({
-        lastRunAt: at,
-        failingSince: sql`coalesce(${sourceRuns.failingSince}, ${at})`,
-        lastErrorKind: sql`CASE WHEN ${sourceRuns.lastErrorKind} = 'definite' THEN 'definite' ELSE ${error.kind} END`,
-        lastError: error.message,
-      })
-      .where(eq(sourceRuns.sourceId, id));
+    await failedRunRecorded(this.db, id, at, error);
+  }
+
+  async recordFailedRunInTurn(id: SourceId, holder: string, at: Date, error: RunError): Promise<boolean> {
+    return inHeldTurn(this.db, id, holder, (tx) => failedRunRecorded(tx, id, at, error));
   }
 
   async setShown(id: SourceId, shown: boolean): Promise<void> {
@@ -656,6 +654,43 @@ export class PostgresActivityRepository implements ActivityRepository {
   async clear(): Promise<void> {
     await this.db.delete(backgroundActivities);
   }
+}
+
+type Transaction = Parameters<Parameters<Database["transaction"]>[0]>[0];
+
+/**
+ * Locks the row of the Source's turn while `holder` holds it unexpired, so that no other process
+ * takes it until the transaction ends (ADR-0008); whether it holds it.
+ */
+export async function lockHeldTurn(tx: Transaction, sourceId: SourceId, holder: string): Promise<boolean> {
+  const [held] = await tx
+    .select({ holder: sourceRunTurns.holder })
+    .from(sourceRunTurns)
+    .where(and(eq(sourceRunTurns.sourceId, sourceId), eq(sourceRunTurns.holder, holder), gt(sourceRunTurns.expiresAt, sql`now()`)))
+    .for("update");
+  return held !== undefined;
+}
+
+/** Does `work` in a transaction only while `holder` holds the Source's turn; whether it did. */
+function inHeldTurn(db: Database, sourceId: SourceId, holder: string, work: (tx: Transaction) => Promise<void>): Promise<boolean> {
+  return db.transaction(async (tx) => {
+    if (!(await lockHeldTurn(tx, sourceId, holder))) return false;
+    await work(tx);
+    return true;
+  });
+}
+
+/** Records a failed run, which keeps the sync cursor for the next one. */
+async function failedRunRecorded(db: Database | Transaction, id: SourceId, at: Date, error: RunError): Promise<void> {
+  await db
+    .update(sourceRuns)
+    .set({
+      lastRunAt: at,
+      failingSince: sql`coalesce(${sourceRuns.failingSince}, ${at})`,
+      lastErrorKind: sql`CASE WHEN ${sourceRuns.lastErrorKind} = 'definite' THEN 'definite' ELSE ${error.kind} END`,
+      lastError: error.message,
+    })
+    .where(eq(sourceRuns.sourceId, id));
 }
 
 /** When a turn lasting so long from the database's now expires. */

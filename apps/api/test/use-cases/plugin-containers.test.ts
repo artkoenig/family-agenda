@@ -437,6 +437,42 @@ describe("A Source Type whose plugin receives pushed payloads", () => {
       expect((await instance.query("SELECT sync_cursor FROM source_run"))[0]?.sync_cursor).toBeNull();
     });
 
+    /**
+     * Holds the plugin's answer until another container has taken the turn, as after a stall
+     * between two renewals, so that the run has not yet noticed it lost the turn.
+     */
+    const answeredAfterTurnTaken = async (answered: () => Promise<Awaited<ReturnType<typeof receive>>>) => {
+      let answer = () => {};
+      receive = async () => {
+        await new Promise<void>((resolve) => (answer = resolve));
+        return answered();
+      };
+      const pushed = instance.app.polling.receive(sourceId, payload);
+      await vi.waitFor(async () => {
+        expect(await instance.query("SELECT count(*)::int AS count FROM source_run_turn")).toEqual([{ count: 1 }]);
+      });
+      await instance.query("UPDATE source_run_turn SET holder = gen_random_uuid()");
+      answer();
+      return pushed;
+    };
+
+    // Found by the model of the turn (specs/source-turn): writes besides the recording checked no turn.
+    it("keeps the secrets another container's run left, when a run that lost its turn answers changed ones", async () => {
+      const before = await instance.query("SELECT secret_refs FROM source");
+
+      const pushed = await answeredAfterTurnTaken(() => Promise.resolve({ sourceRecords: [], syncCursor: "lost", secrets: { token: "stale" } }));
+
+      expect(pushed).toMatchObject({ ok: true, report: { ran: [], lost: [sourceId] } });
+      expect(await instance.query("SELECT secret_refs FROM source")).toEqual(before);
+    });
+
+    it("records no failure of a run that lost its turn, and reports it lost", async () => {
+      const pushed = await answeredAfterTurnTaken(() => Promise.reject(new Error("The relay is down.")));
+
+      expect(pushed).toMatchObject({ ok: true, report: { failed: [], lost: [sourceId] } });
+      expect(await instance.query("SELECT last_error, failing_since FROM source_run")).toEqual([{ last_error: null, failing_since: null }]);
+    });
+
     it("runs a pushed payload without waiting for a run of another Source", async () => {
       const adding = await instance.app.sources.add({ sourceTypeId: "chat-relay", plain: { url: "https://other-chat.example.org" }, secrets: { token: "first" } });
       if (!adding.ok) throw new Error(`adding failed: ${adding.problem}`);
