@@ -497,6 +497,10 @@ export interface SourceRepository {
   declareAttributes(id: SourceId, attributes: DeclaredAttribute[]): Promise<void>;
   /** Archives a Source Attribute by its external id; an unknown one is ignored. */
   archiveAttribute(id: SourceId, externalId: string): Promise<void>;
+  /** Declares the attributes as `declareAttributes` does, only while `holder` holds the Source's turn (ADR-0008); whether it did. */
+  declareAttributesInTurn(id: SourceId, holder: string, attributes: DeclaredAttribute[]): Promise<boolean>;
+  /** Archives as `archiveAttribute` does, only while `holder` holds the Source's turn (ADR-0008); whether it did. */
+  archiveAttributeInTurn(id: SourceId, holder: string, externalId: string): Promise<boolean>;
   /**
    * Assigns the Source Attribute to the Family Members, replacing those it was assigned to; none
    * for the whole Family. Returns whether the Source Attribute exists.

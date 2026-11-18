@@ -10,7 +10,7 @@
 //   start, askAgain  takeTurn: SourceRunTurns.take, once for a poll, repeatedly for a push
 //   read             sources.findById at the start of the run, then the plugin's call
 //   declare          the plugin declaring or archiving the Source's attributes during its call:
-//                    SourceRepository.declareAttributes, archiveAttribute
+//                    SourceRepository.declareAttributesInTurn, archiveAttributeInTurn
 //   renew            the renewal interval: SourceRunTurns.renew, setting `lost` when it fails
 //   answer           the plugin's answer: ok or a failure, with changed secrets or without
 //   recordFailed     SourceRepository.recordFailedRunInTurn
@@ -39,7 +39,8 @@ module sourceTurn {
   const GUARDED_WRITES: bool
   /**
    * Whether the writes of a Source's attributes the plugin makes during its call check the turn in
-   * the database. False is the code as it is: declareAttributes and archiveAttribute write at once.
+   * the database, as declareAttributesInTurn and archiveAttributeInTurn do. False is the code as it
+   * was before: declareAttributes and archiveAttribute wrote at once.
    */
   const GUARDED_ATTRIBUTES: bool
   /** How many containers may die in one execution: few, so that random traces reach long runs. */
@@ -519,22 +520,3 @@ module exhaustive {
   ).*
 }
 
-/**
- * The code as it is: changed secrets and failed runs check the turn, the attributes do not. Kept to
- * show the attributes' counterexample until they do (then remove it with `attributesUnguarded` in check.sh).
- */
-module attributesUnguarded {
-  import sourceTurn(
-    PROCESSES = Set("p1", "p2"),
-    SOURCES = Set("s1"),
-    LASTS = 3,
-    WAITS_AT_MOST = 6,
-    MAX_TIME = 8,
-    GUARDED_WRITES = true,
-    GUARDED_ATTRIBUTES = false,
-    MAX_CRASHES = 2,
-  ).*
-
-  run staleRunReplacesAttributesTest = staleRunReplacesAttributes.expect(writeWithoutTurn and staleWrite)
-  run secretsStillGuardedTest = staleRunReplacesSecrets.expect(safety)
-}

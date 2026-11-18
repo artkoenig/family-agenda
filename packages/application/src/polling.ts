@@ -8,6 +8,7 @@ import type {
   CatalogueRepository,
   CatalogueSpec,
   Clock,
+  DeclaredAttribute,
   IngestedMessage,
   IngestedOrigin,
   ItemRepository,
@@ -191,11 +192,9 @@ export function createSourcePolling(deps: PollingDeps) {
 
   async function runNow(source: Source, sourceType: HostFieldsOf, ingest: Ingest, report: RunReport, lost: () => boolean): Promise<void> {
     const now = clock.now();
-    const result = await ingest(await runContextOf(source, sourceType, { secrets, now, timeZone }), {
-      declare: (attributes) => sources.declareAttributes(source.id, attributes),
-      archive: (externalId) => sources.archiveAttribute(source.id, externalId),
-    });
-    if (lost()) {
+    const attributes = attributesInTurn(source.id, lost);
+    const result = await ingest(await runContextOf(source, sourceType, { secrets, now, timeZone }), attributes);
+    if (attributes.lost()) {
       report.lost.push(source.id);
       return;
     }
@@ -223,6 +222,23 @@ export function createSourcePolling(deps: PollingDeps) {
     report.invalid.push(...invalid.map((record) => ({ sourceId: source.id, ...record })));
     report.refused.push(...refusalsOf(source.id, refused));
     report.ran.push(source.id);
+  }
+
+  /**
+   * The writes of the Source's attributes its plugin makes during the call, each only while the run
+   * holds the turn; once one finds it lost, so is the run, and it writes no more. `lost` tells
+   * whether the run lost its turn, by a renewal or by one of these writes.
+   */
+  function attributesInTurn(sourceId: SourceId, renewalLost: () => boolean) {
+    let lost = false;
+    const inTurn = async (write: () => Promise<boolean>) => {
+      if (!lost && !(await write())) lost = true;
+    };
+    return {
+      declare: (declared: DeclaredAttribute[]) => inTurn(() => sources.declareAttributesInTurn(sourceId, holder, declared)),
+      archive: (externalId: string) => inTurn(() => sources.archiveAttributeInTurn(sourceId, holder, externalId)),
+      lost: () => lost || renewalLost(),
+    };
   }
 
   /** Removes what a recorded run left over: files of messages already known, withdrawn files and replaced secrets. */
