@@ -205,12 +205,9 @@ export function createExtraction(deps: ExtractionDeps) {
       const progress = await activity.begin("extracting", pending.length);
       try {
         for (const message of pending) {
-          const failure = await extractMessage(message, endpoint, report);
-          if (failure === null) report.extracted.push(message.id);
-          else if (failure !== "skipped") report.failed.push(failure);
+          const goesOn = noteOutcome(report, message.id, await extractMessage(message, endpoint, report));
           await progress.advance();
-          // The endpoint would fail the same way for the rest: unreachable, refusing the key, or slow.
-          if (failure !== null && failure !== "skipped" && failure.problem !== "invalid-output") break;
+          if (!goesOn) break;
         }
       } finally {
         await progress.end();
@@ -221,6 +218,20 @@ export function createExtraction(deps: ExtractionDeps) {
 }
 
 export type ExtractionAccess = ReturnType<typeof createExtraction>;
+
+/**
+ * Notes how extracting a message went in the report; whether the run goes on. It ends once the
+ * endpoint would fail the same way for the rest: unreachable, refusing the key, or slow.
+ */
+function noteOutcome(report: ExtractionReport, id: RawMessageId, outcome: ExtractionReport["failed"][number] | "skipped" | null): boolean {
+  if (outcome === "skipped") return true;
+  if (outcome === null) {
+    report.extracted.push(id);
+    return true;
+  }
+  report.failed.push(outcome);
+  return outcome.problem === "invalid-output";
+}
 
 
 /** How many scanned pages of one attachment are read at most, since each takes long or costs tokens. */

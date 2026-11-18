@@ -25,9 +25,10 @@ simulation() {
 }
 
 exhaustive() {
-  # Every trace of two workers and two messages up to DEPTH steps (Apalache, needs Java 17+): deep
-  # enough for two runs to overlap on a message and record it twice.
-  quint verify extraction_test.qnt --main=exhaustive --invariant=safety --max-steps=DEPTH
+  # Every trace of two workers and two messages up to 8 steps (Apalache, needs Java 17+): deep
+  # enough for two runs to take the same batch and both read and record a message, about 5 min.
+  # Depth 10 takes far longer.
+  quint verify extraction_test.qnt --main=exhaustive --invariant=safety --max-steps=8
 }
 
 counterexample() {
