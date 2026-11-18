@@ -55,7 +55,15 @@ module sourceTurn {
     readSecrets: int,
     ok: bool,
     secretsChanged: bool,
+    epoch: int,
   }
+
+  /**
+   * Ghost state, not in the database: which action fired last (for the witnesses), how often each
+   * Source's turn was taken (each taking starts a new turn), the turn of each Source's last
+   * recorded run, and whether a run recorded after a run of the same or a later turn.
+   */
+  type Ghost = { lastAction: str, taken: str -> int, recorded: str -> int, doubleRecord: bool }
 
   var now: int
   var turn: str -> Turn
@@ -69,19 +77,40 @@ module sourceTurn {
   var writeWithoutTurn: bool
   /** Ghost: a write based on a read another run's write had since replaced (a lost update). */
   var staleWrite: bool
+  var ghost: Ghost
 
   // ---- Helpers --------------------------------------------------------------------------------
 
-  val idleRun: Run = { phase: "idle", push: false, waitedSince: 0, lost: false, readCursor: 0, readSecrets: 0, ok: true, secretsChanged: false }
+  val idleRun: Run = { phase: "idle", push: false, waitedSince: 0, lost: false, readCursor: 0, readSecrets: 0, ok: true, secretsChanged: false, epoch: 0 }
   val noTurn: Turn = { held: false, holder: "", expiresAt: 0 }
 
   /** Whether `p` holds `s`'s turn unexpired, as `expires_at > now()` in the code. */
   def holds(p: str, s: str): bool = turn.get(s).held and turn.get(s).holder == p and turn.get(s).expiresAt > now
 
-  /** Whether `s`'s turn can be taken: no row, or one with `expires_at < now()`. */
+  /**
+   * Whether `s`'s turn can be taken: no row, or one with `expires_at < now()`. As in the code
+   * (`expires_at < now()` to take, `> now()` to hold), a turn at `expires_at = now()` is neither held
+   * nor takeable: the clock must move on once more. Harmless, as it only delays a takeover.
+   */
   def takeable(s: str): bool = not(turn.get(s).held) or turn.get(s).expiresAt < now
 
   action setRun(p: str, s: str, r: Run): bool = runs' = runs.set((p, s), r)
+
+  /** Notes the action that fired. */
+  action did(name: str): bool = ghost' = { ...ghost, lastAction: name }
+
+  /** Takes `s`'s turn for `p`'s run `r` in phase inTurn: a new turn. */
+  action takeTurn(p: str, s: str, r: Run, name: str): bool = {
+    val epoch = ghost.taken.get(s) + 1
+    all {
+      turn' = turn.set(s, { held: true, holder: p, expiresAt: now + LASTS }),
+      setRun(p, s, { ...r, phase: "inTurn", epoch: epoch }),
+      ghost' = { ...ghost, lastAction: name, taken: ghost.taken.set(s, epoch) },
+    }
+  }
+
+  /** Whether a live push of `p` for `s` waits for the turn. */
+  def pushWaits(p: str, s: str): bool = alive.get(p) and runs.get((p, s)).phase == "waiting"
 
   /** Notes a write by `p` for `s`, based on `basis` of a value now at `current`. */
   action noteWrite(p: str, s: str, basis: int, current: int): bool = all {
@@ -100,11 +129,18 @@ module sourceTurn {
     alive' = PROCESSES.mapBy(_ => true),
     writeWithoutTurn' = false,
     staleWrite' = false,
+    ghost' = { lastAction: "init", taken: SOURCES.mapBy(_ => 0), recorded: SOURCES.mapBy(_ => 0), doubleRecord: false },
   }
 
-  /** The database's clock moves on. */
+  /**
+   * The database's clock moves on. A waiting push asks every 50 ms, far more often than a tick, so
+   * the clock does not pass its deadline before it asked once more: it gets the turn or gives up.
+   */
   action tick = all {
     now < MAX_TIME,
+    tuples(PROCESSES, SOURCES).forall(ps =>
+      not(pushWaits(ps._1, ps._2)) or now + 1 - runs.get(ps).waitedSince <= WAITS_AT_MOST),
+    did("tick"),
     now' = now + 1,
    
     turn' = turn, cursor' = cursor, secrets' = secrets, runs' = runs, alive' = alive,
@@ -120,15 +156,14 @@ module sourceTurn {
   /** A poll asks once for the turn (due work); a push starts asking and keeps asking. */
   action start(p: str, s: str, push: bool): bool = all {
     alive.get(p), runs.get((p, s)).phase == "idle",
-    if (takeable(s)) all {
-      turn' = turn.set(s, { held: true, holder: p, expiresAt: now + LASTS }),
-      setRun(p, s, { ...idleRun, phase: "inTurn", push: push }),
-    } else if (push) all {
+    if (takeable(s)) takeTurn(p, s, { ...idleRun, push: push }, "start")
+    else if (push) all {
       turn' = turn,
       setRun(p, s, { ...idleRun, phase: "waiting", push: true, waitedSince: now }),
+      did("wait"),
     } else all {
       // A poll leaves a Source another process runs to the next round.
-      turn' = turn, runs' = runs,
+      turn' = turn, runs' = runs, did("skip"),
     },
     keepData,
   }
@@ -137,13 +172,11 @@ module sourceTurn {
   action askAgain(p: str, s: str): bool = all {
     alive.get(p), runs.get((p, s)).phase == "waiting",
     // As in the code: ask first, then give up if no turn and the time is over.
-    if (takeable(s)) all {
-      turn' = turn.set(s, { held: true, holder: p, expiresAt: now + LASTS }),
-      setRun(p, s, { ...runs.get((p, s)), phase: "inTurn" }),
-    } else if (now - runs.get((p, s)).waitedSince >= WAITS_AT_MOST) all {
-      turn' = turn, setRun(p, s, idleRun),
+    if (takeable(s)) takeTurn(p, s, runs.get((p, s)), "askAgain")
+    else if (now - runs.get((p, s)).waitedSince >= WAITS_AT_MOST) all {
+      turn' = turn, setRun(p, s, idleRun), did("giveUp"),
     } else all {
-      turn' = turn, runs' = runs,
+      turn' = turn, runs' = runs, did("askAgain"),
     },
     now' = now, cursor' = cursor, secrets' = secrets, alive' = alive,
     writeWithoutTurn' = writeWithoutTurn, staleWrite' = staleWrite,
@@ -153,16 +186,16 @@ module sourceTurn {
   action read(p: str, s: str): bool = all {
     alive.get(p), runs.get((p, s)).phase == "inTurn",
     setRun(p, s, { ...runs.get((p, s)), phase: "called", readCursor: cursor.get(s), readSecrets: secrets.get(s) }),
-    turn' = turn, keepData,
+    turn' = turn, keepData, did("read"),
   }
 
   /** A renewal: extends the turn if still held unexpired, else marks the run lost. May run late or never. */
   action renew(p: str, s: str): bool = all {
     alive.get(p), Set("inTurn", "called", "answered").contains(runs.get((p, s)).phase),
     if (holds(p, s)) all {
-      turn' = turn.set(s, { ...turn.get(s), expiresAt: now + LASTS }), runs' = runs,
+      turn' = turn.set(s, { ...turn.get(s), expiresAt: now + LASTS }), runs' = runs, did("renew"),
     } else all {
-      turn' = turn, setRun(p, s, { ...runs.get((p, s)), lost: true }),
+      turn' = turn, setRun(p, s, { ...runs.get((p, s)), lost: true }), did("renewLost"),
     },
     keepData,
   }
@@ -171,7 +204,7 @@ module sourceTurn {
   action answer(p: str, s: str, ok: bool, changed: bool): bool = all {
     alive.get(p), runs.get((p, s)).phase == "called",
     setRun(p, s, { ...runs.get((p, s)), phase: "answered", ok: ok, secretsChanged: ok and changed }),
-    turn' = turn, keepData,
+    turn' = turn, keepData, did("answer"),
   }
 
   /** A failed run: `recordFailedRun`, unless the run knows it is lost. */
@@ -182,7 +215,7 @@ module sourceTurn {
       setRun(p, s, { ...r, phase: "done" }),
       turn' = turn,
       now' = now, cursor' = cursor, secrets' = secrets, alive' = alive,
-      staleWrite' = staleWrite,
+      staleWrite' = staleWrite, did("recordFailed"),
       if (r.lost or (GUARDED_WRITES and not(holds(p, s)))) writeWithoutTurn' = writeWithoutTurn
       else writeWithoutTurn' = (writeWithoutTurn or not(holds(p, s))),
     }
@@ -200,7 +233,7 @@ module sourceTurn {
       alive.get(p), r.phase == "answered", r.ok,
       if (skipped) setRun(p, s, { ...r, phase: "done" })
       else setRun(p, s, { ...r, phase: "recording" }),
-      turn' = turn,
+      turn' = turn, did("storeSecrets"),
       now' = now, cursor' = cursor, alive' = alive,
       if (skipped or not(r.secretsChanged)) all {
         secrets' = secrets, writeWithoutTurn' = writeWithoutTurn, staleWrite' = staleWrite,
@@ -222,8 +255,11 @@ module sourceTurn {
       if (holds(p, s)) all {
         cursor' = cursor.set(s, cursor.get(s) + 1),
         noteWrite(p, s, r.readCursor, cursor.get(s)),
+        ghost' = { ...ghost, lastAction: "record", recorded: ghost.recorded.set(s, r.epoch),
+                   doubleRecord: ghost.doubleRecord or r.epoch <= ghost.recorded.get(s) },
       } else all {
         cursor' = cursor, writeWithoutTurn' = writeWithoutTurn, staleWrite' = staleWrite,
+        did("rollBack"),
       },
     }
   }
@@ -233,7 +269,7 @@ module sourceTurn {
     alive.get(p), runs.get((p, s)).phase == "done",
     turn' = if (turn.get(s).held and turn.get(s).holder == p) turn.set(s, noTurn) else turn,
     setRun(p, s, idleRun),
-    keepData,
+    keepData, did("end"),
   }
 
   /** A container dies: its runs stop where they are and it renews nothing. Its turns stay until they expire. */
@@ -243,6 +279,7 @@ module sourceTurn {
     runs' = runs,
     turn' = turn, now' = now, cursor' = cursor, secrets' = secrets,
     writeWithoutTurn' = writeWithoutTurn, staleWrite' = staleWrite,
+    did("crash"),
   }
 
   action step = any {
@@ -284,7 +321,38 @@ module sourceTurn {
   val deadTurnsExpire: bool = SOURCES.forall(s =>
     (turn.get(s).held and not(alive.get(turn.get(s).holder))) implies turn.get(s).expiresAt <= now + LASTS)
 
-  val safety: bool = noWriteWithoutTurn and noStaleWrite and oneHolder and deadTurnsExpire
+  /** Two runs of one Source never both record: each recording is of a later turn than the last. */
+  val noDoubleRecord: bool = not(ghost.doubleRecord)
+
+  /** A pushed payload gets the turn or fails temporarily within WAITS_AT_MOST (two minutes). */
+  val pushGetsTurnOrFails: bool = tuples(PROCESSES, SOURCES).forall(ps =>
+    not(pushWaits(ps._1, ps._2)) or now - runs.get(ps).waitedSince <= WAITS_AT_MOST)
+
+  val safety: bool =
+    noWriteWithoutTurn and noStaleWrite and oneHolder and deadTurnsExpire and noDoubleRecord and pushGetsTurnOrFails
+
+  // ---- Witnesses: each action fires, and the states the properties speak of are reached -------
+
+  val firesStart: bool = ghost.lastAction == "start"
+  val firesWait: bool = ghost.lastAction == "wait"
+  val firesSkip: bool = ghost.lastAction == "skip"
+  val firesAskAgain: bool = ghost.lastAction == "askAgain"
+  val firesGiveUp: bool = ghost.lastAction == "giveUp"
+  val firesRead: bool = ghost.lastAction == "read"
+  val firesRenew: bool = ghost.lastAction == "renew"
+  val firesRenewLost: bool = ghost.lastAction == "renewLost"
+  val firesAnswer: bool = ghost.lastAction == "answer"
+  val firesRecordFailed: bool = ghost.lastAction == "recordFailed"
+  val firesStoreSecrets: bool = ghost.lastAction == "storeSecrets"
+  val firesRecord: bool = ghost.lastAction == "record"
+  val firesRollBack: bool = ghost.lastAction == "rollBack"
+  val firesEnd: bool = ghost.lastAction == "end"
+  val firesCrash: bool = ghost.lastAction == "crash"
+  /** A Source recorded by two turns. */
+  val recordedTwice: bool = SOURCES.exists(s => cursor.get(s) >= 2)
+  /** A dead holder's turn taken over by another container. */
+  val deadTurnTaken: bool = SOURCES.exists(s =>
+    ghost.taken.get(s) >= 2 and PROCESSES.exists(p => not(alive.get(p))) and turn.get(s).held and alive.get(turn.get(s).holder))
 
   // ---- Scenarios ------------------------------------------------------------------------------
 
@@ -296,6 +364,28 @@ module sourceTurn {
       .then((LASTS + 1).reps(_ => tick))
       .then(start("p2", "s1", false))
       .expect(holds("p2", "s1"))
+
+  /** Two runs of one Source, one after the other, both record: each a later turn than the last. */
+  run twoRunsRecordInTurn =
+    init
+      .then(start("p1", "s1", false)).then(read("p1", "s1")).then(answer("p1", "s1", true, false))
+      .then(storeSecrets("p1", "s1")).then(record("p1", "s1")).then(end("p1", "s1"))
+      .then(start("p2", "s1", true)).then(read("p2", "s1")).then(answer("p2", "s1", true, false))
+      .then(storeSecrets("p2", "s1")).then(record("p2", "s1"))
+      .expect(cursor.get("s1") == 2 and ghost.recorded.get("s1") == 2 and noDoubleRecord)
+
+  /**
+   * A push waits on a dead holder's turn until its deadline, which the clock cannot pass; asking then,
+   * it gets the turn (expired by now) or gives up.
+   */
+  run pushGetsTurnOrGivesUp =
+    init
+      .then(start("p1", "s1", false)).then(crash("p1"))
+      .then(start("p2", "s1", true))
+      .then(WAITS_AT_MOST.reps(_ => tick))
+      .expect(now - runs.get(("p2", "s1")).waitedSince == WAITS_AT_MOST and pushGetsTurnOrFails)
+      .then(askAgain("p2", "s1"))
+      .expect(runs.get(("p2", "s1")).phase != "waiting")
 
   /**
    * The counterexample: p1's run stalls past its turn's expiry before any renewal noticed the loss;
@@ -329,6 +419,8 @@ module checked {
   ).*
 
   run deadTurnsAreTakenTest = deadTurnsAreTaken
+  run twoRunsRecordInTurnTest = twoRunsRecordInTurn
+  run pushGetsTurnOrGivesUpTest = pushGetsTurnOrGivesUp
   run staleRunIsSkippedTest = staleRunReplacesSecrets.expect(safety)
 }
 

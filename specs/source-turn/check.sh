@@ -4,7 +4,7 @@ set -eu
 cd "$(dirname "$0")"
 quint() { pnpm exec quint "$@"; }
 
-# The scenarios: a dead holder's turn is taken; the stale run is skipped, and replaced secrets without the guard.
+# The scenarios: a dead holder's turn is taken; two runs record in turn; a push gets the turn or gives up; the stale run is skipped, and replaced secrets without the guard.
 quint test sourceTurn.qnt --backend=typescript --main=checked
 quint test sourceTurn.qnt --backend=typescript --main=unguarded
 
