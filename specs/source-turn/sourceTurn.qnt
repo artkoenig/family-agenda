@@ -9,6 +9,8 @@
 // PostgresSourceRepository, PostgresItemRepository.recordRun):
 //   start, askAgain  takeTurn: SourceRunTurns.take, once for a poll, repeatedly for a push
 //   read             sources.findById at the start of the run, then the plugin's call
+//   declare          the plugin declaring or archiving the Source's attributes during its call:
+//                    SourceRepository.declareAttributes, archiveAttribute
 //   renew            the renewal interval: SourceRunTurns.renew, setting `lost` when it fails
 //   answer           the plugin's answer: ok or a failure, with changed secrets or without
 //   recordFailed     SourceRepository.recordFailedRunInTurn
@@ -35,6 +37,11 @@ module sourceTurn {
    * before this spec: those writes only checked the in-memory `lost` flag that renewals set.
    */
   const GUARDED_WRITES: bool
+  /**
+   * Whether the writes of a Source's attributes the plugin makes during its call check the turn in
+   * the database. False is the code as it is: declareAttributes and archiveAttribute write at once.
+   */
+  const GUARDED_ATTRIBUTES: bool
   /** How many containers may die in one execution: few, so that random traces reach long runs. */
   const MAX_CRASHES: int
 
@@ -53,7 +60,7 @@ module sourceTurn {
 
   /** The action that fired last, for the witnesses. */
   type Did =
-    | DidInit | DidTick | DidStart | DidWait | DidSkip | DidAskAgain | DidGiveUp | DidRead | DidRenew
+    | DidInit | DidTick | DidStart | DidWait | DidSkip | DidAskAgain | DidGiveUp | DidRead | DidDeclare | DidDeclareSkipped | DidRenew
     | DidRenewLost | DidAnswer | DidRecordFailed | DidStoreSecrets | DidRecord | DidRollBack | DidEnd
     | DidCrash
 
@@ -65,6 +72,7 @@ module sourceTurn {
     lost: bool,
     readCursor: int,
     readSecrets: int,
+    readAttributes: int,
     ok: bool,
     secretsChanged: bool,
     epoch: int,
@@ -83,6 +91,8 @@ module sourceTurn {
   var cursor: str -> int
   /** Version of each Source's secret references: bumped by every write of changed secrets. */
   var secrets: str -> int
+  /** Version of each Source's attributes: bumped by every declaration or archiving. */
+  var attributes: str -> int
   var runs: (str, str) -> Run
   var alive: str -> bool
   /** Ghost: a write of a run that did not hold a valid turn when it was made. */
@@ -93,7 +103,7 @@ module sourceTurn {
 
   // ---- Helpers --------------------------------------------------------------------------------
 
-  val idleRun: Run = { phase: Idle, push: false, waitedSince: 0, lost: false, readCursor: 0, readSecrets: 0, ok: true, secretsChanged: false, epoch: 0 }
+  val idleRun: Run = { phase: Idle, push: false, waitedSince: 0, lost: false, readCursor: 0, readSecrets: 0, readAttributes: 0, ok: true, secretsChanged: false, epoch: 0 }
   val noTurn: Turn = { held: false, holder: "", expiresAt: 0 }
 
   /** Whether `p` holds `s`'s turn unexpired, as `expires_at > now()` in the code. */
@@ -137,6 +147,7 @@ module sourceTurn {
     turn' = SOURCES.mapBy(_ => noTurn),
     cursor' = SOURCES.mapBy(_ => 0),
     secrets' = SOURCES.mapBy(_ => 0),
+    attributes' = SOURCES.mapBy(_ => 0),
     runs' = tuples(PROCESSES, SOURCES).mapBy(_ => idleRun),
     alive' = PROCESSES.mapBy(_ => true),
     writeWithoutTurn' = false,
@@ -155,13 +166,13 @@ module sourceTurn {
     did(DidTick),
     now' = now + 1,
    
-    turn' = turn, cursor' = cursor, secrets' = secrets, runs' = runs, alive' = alive,
+    turn' = turn, cursor' = cursor, secrets' = secrets, attributes' = attributes, runs' = runs, alive' = alive,
     writeWithoutTurn' = writeWithoutTurn, staleWrite' = staleWrite,
   }
 
   /** Unchanged besides the clock, the turns and the runs. */
   action keepData = all {
-    now' = now, cursor' = cursor, secrets' = secrets, alive' = alive,
+    now' = now, cursor' = cursor, secrets' = secrets, attributes' = attributes, alive' = alive,
     writeWithoutTurn' = writeWithoutTurn, staleWrite' = staleWrite,
   }
 
@@ -190,15 +201,37 @@ module sourceTurn {
     } else all {
       turn' = turn, runs' = runs, did(DidAskAgain),
     },
-    now' = now, cursor' = cursor, secrets' = secrets, alive' = alive,
+    now' = now, cursor' = cursor, secrets' = secrets, attributes' = attributes, alive' = alive,
     writeWithoutTurn' = writeWithoutTurn, staleWrite' = staleWrite,
   }
 
   /** The run reads its Source afresh (cursor and secrets) and calls the plugin. */
   action read(p: str, s: str): bool = all {
     alive.get(p), runs.get((p, s)).phase == InTurn,
-    setRun(p, s, { ...runs.get((p, s)), phase: Called, readCursor: cursor.get(s), readSecrets: secrets.get(s) }),
+    setRun(p, s, { ...runs.get((p, s)), phase: Called, readCursor: cursor.get(s), readSecrets: secrets.get(s), readAttributes: attributes.get(s) }),
     turn' = turn, keepData, did(DidRead),
+  }
+
+  /**
+   * The plugin declares or archives an attribute of the Source during its call, perhaps several
+   * times. Its write is based on what the run last saw of the attributes; another run's write in
+   * between makes it stale. Guarded, it is not made without the turn.
+   */
+  action declare(p: str, s: str): bool = {
+    val r = runs.get((p, s))
+    all {
+      alive.get(p), r.phase == Called,
+      turn' = turn, now' = now, cursor' = cursor, secrets' = secrets, alive' = alive,
+      if (GUARDED_ATTRIBUTES and not(holds(p, s))) all {
+        attributes' = attributes, runs' = runs,
+        writeWithoutTurn' = writeWithoutTurn, staleWrite' = staleWrite, did(DidDeclareSkipped),
+      } else all {
+        attributes' = attributes.set(s, attributes.get(s) + 1),
+        setRun(p, s, { ...r, readAttributes: attributes.get(s) + 1 }),
+        noteWrite(p, s, r.readAttributes, attributes.get(s)),
+        did(DidDeclare),
+      },
+    }
   }
 
   /** A renewal: extends the turn if still held unexpired, else marks the run lost. May run late or never. */
@@ -226,7 +259,7 @@ module sourceTurn {
       alive.get(p), r.phase == Answered, not(r.ok),
       setRun(p, s, { ...r, phase: Done }),
       turn' = turn,
-      now' = now, cursor' = cursor, secrets' = secrets, alive' = alive,
+      now' = now, cursor' = cursor, secrets' = secrets, attributes' = attributes, alive' = alive,
       staleWrite' = staleWrite, did(DidRecordFailed),
       if (r.lost or (GUARDED_WRITES and not(holds(p, s)))) writeWithoutTurn' = writeWithoutTurn
       else writeWithoutTurn' = (writeWithoutTurn or not(holds(p, s))),
@@ -246,7 +279,7 @@ module sourceTurn {
       if (skipped) setRun(p, s, { ...r, phase: Done })
       else setRun(p, s, { ...r, phase: Recording }),
       turn' = turn, did(DidStoreSecrets),
-      now' = now, cursor' = cursor, alive' = alive,
+      now' = now, cursor' = cursor, alive' = alive, attributes' = attributes,
       if (skipped or not(r.secretsChanged)) all {
         secrets' = secrets, writeWithoutTurn' = writeWithoutTurn, staleWrite' = staleWrite,
       } else all {
@@ -263,7 +296,7 @@ module sourceTurn {
       alive.get(p), r.phase == Recording,
       setRun(p, s, { ...r, phase: Done }),
       turn' = turn,
-      now' = now, secrets' = secrets, alive' = alive,
+      now' = now, secrets' = secrets, attributes' = attributes, alive' = alive,
       if (holds(p, s)) all {
         cursor' = cursor.set(s, cursor.get(s) + 1),
         noteWrite(p, s, r.readCursor, cursor.get(s)),
@@ -289,7 +322,7 @@ module sourceTurn {
     alive.get(p), PROCESSES.filter(q => not(alive.get(q))).size() < MAX_CRASHES,
     alive' = alive.set(p, false),
     runs' = runs,
-    turn' = turn, now' = now, cursor' = cursor, secrets' = secrets,
+    turn' = turn, now' = now, cursor' = cursor, secrets' = secrets, attributes' = attributes,
     writeWithoutTurn' = writeWithoutTurn, staleWrite' = staleWrite,
     did(DidCrash),
   }
@@ -305,6 +338,7 @@ module sourceTurn {
       start(p, s, push),
       askAgain(p, s),
       read(p, s),
+      declare(p, s),
       renew(p, s),
       answer(p, s, ok, changed),
       recordFailed(p, s),
@@ -352,6 +386,8 @@ module sourceTurn {
   val firesAskAgain: bool = ghost.lastAction == DidAskAgain
   val firesGiveUp: bool = ghost.lastAction == DidGiveUp
   val firesRead: bool = ghost.lastAction == DidRead
+  val firesDeclare: bool = ghost.lastAction == DidDeclare
+  val firesDeclareSkipped: bool = ghost.lastAction == DidDeclareSkipped
   val firesRenew: bool = ghost.lastAction == DidRenew
   val firesRenewLost: bool = ghost.lastAction == DidRenewLost
   val firesAnswer: bool = ghost.lastAction == DidAnswer
@@ -401,6 +437,18 @@ module sourceTurn {
       .expect(runs.get(("p2", "s1")).phase != Waiting)
 
   /**
+   * A run stalls in its plugin's call past its turn's expiry; another container takes the turn and
+   * its plugin declares the attributes; then the stale run's plugin declares (or archives) its own,
+   * replacing them without the turn.
+   */
+  run staleRunReplacesAttributes =
+    init
+      .then(start("p1", "s1", true)).then(read("p1", "s1"))
+      .then((LASTS + 1).reps(_ => tick))
+      .then(start("p2", "s1", true)).then(read("p2", "s1")).then(declare("p2", "s1"))
+      .then(declare("p1", "s1"))
+
+  /**
    * The counterexample: p1's run stalls past its turn's expiry before any renewal noticed the loss;
    * p2 takes the turn, refreshes the secrets and records; then p1, still believing it holds the
    * turn, stores the secrets its plugin answered, replacing p2's newer ones.
@@ -429,6 +477,7 @@ module checked {
     WAITS_AT_MOST = 6,
     MAX_TIME = 8,
     GUARDED_WRITES = true,
+    GUARDED_ATTRIBUTES = true,
     MAX_CRASHES = 1,
   ).*
 
@@ -436,6 +485,7 @@ module checked {
   run twoRunsRecordInTurnTest = twoRunsRecordInTurn
   run pushGetsTurnOrGivesUpTest = pushGetsTurnOrGivesUp
   run staleRunIsSkippedTest = staleRunReplacesSecrets.expect(safety)
+  run staleAttributesAreSkippedTest = staleRunReplacesAttributes.expect(safety)
 }
 
 /** The code as it was before this spec, kept to show the counterexample. */
@@ -447,10 +497,12 @@ module unguarded {
     WAITS_AT_MOST = 6,
     MAX_TIME = 8,
     GUARDED_WRITES = false,
+    GUARDED_ATTRIBUTES = false,
     MAX_CRASHES = 2,
   ).*
 
   run staleRunReplacesSecretsTest = staleRunReplacesSecrets.expect(writeWithoutTurn and staleWrite)
+  run staleRunReplacesAttributesTest = staleRunReplacesAttributes.expect(writeWithoutTurn and staleWrite)
 }
 
 /** The model Apalache checks exhaustively to a depth: the turns of Sources are independent, so one Source. */
@@ -462,6 +514,27 @@ module exhaustive {
     WAITS_AT_MOST = 6,
     MAX_TIME = 8,
     GUARDED_WRITES = true,
+    GUARDED_ATTRIBUTES = true,
     MAX_CRASHES = 2,
   ).*
+}
+
+/**
+ * The code as it is: changed secrets and failed runs check the turn, the attributes do not. Kept to
+ * show the attributes' counterexample until they do (then remove it with `attributesUnguarded` in check.sh).
+ */
+module attributesUnguarded {
+  import sourceTurn(
+    PROCESSES = Set("p1", "p2"),
+    SOURCES = Set("s1"),
+    LASTS = 3,
+    WAITS_AT_MOST = 6,
+    MAX_TIME = 8,
+    GUARDED_WRITES = true,
+    GUARDED_ATTRIBUTES = false,
+    MAX_CRASHES = 2,
+  ).*
+
+  run staleRunReplacesAttributesTest = staleRunReplacesAttributes.expect(writeWithoutTurn and staleWrite)
+  run secretsStillGuardedTest = staleRunReplacesSecrets.expect(safety)
 }
