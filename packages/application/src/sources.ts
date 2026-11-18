@@ -263,16 +263,16 @@ export function createSourceAccess(deps: SourcesDeps) {
     return Object.fromEntries(kept.flatMap((key) => (source.plain[key] !== undefined ? [[key, source.plain[key]]] : [])));
   }
 
-  async function updateSecrets(current: Record<string, SecretRef>, input: Record<string, string>): Promise<{ refs: Record<string, SecretRef>; replaced: SecretRef[] }> {
-    const refs = { ...current };
+  async function updateSecrets(current: Record<string, SecretRef>, input: Record<string, string>): Promise<{ changed: Record<string, SecretRef>; replaced: SecretRef[] }> {
+    const changed: Record<string, SecretRef> = {};
     const replaced: SecretRef[] = [];
     for (const [key, value] of Object.entries(input)) {
       if (value === "") continue;
-      const old = refs[key];
+      const old = current[key];
       if (old) replaced.push(old);
-      refs[key] = await secrets.put(value);
+      changed[key] = await secrets.put(value);
     }
-    return { refs, replaced };
+    return { changed, replaced };
   }
 
 
@@ -341,16 +341,16 @@ export function createSourceAccess(deps: SourcesDeps) {
     const problem = check(sourceType, checked, Object.keys(source.secrets));
     if (problem) return problem;
 
-    const { refs, replaced } = await updateSecrets(source.secrets, input.secrets);
+    const { changed, replaced } = await updateSecrets(source.secrets, input.secrets);
     await sources.update({
       ...source,
       plain: { ...plainOf(input), ...keptPlain },
       configVersion: sourceType.configuration.version,
-      secrets: refs,
+      secrets: { ...source.secrets, ...changed },
       secretHosts: secretHostsOf(sourceType.configuration.fields, input.secrets, source.secretHosts),
       pollIntervalSeconds: input.pollIntervalSeconds ?? null,
       lastRunAt: null,
-    });
+    }, changed);
     for (const ref of replaced) await secrets.remove(ref);
     return { ok: true };
   }

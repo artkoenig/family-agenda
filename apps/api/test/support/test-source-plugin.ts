@@ -80,6 +80,7 @@ const setupProgress = new Map<string, SetupProgress>();
 const addingFails = new Set<string>();
 const addingHeld = new Map<string, Promise<void>>();
 const duringCall = new Map<string, () => Promise<void>>();
+const refreshed = new Map<string, Record<string, string>>();
 const askingFails = new Map<string, string>();
 /** Choice fields whose values the plugin cannot offer, by `<sourceTypeId>:<field>`. */
 const choiceFieldFails = new Map<string, string>();
@@ -147,6 +148,10 @@ export const testPluginControls = {
       addingHeld.delete(sourceTypeId);
       release();
     };
+  },
+  /** On its next run, the plugin answers with these secret fields changed, as a refreshed token. */
+  refreshSecrets(sourceTypeId: string, secrets: Record<string, string>): void {
+    refreshed.set(sourceTypeId, secrets);
   },
   /** On its next run, the plugin does this before it answers, as if the call lasted that long. */
   duringNextCall(sourceTypeId: string, meanwhile: () => Promise<void>): void {
@@ -255,7 +260,10 @@ export function testSourcePlugin(plugin: TestPluginPackage): PluginImplementatio
       const next = pending.get(key) ?? { origins: [] };
       pending.delete(key);
       if (next.failure) throw next.failure;
+      const secrets = refreshed.get(sourceTypeId);
+      refreshed.delete(sourceTypeId);
       return {
+        ...(secrets ? { secrets } : {}),
         sourceRecords: next.origins.map(sourceRecordOf),
         syncCursor: String(Number(context.syncCursor ?? 0) + 1),
         ...(next.withdrawn ? { withdrawn: next.withdrawn } : {}),
