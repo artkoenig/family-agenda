@@ -402,6 +402,7 @@ export function createSourceAccess(deps: SourcesDeps) {
       lastNewRecordAt: null,
       invalidRecords: [],
       unknownAttributes: [],
+      failedMessages: 0,
       createdAt: clock.now(),
     });
     return { ok: true, id, setUp: sourceType.setupSteps.some((step) => step.live) };

@@ -27,6 +27,8 @@ export type SourceHealth = {
   unknownAttributes: string[];
   /** Whether it waits for its first read, or the next one since an Admin changed it. */
   awaitingRead: boolean;
+  /** How many of its messages failed extraction for good, which makes it Failing until an Admin retries them. */
+  failedMessages: number;
 };
 
 export type SourceHealthDeps = {
@@ -38,7 +40,7 @@ export type SourceHealthDeps = {
 
 /** How a Source is doing, as the Admin area shows it (ADR-0001). */
 export async function healthOf(source: Source, deps: SourceHealthDeps): Promise<SourceHealth> {
-  const { lastSuccessAt, failure, invalidRecords, unknownAttributes } = source;
+  const { lastSuccessAt, failure, invalidRecords, unknownAttributes, failedMessages } = source;
   const awaitingRead = source.lastRunAt === null;
   const loaded = await enabledSourceType(source.sourceTypeId, deps);
   if (!loaded) {
@@ -46,7 +48,7 @@ export async function healthOf(source: Source, deps: SourceHealthDeps): Promise<
     const problem: HealthProblem = installed
       ? { kind: "not-loadable", reason: installed.notLoadable }
       : { kind: "not-installed" };
-    return { status: "failing", problem, lastSuccessAt, invalidRecords, unknownAttributes, awaitingRead };
+    return { status: "failing", problem, lastSuccessAt, invalidRecords, unknownAttributes, awaitingRead, failedMessages };
   }
   const status = sourceStatus({
     failure,
@@ -54,8 +56,9 @@ export async function healthOf(source: Source, deps: SourceHealthDeps): Promise<
     lastNewRecordAt: source.lastNewRecordAt,
     createdAt: source.createdAt,
     now: deps.clock.now(),
+    failedMessages,
   });
-  return { status, problem: failure ? { kind: "run-failed", message: failure.message } : null, lastSuccessAt, invalidRecords, unknownAttributes, awaitingRead };
+  return { status, problem: failure ? { kind: "run-failed", message: failure.message } : null, lastSuccessAt, invalidRecords, unknownAttributes, awaitingRead, failedMessages };
 }
 
 /** Whether the Family's Sources work, as every Agenda hints at without detail. */

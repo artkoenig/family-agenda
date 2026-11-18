@@ -116,6 +116,7 @@ describe("messages whose extraction keeps failing", () => {
     const [source] = await instance.app.sources.list();
 
     expect(await instance.app.messages.failed(source!.id)).toMatchObject([{ id }]);
+    expect(source!.health, "its Items are missing, so the Source is Failing").toMatchObject({ status: "failing", failedMessages: 1 });
     expect((await instance.app.messages.open(id))?.extractionFailedAt).toBeInstanceOf(Date);
     expect((await instance.app.extraction.extractPending()).failed, "no run reads it").toEqual([]);
 
@@ -125,6 +126,7 @@ describe("messages whose extraction keeps failing", () => {
     expect(await instance.app.messages.retryExtraction(id), "it no longer has failed").toBe(false);
     expect(await instance.app.extraction.extractPending()).toMatchObject({ extracted: [id] });
     expect(await instance.app.messages.failed(source!.id)).toEqual([]);
+    expect((await instance.app.sources.list())[0]!.health).toMatchObject({ status: "ok", failedMessages: 0 });
     expect(await instance.app.messages.retryExtraction("not-a-message" as RawMessageId)).toBe(false);
   });
 

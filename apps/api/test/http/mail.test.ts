@@ -247,6 +247,8 @@ describe("the LLM endpoint and mail over HTTP", () => {
 
     const source = await (await instance.get(`/admin/sources/${added.id}`, { cookie })).text();
     expect(source).toContain("Messages that could not be read");
+    expect(source).toContain("1 message could not be read; its Items are missing until you retry it.");
+    expect(source).toContain("fam-chip--problem");
     const link = /<a class="fam-row__label" href="(\/admin\/messages\/[0-9a-f-]+)">Wandertag<\/a>/.exec(source)?.[1];
     expect(link).toBeDefined();
     const message = await (await instance.get(link!, { cookie })).text();

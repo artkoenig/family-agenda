@@ -38,8 +38,11 @@ export function sourceStatus(source: {
   lastNewRecordAt: Date | null;
   createdAt: Date;
   now: Date;
+  /** How many of its messages failed extraction for good: their Items are missing until an Admin retries them. */
+  failedMessages: number;
 }): SourceStatus {
   const { failure, now } = source;
+  if (source.failedMessages > 0) return "failing";
   if (failure) {
     if (failure.kind === "definite" || now.getTime() - failure.since.getTime() >= failingAfterMs) return "failing";
   }

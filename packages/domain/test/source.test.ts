@@ -11,6 +11,7 @@ describe("sourceStatus", () => {
       lastNewRecordAt: now,
       createdAt: new Date("2026-01-01T00:00:00Z"),
       now,
+      failedMessages: 0,
     });
     expect(result).toBe("ok");
   });
@@ -23,6 +24,7 @@ describe("sourceStatus", () => {
       lastNewRecordAt: now,
       createdAt: new Date("2026-01-01T00:00:00Z"),
       now,
+      failedMessages: 0,
     });
     expect(result).toBe("failing");
   });
@@ -36,6 +38,7 @@ describe("sourceStatus", () => {
       lastNewRecordAt: now,
       createdAt: new Date("2026-01-01T00:00:00Z"),
       now,
+      failedMessages: 0,
     });
     expect(result).toBe("ok");
   });
@@ -49,6 +52,7 @@ describe("sourceStatus", () => {
       lastNewRecordAt: now,
       createdAt: new Date("2026-01-01T00:00:00Z"),
       now,
+      failedMessages: 0,
     });
     expect(result).toBe("failing");
   });
@@ -62,6 +66,7 @@ describe("sourceStatus", () => {
       lastNewRecordAt: now,
       createdAt: new Date("2026-01-01T00:00:00Z"),
       now,
+      failedMessages: 0,
     });
     expect(result).toBe("failing");
   });
@@ -74,6 +79,7 @@ describe("sourceStatus", () => {
       lastNewRecordAt: null,
       createdAt,
       now,
+      failedMessages: 0,
     });
     expect(result).toBe("silent");
   });
@@ -86,6 +92,7 @@ describe("sourceStatus", () => {
       lastNewRecordAt,
       createdAt: new Date("2026-01-01T00:00:00Z"),
       now,
+      failedMessages: 0,
     });
     expect(result).toBe("ok");
   });
@@ -98,6 +105,7 @@ describe("sourceStatus", () => {
       lastNewRecordAt: null,
       createdAt,
       now,
+      failedMessages: 0,
     });
     expect(result).toBe("ok");
   });
@@ -110,6 +118,7 @@ describe("sourceStatus", () => {
       lastNewRecordAt: null,
       createdAt,
       now,
+      failedMessages: 0,
     });
     expect(result).toBe("ok");
   });
@@ -132,7 +141,14 @@ describe("source thresholds", () => {
       lastNewRecordAt,
       createdAt: new Date("2026-01-01T00:00:00Z"),
       now,
+      failedMessages: 0,
     });
     expect(result).toBe("silent");
+  });
+
+  it("returns 'failing' while messages failed extraction for good, whatever else holds", () => {
+    const base = { failure: null, silentApplies: true, lastNewRecordAt: now, createdAt: new Date("2026-01-01T00:00:00Z"), now };
+    expect(sourceStatus({ ...base, failedMessages: 1 })).toBe("failing");
+    expect(sourceStatus({ ...base, failedMessages: 0 })).toBe("ok");
   });
 });

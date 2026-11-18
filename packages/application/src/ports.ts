@@ -420,6 +420,8 @@ export type Source = {
   invalidRecords: string[];
   /** The Source Attribute ids that Source Records named without their being declared, or after they were archived. */
   unknownAttributes: string[];
+  /** How many of its messages failed extraction for good and wait for an Admin's retry. */
+  failedMessages: number;
   createdAt: Date;
 };
 

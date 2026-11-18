@@ -3312,7 +3312,8 @@ function hasHealthDetails(health: SourceHealth): boolean {
     health.status !== "ok" ||
     health.problem !== null ||
     health.invalidRecords.length > 0 ||
-    health.unknownAttributes.length > 0
+    health.unknownAttributes.length > 0 ||
+    health.failedMessages > 0
   );
 }
 
@@ -3352,6 +3353,11 @@ function HealthDetails(props: { health: SourceHealth; timeZone: string }) {
       {health.unknownAttributes.length > 0 ? (
         <span class="fam-problem">
           {s.unknownAttributes(health.unknownAttributes.join(", "))}
+        </span>
+      ) : null}
+      {health.failedMessages > 0 ? (
+        <span class="fam-problem">
+          {s.failedMessages(health.failedMessages)}
         </span>
       ) : null}
     </>
