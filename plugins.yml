@@ -11,7 +11,7 @@ plugins:
 
   # Mailboxes over IMAP. The mail server is a host field, which the egress proxy allows by itself.
   - id: imap
-    image: ghcr.io/artkoenig/family-agenda-imap:0.3.0@sha256:676319139e6130c88a21cc870483c747fe2387e75e3bd7a9e0ab4d2f86e3c1c5
+    image: ghcr.io/artkoenig/family-agenda-imap:0.4.0@sha256:53f5fe9e26fd4f0c0e5db7e10aa482239dca8ca4e32f6806e192dc1d0efd7c8d
 
   # Timetables from WebUntis. The server is a host field, which the egress proxy allows by itself.
   - id: webuntis
