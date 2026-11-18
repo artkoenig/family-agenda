@@ -18,8 +18,10 @@ simulation() {
 }
 
 exhaustive() {
-  # Every trace of two containers and one Source up to a depth (Apalache, needs Java 17+).
-  quint verify sourceTurn.qnt --main=exhaustive --invariant=turnSafety --max-steps=12
+  # Every trace of two containers and one Source up to 8 steps (Apalache, needs Java 17+): deep
+  # enough for the counterexample (a stalled run, a takeover, the late write), and about 1.5 min,
+  # as long as CI's other jobs. Depth 10 takes about 7 min, 12 far longer.
+  quint verify sourceTurn.qnt --main=exhaustive --invariant=turnSafety --max-steps=8
 }
 
 counterexample() {
