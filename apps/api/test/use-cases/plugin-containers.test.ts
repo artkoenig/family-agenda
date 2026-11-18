@@ -9,6 +9,7 @@ import { parsePluginUrls } from "../../src/plugin-containers/bindings";
 import { descriptionProblem, PluginContainers } from "../../src/plugin-containers/registry";
 import { verifyTicket, type Ticket } from "../../src/egress/ticket";
 import { bootForTest, type TestInstance, type TestOptions } from "../support/boot";
+import { InMemoryBlobStore } from "../support/in-memory-blob-store";
 
 const minutes = 60 * 1000;
 const egressTicketKey = "a-ticket-key-of-at-least-32-characters";
@@ -76,16 +77,28 @@ const closed = (server: Server) =>
     });
   });
 
+/** A BlobStore that refuses every file while `failing` is set. */
+class FailingBlobStore extends InMemoryBlobStore {
+  failing = false;
+
+  override put(contents: Uint8Array): ReturnType<InMemoryBlobStore["put"]> {
+    return this.failing ? Promise.reject(new Error("The disk is full.")) : super.put(contents);
+  }
+}
+
 describe("A Source Type whose plugin runs in a container", () => {
   let instance: TestInstance;
   let server: Server;
   let state: { poll: Poll; runs: RunContext[] };
   let sourceId: SourceId;
+  let blobs: FailingBlobStore;
 
   beforeEach(async () => {
     state = { runs: [], poll: () => Promise.resolve({ sourceRecords: [], syncCursor: null }) };
     server = await servePlugin(fakePlugin(state), { host: "127.0.0.1" });
+    blobs = new FailingBlobStore();
     instance = await bootForTest({
+      blobStore: blobs,
       sourcePlugins: [{ sourceTypeId: "club-mail" }],
       pluginContainers: [{ sourceTypeId: "school-portal" as SourceTypeId, url: urlOf(server) }],
       pluginContainerOptions: { timeoutsMs: { poll: 200 }, descriptionMaxAgeMs: 0 },
@@ -149,6 +162,21 @@ describe("A Source Type whose plugin runs in a container", () => {
 
     expect(state.runs[1]).toMatchObject({ syncCursor: "cursor-1", config: { secrets: { token: "second" } } });
     expect((await instance.query("SELECT sync_cursor FROM source_run"))[0]?.sync_cursor).toBe("cursor-2");
+  });
+
+  // Found by the model of the plugin call (specs/plugin-call): a refreshed token stored only with
+  // the cursor is lost when the recording fails, and the provider accepts only the new one.
+  it("keeps the token its plugin refreshed when the recording of the run fails afterwards, and polls from the old cursor", async () => {
+    blobs.failing = true;
+    const mail = { externalId: "mail", occurredAt: "2026-09-14T07:00:00.000Z", attributes: ["main"], content: { kind: "raw-message", text: "Hello", attachments: [{ filename: "a.pdf", contentType: "application/pdf", bytes: "JVBERg==" }] } };
+    state.poll = () => Promise.resolve({ sourceRecords: [mail], syncCursor: "cursor-1", attributes: { declared: [{ externalId: "main", name: "Class 3b" }], archived: [] }, secrets: { token: "second" } });
+
+    await expect(poll()).rejects.toThrow("The disk is full.");
+
+    blobs.failing = false;
+    state.poll = () => Promise.resolve({ sourceRecords: [], syncCursor: "cursor-2" });
+    await poll();
+    expect(state.runs[1]).toMatchObject({ syncCursor: null, config: { secrets: { token: "second" } } });
   });
 
   it("hands each call the plugin's egress proxy with a ticket for the Source of the call, lasting a little longer than the call may", async () => {
