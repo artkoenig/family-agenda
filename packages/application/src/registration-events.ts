@@ -1,18 +1,25 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
-import type { Clock, ProcessedEventRepository } from "./ports";
 
 /** A user who registered in the Identity Provider with a verified email (ADR-0010). */
 export type RegistrationEvent = { userId: string; email: string };
 
 /** What a registration does: create the Family and make the user its first Admin (ADR-0010). */
 export interface Registration {
+  /** Keeps the registration, unless the user's is kept already, and carries it through as far as it goes now. */
   register(event: RegistrationEvent): Promise<void>;
+  /** Carries the registrations due through, such as those a failure or a core dying left; resolves to how many are done. */
+  retry(): Promise<number>;
+  /**
+   * Carries the user's registration through before they accept an invitation, so that they do not
+   * end up an Admin of two Families; whether none is left to do (false while another core carries it).
+   */
+  settle(userId: string): Promise<boolean>;
   /** Whether a registration would create a Family now, for the sign-in page to offer sign-up. */
   isOpen(): Promise<boolean>;
 }
 
 /** No registration, without a management API or in supplied mode for now: does nothing, never open. */
-export const noRegistration: Registration = { register: async () => {}, isOpen: () => Promise.resolve(false) };
+export const noRegistration: Registration = { register: async () => {}, retry: () => Promise.resolve(0), settle: () => Promise.resolve(true), isOpen: () => Promise.resolve(false) };
 
 /**
  * What became of an event: `handled` by registration, `ignored` as not a registration with a
@@ -30,10 +37,8 @@ export const idpSignatureHeader = "logto-signature-sha-256";
 export const idpEventsPath = "/idp/events";
 
 export type RegistrationEventDeps = {
-  clock: Clock;
   /** The key the Identity Provider signs its events with (`IDP_WEBHOOK_SECRET`). */
   secret: string;
-  processedEvents: ProcessedEventRepository;
   registration: Registration;
 };
 
@@ -44,23 +49,15 @@ export type RegistrationEvents = {
 
 /** The registration events the Identity Provider's webhook posts (`POST /idp/events`, Logto's `PostRegister`). */
 export function createRegistrationEvents(deps: RegistrationEventDeps): RegistrationEvents {
-  const { clock, secret, processedEvents, registration } = deps;
+  const { secret, registration } = deps;
   return {
     async receive(body, signature) {
       if (!isSignedBy(secret, body, signature)) return "unsigned";
       const parsed = parseEvent(body);
       if (parsed === null) return "malformed";
       if (parsed.event === null) return "ignored";
-      // A user registers once, so the user id names the event; Logto's payload carries no event id.
-      const eventId = `PostRegister:${parsed.event.userId}`;
-      if (!(await processedEvents.recordIfNew(eventId, clock.now()))) return "ignored";
-      try {
-        await registration.register(parsed.event);
-      } catch (error) {
-        // Not processed after all: the Identity Provider's retry gets another go.
-        await processedEvents.forget(eventId);
-        throw error;
-      }
+      // Kept by its user, who registers once: a redelivery finds it kept and does nothing more.
+      await registration.register(parsed.event);
       return "handled";
     },
   };

@@ -24,7 +24,7 @@ export async function serveSupplied(config: SuppliedConfig, log: TriggerLog) {
   const shared = await bootShared(config);
   const registering = await startSuppliedRegistration(shared, config.familyWebhook, log);
   const client = new OidcIdentityProviderClient();
-  const relay = new SignInRelay({ contextKey: config.contextKey, identityProvider: config.identityProvider, client, ...invitationAcceptanceOf(shared) });
+  const relay = new SignInRelay({ contextKey: config.contextKey, identityProvider: config.identityProvider, client, ...invitationAcceptanceOf(shared, registering.registration) });
   const families = new SuppliedFamilies({
     shared,
     settings: { identityProviderClient: client },

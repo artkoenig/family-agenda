@@ -501,6 +501,7 @@ module registration {
     val u = handler.user
     val found = if (handler.org == 0 and LOOKUP) orgOf(handler.familyId) else 0
     val nothing = not(idp.accounts.contains(u)) or orgsWith(idp, u).exists(o => o != handler.org)
+    val stray = if (handler.org != 0) handler.org else orgOf(handler.familyId)
     all {
       handler.stage == ToCheck,
       if (nothing) all { setHandler(h, noHandler), db' = doneFor(u) }
@@ -511,7 +512,12 @@ module registration {
         db' = { ...db, regs: db.regs.setBy(u, r => { ...r, org: found }) },
       }
       else all { setHandler(h, { ...handler, stage: ToCreate }), db' = db },
-      keepPreparing, idp' = idp, platform' = platform,
+      keepPreparing, platform' = platform,
+      // Supplied mode with LOOKUP, as the code: a registration ending with nothing deletes the
+      // organization an earlier try created for its Family id, unless someone is in it.
+      idp' = if (nothing and SUPPLIED and LOOKUP and stray != 0 and idp.orgs.get(stray).members == Set())
+          { ...idp, orgs: idp.orgs.setBy(stray, org => { ...org, gone: true }) }
+        else idp,
       did(if (nothing) DidDone else if (found != 0) DidLookUp else DidCheck),
     }
   }
@@ -578,6 +584,9 @@ module registration {
       // A finished Family whose last Admin deleted their account is the Admins page's concern (#469).
       and o != familyOrg and not(SUPPLIED and platform.families.contains(idp.orgs.get(o).familyId))
       and not(USERS.exists(u => db.regs.get(u).org == o and not(db.regs.get(u).done)))
+      // With LOOKUP in supplied mode, a registration under way finds the organization of its Family
+      // id, noted or not, and fills or deletes it.
+      and not(LOOKUP and SUPPLIED and USERS.exists(u => db.regs.get(u).stored and not(db.regs.get(u).done) and db.regs.get(u).familyId == idp.orgs.get(o).familyId))
   /**
    * No organization is left empty; with SWEEP, every one left empty can be deleted (the sweep is
    * enabled for it, and the scenarios show it deleted).

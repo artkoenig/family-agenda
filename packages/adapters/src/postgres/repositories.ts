@@ -17,7 +17,9 @@ import type {
   SoleAssignment,
   LlmEndpointRepository,
   PlainConfig,
-  ProcessedEventRepository,
+  RegistrationInboxRepository,
+  RegistrationTaken,
+  StoredRegistration,
   FamilyCreated,
   FamilyCreatedDeliveryRepository,
   PendingDelivery,
@@ -50,7 +52,7 @@ import type {
   AgendaLayout,
 } from "@family-agenda/domain";
 import { defaultFamilyLanguage, isFamilyLanguage } from "@family-agenda/domain";
-import { and, asc, eq, gt, inArray, isNull, lt, lte, sql, type SQL } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, isNotNull, isNull, lt, lte, or, sql, type SQL } from "drizzle-orm";
 import { uuidPattern } from "../uuid";
 import type { Database } from "./database";
 import {
@@ -61,7 +63,7 @@ import {
   family,
   familyMembers,
   llmEndpoints,
-  processedIdpEvents,
+  registrations,
   familyCreatedDeliveries,
   sourceAttributeMembers,
   sourceAttributes,
@@ -783,22 +785,81 @@ function addingOf(row: typeof sourceAddings.$inferSelect): SourceAdding {
   return { id: row.id as AddingId, startedAt: row.startedAt, progress: row.progress };
 }
 
-/** The Identity Provider's events processed, recorded in one statement so that concurrent replays record one. */
-export class PostgresProcessedEventRepository implements ProcessedEventRepository {
+/** A lock no other statement takes, held while a fixed Family's registration is taken: one at a time. */
+const registrationLockKey = 0x7265_6731;
+
+/** The registrations received (ADR-0010): each statement takes or changes one so that concurrent cores take each once. */
+export class PostgresRegistrationInboxRepository implements RegistrationInboxRepository {
   constructor(private readonly db: Database) {}
 
-  async recordIfNew(eventId: string, at: Date): Promise<boolean> {
-    const recorded = await this.db
-      .insert(processedIdpEvents)
-      .values({ eventId, processedAt: at })
+  async add(registration: { userId: string; email: string; familyId: string | null }, at: Date): Promise<boolean> {
+    const added = await this.db
+      .insert(registrations)
+      .values({ ...registration, nextAttemptAt: at })
       .onConflictDoNothing()
-      .returning({ eventId: processedIdpEvents.eventId });
-    return recorded.length > 0;
+      .returning({ userId: registrations.userId });
+    return added.length > 0;
   }
 
-  async forget(eventId: string): Promise<void> {
-    await this.db.delete(processedIdpEvents).where(eq(processedIdpEvents.eventId, eventId));
+  takeDue(now: Date, leaseUntil: Date, limit: number, alone: boolean): Promise<StoredRegistration[]> {
+    return this.db.transaction(async (tx) => {
+      if (alone && (await heldElsewhere(tx, now))) return [];
+      // Skips registrations another core is taking at the same moment; each is held as it is taken.
+      const due = tx
+        .select({ userId: registrations.userId })
+        .from(registrations)
+        .where(and(isNull(registrations.doneAt), lte(registrations.nextAttemptAt, now), free(now)))
+        .orderBy(asc(registrations.nextAttemptAt))
+        .limit(alone ? 1 : limit)
+        .for("update", { skipLocked: true });
+      return tx.update(registrations).set({ leasedUntil: leaseUntil }).where(inArray(registrations.userId, due)).returning(storedColumns);
+    });
   }
+
+  takeOf(userId: string, now: Date, leaseUntil: Date, alone: boolean): Promise<RegistrationTaken> {
+    return this.db.transaction(async (tx) => {
+      if (alone && (await heldElsewhere(tx, now, userId))) return "busy";
+      const [row] = await tx.select().from(registrations).where(eq(registrations.userId, userId)).for("update");
+      if (row === undefined || row.doneAt !== null) return "settled";
+      if (row.leasedUntil !== null && row.leasedUntil > now) return "busy";
+      const [taken] = await tx.update(registrations).set({ leasedUntil: leaseUntil }).where(eq(registrations.userId, userId)).returning(storedColumns);
+      return taken ? { taken } : "settled";
+    });
+  }
+
+  async noteOrganization(userId: string, organizationId: string): Promise<void> {
+    await this.db.update(registrations).set({ organizationId }).where(eq(registrations.userId, userId));
+  }
+
+  async done(userId: string, at: Date): Promise<void> {
+    await this.db.update(registrations).set({ doneAt: at, leasedUntil: null }).where(eq(registrations.userId, userId));
+  }
+
+  async retryAt(userId: string, attempts: number, at: Date): Promise<void> {
+    await this.db.update(registrations).set({ attempts, nextAttemptAt: at, leasedUntil: null }).where(eq(registrations.userId, userId));
+  }
+}
+
+const storedColumns = {
+  userId: registrations.userId,
+  email: registrations.email,
+  familyId: registrations.familyId,
+  organizationId: registrations.organizationId,
+  attempts: registrations.attempts,
+};
+
+/** A registration no core holds at `now`. */
+const free = (now: Date): SQL | undefined => or(isNull(registrations.leasedUntil), lte(registrations.leasedUntil, now));
+
+/** Takes the lock of a fixed Family's registration for the transaction; whether another than `userId`'s is held now. */
+async function heldElsewhere(tx: Parameters<Parameters<Database["transaction"]>[0]>[0], now: Date, userId = ""): Promise<boolean> {
+  await tx.execute(sql`SELECT pg_advisory_xact_lock(${registrationLockKey})`);
+  const held = await tx
+    .select({ userId: registrations.userId })
+    .from(registrations)
+    .where(and(isNull(registrations.doneAt), isNotNull(registrations.leasedUntil), gt(registrations.leasedUntil, now), sql`${registrations.userId} <> ${userId}`))
+    .limit(1);
+  return held.length > 0;
 }
 
 /** The pending `family.created` deliveries, in the registration database of a core in supplied mode (ADR-0010). */

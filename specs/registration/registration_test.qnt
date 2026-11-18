@@ -308,5 +308,6 @@ module suppliedLookup {
   /** The gap closed: the retry finds the organization by its Family id. */
   run theGapTest = theGap.expect(lookedUp).then(addMember(1)).then(finishes("u1"))
     .expect(idp.orgs.keys().size() == 1 and familyWithAdmin and safety and progress)
-  run inboxDeletedMidwayTest = inboxDeletedMidway.expect(not(noEmptyOrganization))
+  /** As the code: the registration ending with nothing deletes the organization it created. */
+  run inboxDeletedMidwayTest = inboxDeletedMidway.expect(noEmptyOrganization and idp.orgs.get(1).gone and safety)
 }

@@ -1,4 +1,4 @@
-import type { Registration } from "@family-agenda/application";
+import { noRegistration, type Registration } from "@family-agenda/application";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { bootHttpForTest, type HttpTestInstance } from "../support/http";
 import { FakeIdentityProvider } from "../../../../packages/adapters/test/support/fake-identity-provider";
@@ -14,7 +14,7 @@ const identityProviderOf = (provider: FakeIdentityProvider) => ({
 
 /** A registration that is open or closed as given. */
 const registrationThatIs = (open: boolean): Registration => ({
-  register: () => Promise.resolve(),
+  ...noRegistration,
   isOpen: () => Promise.resolve(open),
 });
 

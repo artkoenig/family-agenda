@@ -7,20 +7,30 @@ quint() { pnpm exec quint "$@"; }
 
 scenarios() {
   # Two cores preparing at once, a crash mid-migration, the first registration, a redelivery, two
-  # registrations at once, a late one; and the counterexamples of the code as it is.
-  for main in fixed drawn unfixedId supplied suppliedChecked; do
+  # registrations at once, a late one; the counterexamples of the code as it was; and the inbox with
+  # each of its variants: alone, with a sweep, and with the lookup the code uses.
+  for main in fixed drawn unfixedId supplied suppliedChecked fixedInbox fixedSweep fixedLookup suppliedInbox suppliedSweep suppliedLookup; do
     quint test registration_test.qnt --backend=typescript --main="$main" --max-samples=100
   done
 }
 
 simulation() {
-  # Random traces of two cores and two users with two handlers, in both modes. Only preparing holds
-  # as the code is: registration's properties fail (see the counterexamples).
+  # Random traces of two cores and two users with two handlers, in both modes. Without the inbox only
+  # preparing holds: registration's properties fail (see the counterexamples).
   for main in fixed drawn supplied suppliedChecked; do
     quint run registration_test.qnt --backend=typescript --main="$main" --invariants oneFamilyId noStrayRandomId coreCanStart \
       --witnesses coreUp allUp crashedWhilePreparing familyWithAdmin registrationClosed lostTheRace duplicated skipped signedInAgain invited userDeleted throwsWitness crashed \
       --max-samples=2000 --max-steps=30
   done
+  # The inbox with the lookup, as the code is: every property of registration holds, but that no
+  # organization is left empty in fixed mode, where a user deleted midway leaves theirs for the next.
+  for main in fixedLookup suppliedLookup; do
+    quint run registration_test.qnt --backend=typescript --main="$main" \
+      --invariants oneFamilyId oneFamilyPerAdmin oneOrganizationPerEvent onlyFirstCreates onlyFamilyOrgHasAdmins eventCanFinish \
+      --witnesses familyWithAdmin duplicated crashed throwsWitness noted lookedUp invited userDeleted \
+      --max-samples=2000 --max-steps=40
+  done
+  quint run registration_test.qnt --backend=typescript --main=suppliedLookup --invariant=noEmptyOrganization --max-samples=2000 --max-steps=40
 }
 
 exhaustive() {

@@ -120,6 +120,13 @@
       "when": 1794914426934,
       "tag": "0016_admin_session_id_token",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1795018635408,
+      "tag": "0017_registration",
+      "breakpoints": true
     }
   ]
 }

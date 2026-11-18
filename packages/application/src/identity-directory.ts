@@ -20,7 +20,13 @@ export type InvitationDetails = { expiresAt: Date; link: string; locale: string 
 export interface IdentityDirectory {
   /** Creates the Family's organization, its Family id kept with it; resolves to the organization id. */
   createOrganization(familyId: string, name: string): Promise<string>;
-  /** Makes the user a member of the organization, with the role `admin`. */
+  /** The organization created for the Family id `familyId`, found by the name it was given; null for none. */
+  findOrganization(familyId: string): Promise<string | null>;
+  /** Deletes an organization, such as one a registration created and then had no use for. */
+  deleteOrganization(organizationId: string): Promise<void>;
+  /** The organizations the user is a member of; null for no such user, such as one who deleted their account. */
+  organizationsOf(userId: string): Promise<string[] | null>;
+  /** Makes the user a member of the organization, with the role `admin`; doing it again changes nothing. */
   addMember(organizationId: string, userId: string): Promise<void>;
   /**
    * A one-time token for `email`, valid until `expiresAt`, that the invitation link carries

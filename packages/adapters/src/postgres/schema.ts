@@ -633,6 +633,26 @@ export const processedIdpEvents = pgTable("processed_idp_event", {
 });
 
 /**
+ * The registrations received (ADR-0010), one per user, kept until carried through and then kept as
+ * done, so that a redelivered event does nothing: in a fixed Family's database, and in the
+ * registration database of a core in supplied mode.
+ */
+export const registrations = pgTable("registration", {
+  userId: text("user_id").primaryKey(),
+  email: text("email").notNull(),
+  /** The Family id drawn for it in supplied mode; null in fixed mode, where it is the Family's. */
+  familyId: uuid("family_id"),
+  /** The organization created for it, noted as soon as it is. */
+  organizationId: text("organization_id"),
+  attempts: integer("attempts").notNull().default(0),
+  /** When it is due again after a failed try. */
+  nextAttemptAt: timestamptz("next_attempt_at").notNull(),
+  /** Until when a core holds it; past that, another may take it on. */
+  leasedUntil: timestamptz("leased_until"),
+  doneAt: timestamptz("done_at"),
+});
+
+/**
  * The `family.created` webhooks not yet answered `2xx` by the platform (ADR-0010), kept in the
  * registration database of a core in supplied mode; retried until delivered, then deleted.
  */

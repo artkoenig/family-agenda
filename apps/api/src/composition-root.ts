@@ -23,7 +23,7 @@ import {
   PostgresFamilyRepository,
   PostgresItemRepository,
   PostgresLlmEndpointRepository,
-  PostgresProcessedEventRepository,
+  PostgresRegistrationInboxRepository,
   OidcIdentityProviderClient,
   LogtoIdentityDirectory,
   PostgresSourceAddingRepository,
@@ -297,9 +297,12 @@ function registrationWiringOf(config: SharedConfig): Pick<SharedWiring, "idpWebh
   };
 }
 
-/** With a management API, sign-in accepts an invitee's invitation (ADR-0010); nothing without one. */
-export function invitationAcceptanceOf(shared: Pick<SharedWiring, "clock" | "directory">): { acceptInvitation?: InvitationAcceptance } {
-  return shared.directory ? { acceptInvitation: createInvitationAcceptance({ clock: shared.clock, directory: shared.directory }) } : {};
+/**
+ * With a management API, sign-in accepts an invitee's invitation (ADR-0010), once the invitee's own
+ * registration is carried through; nothing without one.
+ */
+export function invitationAcceptanceOf(shared: Pick<SharedWiring, "clock" | "directory">, registration: Pick<Registration, "settle"> = noRegistration): { acceptInvitation?: InvitationAcceptance } {
+  return shared.directory ? { acceptInvitation: createInvitationAcceptance({ clock: shared.clock, directory: shared.directory, registration }) } : {};
 }
 
 /**
@@ -308,26 +311,21 @@ export function invitationAcceptanceOf(shared: Pick<SharedWiring, "clock" | "dir
  * join by invitation; the deployment's registration (see `openSuppliedRegistration`) creates Families
  * through the caller port, outside any Family.
  */
-function registrationOf(shared: SharedWiring, families: PostgresFamilyRepository, mode: "fixed" | "supplied"): Registration {
+function registrationOf(shared: SharedWiring, postgres: PostgresConnection, families: PostgresFamilyRepository, mode: "fixed" | "supplied"): Registration {
   if (mode === "supplied") return noRegistration;
   if (shared.registration !== null) return shared.registration;
   if (shared.directory === null) return noRegistration;
-  return createFamilyRegistration({ families, directory: shared.directory });
+  return createFamilyRegistration({ clock: shared.clock, families, registrations: new PostgresRegistrationInboxRepository(postgres.db), directory: shared.directory });
 }
 
 /**
- * A fixed Family's registration events, recorded in its database; none without the webhook secret.
+ * A fixed Family's registration events, kept in its database; none without the webhook secret.
  * None for a supplied Family either: a registration there belongs to no Family yet, so the caller
- * port receives it, recorded in the registration database (ADR-0010).
+ * port receives it, kept in the registration database (ADR-0010).
  */
-function registrationEventsOf(shared: SharedWiring, postgres: PostgresConnection, registration: Registration, mode: "fixed" | "supplied"): RegistrationEvents | null {
+function registrationEventsOf(shared: SharedWiring, registration: Registration, mode: "fixed" | "supplied"): RegistrationEvents | null {
   if (shared.idpWebhookSecret === null || mode === "supplied") return null;
-  return createRegistrationEvents({
-    clock: shared.clock,
-    secret: shared.idpWebhookSecret,
-    processedEvents: new PostgresProcessedEventRepository(postgres.db),
-    registration,
-  });
+  return createRegistrationEvents({ secret: shared.idpWebhookSecret, registration });
 }
 
 async function withDatabase<T>(postgres: PostgresConnection, fn: () => Promise<T>): Promise<T> {
@@ -574,12 +572,13 @@ function wireFamily(
     extractor,
     supplied: shared.suppliedLlmEndpoint,
   });
+  const registration = registrationOf(shared, postgres, families, mode);
   const singleSignOn = createSingleSignOn({
     settings: config.identityProvider ?? null,
     client: config.identityProviderClient ?? new OidcIdentityProviderClient(),
     admins,
     organizationId: () => families.organizationId(),
-    ...invitationAcceptanceOf(shared),
+    ...invitationAcceptanceOf(shared, registration),
   });
   const retention = createRetention({ clock, items, blobs });
   const secretSweep = createSecretSweep({
@@ -603,7 +602,6 @@ function wireFamily(
     activity,
   });
   const messages = createMessageAccess({ items, blobs });
-  const registration = registrationOf(shared, families, mode);
   const familyAdmins = createFamilyAdmins({ clock, families, directory: shared.directory, familyLanguage: () => languages.familyLanguage() });
   return {
     familyId,
@@ -627,7 +625,7 @@ function wireFamily(
     singleSignOn,
     extraction,
     messages,
-    registrationEvents: registrationEventsOf(shared, postgres, registration, mode),
+    registrationEvents: registrationEventsOf(shared, registration, mode),
     registration,
     familyAdmins,
     close: () => postgres.close(),
