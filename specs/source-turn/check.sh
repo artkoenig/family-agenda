@@ -12,7 +12,7 @@ quint test sourceTurn.qnt --backend=typescript --main=unguarded
 quint run sourceTurn.qnt --backend=typescript --main=checked --invariant=safety --max-samples=5000 --max-steps=40
 
 # Every trace of two containers and one Source up to 12 steps (Apalache, needs Java 17+).
-quint verify sourceTurn.qnt --main=exhaustive --invariant=safety --max-steps=12
+quint verify sourceTurn.qnt --main=exhaustive --invariant=turnSafety --max-steps=12
 
 # Without the guard the checker must find the counterexample, or the model no longer shows it.
 if quint verify sourceTurn.qnt --main=unguarded --invariant=safety --max-steps=8 > /dev/null 2>&1; then

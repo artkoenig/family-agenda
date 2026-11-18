@@ -328,8 +328,10 @@ module sourceTurn {
   val pushGetsTurnOrFails: bool = tuples(PROCESSES, SOURCES).forall(ps =>
     not(pushWaits(ps._1, ps._2)) or now - runs.get(ps).waitedSince <= WAITS_AT_MOST)
 
-  val safety: bool =
-    noWriteWithoutTurn and noStaleWrite and oneHolder and deadTurnsExpire and noDoubleRecord and pushGetsTurnOrFails
+  /** What Apalache checks exhaustively: `pushGetsTurnOrFails` follows from `tick`'s guard and costs it most. */
+  val turnSafety: bool = noWriteWithoutTurn and noStaleWrite and oneHolder and deadTurnsExpire and noDoubleRecord
+
+  val safety: bool = turnSafety and pushGetsTurnOrFails
 
   // ---- Witnesses: each action fires, and the states the properties speak of are reached -------
 
