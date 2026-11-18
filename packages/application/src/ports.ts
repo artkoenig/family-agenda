@@ -467,9 +467,11 @@ export interface SourceRepository {
   migrateConfig(id: SourceId, fromVersion: number, plain: PlainConfig, configVersion: number): Promise<void>;
   /**
    * Stores what an Admin edited: the configuration, the polling interval, and the time of the last
-   * run, which an edit clears so that the Source runs again on the next tick.
+   * run, which an edit clears so that the Source runs again on the next tick. Of its secret fields it
+   * writes only `changedSecrets`, not `source.secrets`: an edit read the others before, and a run may
+   * have replaced and removed one of them meanwhile (ADR-0005, specs/sweep).
    */
-  update(source: Source): Promise<void>;
+  update(source: Source, changedSecrets: Record<string, SecretRef>): Promise<void>;
   /**
    * Records a run that failed, which keeps the sync cursor for the next one. The Source fails since the
    * first failed run after its last successful one, and definitely once any of them did.
@@ -481,10 +483,11 @@ export interface SourceRepository {
    */
   recordFailedRunInTurn(id: SourceId, holder: string, at: Date, error: RunError): Promise<boolean>;
   /**
-   * Points the Source's secret fields at these references, such as after its plugin refreshed a
-   * token, but only while `holder` holds the Source's turn unexpired (ADR-0008); whether it did.
+   * Points these secret fields of the Source at these references, such as after its plugin refreshed
+   * a token, leaving its other secret fields as they are, but only while `holder` holds the Source's
+   * turn unexpired (ADR-0008); whether it did.
    */
-  replaceSecretsInTurn(id: SourceId, holder: string, secrets: Record<string, SecretRef>): Promise<boolean>;
+  replaceSecretsInTurn(id: SourceId, holder: string, changed: Record<string, SecretRef>): Promise<boolean>;
   /** Shows or hides the Source's Items on the timeline and in the feeds. */
   setShown(id: SourceId, shown: boolean): Promise<void>;
   /** Names the Source as an Admin calls it; null for the name derived from its settings. */

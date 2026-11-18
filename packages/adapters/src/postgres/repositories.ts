@@ -423,14 +423,14 @@ export class PostgresSourceRepository implements SourceRepository {
       .where(and(eq(sources.id, id), eq(sources.configVersion, fromVersion)));
   }
 
-  async update(source: Source): Promise<void> {
+  async update(source: Source, changedSecrets: Record<string, SecretRef>): Promise<void> {
     await this.db.transaction(async (tx) => {
       await tx
         .update(sources)
         .set({
           config: source.plain,
           configVersion: source.configVersion,
-          secretRefs: source.secrets,
+          secretRefs: secretRefsWith(changedSecrets),
           secretHosts: source.secretHosts,
           pollIntervalSeconds: source.pollIntervalSeconds,
         })
@@ -439,9 +439,9 @@ export class PostgresSourceRepository implements SourceRepository {
     });
   }
 
-  async replaceSecretsInTurn(id: SourceId, holder: string, secrets: Record<string, SecretRef>): Promise<boolean> {
+  async replaceSecretsInTurn(id: SourceId, holder: string, changed: Record<string, SecretRef>): Promise<boolean> {
     return inHeldTurn(this.db, id, holder, async (tx) => {
-      await tx.update(sources).set({ secretRefs: secrets }).where(eq(sources.id, id));
+      await tx.update(sources).set({ secretRefs: secretRefsWith(changed) }).where(eq(sources.id, id));
     });
   }
 
@@ -576,6 +576,9 @@ export class PostgresSourceRepository implements SourceRepository {
  * A plugin's sync cursor as the JSON string `sync_cursor` holds. It is converted in SQL, as drizzle
  * would parse again a `jsonb` value the driver has already parsed, turning the cursor `"1"` into 1.
  */
+/** The Source's secret references with `changed` merged in, as the row holds them at the write. */
+const secretRefsWith = (changed: Record<string, SecretRef>): SQL => sql`${sources.secretRefs} || ${JSON.stringify(changed)}::jsonb`;
+
 export const cursorToJson = (syncCursor: string | null): SQL => sql`to_jsonb(${syncCursor}::text)`;
 
 /** The plugin's sync cursor read back from `sync_cursor`, as text for the reason above. */

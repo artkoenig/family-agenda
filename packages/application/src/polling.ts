@@ -272,15 +272,10 @@ export function createSourcePolling(deps: PollingDeps) {
   async function storeChangedSecrets(source: Source, changed: Record<string, string>): Promise<SecretRef[] | null> {
     const entries = Object.entries(changed);
     if (entries.length === 0) return [];
-    const refs = { ...source.secrets };
-    const stored: SecretRef[] = [];
-    for (const [key, value] of entries) {
-      const ref = await secrets.put(value);
-      refs[key] = ref;
-      stored.push(ref);
-    }
-    if (!(await sources.replaceSecretsInTurn(source.id, holder, refs))) {
-      for (const ref of stored) await secrets.remove(ref);
+    const changedRefs: Record<string, SecretRef> = {};
+    for (const [key, value] of entries) changedRefs[key] = await secrets.put(value);
+    if (!(await sources.replaceSecretsInTurn(source.id, holder, changedRefs))) {
+      for (const ref of Object.values(changedRefs)) await secrets.remove(ref);
       return null;
     }
     return entries.flatMap(([key]) => source.secrets[key] ?? []);
