@@ -87,6 +87,7 @@ export const en = {
     "invalid-email": "Enter an email address.",
     "already-admin": "This address is already an Admin of the Family.",
     "already-invited": "This address is already invited.",
+    "admin-elsewhere": "This address is already an Admin of another Family.",
     "last-admin": "The Family keeps at least one Admin: the last Admin cannot be removed.",
     "invalid-interval": `The polling interval must be between ${pollIntervalRange.minSeconds / 60} minute and ${pollIntervalRange.maxSeconds / 86_400} days.`,
   },
