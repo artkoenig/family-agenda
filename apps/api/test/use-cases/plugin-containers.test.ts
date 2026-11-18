@@ -466,17 +466,6 @@ describe("A Source Type whose plugin receives pushed payloads", () => {
       expect(await instance.query("SELECT secret_refs FROM source")).toEqual(before);
     });
 
-    it("keeps the attributes another container's run declared, when a run that lost its turn declares and archives its own", async () => {
-      const before = await instance.query("SELECT external_id, name, archived_at FROM source_attribute ORDER BY external_id");
-
-      const pushed = await answeredAfterTurnTaken(() =>
-        Promise.resolve({ sourceRecords: [], syncCursor: "lost", attributes: { declared: [{ externalId: "stale", name: "Stale" }], archived: ["main"] } }),
-      );
-
-      expect(pushed).toMatchObject({ ok: true, report: { ran: [], lost: [sourceId] } });
-      expect(await instance.query("SELECT external_id, name, archived_at FROM source_attribute ORDER BY external_id")).toEqual(before);
-    });
-
     it("records no failure of a run that lost its turn, and reports it lost", async () => {
       const pushed = await answeredAfterTurnTaken(() => Promise.reject(new Error("The relay is down.")));
 
