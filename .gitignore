@@ -7,3 +7,6 @@ coverage/
 .previews/
 compose.plugins.yaml
 site/dist/
+
+# Output of Apalache (pnpm specs)
+_apalache-out/

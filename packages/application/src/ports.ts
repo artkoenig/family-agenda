@@ -475,8 +475,16 @@ export interface SourceRepository {
    * first failed run after its last successful one, and definitely once any of them did.
    */
   recordFailedRun(id: SourceId, at: Date, error: RunError): Promise<void>;
-  /** Points the Source's secret fields at these references, such as after its plugin refreshed a token. */
-  replaceSecrets(id: SourceId, secrets: Record<string, SecretRef>): Promise<void>;
+  /**
+   * Records a failed run as `recordFailedRun` does, but only while `holder` holds the Source's turn
+   * unexpired (ADR-0008); whether it did.
+   */
+  recordFailedRunInTurn(id: SourceId, holder: string, at: Date, error: RunError): Promise<boolean>;
+  /**
+   * Points the Source's secret fields at these references, such as after its plugin refreshed a
+   * token, but only while `holder` holds the Source's turn unexpired (ADR-0008); whether it did.
+   */
+  replaceSecretsInTurn(id: SourceId, holder: string, secrets: Record<string, SecretRef>): Promise<boolean>;
   /** Shows or hides the Source's Items on the timeline and in the feeds. */
   setShown(id: SourceId, shown: boolean): Promise<void>;
   /** Names the Source as an Admin calls it; null for the name derived from its settings. */
@@ -489,6 +497,10 @@ export interface SourceRepository {
   declareAttributes(id: SourceId, attributes: DeclaredAttribute[]): Promise<void>;
   /** Archives a Source Attribute by its external id; an unknown one is ignored. */
   archiveAttribute(id: SourceId, externalId: string): Promise<void>;
+  /** Declares the attributes as `declareAttributes` does, only while `holder` holds the Source's turn (ADR-0008); whether it did. */
+  declareAttributesInTurn(id: SourceId, holder: string, attributes: DeclaredAttribute[]): Promise<boolean>;
+  /** Archives as `archiveAttribute` does, only while `holder` holds the Source's turn (ADR-0008); whether it did. */
+  archiveAttributeInTurn(id: SourceId, holder: string, externalId: string): Promise<boolean>;
   /**
    * Assigns the Source Attribute to the Family Members, replacing those it was assigned to; none
    * for the whole Family. Returns whether the Source Attribute exists.

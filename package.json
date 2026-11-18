@@ -12,6 +12,7 @@
     "depcruise": "depcruise packages apps",
     "test": "vitest run",
     "test:image": "vitest run --config vitest.image.config.ts",
+    "specs": "sh specs/check.sh",
     "check": "pnpm lint && pnpm typecheck && pnpm depcruise && pnpm crap && pnpm mutation",
     "mutation": "stryker run",
     "crap": "vitest run --coverage --coverage.provider=v8 --coverage.reporter=json && crap-typescript --exclude .stryker-tmp/** --format text --threshold 8",
@@ -24,6 +25,7 @@
   "devDependencies": {
     "@barney-media/crap-typescript": "2.0.0",
     "@eslint/js": "^10.0.1",
+    "@informalsystems/quint": "0.33.1",
     "@stryker-mutator/core": "10.1.1",
     "@stryker-mutator/vitest-runner": "10.1.1",
     "@types/node": "^26.0.0",

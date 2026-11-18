@@ -22,4 +22,12 @@ Due work asks for a Source's turn once and leaves a Source another container run
 ## Consequences
 
 - A container that dies in a run blocks its Source for up to a minute.
-- What a run does before it records, such as storing a plugin's refreshed secrets or declaring Source Attributes, is not undone when its turn is lost.
+- What a run wrote in its turn before it records, such as the Source Attributes it declared, is not undone when it loses its turn later.
+
+## Amendment: every write of a run checks its turn
+
+The model of this protocol ([`specs/source-turn`](../../specs/source-turn), ADR-0012) found that a run's other writes, storing a plugin's changed secrets and recording a failed run, checked only the `lost` flag a renewal sets, which is as old as the last renewal. A run that stalled past its expiry could, after another container had taken the turn, refreshed the secrets and recorded, replace that container's newer secrets with its own, and so leave the Source with a token the plugin had already rotated.
+
+Both writes now lock the turn's row, as recording does, and write nothing unless the run still holds it unexpired; the run is then reported as lost, and the secrets it stored for nothing are removed. Secrets stored while the turn was held stay even if the run loses its turn before it records: they were read afresh in the turn, and the plugin may have rotated the old ones.
+
+The model then found the same for the Source Attributes a plugin declares and archives during its call: a stalled run could replace the attributes of the run that took over. Those writes now lock the turn's row as well; the first one that finds the turn lost makes the run lost, and it writes no more.

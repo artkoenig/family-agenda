@@ -6,3 +6,5 @@ onlyBuiltDependencies:
   - esbuild
 allowBuilds:
   esbuild: true
+  # A dependency of Quint (ADR-0012); its postinstall only prints a notice, Quint runs without it.
+  protobufjs: false
