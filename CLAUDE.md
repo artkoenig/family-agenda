@@ -8,7 +8,7 @@ pnpm workspace, Node >=22.12. Run from repo root.
 
 - `pnpm check` — the one command CI runs: lint + typecheck + depcruise + `crap` (all tests with coverage, CRAP ≤ 8) + `mutation` (Stryker on `packages/domain`). Run before finishing
 - `pnpm test:image` — the tests of the command-line tools the image ships (poppler, Tesseract, `logto-setup`; `*.image.test.ts`). Not part of `pnpm check`: CI runs them inside the built image (`.github/container-ci/image-tests.sh <image>`). Locally they skip where a tool is missing
-- `pnpm specs` — model-checks the Quint specs of the concurrent protocols in `specs/` (ADR-0012). Not part of `pnpm check` (needs Java 17+, takes minutes); CI runs it as its own job. Change a protocol's spec together with the protocol
+- `pnpm specs` — model-checks the Quint specs of the concurrent protocols in `specs/` (ADR-0012). Not part of `pnpm check` (needs Java 17+, takes minutes); CI runs each of its checks (`pnpm specs scenarios|simulation|exhaustive|counterexample`) as a parallel job. Change a protocol's spec together with the protocol
 - `pnpm preview up|down <pr>` / `list` — runs a PR as a throwaway Instance with demo data, to try it by hand. See `docs/preview.md`
 - `pnpm openapi` — regenerates `packages/plugin-contract/openapi.json` after a change to the plugin contract's schemas; raise `contractVersion` too (breaking: major, additive: minor), which CI checks against the last release
 - `pnpm plugins-schema` — regenerates `plugins.schema.json` after a change to the `plugins.yml` schema in `apps/api/src/plugins-file/schema.ts`

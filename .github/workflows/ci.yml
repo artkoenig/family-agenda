@@ -90,8 +90,14 @@ jobs:
   specs:
     # The models of the concurrent protocols (ADR-0012): scenarios, random traces, and Apalache
     # over every trace to a depth. Apalache needs Java 17+, which the runner has.
+    # Each check its own job, run in parallel.
+    name: specs (${{ matrix.check }})
+    strategy:
+      fail-fast: false
+      matrix:
+        check: [scenarios, simulation, exhaustive, counterexample]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup
-      - run: pnpm specs
+      - run: pnpm specs ${{ matrix.check }}
