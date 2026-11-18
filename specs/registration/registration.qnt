@@ -43,7 +43,8 @@
 // wasInvited (an invitee here is one who joined an organization, which ACCOUNT_CHECKS covers); the
 // migrations themselves beyond the Family id; the in-memory `closed` cache of isOpen (it only ever
 // skips to closing); the delivery's lease and backoff (the platform takes a Family id idempotently);
-// a supplied Family's database, prepared with the Context's id as above.
+// a supplied Family's database, prepared with the Context's id as above; a Family whose last Admin
+// deletes their account (#469).
 module registration {
   // ---- Parameters -----------------------------------------------------------------------------
 
@@ -196,9 +197,10 @@ module registration {
   /** The organization recorded as the Family's, in fixed mode. */
   def familyOrg: int = db.organizationId
 
-  /** Whether a Family of `o` reaches the platform (supplied mode). */
+  /** Whether a Family of `o` reaches the platform (supplied mode), or the registration that creates it is under way. */
   def familyComes(o: int): bool =
     platform.families.contains(idp.orgs.get(o).familyId) or platform.deliveries.exists(d => d.org == o)
+      or handlingOrg(o) or USERS.exists(u => db.regs.get(u).org == o and not(db.regs.get(u).done))
 
   // ---- State machine: preparing ---------------------------------------------------------------
 
@@ -316,11 +318,22 @@ module registration {
     idpOnly(delivering(idp, u), DidSignIn, 1),
   }
 
-  /** A user accepts an invitation to an organization with Admins (supplied mode). */
-  action invite(u: str, o: int): bool = all {
-    SUPPLIED, idp.accounts.contains(u), idp.orgs.keys().contains(o), not(idp.orgs.get(o).gone), idp.orgs.get(o).members != Set(),
-    not(idp.orgs.get(o).members.contains(u)),
-    idpOnly(withMember(idp, o, u, true), DidInvite, 0),
+  /**
+   * A user accepts an invitation to an organization with Admins (supplied mode), through the core
+   * (ADR-0011). With INBOX the acceptance takes the user's registration row in the same transaction:
+   * it is refused for a member of an organization or while a registration of theirs is under way,
+   * and marks the row done, so that a registration arriving later creates nothing.
+   */
+  action invite(u: str, o: int): bool = {
+    val reg = db.regs.get(u)
+    all {
+      SUPPLIED, idp.accounts.contains(u), idp.orgs.keys().contains(o), not(idp.orgs.get(o).gone), idp.orgs.get(o).members != Set(),
+      not(idp.orgs.get(o).members.contains(u)),
+      not(INBOX) or (orgsWith(idp, u) == Set() and not(handling(u)) and not(reg.stored and not(reg.done))),
+      idp' = withMember(idp, o, u, true), handlers' = handlers, platform' = platform, keepPreparing,
+      db' = if (INBOX) { ...db, regs: db.regs.set(u, { ...reg, stored: true, done: true }) } else db,
+      did(DidInvite),
+    }
   }
 
   action deleteUser(u: str): bool = all {
@@ -562,6 +575,8 @@ module registration {
    */
   def leftEmpty(o: int): bool =
     not(idp.orgs.get(o).gone) and idp.orgs.get(o).members == Set() and not(handlingOrg(o))
+      // A finished Family whose last Admin deleted their account is the Admins page's concern (#469).
+      and o != familyOrg and not(SUPPLIED and platform.families.contains(idp.orgs.get(o).familyId))
       and not(USERS.exists(u => db.regs.get(u).org == o and not(db.regs.get(u).done)))
   /**
    * No organization is left empty; with SWEEP, every one left empty can be deleted (the sweep is
