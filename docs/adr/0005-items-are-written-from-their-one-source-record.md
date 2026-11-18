@@ -32,6 +32,8 @@ Family Members are assigned only to Source Attributes (`source_attribute_member`
 
 A message's content (its text and attachments) is deleted once no Item needs it (an Event or Lesson has ended, a Task is done or past its Deadline, the Item was deleted or withdrawn) or once a constant retention period of about 180 days has passed since it arrived, whichever comes first. The Source Record then stays as a tombstone (`purged_at`, with its content cleared), which the Admin area shows as "content no longer kept". The row is deleted once no Item points to it and it is older than the period. Messages older than the period are ignored on arrival, so a Source redelivering them (an IMAP `UIDVALIDITY` reset, a Matrix backfill) cannot bring them back. Stated Source Records have no content of a message and are not subject to retention.
 
+The lifecycle of Source Records, with withdrawal and retention, is model-checked in [`specs/source-records`](../../specs/source-records) (ADR-0012). It found that a run judged retention by the clock it read before its plugin's call: a purge during the call could delete the row of a message passing its retention meanwhile, and the run, redelivering that message, inserted it anew, to be read a second time. A run now judges retention by the clock at its recording. That clock is read just before the recording's transaction, so a purge committing in between, as the message passes its retention in that very instant, could still do it; this is accepted.
+
 ## Files and secrets
 
 Postgres refers to files in the BlobStore and to secrets in the SecretStore without foreign keys (ADR-0003). So a cascade, a crash or a forgotten call can leave a file or a secret that nothing refers to any more. Both are removed in two ways.
