@@ -15,6 +15,16 @@ An invited Admin often has no account at the Identity Provider yet. Registration
 - **Logto mails the link.** The setup gives the SMTP connector an `OrganizationInvitation` template with `{{link}}`, filled from the invitation's `messagePayload.link`. Without that template, Logto falls back to the generic code template, which has no link.
 - **The token works once.** After it is used, the invitee signs in on the sign-in page like any Admin.
 
+## Model
+
+The model of inviting ([`specs/invitation`](../../specs/invitation), ADR-0012) checks that an Admin is made only from an invitation that is pending and unexpired at that moment, never after a revocation, that the token alone grants nothing in the Family, and that every member holds the role `admin`. These hold because the Identity Provider decides at acceptance, not the core: the callback looks the invitation up and accepts it in two calls, and between them another Admin may revoke it or it may expire. Logto accepts in one transaction that locks the invitation, refuses an ending or expired one and adds the member with the invitation's roles; the acceptance then throws, and the sign-in fails. The spec keeps an Identity Provider without that check, which accepts a revoked invitation, and the rejected JIT membership, which leaves a member without the role.
+
+What the model found besides:
+
+- **Revoking does not revoke the token.** Until it expires, a revoked invitee's link still creates their account and signs them in; the callback finds no invitation and admits no one. Invited again, the same account accepts the new invitation. Accepted: an account grants nothing, and the link was mailed to that person.
+- **Two Admins inviting one email at once** both pass the check; Logto keeps one pending invitation per email, so the second fails and its token is left over, with the same effect as above.
+- **Two Admins removing each other at once** both see two Admins, and the Family is left without one. With the founder never removed (#469) this cannot happen in supplied mode; fixed mode keeps the race.
+
 ## Considered Options
 
 - **Open sign-up while invitations are pending.** Anyone could register in that window. In fixed mode a stray registration creates nothing, but it still creates an account. Rejected.

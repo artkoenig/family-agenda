@@ -276,6 +276,31 @@ describe("Admins signing in through an Identity Provider", () => {
         expect(await signInAs({ ...ben, email: "  " })).toEqual({ ok: false, problem: "sso-not-member" });
         expect(directory.organization(organizationId).members.size).toBe(0);
       });
+
+      // specs/invitation: `revokedMidway`, the Identity Provider decides at acceptance (ADR-0011).
+      it("is refused when the invitation is revoked between the callback's lookup and its acceptance", async () => {
+        const invitation = await invite("ben@example.org");
+        const listInvitations = directory.listInvitations.bind(directory);
+        directory.listInvitations = async (id) => {
+          const pending = await listInvitations(id);
+          await directory.revokeInvitation(organizationId, invitation.invitationId);
+          return pending;
+        };
+
+        await expect(signInAs(ben)).rejects.toThrow();
+        expect(directory.organization(organizationId).members.size).toBe(0);
+      });
+
+      // specs/invitation: `twoTabsAtOnce`, the link followed in two tabs that reach the callback together.
+      it("is accepted once when two sign-ins of the invitee reach the callback at once", async () => {
+        await invite("ben@example.org");
+
+        const results = await Promise.allSettled([signInAs(ben), signInAs(ben)]);
+
+        expect(results.filter((result) => result.status === "fulfilled" && result.value.ok)).not.toHaveLength(0);
+        expect([...directory.organization(organizationId).members.keys()]).toEqual(["user-ben"]);
+        expect(directory.organization(organizationId).accepted).toHaveLength(1);
+      });
     });
 
     it("in supplied mode too, instead of the Family claim", async () => {
