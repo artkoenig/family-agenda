@@ -17,3 +17,7 @@ Family Agenda has no integration of its own for any Messenger. Every Messenger, 
 
 - **A dedicated client per Messenger** (e.g. whatsmeow for WhatsApp): carries the same terms-of-service risk, and every Messenger needs its own code and Source Type.
 - **Forwarding only**: compliant, but manual for every message, and the group context is lost.
+
+## Amendment: one replica rests on the deployment stopping before it starts
+
+Nothing locks the Messenger sessions: the Matrix plugin and its bridges open them from their volumes when they start. That only one process holds them at a time rests on how the deployment runs them. The generated `compose.plugins.yaml` gives every plugin and companion one service of one container, without `deploy` or `scale`. Compose recreates a container by stopping the old one, waiting for it to exit or killing it after its grace period, and only then starting the new one, and `restart: unless-stopped` restarts the same container after a crash. A deployment with another orchestrator must keep these to one replica that is stopped before its replacement starts: Kubernetes' `Recreate` strategy, not a rolling update; Swarm's `order: stop-first`. The model of the singleton plugin (`specs/singleton-plugin`, ADR-0012) checks this, and finds two holders of the sessions with a start-first update.

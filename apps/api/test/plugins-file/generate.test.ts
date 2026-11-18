@@ -68,6 +68,18 @@ describe("generatePluginsCompose", () => {
     expect(compose.services["plugin-matrix"]?.healthcheck).toBeUndefined();
   });
 
+  // The model of the singleton plugin (specs/singleton-plugin): a container started before the old
+  // one stopped holds the Messenger sessions beside it. Compose's recreate stops first, and runs
+  // one container per service, as long as nothing asks for more or for a start-first update.
+  it("runs every plugin and companion as one container that a redeploy stops before it starts the new one", () => {
+    const { compose } = generated(matrix);
+
+    for (const service of Object.values(compose.services)) {
+      expect(service).not.toHaveProperty("deploy");
+      expect(service).not.toHaveProperty("scale");
+    }
+  });
+
   it("binds api and worker to every plugin and gives them the ticket key, but no egress hosts", () => {
     const { compose } = generated(matrix);
 
