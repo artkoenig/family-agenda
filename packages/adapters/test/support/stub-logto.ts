@@ -113,6 +113,11 @@ export class StubLogto {
       case "DELETE organizations/:":
         this.organizations.delete(parts[1] ?? "");
         return [204];
+      case "GET users": {
+        // As Logto: `search.primaryEmail` with `mode.primaryEmail=exact` matches the whole email.
+        const email = url.searchParams.get("search.primaryEmail");
+        return [200, [...this.users.entries()].filter(([, user]) => user.primaryEmail === email).map(([id, user]) => ({ id, ...user }))];
+      }
       case "GET users/:/organizations": {
         if (!this.users.has(parts[1] ?? "")) return [404, { code: "entity.not_exists_with_id" }];
         const of = [...this.organizations.entries()].filter(([, organization]) => organization.members.has(parts[1] ?? ""));

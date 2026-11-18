@@ -15,7 +15,7 @@ export type FamilyAdminsDeps = {
 
 export type AdminsListing = { admins: DirectoryMember[]; invitations: DirectoryInvitation[] };
 
-export type InvitationResult = { ok: true } | { ok: false; problem: "invalid-email" | "already-admin" | "already-invited" };
+export type InvitationResult = { ok: true } | { ok: false; problem: "invalid-email" | "already-admin" | "already-invited" | "admin-elsewhere" };
 
 export type RemovalResult = { ok: true } | { ok: false; problem: "last-admin" };
 
@@ -55,7 +55,8 @@ export function createFamilyAdmins(deps: FamilyAdminsDeps) {
 
     /**
      * Invites `email` as an Admin, valid for 7 days; the Identity Provider mails the link `linkOf`
-     * makes from a one-time token for the invitee (ADR-0011), in the Family Language.
+     * makes from a one-time token for the invitee (ADR-0011), in the Family Language. An Admin of
+   * another Family is refused.
      */
     async invite(email: string, linkOf: (signIn: InvitationSignIn) => string): Promise<InvitationResult> {
       const at = await organizationOf();
@@ -65,6 +66,8 @@ export function createFamilyAdmins(deps: FamilyAdminsDeps) {
       const { admins, invitations } = await listingOf(at.directory, at.organizationId);
       if (admins.some((admin) => admin.email?.toLowerCase() === invitee)) return { ok: false, problem: "already-admin" };
       if (invitations.some((invitation) => invitation.email.toLowerCase() === invitee)) return { ok: false, problem: "already-invited" };
+      // No one is an Admin of two Families: accepting would refuse them anyway (#468).
+      if ((await at.directory.organizationsOfEmail(invitee)).length > 0) return { ok: false, problem: "admin-elsewhere" };
       const expiresAt = new Date(clock.now().getTime() + invitationLifetimeMs);
       const oneTimeToken = await at.directory.createSignInToken(invitee, expiresAt);
       const link = linkOf({ email: invitee, oneTimeToken });

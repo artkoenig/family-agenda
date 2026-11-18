@@ -108,6 +108,15 @@ describe("the Logto Identity Directory", () => {
     expect(await directory.organizationsOf("user-gone")).toBeNull();
   });
 
+  it("finds the organizations of the user with an email, none for no such user", async () => {
+    const organizationId = await directory.createOrganization(familyId, "A");
+    logto.users.set("user-1", { primaryEmail: "anna@example.org", lastSignInAt: null });
+    await directory.addMember(organizationId, "user-1");
+    expect(await directory.organizationsOfEmail("Anna@Example.org")).toEqual([organizationId]);
+    expect(logto.requests.at(-2)?.path).toBe("/api/users?search.primaryEmail=anna%40example.org&mode.primaryEmail=exact");
+    expect(await directory.organizationsOfEmail("nobody@example.org")).toEqual([]);
+  });
+
   it("lists members across pages", async () => {
     const organizationId = await directory.createOrganization(familyId, "A");
     const members = logto.organizations.get(organizationId)?.members;

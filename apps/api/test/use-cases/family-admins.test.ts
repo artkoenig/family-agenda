@@ -70,6 +70,18 @@ describe("the Admins of a Family with a management API (ADR-0010)", () => {
     expect(organization()?.invitations.size).toBe(1);
   });
 
+  it("refuses an Admin of another Family, and invites someone with no account or in no Family as before (#468)", async () => {
+    await boot();
+    directory.users.set("user-dora", { email: "dora@example.org", lastSignInAt: null });
+    const other = await directory.createOrganization("other-family", "Other");
+    await directory.addMember(other, "user-dora");
+
+    expect(await admins().invite("Dora@Example.org", linkOf)).toEqual({ ok: false, problem: "admin-elsewhere" });
+    expect(await admins().invite("ben@example.org", linkOf)).toEqual({ ok: true });
+    expect(await admins().invite("erik@example.org", linkOf)).toEqual({ ok: true });
+    expect(organization()?.invitations.size).toBe(2);
+  });
+
   it("revokes an invitation", async () => {
     await boot();
     await admins().invite("carla@example.org", linkOf);
