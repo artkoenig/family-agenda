@@ -125,7 +125,7 @@ const columns = {
   recordId: items.recordId,
   occurredAt: arrivedAt,
   link: sourceRecords.link,
-  isMessage: sql<boolean>`(${sourceRecords.body} IS NOT NULL)`,
+  isMessage: sql<boolean>`(${sourceRecords.stated} IS NULL)`,
   sourceTypeId: sources.sourceTypeId,
   sourceName: sources.name,
   event: events,

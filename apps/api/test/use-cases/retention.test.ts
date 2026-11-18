@@ -1,7 +1,10 @@
 import type { Origin } from "../support/test-source-plugin";
+import type { LocalDate } from "@family-agenda/domain";
+import { openAgendaAccess } from "@family-agenda/application";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { bootForTest, type TestInstance } from "../support/boot";
 import { InMemoryBlobStore } from "../support/in-memory-blob-store";
+import { openTimeline } from "../support/timeline";
 import { extracted, extractedTask, ScriptedExtractor } from "../support/scripted-extractor";
 import { testPluginControls } from "../support/test-source-plugin";
 
@@ -92,6 +95,21 @@ describe("Retention: purging the content of messages", () => {
     expect(opened?.purgedAt).toEqual(instance.clock.now());
     expect(opened?.text).toBe("");
     expect(opened?.items).toHaveLength(1);
+  });
+
+  it("still names a purged message as the source of its Event on the Agenda", async () => {
+    testPluginControls.emit("chat", [message("$m1", "Am Freitag, 18.09., ist der Wandertag.")]);
+    await run();
+    const created = await instance.app.agendas.create({ memberIds: [], horizonDays: 7 });
+    if (!created.ok) throw new Error(`creating failed: ${created.problem}`);
+
+    advanceDays(6);
+    await instance.app.retention.purge();
+
+    const friday = "2026-09-18" as LocalDate;
+    const page = await openTimeline(instance.app, created.id, { access: openAgendaAccess, days: { first: friday, last: friday } });
+    const [event] = page?.days.flatMap((day) => day.items) ?? [];
+    expect(event?.messages).toHaveLength(1);
   });
 
   it("keeps a Task's message until it is done or past its Deadline, and without a Deadline until it is done", async () => {
