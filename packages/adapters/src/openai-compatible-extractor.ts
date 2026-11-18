@@ -87,6 +87,8 @@ Rules:
 - A list of things to bring for one occasion is one task.
 - A task's "description" is what else the family needs to know to do it, in the language of the message, such as how much to pay and how, or the things to bring; null if the title says it all. Write a list, such as the things to bring, as one line per entry starting with "- ", each entry as written.
 - Do not list changes to single lessons, such as a cancelled or substituted lesson. A whole day without school is an event.
+- A reply often quotes the message it answers below or above the new text: lines starting with ">", or everything after a line such as "Am 3. November 2026 um 08:12 schrieb Anna Muster:", "On Tue, Nov 3, 2026 at 8:12 AM Anna Muster wrote:", "-----Ursprüngliche Nachricht-----", "-----Original Message-----", or a block of "Von:", "Gesendet:", "An:", "Betreff:" ("From:", "Sent:", "To:", "Subject:"). The quoted message was read on its own, so list nothing that only the quoted text states; use it only to understand the new text. List what the new text itself states, even when it repeats an event or task from the quote with a new date or time.
+- A forwarded message, after a line such as "---------- Forwarded message ---------" or "Anfang der weitergeleiteten Nachricht:", is not a quote: read it as part of the message.
 - The message may be followed by the text of its attachments, each after a line "Attachment <file name>:". Read them as part of the message.
 - "evidence" is the shortest passage of the message that states the event or task and its date, copied character for character. Never rephrase, translate or shorten words inside it.
 - "title" is short, in the language of the message, without the date.
