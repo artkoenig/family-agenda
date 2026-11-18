@@ -13,6 +13,10 @@ export class InMemoryIdentityDirectory implements IdentityDirectory {
   registrationOpen = true;
   /** Fails creating an organization while set, as an Identity Provider that is down. */
   failing = false;
+  /** Fails adding a member while set, as an Identity Provider that goes down midway. */
+  failingToAdd = false;
+  /** The users who deleted their account. */
+  readonly deleted = new Set<string>();
 
   /** The organization with the id, which a test expects to exist. */
   organization(organizationId: string): Organization {
@@ -28,7 +32,23 @@ export class InMemoryIdentityDirectory implements IdentityDirectory {
     return Promise.resolve(id);
   }
 
+  findOrganization(familyId: string): Promise<string | null> {
+    const found = [...this.organizations.entries()].find(([, organization]) => organization.familyId === familyId);
+    return Promise.resolve(found?.[0] ?? null);
+  }
+
+  deleteOrganization(organizationId: string): Promise<void> {
+    this.organizations.delete(organizationId);
+    return Promise.resolve();
+  }
+
+  organizationsOf(userId: string): Promise<string[] | null> {
+    if (this.deleted.has(userId)) return Promise.resolve(null);
+    return Promise.resolve([...this.organizations.entries()].filter(([, organization]) => organization.members.has(userId)).map(([id]) => id));
+  }
+
   addMember(organizationId: string, userId: string): Promise<void> {
+    if (this.failingToAdd) return Promise.reject(new Error("the Identity Provider went down"));
     const user = this.users.get(userId);
     this.organization(organizationId).members.set(userId, { userId, email: user?.email ?? null, lastSignInAt: user?.lastSignInAt ?? null });
     return Promise.resolve();

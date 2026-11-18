@@ -6,7 +6,7 @@ import { PGlite } from "@electric-sql/pglite";
 import { FileBlobStore, migrateFamily, migrationsFolder, parseFamilyId, postgresSchema, refuseNewerMigrationHistory, refuseOldMigrationHistory, type FamilyId, type PostgresConnection } from "@family-agenda/adapters";
 import { drizzle } from "drizzle-orm/pglite";
 import { migrate as migrateUpTo } from "drizzle-orm/pglite/migrator";
-import { openAgendaAccess } from "@family-agenda/application";
+import { noRegistration, openAgendaAccess } from "@family-agenda/application";
 import type { BlobRef } from "@family-agenda/domain";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { bootShared, type Application } from "../../src/composition-root";
@@ -122,7 +122,7 @@ describe("a core in supplied mode", () => {
     catalog = new FakeTessdataCatalog();
     const shared = await bootShared({ tessdataDirectory: join(directory, "tessdata"), bundledTessdataDirectory: null, tessdataCatalog: catalog, clock: new FakeClock(new Date(now)),
       // The deployment's registration, open as with `FAMILY_WEBHOOK_URL` set (ADR-0010).
-      registration: { isOpen: () => Promise.resolve(true), register: () => Promise.resolve() },
+      registration: { ...noRegistration, isOpen: () => Promise.resolve(true) },
     });
     provider = new ScriptedIdentityProviderClient();
     const supplied = { ...identityProvider, requiredGroup: "homelab-admin", groupsClaim: "groups", familyIdClaim: "custom_data.familyId", callbackUrl };

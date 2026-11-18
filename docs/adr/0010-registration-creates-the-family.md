@@ -39,3 +39,20 @@ A parent can register on their own. Their registration creates a new Family, and
 - **The core depends on the Identity Provider for more than sign-in.** If its management API is down, registration events and the Admins page fail; events are retried by the Identity Provider, the page shows an error.
 - **The setup command changes**: it enables registration with email verification when SMTP and `IDP_MANAGEMENT_*` are set, registers the webhook, and prints the new variables. Its first-user step stays for Instances without SMTP.
 - **New variables**: `IDP_MANAGEMENT_API`, `IDP_MANAGEMENT_ENDPOINT`, `IDP_MANAGEMENT_CLIENT_ID`, `IDP_MANAGEMENT_CLIENT_SECRET`, `IDP_WEBHOOK_SECRET`, `FAMILY_WEBHOOK_URL`, `FAMILY_WEBHOOK_SECRET`.
+
+## Amendment: a registration is kept, then carried through
+
+The model of registration ([`specs/registration`](../../specs/registration), ADR-0012) found that handling the event while the Identity Provider waits loses Families and makes stray ones. Logto never retries a `PostRegister`, so a failure or a core dying midway left a user without a Family, or an empty organization. Its central sign-in in the cloud runs `PostRegister` again for a user in no organization, so a second Family could follow. And an invitation accepted while the user's own registration was under way made them an Admin of two Families.
+
+- **The event is kept, then answered.** The core keeps each registration as a row of `registration`, one per user, and answers `204` at once. In supplied mode the row draws its Family id there. A redelivered event finds the row and does nothing. The table replaces `processed_idp_event`, which older cores still use until a later release drops it. Until then a core also records the event there in the same transaction, and keeps one an older core recorded as done. So during a rolling update, one core of either version takes an event, not one of each.
+- **A core carries the row through under a lease.** It takes the row for five minutes, so another core takes it on if this one dies. A failed try is retried with backoff, 10 s doubling to an hour, every minute: by the worker's schedule in fixed mode, and by the core's timer in supplied mode. The steps are these:
+  1. **Check the user.** A user who deleted their account, or who is already an Admin of another Family, gets nothing. So does an invitee in supplied mode, and in fixed mode a Family that has its organization already.
+  2. **Find or create the organization.** It is looked up by its Family id, and created if none exists.
+  3. **Note the organization's id on the row.**
+  4. **Add the user as Admin.** A retry changes nothing here: adding a member again is no error, and the role is put rather than added.
+  5. **Finish the Family.** In fixed mode, record the organization and close registration. In supplied mode, send `family.created`.
+  6. **Mark the row done.**
+- **The organization carries its Family id in its name** ("Family Agenda" and the id), besides its `customData`. The core needs to find the organization a core created before dying, before it noted the id, and Logto searches organizations only by id and name. Logto does not let a client choose an organization's id. Without the lookup, that crash would make a second organization.
+- **Nothing left empty.** When a registration ends with nothing in supplied mode, it deletes the organization an earlier try created, if no one is in it.
+- **Fixed mode carries one registration at a time**, under a lock in the Family's database. The Family id is the same for every registration, so the lookup would otherwise hand the first registration's organization to a second user.
+- **An invitation waits for the invitee's registration.** Accepting one first carries the user's own registration through. While another core holds it, the acceptance is refused, and the next sign-in tries again. An Admin of another Family is admitted to none.

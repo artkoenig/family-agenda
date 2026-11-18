@@ -29,6 +29,12 @@ class RecordingRegistration implements Registration {
   isOpen(): Promise<boolean> {
     return Promise.resolve(true);
   }
+  retry(): Promise<number> {
+    return Promise.resolve(0);
+  }
+  settle(): Promise<boolean> {
+    return Promise.resolve(true);
+  }
 }
 
 describe("registration events from the Identity Provider (ADR-0010)", () => {
@@ -81,19 +87,16 @@ describe("registration events from the Identity Provider (ADR-0010)", () => {
     expect(registration.events).toEqual([]);
   });
 
-  it("ignores a replay of an event it has processed, across api containers", async () => {
+  it("hands a replay to registration too, which keeps one registration per user", async () => {
     await boot();
     const body = postRegister();
     await send(body);
 
     expect((await send(body)).status).toBe(204);
-    const other = await instance.bootHttpApiContainer();
-    expect((await other.request("/idp/events", { body: body as unknown as FormData, headers: { "content-type": "application/json", "logto-signature-sha-256": signatureOf(body) } })).status).toBe(204);
-    expect(registration.events).toHaveLength(1);
-    expect(await instance.query("SELECT event_id FROM processed_idp_event")).toEqual([{ event_id: "PostRegister:user-anna" }]);
+    expect(registration.events).toHaveLength(2);
   });
 
-  it("processes an event again after registration failed, so that the Identity Provider's retry succeeds", async () => {
+  it("answers 500 when the registration could not be kept, so that a later delivery gets another go", async () => {
     await boot();
     const body = postRegister();
     registration.failing = true;

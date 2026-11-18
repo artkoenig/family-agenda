@@ -1,7 +1,7 @@
 import { createHmac } from "node:crypto";
-import { organizationName } from "./family-registration";
 import type { IdentityDirectory } from "./identity-directory";
 import type { Clock } from "./ports";
+import { createRegistrationInbox, type RegistrationInboxRepository, type RegistrationMode } from "./registration-inbox";
 import type { Registration } from "./registration-events";
 
 /** What the platform learns of a new Family in supplied mode (ADR-0010): enough to supply its Context. */
@@ -102,6 +102,8 @@ export function createFamilyCreatedWebhook(deps: FamilyCreatedWebhookDeps): Fami
 }
 
 export type SuppliedRegistrationDeps = {
+  clock: Clock;
+  registrations: RegistrationInboxRepository;
   directory: IdentityDirectory;
   webhook: FamilyCreatedWebhook;
   /** A new, random Family id. */
@@ -110,20 +112,20 @@ export type SuppliedRegistrationDeps = {
 
 /**
  * Registration in supplied mode (ADR-0010): every registration not through an invitation gets a new
- * Family id and organization, the user as its first Admin, and the platform a `family.created`
- * webhook, which it answers by supplying the Family's Context. Always open.
+ * Family id, drawn as it is received, an organization, the user as its first Admin, and the
+ * platform a `family.created` webhook, which it answers by supplying the Family's Context. Always open.
  */
 export function createSuppliedRegistration(deps: SuppliedRegistrationDeps): Registration {
-  const { directory, webhook, newFamilyId } = deps;
-  return {
+  const { clock, registrations, directory, webhook, newFamilyId } = deps;
+  const mode: RegistrationMode = {
     isOpen: () => Promise.resolve(true),
-    async register(event) {
-      // An invitee joins the inviting Family; accepting creates no Family.
-      if (await directory.wasInvited(event.email)) return;
-      const familyId = newFamilyId();
-      const organizationId = await directory.createOrganization(familyId, organizationName);
-      await directory.addMember(organizationId, event.userId);
-      await webhook.send({ familyId, organizationId, email: event.email });
-    },
+    alone: false,
+    // Drawn as the registration was received, so that every try creates and finds the same.
+    familyIdOf: (registration) => (registration.familyId === null ? Promise.reject(new Error(`Registration of ${registration.userId} has no Family id`)) : Promise.resolve(registration.familyId)),
+    // An invitee joins the inviting Family; accepting creates no Family.
+    createsNothing: (registration) => directory.wasInvited(registration.email),
+    nothing: () => Promise.resolve(),
+    finish: (registration, organizationId, familyId) => webhook.send({ familyId, organizationId, email: registration.email }),
   };
+  return createRegistrationInbox({ clock, registrations, directory, mode, newFamilyId });
 }

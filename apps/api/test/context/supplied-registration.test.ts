@@ -2,12 +2,12 @@ import { createHmac } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { retryDelayMs, type WebhookPost } from "@family-agenda/application";
+import { registrationRetryDelayMs, retryDelayMs, type WebhookPost } from "@family-agenda/application";
 import { PGlite } from "@electric-sql/pglite";
 import { migrateFamily, migrationsFolder, parseFamilyId, postgresSchema, type FamilyId } from "@family-agenda/adapters";
 import { drizzle } from "drizzle-orm/pglite";
 import { afterEach, describe, expect, it } from "vitest";
-import { bootShared, type SharedWiring } from "../../src/composition-root";
+import { bootShared, invitationAcceptanceOf, type SharedWiring } from "../../src/composition-root";
 import { contextHeader } from "../../src/context/context";
 import { SuppliedFamilies } from "../../src/context/supplied-families";
 import { suppliedFetch } from "../../src/context/supplied-http";
@@ -159,6 +159,71 @@ describe("registration in supplied mode (ADR-0010)", () => {
 
     expect(directory.organizations.size).toBe(1);
     expect(sent).toHaveLength(1);
+  });
+
+  it("goes on with the drawn Family id after a failure, so that the organization a dead core created is found, not doubled", async () => {
+    await boot();
+    directory.failingToAdd = true;
+    await send(postRegister("user-anna", "anna@example.org"));
+    directory.failingToAdd = false;
+    // As if the core had died before noting the organization: only its name tells which it is.
+    await database.query("update registration set organization_id = null");
+
+    clock.advance(registrationRetryDelayMs(1));
+    expect(await registering.registration.retry()).toBe(1);
+
+    const [[organizationId, organization] = []] = [...directory.organizations.entries()];
+    expect(directory.organizations.size).toBe(1);
+    expect([...(organization?.members.keys() ?? [])]).toEqual(["user-anna"]);
+    expect(JSON.parse(sent[0]?.body ?? "")).toMatchObject({ familyId: organization?.familyId, organizationId });
+  });
+
+  it("deletes the organization an earlier try created when the user deleted their account meanwhile, and tells the platform nothing", async () => {
+    await boot();
+    directory.failingToAdd = true;
+    await send(postRegister("user-anna", "anna@example.org"));
+    directory.failingToAdd = false;
+    directory.deleted.add("user-anna");
+
+    clock.advance(registrationRetryDelayMs(1));
+    expect(await registering.registration.retry()).toBe(1);
+
+    expect(directory.organizations.size).toBe(0);
+    expect(sent).toEqual([]);
+  });
+
+  it("carries an invitee's registration through before they accept, and admits no Admin of another Family", async () => {
+    await boot();
+    await send(postRegister("user-anna", "anna@example.org"));
+    const [annas] = directory.organizations.keys();
+    await directory.invite(annas ?? "", "ben@example.org", { expiresAt: new Date("2026-11-24T07:00:00Z"), link: "https://x", locale: "en" });
+    await directory.invite(annas ?? "", "carl@example.org", { expiresAt: new Date("2026-11-24T07:00:00Z"), link: "https://x", locale: "en" });
+    const accept = invitationAcceptanceOf(shared, registering.registration).acceptInvitation;
+    // Ben's registration is still to do when he signs in, due later after a failed try; Carl registered a Family of his own.
+    await database.query(`insert into registration (user_id, email, family_id, attempts, next_attempt_at) values ('user-ben', 'ben@example.org', '4d1a7b2c-0000-4000-8000-000000000001', 1, '2026-11-17T08:00:00Z')`);
+    const carls = await directory.createOrganization("4d1a7b2c-0000-4000-8000-000000000000", "Family Agenda 4d1a7b2c-0000-4000-8000-000000000000");
+    await directory.addMember(carls, "user-carl");
+
+    expect(await accept?.(annas ?? "", { subject: "user-ben", email: "ben@example.org" })).toBe(true);
+    expect(await accept?.(annas ?? "", { subject: "user-carl", email: "carl@example.org" })).toBe(false);
+
+    expect(await database.query("select user_id, done_at is not null as done from registration order by user_id")).toEqual([
+      { user_id: "user-anna", done: true },
+      { user_id: "user-ben", done: true },
+    ]);
+    expect(directory.organization(annas ?? "").members.has("user-ben")).toBe(true);
+    expect(directory.organization(annas ?? "").members.has("user-carl")).toBe(false);
+  });
+
+  it("admits no invitee while another core carries their registration", async () => {
+    await boot();
+    await send(postRegister("user-anna", "anna@example.org"));
+    const [annas] = directory.organizations.keys();
+    await directory.invite(annas ?? "", "ben@example.org", { expiresAt: new Date("2026-11-24T07:00:00Z"), link: "https://x", locale: "en" });
+    await database.query(`insert into registration (user_id, email, family_id, next_attempt_at, leased_until) values ('user-ben', 'ben@example.org', '4d1a7b2c-0000-4000-8000-000000000001', '2026-11-17T07:00:00Z', '2026-11-17T07:05:00Z')`);
+
+    expect(await invitationAcceptanceOf(shared, registering.registration).acceptInvitation?.(annas ?? "", { subject: "user-ben", email: "ben@example.org" })).toBe(false);
+    expect(directory.organization(annas ?? "").members.has("user-ben")).toBe(false);
   });
 
   it("keeps a delivery the platform did not take, and retries it with backoff until it answers 2xx", async () => {

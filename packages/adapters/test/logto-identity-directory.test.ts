@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { organizationName } from "@family-agenda/application";
 import { defaultLogtoManagementResource, LogtoIdentityDirectory } from "../src";
 import { StubLogto } from "./support/stub-logto";
 
@@ -69,6 +70,42 @@ describe("the Logto Identity Directory", () => {
       { userId: "user-1", email: "anna@example.org", lastSignInAt: new Date("2026-11-01T08:00:00Z") },
       { userId: "user-2", email: null, lastSignInAt: null },
     ]);
+  });
+
+  it("adds a member again without a second role, as a retried registration does", async () => {
+    const organizationId = await directory.createOrganization(familyId, "A");
+    await directory.addMember(organizationId, "user-1");
+    await directory.addMember(organizationId, "user-1");
+    expect(logto.organizations.get(organizationId)?.members.get("user-1")).toEqual(["role-admin"]);
+  });
+
+  it("finds a Family's organization by the Family id in its name, and none for another", async () => {
+    const other = "9e8d7c6b-5a4f-4e3d-8c2b-1a0f9e8d7c6b";
+    await directory.createOrganization(other, organizationName(other));
+    const organizationId = await directory.createOrganization(familyId, organizationName(familyId));
+    // A name holding the Family id as a part is not the Family's.
+    await directory.createOrganization(other, `${organizationName(familyId)} (old)`);
+
+    expect(await directory.findOrganization(familyId)).toBe(organizationId);
+    expect(await directory.findOrganization("1f2e3d4c-5b6a-4978-8a6b-5c4d3e2f1a0b")).toBeNull();
+    expect(logto.requests.at(-1)?.path).toBe("/api/organizations?q=1f2e3d4c-5b6a-4978-8a6b-5c4d3e2f1a0b&page_size=20");
+  });
+
+  it("deletes an organization", async () => {
+    const organizationId = await directory.createOrganization(familyId, "A");
+    await directory.deleteOrganization(organizationId);
+    expect(logto.organizations.has(organizationId)).toBe(false);
+  });
+
+  it("lists the organizations a user is a member of, and none for a user who does not exist", async () => {
+    const organizationId = await directory.createOrganization(familyId, "A");
+    logto.users.set("user-1", { primaryEmail: "anna@example.org", lastSignInAt: null });
+    logto.users.set("user-2", { primaryEmail: "ben@example.org", lastSignInAt: null });
+    await directory.addMember(organizationId, "user-1");
+
+    expect(await directory.organizationsOf("user-1")).toEqual([organizationId]);
+    expect(await directory.organizationsOf("user-2")).toEqual([]);
+    expect(await directory.organizationsOf("user-gone")).toBeNull();
   });
 
   it("lists members across pages", async () => {

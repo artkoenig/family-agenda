@@ -1,5 +1,6 @@
 import {
   adminRole,
+  organizationName,
   type DirectoryInvitation,
   type DirectoryMember,
   type IdentityDirectory,
@@ -58,10 +59,27 @@ export class LogtoIdentityDirectory implements IdentityDirectory {
     return organization.id;
   }
 
+  async findOrganization(familyId: string): Promise<string | null> {
+    // Logto searches the id and name of organizations, not their custom data: the name carries the Family id.
+    const name = organizationName(familyId);
+    const found = await this.call<{ id: string; name: string }[]>("GET", `/api/organizations?q=${encodeURIComponent(familyId)}&page_size=20`);
+    return found.find((organization) => organization.name === name)?.id ?? null;
+  }
+
+  async deleteOrganization(organizationId: string): Promise<void> {
+    await this.call("DELETE", `/api/organizations/${encodeURIComponent(organizationId)}`);
+  }
+
+  async organizationsOf(userId: string): Promise<string[] | null> {
+    const organizations = await this.call<{ id: string }[] | null>("GET", `/api/users/${encodeURIComponent(userId)}/organizations`, undefined, 404);
+    return organizations?.map((organization) => organization.id) ?? null;
+  }
+
   async addMember(organizationId: string, userId: string): Promise<void> {
+    // Adding a member again is no error, and putting the roles replaces them: a retry changes nothing.
     const path = `/api/organizations/${encodeURIComponent(organizationId)}/users`;
     await this.call("POST", path, { userIds: [userId] });
-    await this.call("POST", `${path}/${encodeURIComponent(userId)}/roles`, { organizationRoleIds: [await this.adminRoleIdOf()] });
+    await this.call("PUT", `${path}/${encodeURIComponent(userId)}/roles`, { organizationRoleIds: [await this.adminRoleIdOf()] });
   }
 
   /**
@@ -151,7 +169,8 @@ export class LogtoIdentityDirectory implements IdentityDirectory {
     return role.id;
   }
 
-  private async call<T = unknown>(method: string, path: string, body?: unknown): Promise<T> {
+  /** Calls the Management API; `absent`, a status that means there is no such thing, resolves to null. */
+  private async call<T = unknown>(method: string, path: string, body?: unknown, absent?: number): Promise<T> {
     const response = await fetch(`${this.settings.endpoint}${path}`, {
       method,
       headers: {
@@ -160,6 +179,7 @@ export class LogtoIdentityDirectory implements IdentityDirectory {
       },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
+    if (response.status === absent) return null as T;
     if (!response.ok) throw new Error(`Logto's Management API answered ${method} ${path} with ${response.status}: ${await response.text()}`);
     const text = await response.text();
     return (text === "" ? undefined : JSON.parse(text)) as T;

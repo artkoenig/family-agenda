@@ -1,4 +1,4 @@
-import type { DueWork, DueWorkReport, ExtractionReport, RunReport, Retention, SecretSweep, WorkRunner } from "@family-agenda/application";
+import type { DueWork, DueWorkReport, ExtractionReport, Registration, RunReport, Retention, SecretSweep, WorkRunner } from "@family-agenda/application";
 
 /** The pieces of work the worker runs, each one operation that runs once and returns what it did. */
 export type BackgroundWork = { dueWork: DueWork; retention: Retention; secretSweep: SecretSweep };
@@ -10,6 +10,8 @@ export type WorkLog = { warn(line: string): void; error(line: string, error?: un
 const dueWorkCron = "* * * * *";
 /** Messages past their retention: once an hour. */
 const purgeCron = "0 * * * *";
+/** Registrations a failure or a dying core left: once a minute, each after its own backoff (ADR-0010). */
+const registrationCron = "* * * * *";
 /** Secrets nothing refers to: when the worker starts, and once a day at night (ADR-0005). */
 const sweepCron = "17 3 * * *";
 
@@ -53,6 +55,7 @@ export const workFailures = {
   "due-work": "Running due Sources and Extraction failed:",
   purge: "Purging messages past their retention failed:",
   "secret-sweep": "Removing secrets nothing refers to failed:",
+  registration: "Carrying the pending registrations through failed:",
 } as const;
 
 /** Runs due work once and logs what failed, as the worker's schedule and a trigger both do. */
@@ -71,9 +74,10 @@ const logged = (work: () => Promise<unknown>, failure: string, log: WorkLog) => 
   }
 };
 
-/** Gives the worker its work from schedules: due work, the purge, and the sweep on start and daily. */
-export async function startBackgroundWork(app: BackgroundWork, schedule: WorkRunner, log: WorkLog): Promise<void> {
+/** Gives the worker its work from schedules: due work, the purge, pending registrations, and the sweep on start and daily. */
+export async function startBackgroundWork(app: BackgroundWork & { registration: Pick<Registration, "retry"> }, schedule: WorkRunner, log: WorkLog): Promise<void> {
   await schedule.every("due-work", dueWorkCron, logged(() => runDueWork(app, log), workFailures["due-work"], log));
   await schedule.every("purge", purgeCron, logged(() => app.retention.purge(), workFailures.purge, log));
+  await schedule.every("registration", registrationCron, logged(() => app.registration.retry(), workFailures.registration, log));
   await schedule.every("secret-sweep", sweepCron, logged(() => app.secretSweep.sweep(), workFailures["secret-sweep"], log), { atStart: true });
 }

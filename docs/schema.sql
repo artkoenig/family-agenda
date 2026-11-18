@@ -201,10 +201,26 @@ CREATE TABLE source_run_turn (
   expires_at  TIMESTAMPTZ NOT NULL            -- renewed while the run lasts; once passed, the run is over
 );
 
--- The events from the Identity Provider processed, so that a replay does nothing (ADR-0010).
+-- The events from the Identity Provider processed (ADR-0010), as cores of an older version record
+-- them; newer ones record theirs here too, so that only one core of either version takes an event,
+-- and keep registrations in registration. Dropped by a later release.
 CREATE TABLE processed_idp_event (
   event_id      TEXT PRIMARY KEY,               -- such as PostRegister:<user id>
   processed_at  TIMESTAMPTZ NOT NULL
+);
+
+-- The registrations received (ADR-0010), one per user, kept as done once carried through so that a
+-- redelivered event does nothing. In a fixed Family's database, and in the registration database of a
+-- core in supplied mode.
+CREATE TABLE registration (
+  user_id          TEXT PRIMARY KEY,
+  email            TEXT NOT NULL,
+  family_id        UUID,                          -- drawn as received in supplied mode; null in fixed mode
+  organization_id  TEXT,                          -- noted as soon as the organization is created
+  attempts         INTEGER NOT NULL DEFAULT 0,
+  next_attempt_at  TIMESTAMPTZ NOT NULL,          -- due again after a failed try
+  leased_until     TIMESTAMPTZ,                   -- held by a core until then
+  done_at          TIMESTAMPTZ
 );
 
 -- The family.created webhooks the platform has not yet answered 2xx (ADR-0010); used only in the

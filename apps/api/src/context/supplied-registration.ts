@@ -1,9 +1,10 @@
 import { randomUUID } from "node:crypto";
-import { connectPostgres, PostgresFamilyCreatedDeliveryRepository, PostgresProcessedEventRepository, runMigrations, type PostgresConnection } from "@family-agenda/adapters";
+import { connectPostgres, PostgresFamilyCreatedDeliveryRepository, PostgresRegistrationInboxRepository, runMigrations, type PostgresConnection } from "@family-agenda/adapters";
 import {
   createFamilyCreatedWebhook,
   createRegistrationEvents,
   createSuppliedRegistration,
+  noRegistration,
   type FamilyCreatedWebhook,
   type Registration,
   type RegistrationEvents,
@@ -28,12 +29,14 @@ export type SuppliedRegistration = {
   close(): Promise<void>;
 };
 
-/** How often pending `family.created` deliveries are looked at; each waits its own backoff. */
+/** How often pending registrations and `family.created` deliveries are looked at; each waits its own backoff. */
 export const deliverEveryMs = 10_000;
 
 export type StartedRegistration = {
   /** The events the caller port receives; null while registration is off. */
   events: RegistrationEvents | null;
+  /** What carries an invitee's registration through before they accept: none left while registration is off. */
+  registration: Pick<Registration, "settle">;
   close(): Promise<void>;
 };
 
@@ -49,8 +52,11 @@ export async function startSuppliedRegistration(
   connect: (databaseUrl: string) => PostgresConnection = connectPostgres,
 ): Promise<StartedRegistration> {
   const opened = settings && (await openSuppliedRegistration({ shared, webhook: settings, database: connect(settings.registrationDatabaseUrl) }));
-  if (!opened) return { events: null, close: () => Promise.resolve() };
+  if (!opened) return { events: null, registration: noRegistration, close: () => Promise.resolve() };
   const delivering = setInterval(() => {
+    opened.registration.retry().catch((error: unknown) => {
+      log.error(`Could not carry the pending registrations through${error instanceof Error ? ` (${error.name})` : ""}`);
+    });
     opened.webhook.deliverDue().catch((error: unknown) => {
       log.error(`Could not deliver the pending family.created webhooks${error instanceof Error ? ` (${error.name})` : ""}`);
     });
@@ -58,6 +64,7 @@ export async function startSuppliedRegistration(
   delivering.unref();
   return {
     events: opened.events,
+    registration: opened.registration,
     close: () => {
       clearInterval(delivering);
       return opened.close();
@@ -81,12 +88,13 @@ export async function openSuppliedRegistration(options: SuppliedRegistrationOpti
     clock: shared.clock,
     ...(options.post ? { post: options.post } : {}),
   });
-  const registration = createSuppliedRegistration({ directory: shared.directory, webhook, newFamilyId: randomUUID });
-  const events = createRegistrationEvents({
+  const registration = createSuppliedRegistration({
     clock: shared.clock,
-    secret: shared.idpWebhookSecret,
-    processedEvents: new PostgresProcessedEventRepository(database.db),
-    registration,
+    registrations: new PostgresRegistrationInboxRepository(database.db),
+    directory: shared.directory,
+    webhook,
+    newFamilyId: randomUUID,
   });
+  const events = createRegistrationEvents({ secret: shared.idpWebhookSecret, registration });
   return { registration, events, webhook, close: () => database.close() };
 }

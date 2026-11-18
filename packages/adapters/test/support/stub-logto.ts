@@ -98,11 +98,25 @@ export class StubLogto {
         for (const userId of body.userIds as string[]) members.set(userId, []);
         return [201];
       }
-      case "POST organizations/:/users/:/roles": {
-        const roles = this.organizations.get(parts[1] ?? "")?.members.get(parts[3] ?? "");
-        if (!roles) return [404];
-        roles.push(...(body.organizationRoleIds as string[]));
+      case "PUT organizations/:/users/:/roles": {
+        const members = this.organizations.get(parts[1] ?? "")?.members;
+        if (!members?.has(parts[3] ?? "")) return [404];
+        members.set(parts[3] ?? "", [...(body.organizationRoleIds as string[])]);
         return [201];
+      }
+      case "GET organizations": {
+        // As Logto: `q` matches part of the id or the name, ignoring case.
+        const q = (url.searchParams.get("q") ?? "").toLowerCase();
+        const found = [...this.organizations.entries()].filter(([id, organization]) => id.toLowerCase().includes(q) || organization.name.toLowerCase().includes(q));
+        return [200, found.map(([id, organization]) => ({ id, name: organization.name, customData: organization.customData }))];
+      }
+      case "DELETE organizations/:":
+        this.organizations.delete(parts[1] ?? "");
+        return [204];
+      case "GET users/:/organizations": {
+        if (!this.users.has(parts[1] ?? "")) return [404, { code: "entity.not_exists_with_id" }];
+        const of = [...this.organizations.entries()].filter(([, organization]) => organization.members.has(parts[1] ?? ""));
+        return [200, of.map(([id, organization]) => ({ id, name: organization.name }))];
       }
       case "GET organizations/:/users": {
         const members = this.organizations.get(parts[1] ?? "")?.members;

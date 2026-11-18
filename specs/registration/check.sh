@@ -1,0 +1,53 @@
+#!/bin/sh
+# Checks the model of preparing the Family id (ADR-0003) and registration (ADR-0010). Run from the
+# repo root through `pnpm specs [check]`: without a check, all of them.
+set -eu
+cd "$(dirname "$0")"
+quint() { pnpm exec quint "$@"; }
+
+scenarios() {
+  # Two cores preparing at once, a crash mid-migration, the first registration, a redelivery, two
+  # registrations at once, a late one; the counterexamples of the code as it was; and the inbox with
+  # each of its variants: alone, with a sweep, and with the lookup the code uses.
+  for main in fixed drawn unfixedId supplied suppliedChecked fixedInbox fixedSweep fixedLookup suppliedInbox suppliedSweep suppliedLookup; do
+    quint test registration_test.qnt --backend=typescript --main="$main" --max-samples=100
+  done
+}
+
+simulation() {
+  # Random traces of two cores and two users with two handlers, in both modes. Without the inbox only
+  # preparing holds: registration's properties fail (see the counterexamples).
+  for main in fixed drawn supplied suppliedChecked; do
+    quint run registration_test.qnt --backend=typescript --main="$main" --invariants oneFamilyId noStrayRandomId coreCanStart \
+      --witnesses coreUp allUp crashedWhilePreparing familyWithAdmin registrationClosed lostTheRace duplicated skipped signedInAgain invited userDeleted throwsWitness crashed \
+      --max-samples=2000 --max-steps=30
+  done
+  # The inbox with the lookup, as the code is: every property of registration holds, but that no
+  # organization is left empty in fixed mode, where a user deleted midway leaves theirs for the next.
+  for main in fixedLookup suppliedLookup; do
+    quint run registration_test.qnt --backend=typescript --main="$main" \
+      --invariants oneFamilyId oneFamilyPerAdmin oneOrganizationPerEvent onlyFirstCreates onlyFamilyOrgHasAdmins eventCanFinish \
+      --witnesses familyWithAdmin duplicated crashed throwsWitness noted lookedUp invited userDeleted \
+      --max-samples=2000 --max-steps=40
+  done
+  quint run registration_test.qnt --backend=typescript --main=suppliedLookup --invariant=noEmptyOrganization --max-samples=2000 --max-steps=40
+}
+
+exhaustive() {
+  # Every trace of preparing with two cores up to 12 steps (Apalache, needs Java 17+).
+  quint verify registration_test.qnt --main=fixed --invariants oneFamilyId noStrayRandomId coreCanStart --max-steps=12
+}
+
+counterexample() {
+  # Writing the given id after the migrations committed, the checker must find a random id left behind.
+  if quint verify registration_test.qnt --main=unfixedId --invariant=noStrayRandomId --max-steps=6 > /dev/null 2>&1; then
+    echo "The unfixed model no longer leaves a random id: the spec lost its counterexample." >&2
+    exit 1
+  fi
+}
+
+case "${1:-all}" in
+  scenarios|simulation|exhaustive|counterexample) "$1" ;;
+  all) scenarios; simulation; exhaustive; counterexample ;;
+  *) echo "Unknown check: $1 (scenarios, simulation, exhaustive, counterexample)" >&2; exit 2 ;;
+esac

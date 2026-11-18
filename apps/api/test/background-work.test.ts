@@ -50,7 +50,7 @@ describe("scheduling the worker's work", () => {
     const broken = () => Promise.reject(new Error("database gone"));
     const errors: [string, unknown][] = [];
     await startBackgroundWork(
-      { dueWork: { run: broken }, retention: { purge: broken }, secretSweep: { sweep: broken } },
+      { dueWork: { run: broken }, retention: { purge: broken }, secretSweep: { sweep: broken }, registration: { retry: broken } },
       schedule,
       { warn: () => {}, error: (line, error) => errors.push([line, error]) },
     );
@@ -60,6 +60,7 @@ describe("scheduling the worker's work", () => {
     expect(errors.map(([line]) => line)).toEqual([
       "Running due Sources and Extraction failed:",
       "Purging messages past their retention failed:",
+      "Carrying the pending registrations through failed:",
       "Removing secrets nothing refers to failed:",
     ]);
   });
@@ -92,11 +93,12 @@ describe("the sweep", () => {
       every: (name, cron, _run, options) => Promise.resolve(void scheduled.push({ name, cron, atStart: options?.atStart ?? false })),
     };
     const idle = () => Promise.reject(new Error("not run"));
-    await startBackgroundWork({ dueWork: { run: idle }, retention: { purge: idle }, secretSweep: { sweep: idle } }, schedule, { warn: () => {}, error: () => {} });
+    await startBackgroundWork({ dueWork: { run: idle }, retention: { purge: idle }, secretSweep: { sweep: idle }, registration: { retry: idle } }, schedule, { warn: () => {}, error: () => {} });
 
     expect(scheduled).toEqual([
       { name: "due-work", cron: "* * * * *", atStart: false },
       { name: "purge", cron: "0 * * * *", atStart: false },
+      { name: "registration", cron: "* * * * *", atStart: false },
       { name: "secret-sweep", cron: "17 3 * * *", atStart: true },
     ]);
   });

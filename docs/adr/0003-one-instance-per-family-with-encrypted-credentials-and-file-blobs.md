@@ -20,7 +20,7 @@ A Family is named by one identifier, its Family id: a random UUID made with the 
 
 ## Amendment: the Family id is chosen or drawn once
 
-The Family id is drawn at random when a Family is first prepared, unless the operator gives one before it exists (`FAMILY_ID`, or in supplied mode the Context of the Family). It is written in the same transaction as the migrations that create the `family` row, so a failed start leaves no random id behind. Once a database holds an id, it never changes: Preparing the Family with a different one is refused before anything changes. Preparing works on the Family's database, not on a booted Family, so that an Instance of several Families can prepare an empty database for a new one.
+The Family id is drawn at random when a Family is first prepared, unless the operator gives one before it exists (`FAMILY_ID`, or in supplied mode the Context of the Family). It is written in the same transaction as the migrations that create the `family` row, so a failed start leaves no random id behind. Once a database holds an id, it never changes: Preparing the Family with a different one is refused before anything changes. The model of preparing ([`specs/registration`](../../specs/registration), ADR-0012) checks this: two cores preparing at once, or one dying midway, keep one Family id, and a failed start leaves no random id behind; writing the id after the migrations commit would. Preparing works on the Family's database, not on a booted Family, so that an Instance of several Families can prepare an empty database for a new one.
 
 ## Amendment: a folder per Family in the blob volume
 
