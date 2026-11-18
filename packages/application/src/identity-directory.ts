@@ -31,6 +31,8 @@ export interface IdentityDirectory {
   deleteOrganization(organizationId: string): Promise<void>;
   /** The organizations the user is a member of; null for no such user, such as one who deleted their account. */
   organizationsOf(userId: string): Promise<string[] | null>;
+  /** The organizations the user whose email is `email`, in any case, is a member of; none for no such user. */
+  organizationsOfEmail(email: string): Promise<string[]>;
   /** Makes the user a member of the organization, with the role `admin`; doing it again changes nothing. */
   addMember(organizationId: string, userId: string): Promise<void>;
   /**

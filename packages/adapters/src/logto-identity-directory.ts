@@ -82,6 +82,12 @@ export class LogtoIdentityDirectory implements IdentityDirectory {
     return organizations?.map((organization) => organization.id) ?? null;
   }
 
+  async organizationsOfEmail(email: string): Promise<string[]> {
+    const users = await this.call<{ id: string }[]>("GET", `/api/users?search.primaryEmail=${encodeURIComponent(email.toLowerCase())}&mode.primaryEmail=exact`);
+    const organizations = await Promise.all(users.map(async (user) => (await this.organizationsOf(user.id)) ?? []));
+    return organizations.flat();
+  }
+
   async addMember(organizationId: string, userId: string): Promise<void> {
     // Adding a member again is no error, and putting the roles replaces them: a retry changes nothing.
     const path = `/api/organizations/${encodeURIComponent(organizationId)}/users`;

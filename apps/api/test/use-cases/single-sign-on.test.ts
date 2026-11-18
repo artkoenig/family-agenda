@@ -277,6 +277,17 @@ describe("Admins signing in through an Identity Provider", () => {
         expect(directory.organization(organizationId).members.size).toBe(0);
       });
 
+      // family-agenda-cloud spec/centralSignIn: `acceptRefusedTest`, invited before they became an Admin elsewhere (#468).
+      it("is refused to an Admin of another Family, though the invitation was sent before", async () => {
+        await invite("ben@example.org");
+        const [other] = [...directory.organizations.keys()].filter((id) => id !== organizationId);
+        await directory.addMember(other ?? "", "user-ben");
+
+        expect(await signInAs(ben)).toEqual({ ok: false, problem: "sso-not-member" });
+        expect(directory.organization(organizationId).members.size).toBe(0);
+        expect(await directory.listInvitations(organizationId)).toHaveLength(1);
+      });
+
       // specs/invitation: `revokedMidway`, the Identity Provider decides at acceptance (ADR-0011).
       it("is refused when the invitation is revoked between the callback's lookup and its acceptance", async () => {
         const invitation = await invite("ben@example.org");

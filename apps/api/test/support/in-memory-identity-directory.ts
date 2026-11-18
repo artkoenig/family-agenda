@@ -51,6 +51,11 @@ export class InMemoryIdentityDirectory implements IdentityDirectory {
     return Promise.resolve([...this.organizations.entries()].filter(([, organization]) => organization.members.has(userId)).map(([id]) => id));
   }
 
+  organizationsOfEmail(email: string): Promise<string[]> {
+    const users = [...this.users.entries()].filter(([, user]) => user.email?.toLowerCase() === email.toLowerCase()).map(([id]) => id);
+    return Promise.resolve([...this.organizations.entries()].filter(([, organization]) => users.some((id) => organization.members.has(id))).map(([id]) => id));
+  }
+
   addMember(organizationId: string, userId: string): Promise<void> {
     if (this.failingToAdd) return Promise.reject(new Error("the Identity Provider went down"));
     const user = this.users.get(userId);

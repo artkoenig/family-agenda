@@ -88,6 +88,7 @@ export const en = {
     "already-admin": "This address is already an Admin of the Family.",
     "already-invited": "This address is already invited.",
     founder: "Whoever registered the Family cannot be removed; they leave only by closing the Family and ending the subscription.",
+    "admin-elsewhere": "This address is already an Admin of another Family.",
     "last-admin": "The Family keeps at least one Admin: the last Admin cannot be removed.",
     "invalid-interval": `The polling interval must be between ${pollIntervalRange.minSeconds / 60} minute and ${pollIntervalRange.maxSeconds / 86_400} days.`,
   },
