@@ -20,6 +20,8 @@ The `api` project uses an in-process Postgres (migrated once via `apps/api/test/
 
 Write every migration in `packages/adapters/drizzle/` as expand/contract: older cores keep running on the new schema during a rolling update. The rule: ADR-0003, "Migrations expand, then contract".
 
+To check a migration against the rule, describe it in `specs/rolling-update/migrations.qnt` (per release: the column the code reads each datum from, the columns it writes it to, and what the migration adds, copies and drops), add an instance for it to `specs/rolling-update/rollingUpdate_test.qnt` and to `GOOD` in its `check.sh`, then run `pnpm specs simulation`. Describe any migration that drops, renames or copies; one that only adds a table or a nullable column no older code uses needs none. A rename takes four releases after the old one when the old code writes the column (`colourRename` shows why).
+
 ## Agent skills
 
 ### Issue tracker
