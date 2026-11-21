@@ -35,7 +35,7 @@ services:
   # network of `api`, so that its issuer, http://localhost:<PREVIEW_IDP_PORT>/preview, is the same
   # address for the browser (through the port `api` publishes) and for `api` itself.
   idp:
-    image: ghcr.io/navikt/mock-oauth2-server:6.1.4
+    image: ghcr.io/navikt/mock-oauth2-server:7.0.1@sha256:eb07a0a65007c34c40c7b849592a47e6299128a514a5c6c582a53451cc6e3390
     network_mode: service:api
     environment:
       SERVER_PORT: ${PREVIEW_IDP_PORT}

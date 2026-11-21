@@ -94,7 +94,7 @@ services:
   # `db seed` creates on the first start and leaves alone after. Sign-in pages on port
   # LOGTO_PORT; the admin console (3002) is published to this host only, see docs/configuration.md.
   logto:
-    image: ghcr.io/logto-io/logto:1.46.0
+    image: ghcr.io/logto-io/logto:1.46.0@sha256:d5e208ce705cbcf7c79ddba421216eb65413d0b0531aa658fb22a4ba659be983
     profiles: [idp]
     restart: unless-stopped
     entrypoint: ["sh", "-c", "npm run cli db seed -- --swe && npm start"]
