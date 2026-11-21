@@ -2,7 +2,7 @@
   "name": "family-agenda",
   "private": true,
   "type": "module",
-  "packageManager": "pnpm@12.18.0",
+  "packageManager": "pnpm@12.21.0",
   "engines": {
     "node": ">=22.12"
   },
@@ -23,13 +23,13 @@
     "site": "sh site/build.sh"
   },
   "devDependencies": {
-    "@barney-media/crap-typescript": "2.0.0",
+    "@barney-media/crap-typescript": "2.0.2",
     "@eslint/js": "^10.0.1",
     "@informalsystems/quint": "0.33.1",
     "@stryker-mutator/core": "10.1.1",
     "@stryker-mutator/vitest-runner": "10.1.1",
     "@types/node": "^26.0.0",
-    "@vitest/coverage-v8": "5.1.0",
+    "@vitest/coverage-v8": "5.1.1",
     "dependency-cruiser": "^18.7.0",
     "eslint": "^10.13.0",
     "eslint-plugin-sonarjs": "^4.2.2",
