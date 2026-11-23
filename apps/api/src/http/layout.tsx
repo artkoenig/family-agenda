@@ -145,6 +145,13 @@ document.body.addEventListener("htmx:afterSettle", syncThemeSwitches);
 syncThemeSwitches();
 `;
 
+/** Saves a setting as soon as it is chosen: a `select[data-submit-on-change]` submits its form. */
+const submitOnChange = `
+document.addEventListener("change", (event) => {
+  if (event.target.matches("select[data-submit-on-change]")) event.target.form?.requestSubmit();
+});
+`;
+
 /**
  * A page in the Family Agenda design system: its tokens and component classes come from
  * `/static/tokens.css` and `/static/design.css` (`design/`). An Agenda is the Family's timeline; every
@@ -193,7 +200,7 @@ export function Layout(props: {
           ) : (
             <div class={props.narrow ? "fam-admin fam-admin--narrow" : "fam-admin"}>{props.children}</div>
           )}
-          <script>{raw(agenda ? themeSwitches : modalDialogs + copyButtons + themeSwitches + lazyFragmentErrors + editGuards)}</script>
+          <script>{raw(agenda ? themeSwitches : modalDialogs + copyButtons + themeSwitches + submitOnChange + lazyFragmentErrors + editGuards)}</script>
         </body>
       </html>
     </>

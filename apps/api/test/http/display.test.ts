@@ -64,6 +64,15 @@ describe("the display and OCR settings over HTTP", () => {
     expect(formsOf(page)).toContain("/admin/display/time-zone:");
   });
 
+  it("saves the Family Language and the time zone as soon as one is chosen, offering the button only without scripts", async () => {
+    const page = await get("/admin/display");
+
+    expect(page).toContain('<select id="language" name="language" data-submit-on-change="true">');
+    expect(page).toContain('<select id="time-zone" name="timeZone" data-submit-on-change="true">');
+    expect(page).toContain("select[data-submit-on-change]");
+    expect(page).not.toMatch(/<\/small><\/div><\/div><div class="fam-group__actions">/);
+  });
+
   it("changes the time zone, which the Agenda's days follow from the next request", async () => {
     // The clock says 07:00 in UTC on Monday: Monday in Berlin, still Sunday in Pago Pago.
     const created = await instance.app.agendas.create({ memberIds: [], horizonDays: 1 });

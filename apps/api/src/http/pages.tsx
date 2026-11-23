@@ -4525,17 +4525,20 @@ export function DisplayPage(props: {
               <label for="language" class="fam-visually-hidden">
                 {d.familyLanguage}
               </label>
-              <select id="language" name="language">
+              <select id="language" name="language" data-submit-on-change>
                 <FamilyLanguageOptions selected={props.family} />
               </select>
               <small>{d.familyLanguageHint}</small>
             </div>
           </div>
-          <div class="fam-group__actions">
-            <button type="submit" class="fam-button fam-button--primary">
-              {t.common.save}
-            </button>
-          </div>
+          {/* Saved as soon as it changes; without scripts, with the button. */}
+          <noscript>
+            <div class="fam-group__actions">
+              <button type="submit" class="fam-button fam-button--primary">
+                {t.common.save}
+              </button>
+            </div>
+          </noscript>
         </Group>
       </form>
 
@@ -4551,7 +4554,7 @@ export function DisplayPage(props: {
               <label for="time-zone" class="fam-visually-hidden">
                 {d.timeZone}
               </label>
-              <select id="time-zone" name="timeZone">
+              <select id="time-zone" name="timeZone" data-submit-on-change>
                 {props.timeZones.map((zone) => (
                   <option value={zone} selected={zone === props.timeZone}>
                     {zone}
@@ -4561,11 +4564,14 @@ export function DisplayPage(props: {
               <small>{d.timeZoneHint}</small>
             </div>
           </div>
-          <div class="fam-group__actions">
-            <button type="submit" class="fam-button fam-button--primary">
-              {t.common.save}
-            </button>
-          </div>
+          {/* Saved as soon as it changes; without scripts, with the button. */}
+          <noscript>
+            <div class="fam-group__actions">
+              <button type="submit" class="fam-button fam-button--primary">
+                {t.common.save}
+              </button>
+            </div>
+          </noscript>
         </Group>
       </form>
 
