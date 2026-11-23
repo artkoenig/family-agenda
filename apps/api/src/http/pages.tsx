@@ -4499,6 +4499,17 @@ export function AdminsPage(props: {
 const themes = ["system", "light", "dark"] as const;
 
 /** The Display section: the Family Language, and the Theme of this browser. */
+/** The button of a setting saved as soon as it changes, for browsers without scripts. */
+const NoScriptSave = (props: { label: string }) => (
+  <noscript>
+    <div class="fam-group__actions">
+      <button type="submit" class="fam-button fam-button--primary">
+        {props.label}
+      </button>
+    </div>
+  </noscript>
+);
+
 export function DisplayPage(props: {
   admin: SignedInAdmin;
   family: FamilyLanguage;
@@ -4513,85 +4524,40 @@ export function DisplayPage(props: {
     <AdminLayout title={d.title} admin={props.admin} current="display">
       <SectionHeader title={d.title} description={d.description} />
       <Problem message={props.problem} />
-      <form
-        method="post"
-        action={href(prefix, "/admin/display")}
-        class="fam-sheet fam-sheet__form"
-      >
-        <Group title={d.familyLanguage} level={2}>
-          <div class="fam-group__fields">
-            <div class="fam-field">
-              {/* The group's title names it already. */}
-              <label for="language" class="fam-visually-hidden">
-                {d.familyLanguage}
-              </label>
-              <select id="language" name="language" data-submit-on-change>
-                <FamilyLanguageOptions selected={props.family} />
-              </select>
-              <small>{d.familyLanguageHint}</small>
-            </div>
-          </div>
-          {/* Saved as soon as it changes; without scripts, with the button. */}
-          <noscript>
-            <div class="fam-group__actions">
-              <button type="submit" class="fam-button fam-button--primary">
-                {t.common.save}
-              </button>
-            </div>
-          </noscript>
-        </Group>
-      </form>
-
-      <form
-        method="post"
-        action={href(prefix, "/admin/display/time-zone")}
-        class="fam-sheet fam-sheet__form"
-      >
-        <Group title={d.timeZone} level={2}>
-          <div class="fam-group__fields">
-            <div class="fam-field">
-              {/* The group's title names it already. */}
-              <label for="time-zone" class="fam-visually-hidden">
-                {d.timeZone}
-              </label>
-              <select id="time-zone" name="timeZone" data-submit-on-change>
-                {props.timeZones.map((zone) => (
-                  <option value={zone} selected={zone === props.timeZone}>
-                    {zone}
-                  </option>
-                ))}
-              </select>
-              <small>{d.timeZoneHint}</small>
-            </div>
-          </div>
-          {/* Saved as soon as it changes; without scripts, with the button. */}
-          <noscript>
-            <div class="fam-group__actions">
-              <button type="submit" class="fam-button fam-button--primary">
-                {t.common.save}
-              </button>
-            </div>
-          </noscript>
-        </Group>
-      </form>
-
+      {/* One card: each setting is saved on its own as soon as it changes. */}
       <section class="fam-sheet">
-        <Group title={d.theme} level={2}>
-          <div class="fam-group__fields">
-            <div class="fam-field">
-              {/* Saved in this browser as soon as it changes, so that there is no form. */}
-              <label for="theme" class="fam-visually-hidden">
-                {d.theme}
-              </label>
-              <select id="theme" data-theme-select>
-                {themes.map((theme) => (
-                  <option value={theme}>{d.themeOptions[theme]}</option>
-                ))}
-              </select>
-              <small>{d.themeHint}</small>
-            </div>
+        <div class="fam-group__fields">
+          <form method="post" action={href(prefix, "/admin/display")} class="fam-field">
+            <label for="language">{d.familyLanguage}</label>
+            <select id="language" name="language" data-submit-on-change>
+              <FamilyLanguageOptions selected={props.family} />
+            </select>
+            <small>{d.familyLanguageHint}</small>
+            <NoScriptSave label={t.common.save} />
+          </form>
+          <form method="post" action={href(prefix, "/admin/display/time-zone")} class="fam-field">
+            <label for="time-zone">{d.timeZone}</label>
+            <select id="time-zone" name="timeZone" data-submit-on-change>
+              {props.timeZones.map((zone) => (
+                <option value={zone} selected={zone === props.timeZone}>
+                  {zone}
+                </option>
+              ))}
+            </select>
+            <small>{d.timeZoneHint}</small>
+            <NoScriptSave label={t.common.save} />
+          </form>
+          <div class="fam-field">
+            {/* Saved in this browser as soon as it changes, so that there is no form. */}
+            <label for="theme">{d.theme}</label>
+            <select id="theme" data-theme-select>
+              {themes.map((theme) => (
+                <option value={theme}>{d.themeOptions[theme]}</option>
+              ))}
+            </select>
+            <small>{d.themeHint}</small>
           </div>
-        </Group>
+        </div>
       </section>
     </AdminLayout>
   );
