@@ -253,7 +253,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     singleSignOn,
     extraction,
     messages,
-    timeZone,
+    timeZone: familyTimeZone,
   } = application;
   const app = new Hono<Env>();
   const version = options.version ?? "dev";
@@ -1112,7 +1112,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
         form={form}
         recordedEntryIds={recordedEntryIds}
         members={members}
-        timeZone={timeZone}
+        timeZone={await familyTimeZone.current()}
         {...(shown.problem ? { problem: shown.problem } : {})}
         {...(shown.adding ? { adding: shown.adding } : {})}
         addings={addings}
@@ -1153,7 +1153,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
         form={form}
         catalogue={catalogue}
         members={members}
-        timeZone={timeZone}
+        timeZone={await familyTimeZone.current()}
       />,
     );
   });
@@ -1432,7 +1432,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
         source={source}
         form={form}
         members={members}
-        timeZone={timeZone}
+        timeZone={await familyTimeZone.current()}
         {...(shown.problem ? { problem: shown.problem } : {})}
         {...(shown.fixing ? { fixing: true } : {})}
         attributesOnDemand={await sources.namesAttributesOnDemand(source.id)}
@@ -1465,7 +1465,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
         entered={refused?.entered}
         form={form}
         closeHref={href(prefix, sourceHref(source.id))}
-        timeZone={timeZone}
+        timeZone={await familyTimeZone.current()}
         members={members}
       />,
     );
@@ -1549,7 +1549,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
         source={source}
         form={form}
         members={members}
-        timeZone={timeZone}
+        timeZone={await familyTimeZone.current()}
         waitedSeconds={Number.isFinite(waited) && waited > 0 ? waited : 0}
         attributesPending={attributesPending}
       />,
@@ -1623,10 +1623,16 @@ export function createHttpApp(application: Application, options: HttpOptions) {
   });
 
   const displayPage = async (c: Context<Env>, problem?: string) => {
+    const timeZone = await familyTimeZone.current();
+    // A stored zone the runtime no longer lists stays choosable.
+    const listed = familyTimeZone.choices();
+    const timeZones = listed.includes(timeZone) ? listed : [timeZone, ...listed];
     const page = (
       <DisplayPage
         admin={c.get("admin")}
         family={await languages.familyLanguage()}
+        timeZone={timeZone}
+        timeZones={timeZones}
         {...(problem ? { problem } : {})}
       />
     );
@@ -1634,6 +1640,15 @@ export function createHttpApp(application: Application, options: HttpOptions) {
   };
 
   app.get("/admin/display", (c) => displayPage(c));
+
+  // Converts nothing: Items already extracted keep their instants (#500).
+  app.post("/admin/display/time-zone", async (c) => {
+    const result = await familyTimeZone.change(
+      field(await c.req.parseBody(), "timeZone"),
+    );
+    if (!result.ok) return displayPage(c, problemIn(c, result.problem));
+    return seeOther(c, "/admin/display");
+  });
 
   app.post("/admin/display", async (c) => {
     const result = await languages.setLanguage(
@@ -1793,7 +1808,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
         admin={c.get("admin")}
         message={message}
         items={items}
-        timeZone={timeZone}
+        timeZone={await familyTimeZone.current()}
       />,
     );
   });

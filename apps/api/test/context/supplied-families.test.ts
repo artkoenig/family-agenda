@@ -460,7 +460,7 @@ describe("a core in supplied mode", () => {
       const berlin = await familyOf("berlin", { timeZone: "Europe/Berlin" });
       const pagoPago = await familyOf("pago-pago", { timeZone: "Pacific/Pago_Pago" });
       const dayOf = async (context: Context) => {
-        expect(await on(context, (application) => Promise.resolve(application.timeZone))).toBe(context.timeZone);
+        expect(await on(context, (application) => application.timeZone.current())).toBe(context.timeZone);
         const created = await on(context, (application) => application.agendas.create({ memberIds: [], horizonDays: 1 }));
         if (!created.ok) throw new Error(created.problem);
         const page = await on(context, (application) => application.agendas.open(created.id, { access: openAgendaAccess }));
@@ -469,6 +469,24 @@ describe("a core in supplied mode", () => {
 
       expect(await dayOf(berlin)).toEqual(["2026-09-14"]);
       expect(await dayOf(pagoPago)).toEqual(["2026-09-13"]);
+    });
+
+    it("starts a Family with Europe/Berlin when its Context names no time zone", async () => {
+      const withoutTimeZone = { ...(await familyOf("unnamed")) };
+      delete withoutTimeZone.timeZone;
+
+      expect(await on(withoutTimeZone, (application) => application.timeZone.current())).toBe("Europe/Berlin");
+    });
+
+    it("keeps the time zone stored once, whatever a later Context names, and an Admin's choice", async () => {
+      const berlin = await familyOf("kept", { timeZone: "Europe/Berlin" });
+      expect(await on(berlin, (application) => application.timeZone.current())).toBe("Europe/Berlin");
+
+      // Another time zone is another Context: the Family is opened anew, and keeps its own.
+      expect(await on({ ...berlin, timeZone: "Asia/Tokyo" }, (application) => application.timeZone.current())).toBe("Europe/Berlin");
+
+      await on(berlin, (application) => application.timeZone.change("Pacific/Pago_Pago"));
+      expect(await on({ ...berlin, timeZone: "America/New_York" }, (application) => application.timeZone.current())).toBe("Pacific/Pago_Pago");
     });
 
     it("emits each Family's links, redirects, cookies, web manifest and Agenda feed below its own prefix", async () => {

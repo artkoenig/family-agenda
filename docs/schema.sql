@@ -38,6 +38,8 @@ CREATE TABLE family (
   recovery_kit_confirmed_at  TIMESTAMPTZ,
   -- The Family's organization in the Identity Provider; null until the first registration (ADR-0010).
   organization_id            TEXT,
+  -- The Family's IANA time zone; the starting value is stored when the Family is prepared or opened without one.
+  time_zone                  TEXT,
   CONSTRAINT family_single_row CHECK (id),
   CONSTRAINT family_language_known CHECK (language IN ('en', 'de')),
   CONSTRAINT family_ocr_languages_not_empty CHECK (cardinality(ocr_languages) > 0)

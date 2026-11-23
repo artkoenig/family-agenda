@@ -1,5 +1,6 @@
 import { createCipheriv, createDecipheriv, hkdfSync, randomBytes } from "node:crypto";
 import { parseFamilyId, type FamilyId } from "@family-agenda/adapters";
+import { isTimeZone } from "@family-agenda/domain";
 import { z } from "zod";
 import { parsePublicUrl } from "../config";
 
@@ -16,8 +17,11 @@ export type Context = {
   familyKey: string;
   /** The blob directory the Family's folder lies in. */
   blobDirectory: string;
-  /** The IANA time zone the Family lives in, such as `Europe/Berlin`: where its Agendas' days start. */
-  timeZone: string;
+  /**
+   * The IANA time zone the Family starts with, such as `Europe/Berlin`, stored while it has none;
+   * ignored once one is stored, which only an Admin changes. `Europe/Berlin` if left out.
+   */
+  timeZone?: string;
   /**
    * The address the Family reaches the core at, through the caller, without a trailing slash. Its
    * path is the path prefix: the caller removes it from a request, and the core writes every
@@ -58,17 +62,6 @@ const problems = {
     "identityProvider must not be set: in supplied mode the one Identity Provider comes from the core's OIDC_* variables, and the Family claim decides who signs in (ADR-0009)",
 } as const;
 
-/** Whether `text` names an IANA time zone, not an offset such as `+01:00`. */
-function isTimeZone(text: string): boolean {
-  if (!/^[A-Za-z]/.test(text)) return false;
-  try {
-    new Intl.DateTimeFormat("en", { timeZone: text });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 const custom = (context: z.RefinementCtx, message: string) => (context.addIssue({ code: "custom", message }), z.NEVER);
 
 const contextSchema = z
@@ -77,7 +70,7 @@ const contextSchema = z
     databaseUrl: z.string().min(1),
     familyKey: z.string().refine((text) => Buffer.from(text, "base64url").length === familyKeyLength),
     blobDirectory: z.string().min(1),
-    timeZone: z.string({ error: problems.timeZone }).refine(isTimeZone, problems.timeZone),
+    timeZone: z.string({ error: problems.timeZone }).refine(isTimeZone, problems.timeZone).optional(),
     publicUrl: z.string({ error: problems.publicUrl }).transform((text, context) => parsePublicUrl(text) ?? custom(context, problems.publicUrl)),
     // Named when refused, so that a caller still sealing one learns where the Identity Provider went.
     identityProvider: z.unknown().refine((value) => value === undefined, problems.identityProvider).optional(),
@@ -85,9 +78,9 @@ const contextSchema = z
     expiresAt: z.number(),
   })
   // Nothing of it is kept: it was refused unless absent.
-  .transform(({ organizationId, ...parsed }): Context => {
+  .transform(({ organizationId, timeZone, ...parsed }): Context => {
     delete parsed.identityProvider;
-    return organizationId === undefined ? parsed : { ...parsed, organizationId };
+    return { ...parsed, ...(timeZone === undefined ? {} : { timeZone }), ...(organizationId === undefined ? {} : { organizationId }) };
   });
 
 const version = "v1";

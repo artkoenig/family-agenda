@@ -32,14 +32,14 @@ describe("Preparing a Family on an empty database", () => {
     };
   };
   const shared = () => ({ tessdataDirectory: join(directory, "tessdata"), bundledTessdataDirectory: null });
-  const boot = (familyId?: FamilyId) =>
+  const boot = (familyId?: FamilyId, timeZone = "Europe/Berlin") =>
     bootApplication({
       ...shared(),
       connectDatabase: connect,
       ...(familyId === undefined ? {} : { familyId }),
       masterKeyFile: join(directory, "master.key"),
       blobDirectory: join(directory, "blobs"),
-      timeZone: "Europe/Berlin",
+      timeZone,
     });
   it("prepares the database before any Family is booted on it, with the Family id chosen", async () => {
     const wiring = await bootShared(shared());
@@ -63,6 +63,21 @@ describe("Preparing a Family on an empty database", () => {
 
     expect(first.familyId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
     expect(second.familyId).toBe(first.familyId);
+  });
+
+  it("stores the time zone of the process as the starting value, which a later start with another one keeps", async () => {
+    expect(await (await boot(undefined, "Europe/Berlin")).timeZone.current()).toBe("Europe/Berlin");
+    expect(await (await boot(undefined, "Asia/Tokyo")).timeZone.current()).toBe("Europe/Berlin");
+
+    await (await boot()).timeZone.change("Pacific/Pago_Pago");
+    expect(await (await boot(undefined, "Europe/Berlin")).timeZone.current()).toBe("Pacific/Pago_Pago");
+  });
+
+  it("stores a starting value when an existing Family without one is started", async () => {
+    await boot();
+    await postgres.query("UPDATE family SET time_zone = NULL");
+
+    expect(await (await boot(undefined, "Asia/Tokyo")).timeZone.current()).toBe("Asia/Tokyo");
   });
 
   it("refuses a start with a Family id other than the one the database holds", async () => {

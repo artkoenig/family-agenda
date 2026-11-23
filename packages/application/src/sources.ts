@@ -51,8 +51,8 @@ export type SourcesDeps = {
   preparationMaxMs: number;
   secrets: SecretStore;
   blobs: BlobStore;
-  /** The IANA time zone the Family lives in, for the plugin's runs. */
-  timeZone: string;
+  /** The IANA time zone the Family lives in now, for the plugin's runs. */
+  timeZone: () => Promise<string>;
 };
 
 export type SourceSummary = {
@@ -163,7 +163,7 @@ export function createSourceAccess(deps: SourcesDeps) {
 
   const enabled = (sourceTypeId: SourceTypeId) => enabledSourceType(sourceTypeId, { registry, sourceTypes });
 
-  const contextOf = (source: Source, sourceType: HostFieldsOf) => runContextOf(source, sourceType, { secrets, now: clock.now(), timeZone });
+  const contextOf = async (source: Source, sourceType: HostFieldsOf) => runContextOf(source, sourceType, { secrets, now: clock.now(), timeZone: await timeZone() });
 
   async function cleanup(source: Source, sourceType: LoadedSourceType | null, context: SourceRunContext, files: BlobRef[]): Promise<void> {
     await sourceType?.sourceRemoved(context);
@@ -375,7 +375,7 @@ export function createSourceAccess(deps: SourcesDeps) {
     const secretHosts = secretHostsOf(sourceType.configuration.fields, given.secrets, {});
     // Not stored yet: the ticket of the call carries its hosts.
     const hosts = hostsOfSource(sourceType.configuration.fields, { plain: given.plain, secretHosts });
-    const prepared = await sourceType.sourceAdded({ ...given, now: clock.now(), timeZone, source: { id, sourceTypeId, hosts } });
+    const prepared = await sourceType.sourceAdded({ ...given, now: clock.now(), timeZone: await timeZone(), source: { id, sourceTypeId, hosts } });
     if (!prepared.ok) return { ok: false, problem: "setup-failed", message: prepared.message };
     const setByPlugin = new Set(sourceType.configuration.fields.filter((field) => field.setByPlugin).map((field) => field.key));
     const ofPlugin = (values: Record<string, unknown>) => Object.entries(values).filter(([key]) => setByPlugin.has(key));

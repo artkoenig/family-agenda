@@ -55,6 +55,46 @@ describe("the display and OCR settings over HTTP", () => {
     expect((await post("/admin/display", { language: "fr" })).status).toBe(400);
   });
 
+  it("offers the IANA time zones, the Family's chosen", async () => {
+    const page = await get("/admin/display");
+
+    expect(page).toContain('<option value="Europe/Berlin" selected="">Europe/Berlin</option>');
+    expect(page).toContain('<option value="Pacific/Pago_Pago">Pacific/Pago_Pago</option>');
+    expect(page).toContain("Bereits erkannte Termine bleiben unverändert.");
+    expect(formsOf(page)).toContain("/admin/display/time-zone:");
+  });
+
+  it("saves the Family Language and the time zone as soon as one is chosen, offering the button only without scripts", async () => {
+    const page = await get("/admin/display");
+
+    expect(page).toContain('<select id="language" name="language" data-submit-on-change="true">');
+    expect(page).toContain('<select id="time-zone" name="timeZone" data-submit-on-change="true">');
+    expect(page).toContain("select[data-submit-on-change]");
+    expect(page).not.toMatch(/<\/small><\/div><\/div><div class="fam-group__actions">/);
+  });
+
+  it("changes the time zone, which the Agenda's days follow from the next request", async () => {
+    // The clock says 07:00 in UTC on Monday: Monday in Berlin, still Sunday in Pago Pago.
+    const created = await instance.app.agendas.create({ memberIds: [], horizonDays: 1 });
+    if (!created.ok) throw new Error(created.problem);
+    expect(await get(`/agendas/${created.id}`)).toContain("Mo., 14. Sept.");
+
+    const saved = await post("/admin/display/time-zone", { timeZone: "Pacific/Pago_Pago" });
+    expect(saved.status).toBe(303);
+    expect(saved.headers.get("location")).toBe("/admin/display");
+
+    expect(await get("/admin/display")).toContain('<option value="Pacific/Pago_Pago" selected="">Pacific/Pago_Pago</option>');
+    expect(await get(`/agendas/${created.id}`)).toContain("So., 13. Sept.");
+  });
+
+  it("refuses a time zone that is none", async () => {
+    const refused = await post("/admin/display/time-zone", { timeZone: "Mars/Olympus" });
+
+    expect(refused.status).toBe(400);
+    expect(await refused.text()).toContain("Wähle eine der Zeitzonen.");
+    expect(await instance.app.timeZone.current()).toBe("Europe/Berlin");
+  });
+
   it("adds, orders and drops OCR languages, each with its model", async () => {
     const before = await get("/admin/llm");
     expect(before).toContain('<option value="eng">Englisch</option>');

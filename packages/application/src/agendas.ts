@@ -50,8 +50,8 @@ import type { SourceHealthCheck } from "./source-health";
 
 export type AgendasDeps = {
   clock: Clock;
-  /** The IANA time zone the Family lives in, which decides where a day starts. */
-  timeZone: string;
+  /** The IANA time zone the Family lives in now, which decides where a day starts; read for each request. */
+  timeZone: () => Promise<string>;
   families: FamilyRepository;
   members: FamilyMemberRepository;
   agendas: AgendaRepository;
@@ -300,7 +300,7 @@ const taskListDaysBack = 30;
 export const openAgendaAccess: AgendaAccessPolicy = { mayOpen: () => Promise.resolve(true) };
 
 export function createAgendaAccess(deps: AgendasDeps) {
-  const { clock, timeZone, families, members, agendas, items, registry, activity, sourceHealth } = deps;
+  const { clock, families, members, agendas, items, registry, activity, sourceHealth } = deps;
 
   /**
    * The name an Admin gave the Source, else the display name of its Source Type, or that type's id
@@ -360,156 +360,175 @@ export function createAgendaAccess(deps: AgendasDeps) {
     return { itemId: id, title, deadline, description, status: taskStatus(task, today), cancelled, links, messages, concerns };
   }
 
-  /** The Lesson on the Family's clocks. */
-  function lessonRow(id: ItemId, lesson: Lesson): TimelineLesson {
-    const { subject, room, teacher, cancelled } = lesson;
-    return { itemId: id, subject, ...clockTimes(lesson.span), room, teacher, cancelled };
-  }
-
-  function changeRow(id: ItemId, change: TimetableChange, concerns: Attribution, now: Date): TimelineTimetableChange {
-    const { change: kind, subject, room, teacher, previousRoom, previousTeacher, note, span } = change;
-    return {
-      itemId: id,
-      change: kind,
-      subject,
-      ...clockTimes(span),
-      room,
-      teacher,
-      previousRoom,
-      previousTeacher,
-      note,
-      earlier: span.end <= now,
-      concerns,
-    };
-  }
-
-  function clockTimes(span: { start: Date; end: Date }): { from: LocalTime; until: LocalTime } {
-    return { from: localDateTime(span.start, timeZone).time, until: localDateTime(span.end, timeZone).time };
-  }
-
-  /** The day a Lesson or Timetable Change is on, by when it starts. */
-  function dayOf(span: { start: Date }): LocalDate {
-    return localDateTime(span.start, timeZone).date;
-  }
-
-  /**
-   * The Lessons of a day as school days, one per set of Family Members they concern, with the
-   * day's Timetable Changes of the same Family Members.
-   */
-  function schoolDaysOn(date: LocalDate, around: Around, now: Date) {
-    const days = new Map<string, { concerns: Attribution; lessons: { lesson: Lesson; row: TimelineLesson }[]; changes: TimelineTimetableChange[] }>();
-    const dayFor = (concerns: Attribution) => {
-      const key = concernsKey(concerns);
-      const found = days.get(key) ?? { concerns, lessons: [], changes: [] };
-      days.set(key, found);
-      return found;
-    };
-    for (const { id, lesson, concerns } of around.lessons) {
-      if (dayOf(lesson.span) === date) dayFor(concerns).lessons.push({ lesson, row: lessonRow(id, lesson) });
+  /** What depends on the time zone the Family lives in, which a request reads once. */
+  function zoned(timeZone: string) {
+    /** The Lesson on the Family's clocks. */
+    function lessonRow(id: ItemId, lesson: Lesson): TimelineLesson {
+      const { subject, room, teacher, cancelled } = lesson;
+      return { itemId: id, subject, ...clockTimes(lesson.span), room, teacher, cancelled };
     }
-    const changes = around.changes
-      .filter(({ change }) => dayOf(change.span) === date)
-      .map(({ id, change, concerns }) => changeRow(id, change, concerns, now))
-      .sort(byFrom);
-    for (const change of changes) days.get(concernsKey(change.concerns))?.changes.push(change);
-    const schoolDays = [...days.entries()].flatMap(([key, day]) => {
-      const lessons = day.lessons.toSorted((a, b) => a.lesson.span.start.getTime() - b.lesson.span.start.getTime());
-      const takingPlace = lessons.filter(({ lesson }) => !lesson.cancelled);
-      const spanned = takingPlace.length > 0 ? takingPlace : lessons;
-      const first = spanned[0];
-      if (!first) return [];
-      const start = first.lesson.span.start;
-      const end = new Date(Math.max(...spanned.map(({ lesson }) => lesson.span.end.getTime())));
-      return [
-        {
-          key,
-          school: {
-            ...clockTimes({ start, end }),
-            cancelled: takingPlace.length === 0,
-            changed: day.changes.length > 0,
-            earlier: end <= now,
-            lessons: lessons.map(({ row }) => row),
-            concerns: day.concerns,
-          } satisfies TimelineSchoolDay,
-          changes: day.changes,
-        },
-      ];
-    });
-    return { schoolDays, changes };
-  }
 
-  /** The Family's Events on each of the days that concern someone `showing` shows, in order of time. */
-  async function timelineOf(
-    dates: LocalDate[],
-    showing: Showing,
-    now: Date,
-  ): Promise<Pick<AgendaPage, "pinned" | "days">> {
-    const first = dates[0];
-    const last = dates.at(-1);
-    if (!first || !last) return { pinned: [], days: [] };
-    const around = await itemsAround(first, last, showing);
-    const today = localDateTime(now, timeZone).date;
-    const pinned = around.tasks
-      .filter(({ task }) => isPinned(task, today))
-      .map((found) => taskRow(found, today))
-      .sort(byDeadline);
-    const unpinned = around.tasks.filter(({ task }) => !isPinned(task, today));
-    const days = dates.map((date) => {
-      const { schoolDays, changes } = schoolDaysOn(date, around, now);
+    function changeRow(id: ItemId, change: TimetableChange, concerns: Attribution, now: Date): TimelineTimetableChange {
+      const { change: kind, subject, room, teacher, previousRoom, previousTeacher, note, span } = change;
       return {
-        date,
-        tasks: unpinned
-          .filter(({ task }) => dayOfTask(task, timeZone) === date)
-          .map((found) => taskRow(found, today))
-          .sort((a, b) => a.title.localeCompare(b.title)),
-        items: around.events
-          .flatMap(({ id, event, links, messages, concerns }) => {
-            const on = spanOnDay(event.span, date, timeZone);
-            return on ? [row(id, event, { links, messages, concerns }, on, now)] : [];
-          })
-          .sort(byTime),
-        schoolDays: schoolDays.map(({ school }) => school).sort(byFrom),
-        timetableChanges: changes,
+        itemId: id,
+        change: kind,
+        subject,
+        ...clockTimes(span),
+        room,
+        teacher,
+        previousRoom,
+        previousTeacher,
+        note,
+        earlier: span.end <= now,
+        concerns,
       };
-    });
-    return { pinned, days };
-  }
+    }
 
-  /** The Tasks of a Task List that concern someone `showing` shows, by whether they are Due, not yet, or done. */
-  async function taskListOf(today: LocalDate, showing: Showing): Promise<Pick<TaskListPage, "due" | "upcoming" | "done">> {
-    const around = await itemsAround(addDays(today, -taskListDaysBack), null, showing);
-    const rows = around.tasks.map((found) => ({ pinned: isPinned(found.task, today), row: taskRow(found, today) }));
-    return {
-      due: rows.filter(({ pinned }) => pinned).map(({ row }) => row).sort(byDeadline),
-      upcoming: rows.filter(({ pinned, row }) => !pinned && row.status !== "done").map(({ row }) => row).sort(byDeadline),
-      done: rows.filter(({ pinned, row }) => !pinned && row.status === "done").map(({ row }) => row).sort(byDeadline),
-    };
-  }
+    function clockTimes(span: { start: Date; end: Date }): { from: LocalTime; until: LocalTime } {
+      return { from: localDateTime(span.start, timeZone).time, until: localDateTime(span.end, timeZone).time };
+    }
 
-  function row(
-    itemId: ItemId,
-    event: Event,
-    originals: Pick<TimelineEvent, "links" | "messages" | "concerns">,
-    on: { from: LocalTime | null; until: LocalTime | null },
-    now: Date,
-  ): TimelineEvent {
-    const { span } = event;
-    return {
-      itemId,
-      title: event.title,
-      ...on,
-      span: onClocks(span),
-      place: event.place,
-      cancelled: event.cancelled,
-      earlier: !span.allDay && span.end <= now,
-      ...originals,
-    };
-  }
+    /** The day a Lesson or Timetable Change is on, by when it starts. */
+    function dayOf(span: { start: Date }): LocalDate {
+      return localDateTime(span.start, timeZone).date;
+    }
 
-  function onClocks(span: TimeSpan): TimelineEvent["span"] {
-    return span.allDay
-      ? span
-      : { allDay: false, start: localDateTime(span.start, timeZone), end: localDateTime(span.end, timeZone) };
+    /**
+     * The Lessons of a day as school days, one per set of Family Members they concern, with the
+     * day's Timetable Changes of the same Family Members.
+     */
+    function schoolDaysOn(date: LocalDate, around: Around, now: Date) {
+      const days = new Map<string, { concerns: Attribution; lessons: { lesson: Lesson; row: TimelineLesson }[]; changes: TimelineTimetableChange[] }>();
+      const dayFor = (concerns: Attribution) => {
+        const key = concernsKey(concerns);
+        const found = days.get(key) ?? { concerns, lessons: [], changes: [] };
+        days.set(key, found);
+        return found;
+      };
+      for (const { id, lesson, concerns } of around.lessons) {
+        if (dayOf(lesson.span) === date) dayFor(concerns).lessons.push({ lesson, row: lessonRow(id, lesson) });
+      }
+      const changes = around.changes
+        .filter(({ change }) => dayOf(change.span) === date)
+        .map(({ id, change, concerns }) => changeRow(id, change, concerns, now))
+        .sort(byFrom);
+      for (const change of changes) days.get(concernsKey(change.concerns))?.changes.push(change);
+      const schoolDays = [...days.entries()].flatMap(([key, day]) => {
+        const lessons = day.lessons.toSorted((a, b) => a.lesson.span.start.getTime() - b.lesson.span.start.getTime());
+        const takingPlace = lessons.filter(({ lesson }) => !lesson.cancelled);
+        const spanned = takingPlace.length > 0 ? takingPlace : lessons;
+        const first = spanned[0];
+        if (!first) return [];
+        const start = first.lesson.span.start;
+        const end = new Date(Math.max(...spanned.map(({ lesson }) => lesson.span.end.getTime())));
+        return [
+          {
+            key,
+            school: {
+              ...clockTimes({ start, end }),
+              cancelled: takingPlace.length === 0,
+              changed: day.changes.length > 0,
+              earlier: end <= now,
+              lessons: lessons.map(({ row }) => row),
+              concerns: day.concerns,
+            } satisfies TimelineSchoolDay,
+            changes: day.changes,
+          },
+        ];
+      });
+      return { schoolDays, changes };
+    }
+
+    /** The Family's Events on each of the days that concern someone `showing` shows, in order of time. */
+    async function timelineOf(
+      dates: LocalDate[],
+      showing: Showing,
+      now: Date,
+    ): Promise<Pick<AgendaPage, "pinned" | "days">> {
+      const first = dates[0];
+      const last = dates.at(-1);
+      if (!first || !last) return { pinned: [], days: [] };
+      const around = await itemsAround(first, last, showing);
+      const today = localDateTime(now, timeZone).date;
+      const pinned = around.tasks
+        .filter(({ task }) => isPinned(task, today))
+        .map((found) => taskRow(found, today))
+        .sort(byDeadline);
+      const unpinned = around.tasks.filter(({ task }) => !isPinned(task, today));
+      const days = dates.map((date) => {
+        const { schoolDays, changes } = schoolDaysOn(date, around, now);
+        return {
+          date,
+          tasks: unpinned
+            .filter(({ task }) => dayOfTask(task, timeZone) === date)
+            .map((found) => taskRow(found, today))
+            .sort((a, b) => a.title.localeCompare(b.title)),
+          items: around.events
+            .flatMap(({ id, event, links, messages, concerns }) => {
+              const on = spanOnDay(event.span, date, timeZone);
+              return on ? [row(id, event, { links, messages, concerns }, on, now)] : [];
+            })
+            .sort(byTime),
+          schoolDays: schoolDays.map(({ school }) => school).sort(byFrom),
+          timetableChanges: changes,
+        };
+      });
+      return { pinned, days };
+    }
+
+    /** The Tasks of a Task List that concern someone `showing` shows, by whether they are Due, not yet, or done. */
+    async function taskListOf(today: LocalDate, showing: Showing): Promise<Pick<TaskListPage, "due" | "upcoming" | "done">> {
+      const around = await itemsAround(addDays(today, -taskListDaysBack), null, showing);
+      const rows = around.tasks.map((found) => ({ pinned: isPinned(found.task, today), row: taskRow(found, today) }));
+      return {
+        due: rows.filter(({ pinned }) => pinned).map(({ row }) => row).sort(byDeadline),
+        upcoming: rows.filter(({ pinned, row }) => !pinned && row.status !== "done").map(({ row }) => row).sort(byDeadline),
+        done: rows.filter(({ pinned, row }) => !pinned && row.status === "done").map(({ row }) => row).sort(byDeadline),
+      };
+    }
+
+    function row(
+      itemId: ItemId,
+      event: Event,
+      originals: Pick<TimelineEvent, "links" | "messages" | "concerns">,
+      on: { from: LocalTime | null; until: LocalTime | null },
+      now: Date,
+    ): TimelineEvent {
+      const { span } = event;
+      return {
+        itemId,
+        title: event.title,
+        ...on,
+        span: onClocks(span),
+        place: event.place,
+        cancelled: event.cancelled,
+        earlier: !span.allDay && span.end <= now,
+        ...originals,
+      };
+    }
+
+    function onClocks(span: TimeSpan): TimelineEvent["span"] {
+      return span.allDay
+        ? span
+        : { allDay: false, start: localDateTime(span.start, timeZone), end: localDateTime(span.end, timeZone) };
+    }
+
+    async function barOf(agenda: Agenda, family: FamilyMember[], choices: FamilyMember[], showing: Showing, instant: Date): Promise<AgendaBarPage> {
+      const now = localDateTime(instant, timeZone);
+      return {
+        id: agenda.id,
+        language: (await families.languages()).language,
+        now,
+        members: family.map(summariseFamilyMember),
+        choices: choices.map(summariseFamilyMember),
+        showing,
+        activity: await activity.current(),
+        mayBeOutOfDate: await sourceHealth.anyFailing(),
+      };
+    }
+
+    return { timeZone, dayOf, schoolDaysOn, timelineOf, taskListOf, row, onClocks, barOf };
   }
 
   /** The settings with its Family Members in the Family's order, or a problem. */
@@ -534,19 +553,7 @@ export function createAgendaAccess(deps: AgendasDeps) {
     return chosen.length > 0 ? chosen : memberIds.length > 0 ? choices.map((member) => member.id) : "all";
   }
 
-  async function barOf(agenda: Agenda, family: FamilyMember[], choices: FamilyMember[], showing: Showing, instant: Date): Promise<AgendaBarPage> {
-    const now = localDateTime(instant, timeZone);
-    return {
-      id: agenda.id,
-      language: (await families.languages()).language,
-      now,
-      members: family.map(summariseFamilyMember),
-      choices: choices.map(summariseFamilyMember),
-      showing,
-      activity: await activity.current(),
-      mayBeOutOfDate: await sourceHealth.anyFailing(),
-    };
-  }
+  const zone = async () => zoned(await deps.timeZone());
 
   function timelineDates(days: TimelineDays | undefined, today: LocalDate, horizonDays: number): LocalDate[] {
     const { first, last } = days ?? { first: today, last: addDays(today, horizonDays - 1) };
@@ -565,6 +572,7 @@ export function createAgendaAccess(deps: AgendasDeps) {
       const order = family.map((member) => member.id);
       const installed = registry.installed();
       const instant = clock.now();
+      const { timeZone, row } = await zone();
       const now = localDateTime(instant, timeZone);
       const found: Around = { events: [], lessons: [], changes: [], tasks: [] };
       for (const item of written) {
@@ -645,6 +653,7 @@ export function createAgendaAccess(deps: AgendasDeps) {
       const choices = agenda.memberIds.length > 0 ? family.filter((member) => agenda.memberIds.includes(member.id)) : family;
       const showing = resolveShowing(input.show, choices, agenda.memberIds);
       const instant = clock.now();
+      const { timeZone, barOf, timelineOf, taskListOf } = await zone();
       const bar = await barOf(agenda, family, choices, showing, instant);
       const now = localDateTime(instant, timeZone);
       if (agenda.layout === "task_list") return { ...bar, layout: "task_list", ...(await taskListOf(now.date, showing)) };
@@ -671,6 +680,7 @@ export function createAgendaAccess(deps: AgendasDeps) {
       const agenda = await agendas.findById(id);
       if (!agenda || !(await input.access.mayOpen(agenda.id))) return null;
       const generatedAt = clock.now();
+      const { timeZone, dayOf, schoolDaysOn, onClocks } = await zone();
       const firstDay = addDays(localDateTime(generatedAt, timeZone).date, -feedDaysBack);
       const showing: Showing = agenda.memberIds.length > 0 ? agenda.memberIds : "all";
       const around = await itemsAround(firstDay, null, showing);

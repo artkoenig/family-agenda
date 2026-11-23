@@ -251,7 +251,7 @@ export class SuppliedFamilies {
     // Refuses a database not prepared by this release before it writes anything, for `serve` to prepare it.
     const application = await openPreparedFamily(shared, {
       ...settings,
-      timeZone: context.timeZone,
+      ...(context.timeZone === undefined ? {} : { timeZone: context.timeZone }),
       identityProvider: identityProviderOf(identityProvider, context),
       connectDatabase: () => postgres,
       familyKey: Buffer.from(context.familyKey, "base64url"),

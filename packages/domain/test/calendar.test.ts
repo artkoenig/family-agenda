@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { localDateTime, addDays, daysBetween, isLocalDate, type LocalDate } from "../src/calendar";
+import { localDateTime, addDays, daysBetween, isLocalDate, isTimeZone, timeZones, type LocalDate } from "../src/calendar";
 
 describe("localDateTime", () => {
   it("returns date and time in UTC", () => {
@@ -150,5 +150,25 @@ describe("isLocalDate", () => {
 
   it("rejects a date with a trailing character", () => {
     expect(isLocalDate("2026-01-15x")).toBe(false);
+  });
+});
+
+describe("isTimeZone", () => {
+  it.each(["Europe/Berlin", "Pacific/Pago_Pago", "UTC"])("takes the IANA time zone %s", (zone) => {
+    expect(isTimeZone(zone)).toBe(true);
+  });
+
+  it.each(["Mars/Olympus", "+01:00", "", "x"])("refuses %j", (zone) => {
+    expect(isTimeZone(zone)).toBe(false);
+  });
+});
+
+describe("timeZones", () => {
+  it("lists the IANA time zones, sorted", () => {
+    const zones = timeZones();
+    expect(zones).toContain("Europe/Berlin");
+    expect(zones).toContain("UTC");
+    expect(zones).toEqual(zones.toSorted());
+    expect(new Set(zones).size).toBe(zones.length);
   });
 });
