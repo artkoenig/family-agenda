@@ -192,6 +192,16 @@ describe("Events extracted from mail", () => {
     expect(extractor.requests.at(-1)?.message.sent).toEqual({ date: "2026-09-13", time: "20:00", weekday: "sunday" });
   });
 
+  it("reads a mail in the time zone an Admin chose", async () => {
+    extractor.script("Elternabend", [parentsEvening]);
+    const changed = await instance.app.timeZone.change("Asia/Tokyo");
+    expect(changed.ok).toBe(true);
+
+    await arrive(mail("m1", "2026-09-14T06:12:00Z", invitation));
+
+    expect(extractor.requests.at(-1)?.message.sent).toEqual({ date: "2026-09-14", time: "15:12", weekday: "monday" });
+  });
+
   it("lets mails wait while no LLM endpoint is configured, and extracts each only once", async () => {
     const fresh = await bootForTest({ extractor, blobStore: new InMemoryBlobStore() });
     try {

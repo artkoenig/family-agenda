@@ -44,6 +44,11 @@ export interface FamilyRepository {
   organizationId(): Promise<string | null>;
   /** Records the organization id unless one is recorded already; whether it was recorded. */
   recordOrganizationId(organizationId: string): Promise<boolean>;
+  /** The IANA time zone the Family lives in; null until a starting value is recorded. */
+  timeZone(): Promise<string | null>;
+  saveTimeZone(timeZone: string): Promise<void>;
+  /** Records the time zone unless one is stored already. */
+  recordTimeZone(timeZone: string): Promise<void>;
 }
 
 export interface FamilyMemberRepository {

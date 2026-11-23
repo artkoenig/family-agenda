@@ -31,6 +31,7 @@ export const de: Catalogue = {
 
   problems: {
     "invalid-language": "Wähle Englisch oder Deutsch als Familiensprache.",
+    "unknown-time-zone": "Wähle eine der Zeitzonen.",
     "kit-not-saved": "Bestätige, dass du das Wiederherstellungs-Kit gespeichert hast.",
     "invalid-name": `Gib einen Namen mit höchstens ${maximumNameLength} Zeichen ein.`,
     "invalid-colour": "Wähle eine der Farben.",
@@ -382,6 +383,8 @@ export const de: Catalogue = {
       "Family Agenda spricht die Familiensprache, in den Agenden und hier, und schreibt Daten in ihr. Wie die Seiten aussehen, entscheidet jeder Browser selbst.",
     familyLanguage: "Familiensprache",
     familyLanguageHint: "Gilt für die ganze Instanz. Eine Änderung lässt die OCR-Sprachen, wie sie sind.",
+    timeZone: "Zeitzone",
+    timeZoneHint: "Entscheidet, wo die Tage der Agenden beginnen und wie Daten in Nachrichten gelesen werden. Bereits erkannte Termine bleiben unverändert.",
     theme: "Darstellung",
     themeHint: "Wird nur in diesem Browser gespeichert; jedes Gerät und jeder Browser wählt selbst.",
     themeOptions: { system: "Wie das Gerät", light: "Hell", dark: "Dunkel" },

@@ -39,8 +39,8 @@ import type {
 
 export type ExtractionDeps = {
   clock: Clock;
-  /** The IANA time zone the Family lives in, which a message's dates and times are read in. */
-  timeZone: string;
+  /** The IANA time zone the Family lives in now, which a message's dates and times are read in. */
+  timeZone: () => Promise<string>;
   families: FamilyRepository;
   endpoints: LlmEndpointRepository;
   secrets: SecretStore;
@@ -87,7 +87,7 @@ const countsAgainstMessage = (problem: Extract<ExtractionResult, { ok: false }>[
  * not written.
  */
 export function createExtraction(deps: ExtractionDeps) {
-  const { clock, timeZone, families, items, blobs, extractor, textExtractor, ocrModels, activity } = deps;
+  const { clock, families, items, blobs, extractor, textExtractor, ocrModels, activity } = deps;
 
   /**
    * The text of a PDF attachment: its text layer, and the pages that are scans read by OCR when
@@ -137,7 +137,7 @@ export function createExtraction(deps: ExtractionDeps) {
     return { text: parts.join("\n\n"), problems };
   }
 
-  async function read(message: PendingMessage, text: string, endpoint: LlmEndpoint): Promise<ExtractionResult> {
+  async function read(message: PendingMessage, text: string, endpoint: LlmEndpoint, timeZone: string): Promise<ExtractionResult> {
     const sent = localDateTime(message.sentAt, timeZone);
     return extractor.extract({ endpoint, message: { text, sent: { ...sent, weekday: weekdayOf(sent.date) } } });
   }
@@ -146,17 +146,18 @@ export function createExtraction(deps: ExtractionDeps) {
    * Reads a message unless another run read it meanwhile, as the schedule and a trigger may run at
    * once; null if it no longer waits.
    */
-  async function readIfPending(message: PendingMessage, text: string, endpoint: LlmEndpoint): Promise<ExtractionResult | null> {
-    return (await items.isPendingMessage(message.id)) ? read(message, text, endpoint) : null;
+  async function readIfPending(message: PendingMessage, text: string, endpoint: LlmEndpoint, timeZone: string): Promise<ExtractionResult | null> {
+    return (await items.isPendingMessage(message.id)) ? read(message, text, endpoint, timeZone) : null;
   }
 
   async function extractOne(message: PendingMessage, text: string, problems: AttachmentProblem[], endpoint: LlmEndpoint) {
+    const timeZone = await deps.timeZone();
     const reading: Reading = { text, sentOn: localDateTime(message.sentAt, timeZone).date, timeZone };
-    let result = await readIfPending(message, text, endpoint);
+    let result = await readIfPending(message, text, endpoint, timeZone);
     if (!result?.ok) return { result, dropped: [] };
     let checkedItems = checkAll(result, reading);
     if (checkedItems.failing.length > 0) {
-      result = await readIfPending(message, text, endpoint);
+      result = await readIfPending(message, text, endpoint, timeZone);
       if (!result?.ok) return { result, dropped: [] };
       checkedItems = checkAll(result, reading);
     }

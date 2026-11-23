@@ -3,7 +3,7 @@ import type { Server } from "node:http";
 import type { SourceTypeId } from "@family-agenda/domain";
 import { PluginError } from "@family-agenda/plugin-kit";
 import { servePlugin } from "@family-agenda/plugin-kit/server";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { bootHttpForTest, type HttpTestInstance, signedInCookie } from "../support/http";
 
 describe("The Source wizard for a Source Type whose plugin runs in a container", () => {
@@ -60,27 +60,37 @@ describe("The Source wizard for a Source Type whose plugin runs in a container",
 
     const added = await instance.post("/admin/sources", { sourceTypeId: "school-portal", "plain.url": "https://portal.example.org" }, { cookie });
     expect(added.status).toBe(303);
-    const [source] = await instance.app.sources.list();
+    // Its plugin prepares it in the background.
+    const source = await vi.waitFor(async () => {
+      const [added] = await instance.app.sources.list();
+      expect(added).toBeDefined();
+      return added!;
+    });
 
     // Its choice field loads after its page.
-    const own = await (await instance.get(`/admin/sources/${source!.id}/choices/classes`, { cookie })).text();
+    const own = await (await instance.get(`/admin/sources/${source.id}/choices/classes`, { cookie })).text();
     expect(own).toMatch(/<input type="checkbox" name="choice.classes" value="3b"\/?> Class 3b/);
 
     const body = new FormData();
     body.append("plain.url", "https://portal.example.org");
     body.append("choice.classes", "");
     body.append("choice.classes", "3b");
-    expect((await instance.request(`/admin/sources/${source!.id}`, { body, cookie })).status).toBe(303);
+    expect((await instance.request(`/admin/sources/${source.id}`, { body, cookie })).status).toBe(303);
     expect((await instance.app.sources.list())[0]?.plain).toMatchObject({ classes: ["3b"] });
   });
 
   it("shows why its plugin could not offer choices", async () => {
     await instance.post("/admin/sources", { sourceTypeId: "school-portal", "plain.url": "https://portal.example.org" }, { cookie });
-    const [source] = await instance.app.sources.list();
+    // Its plugin prepares it in the background.
+    const source = await vi.waitFor(async () => {
+      const [added] = await instance.app.sources.list();
+      expect(added).toBeDefined();
+      return added!;
+    });
     failing = true;
 
     // Its choice field loads after its page.
-    const own = await (await instance.get(`/admin/sources/${source!.id}/choices/classes`, { cookie })).text();
+    const own = await (await instance.get(`/admin/sources/${source.id}/choices/classes`, { cookie })).text();
     expect(own).toContain("The plugin could not offer anything to choose from.");
     expect(own).toContain("The account is signed out.");
   });

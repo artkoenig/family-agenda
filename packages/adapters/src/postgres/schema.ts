@@ -65,6 +65,11 @@ export const family = pgTable(
     ocrEnabled: boolean("ocr_enabled").notNull().default(true),
     /** The id of the Family's organization in the Identity Provider (ADR-0010); null until the first registration creates it. */
     organizationId: text("organization_id"),
+    /**
+     * The IANA time zone the Family lives in, which an Admin chooses; null until the core first
+     * prepares or opens the Family and stores its starting value.
+     */
+    timeZone: text("time_zone"),
   },
   (table) => [
     singleRow("family", table.id),

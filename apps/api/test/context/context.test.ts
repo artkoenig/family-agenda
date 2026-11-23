@@ -91,12 +91,19 @@ describe("a Context", () => {
     expect(openContext(key, sealContext(key, context), 1_000)).not.toHaveProperty("organizationId");
   });
 
+  it("opens without a time zone, which the Family then starts with Europe/Berlin", () => {
+    const withoutTimeZone = { ...context };
+    delete withoutTimeZone.timeZone;
+    const opened = openContext(key, sealContext(key, withoutTimeZone), 1_000);
+    expect(opened).toEqual(withoutTimeZone);
+    expect(opened).not.toHaveProperty("timeZone");
+  });
+
   it("is refused with an empty organization", () => {
     expect(openContext(key, sealContext(key, { ...context, organizationId: "" }), 1_000)).toBeNull();
   });
 
   it.each<[string, Partial<Record<keyof Context | "identityProvider", unknown>>, RegExp]>([
-    ["without a time zone", { timeZone: undefined }, /timeZone must be/],
     ["with a time zone that is none", { timeZone: "Mars/Olympus" }, /timeZone must be/],
     ["with an offset for a time zone", { timeZone: "+01:00" }, /timeZone must be/],
     ["without a public address", { publicUrl: undefined }, /publicUrl must be/],

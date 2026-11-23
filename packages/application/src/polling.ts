@@ -33,8 +33,8 @@ import { runContextOf, type HostFieldsOf } from "./sources";
 
 export type PollingDeps = {
   clock: Clock;
-  /** The IANA time zone the Family lives in, which plugins read times without a zone in. */
-  timeZone: string;
+  /** The IANA time zone the Family lives in now, which plugins read times without a zone in. */
+  timeZone: () => Promise<string>;
   registry: SourceTypeRegistry;
   sourceTypes: SourceTypeRepository;
   /** Where a catalogue entry's polling interval is, which its Sources are polled at. */
@@ -87,7 +87,7 @@ function refusalsOf(sourceId: SourceId, attributes: string[]): RunReport["refuse
 }
 
 export function createSourcePolling(deps: PollingDeps) {
-  const { clock, timeZone, registry, sourceTypes, catalogues, sources, secrets, items, blobs, activity, turns } = deps;
+  const { clock, registry, sourceTypes, catalogues, sources, secrets, items, blobs, activity, turns } = deps;
   const timings: TurnTimings = { ...defaultTurnTimings, ...deps.turnTimings };
   /** This process, as the holder of the turns its runs take. */
   const holder = randomUUID();
@@ -193,7 +193,7 @@ export function createSourcePolling(deps: PollingDeps) {
   async function runNow(source: Source, sourceType: HostFieldsOf, ingest: Ingest, report: RunReport, lost: () => boolean): Promise<void> {
     const now = clock.now();
     const attributes = attributesInTurn(source.id, lost);
-    const result = await ingest(await runContextOf(source, sourceType, { secrets, now, timeZone }), attributes);
+    const result = await ingest(await runContextOf(source, sourceType, { secrets, now, timeZone: await deps.timeZone() }), attributes);
     if (attributes.lost()) {
       report.lost.push(source.id);
       return;

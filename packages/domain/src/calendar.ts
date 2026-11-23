@@ -41,3 +41,19 @@ export function daysBetween(from: LocalDate, to: LocalDate): number {
 export function isLocalDate(value: string): value is LocalDate {
   return /^\d{4}-\d{2}-\d{2}$/.test(value) && new Date(`${value}T00:00:00Z`).toISOString().startsWith(value);
 }
+
+/** Whether `text` names an IANA time zone, not an offset such as `+01:00`. */
+export function isTimeZone(text: string): boolean {
+  if (!/^[A-Za-z]/.test(text)) return false;
+  try {
+    new Intl.DateTimeFormat("en", { timeZone: text });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** The IANA time zones a Family may live in, sorted. */
+export function timeZones(): string[] {
+  return [...new Set([...Intl.supportedValuesOf("timeZone"), "UTC"])].sort();
+}

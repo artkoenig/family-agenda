@@ -139,6 +139,19 @@ export class PostgresFamilyRepository implements FamilyRepository {
       .returning({ organizationId: family.organizationId });
     return recorded.length > 0;
   }
+
+  async timeZone(): Promise<string | null> {
+    const [row] = await this.db.select({ timeZone: family.timeZone }).from(family);
+    return row?.timeZone ?? null;
+  }
+
+  async saveTimeZone(timeZone: string): Promise<void> {
+    await this.db.update(family).set({ timeZone });
+  }
+
+  async recordTimeZone(timeZone: string): Promise<void> {
+    await this.db.update(family).set({ timeZone }).where(isNull(family.timeZone));
+  }
 }
 
 export class PostgresAdminSessionRepository implements AdminSessionRepository {

@@ -4502,6 +4502,8 @@ const themes = ["system", "light", "dark"] as const;
 export function DisplayPage(props: {
   admin: SignedInAdmin;
   family: FamilyLanguage;
+  timeZone: string;
+  timeZones: string[];
   problem?: string;
 }) {
   const prefix = usePathPrefix();
@@ -4527,6 +4529,36 @@ export function DisplayPage(props: {
                 <FamilyLanguageOptions selected={props.family} />
               </select>
               <small>{d.familyLanguageHint}</small>
+            </div>
+          </div>
+          <div class="fam-group__actions">
+            <button type="submit" class="fam-button fam-button--primary">
+              {t.common.save}
+            </button>
+          </div>
+        </Group>
+      </form>
+
+      <form
+        method="post"
+        action={href(prefix, "/admin/display/time-zone")}
+        class="fam-sheet fam-sheet__form"
+      >
+        <Group title={d.timeZone} level={2}>
+          <div class="fam-group__fields">
+            <div class="fam-field">
+              {/* The group's title names it already. */}
+              <label for="time-zone" class="fam-visually-hidden">
+                {d.timeZone}
+              </label>
+              <select id="time-zone" name="timeZone">
+                {props.timeZones.map((zone) => (
+                  <option value={zone} selected={zone === props.timeZone}>
+                    {zone}
+                  </option>
+                ))}
+              </select>
+              <small>{d.timeZoneHint}</small>
             </div>
           </div>
           <div class="fam-group__actions">

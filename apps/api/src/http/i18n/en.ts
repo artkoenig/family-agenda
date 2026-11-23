@@ -46,6 +46,7 @@ export const en = {
 
   problems: {
     "invalid-language": "Choose English or German as the Family Language.",
+    "unknown-time-zone": "Choose one of the time zones.",
     "kit-not-saved": "Confirm that you have saved the Recovery Kit.",
     "invalid-name": `Enter a name of at most ${maximumNameLength} characters.`,
     "invalid-colour": "Choose one of the colours.",
@@ -399,6 +400,8 @@ export const en = {
       "Family Agenda speaks the Family Language, on the Agendas and here, and writes dates in it. How the pages look is up to each browser.",
     familyLanguage: "Family Language",
     familyLanguageHint: "Applies to the whole Instance. Changing it leaves the OCR languages as they are.",
+    timeZone: "Time zone",
+    timeZoneHint: "Decides where the Agendas' days start, and how dates in messages are read. Events already found stay as they are.",
     theme: "Appearance",
     themeHint: "Kept in this browser only; every device and browser chooses its own.",
     themeOptions: { system: "As the device", light: "Light", dark: "Dark" },

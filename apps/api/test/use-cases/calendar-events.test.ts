@@ -292,6 +292,18 @@ describe("polling Sources", () => {
     ]);
   });
 
+  it("runs a Source in the time zone an Admin chose", async () => {
+    await add("school-cal");
+    await instance.app.polling.pollDue();
+    const changed = await instance.app.timeZone.change("Asia/Tokyo");
+    expect(changed.ok).toBe(true);
+
+    instance.clock.advance(10 * minutes);
+    await instance.app.polling.pollDue();
+
+    expect(testPluginControls.runs("school-cal").at(-1)?.timeZone).toBe("Asia/Tokyo");
+  });
+
   it("waits for the next interval after a failed run, keeping the sync cursor, and runs the other Sources", async () => {
     const school = await add("school-cal");
     const club = await add("club-cal");

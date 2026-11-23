@@ -63,6 +63,8 @@ import {
   createSourceHealth,
   createSourcePolling,
   createSourceTypeAccess,
+  createTimeZoneAccess,
+  type TimeZoneAccess,
   createTaskAccess,
   createAgendaAccess,
   createRegistrationEvents,
@@ -168,7 +170,11 @@ export type FamilyConfig = DatabaseConfig & FamilyKeyConfig & {
   familyId?: FamilyId;
   /** Where files such as photos are kept, outside Postgres. */
   blobDirectory: string;
-  /** The IANA time zone the Family lives in; by default the one of the process (`TZ`). */
+  /**
+   * The IANA time zone stored as the Family's starting value while it has none; by default the
+   * one of the process (`TZ`) in fixed mode, and `Europe/Berlin` in supplied mode. Once one is
+   * stored, only an Admin changes it.
+   */
   timeZone?: string;
   secretStore?: SecretStore;
   /** Replaces the BlobStore in the blob directory, such as with an in-memory one. */
@@ -214,8 +220,8 @@ export type PreparedFamily = { familyId: string };
 export type Application = {
   /** What names the Family outside its database, such as in the ticket of a plugin call. */
   familyId: string;
-  /** The IANA time zone the Family lives in. */
-  timeZone: string;
+  /** The IANA time zone the Family lives in, which an Admin chooses. */
+  timeZone: TimeZoneAccess;
   /** Keeps slow plugin and LLM answers briefly, failures shorter. */
   cached: Cached;
   admins: AdminAccess;
@@ -354,10 +360,14 @@ export async function bootFamily(shared: SharedWiring, config: FamilyConfig): Pr
   const { masterKey, familyId } = await withDatabase(postgres, async () => {
     // The Family id is read only once the Family is prepared: it never changes after.
     const { familyId } = await prepareOn(shared, postgres, config.familyId, ownBlobDirectory(config));
+    await new PostgresFamilyRepository(postgres.db).recordTimeZone(config.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone);
     return { masterKey: await familyKeyOf(postgres, config), familyId };
   });
   return wireFamily(shared, config, postgres, masterKey, familyId, "fixed");
 }
+
+/** The time zone a supplied Family starts with when its Context names none. */
+const suppliedStartingTimeZone = "Europe/Berlin";
 
 /** A database that holds no prepared Family: empty, or with a schema other than this version's. */
 export class FamilyNotPreparedError extends Error {
@@ -403,6 +413,7 @@ export async function openPreparedFamily(shared: SharedWiring, config: FamilyCon
     if (stored === null) throw new FamilyNotPreparedError();
     if (stored !== config.familyId) throw new FamilyIdConflictError(stored, config.familyId);
     if (config.organizationId !== undefined) await recordSuppliedOrganizationId(postgres, config.organizationId);
+    await new PostgresFamilyRepository(postgres.db).recordTimeZone(config.timeZone ?? suppliedStartingTimeZone);
     await startSourceTypes(shared, postgres, config.familyId);
     return familyKeyOf(postgres, config);
   });
@@ -480,11 +491,13 @@ function wireFamily(
   mode: "fixed" | "supplied",
 ): Application {
   const { clock, extractor, textExtractor, ocrModels } = shared;
-  const timeZone = config.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
   const secrets = config.secretStore ?? new EnvelopeSecretStore(postgres.db, masterKey);
   const blobs = config.blobStore ?? new FileBlobStore(config.blobDirectory, familyId);
   const registry = shared.plugins.forFamily(familyId);
   const families = new PostgresFamilyRepository(postgres.db);
+  const timeZoneAccess = createTimeZoneAccess({ families });
+  // Read for each request and run, so that an Admin's change applies from the next one on.
+  const timeZone = () => timeZoneAccess.current();
 
   const admins = createAdminAccess({
     clock,
@@ -611,7 +624,7 @@ function wireFamily(
   });
   return {
     familyId,
-    timeZone,
+    timeZone: timeZoneAccess,
     cached,
     admins,
     secrets,
