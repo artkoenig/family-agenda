@@ -553,6 +553,9 @@ html[data-theme-mode="dark"] .fam-theme__icon--dark { display: block; }
 .fam-sheet > * { margin: 0; }
 /* A sheet that is only a list keeps its rows close to its edges. */
 .fam-sheet:has(> .fam-rows:only-child) { padding-top: var(--space-2); padding-bottom: var(--space-2); }
+/* A sheet that is only fields, without a group title: as much room below them as above. */
+.fam-sheet:has(> .fam-group__fields:only-child) { padding-bottom: var(--space-5); }
+.fam-sheet > .fam-group__fields:only-child { padding-top: 0; }
 .fam-sheet__title { flex: 1; margin: 0; font-size: 19px; line-height: 26px; font-weight: 700; }
 :where(.fam-admin) .fam-sheet__form { display: block; margin: 0; }
 .fam-group { margin: var(--space-5) 0 0; }
