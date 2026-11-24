@@ -99,6 +99,18 @@ describe("a Context", () => {
     expect(opened).not.toHaveProperty("timeZone");
   });
 
+  it("carries the notice the caller names, for every reader and for Admins, and none otherwise", () => {
+    const notice = {
+      text: { en: "Trial until 8 December", de: "Testzeitraum bis 8. Dezember" },
+      admin: { text: { en: "Order now", de: "Jetzt bestellen" }, href: "https://family-agenda.example.org/order?family=1" },
+    };
+    expect(openContext(key, sealContext(key, { ...context, notice }), 1_000)).toEqual({ ...context, notice });
+    const forReaders = { text: notice.text };
+    expect(openContext(key, sealContext(key, { ...context, notice: forReaders }), 1_000)).toEqual({ ...context, notice: forReaders });
+    expect(openContext(key, sealContext(key, context), 1_000)).not.toHaveProperty("notice");
+    expect(openContext(key, sealContext(key, { ...context, notice: { text: { en: "x".repeat(200), de: "ü".repeat(200) } } }), 1_000)).not.toBeNull();
+  });
+
   it("is refused with an empty organization", () => {
     expect(openContext(key, sealContext(key, { ...context, organizationId: "" }), 1_000)).toBeNull();
   });
@@ -111,6 +123,15 @@ describe("a Context", () => {
     ["with a public address with a query", { publicUrl: "https://a.example.org/?x=1" }, /publicUrl must be/],
     ["with an Identity Provider, which comes from the environment", { identityProvider }, /identityProvider must not be set: .*OIDC_\* variables/],
     ["with an empty Identity Provider", { identityProvider: {} }, /identityProvider must not be set/],
+    ["with a notice missing a language", { notice: { text: { en: "Trial until 8 December" } } }, /^notice must /],
+    ["with a notice in a language the core does not speak", { notice: { text: { en: "Trial", de: "Test", fr: "Essai" } } }, /^notice must /],
+    ["with a notice of no text", { notice: { text: { en: "", de: "Test" } } }, /^notice must /],
+    ["with an over-long notice", { notice: { text: { en: "x".repeat(201), de: "Test" } } }, /^notice must .*200 characters/],
+    ["with an over-long notice for Admins", { notice: { text: { en: "Trial", de: "Test" }, admin: { text: { en: "Order", de: "ü".repeat(201) }, href: "https://example.org/order" } } }, /^notice must /],
+    ["with a notice for Admins linking a plain http address", { notice: { text: { en: "Trial", de: "Test" }, admin: { text: { en: "Order", de: "Bestellen" }, href: "http://example.org/order" } } }, /^notice must .*https/],
+    ["with a notice for Admins linking a script", { notice: { text: { en: "Trial", de: "Test" }, admin: { text: { en: "Order", de: "Bestellen" }, href: "javascript:alert(1)" } } }, /^notice must /],
+    ["with a notice for Admins without an address", { notice: { text: { en: "Trial", de: "Test" }, admin: { text: { en: "Order", de: "Bestellen" } } } }, /^notice must /],
+    ["with a notice that is no object", { notice: "Trial" }, /^notice must /],
   ])("is refused %s, naming what is wrong", (_, change, problem) => {
     const sealed = sealContext(key, { ...context, ...change } as Context);
     expect(openContext(key, sealed, 1_000)).toBeNull();

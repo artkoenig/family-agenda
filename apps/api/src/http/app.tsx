@@ -99,6 +99,8 @@ import {
 } from "./agenda-page";
 import { href, pathPrefixOf, PathPrefixContext, stylesheetBelow } from "./href";
 import { LegalLinksContext, type LegalLink } from "./legal-links";
+import { NoticeContext, shownNotice, type Notice, type ShownNotice } from "./notice";
+import { SubscriptionUrlContext } from "./subscription-link";
 
 /**
  * Single sign-on through the one callback of a deployment in supplied mode (ADR-0009), for this
@@ -129,10 +131,18 @@ export type HttpOptions = {
   version?: string;
   /** The operator's legal pages, which every page links to (`IMPRINT_URL` and the others); none by default. */
   legalLinks?: readonly LegalLink[];
+  /** The operator's page of the Family's subscription, which the Admin area links to (`SUBSCRIPTION_URL`); none by default. */
+  subscriptionUrl?: string | null;
 };
 
+/**
+ * What the app is handed beside a request: the server's bindings and, in supplied mode, the
+ * notice of the request's Context, which every page shows (ADR-0003). Never from the request itself.
+ */
+export type HttpEnv = HttpBindings & { notice?: Notice };
+
 type Env = {
-  Bindings: HttpBindings;
+  Bindings: HttpEnv;
   Variables: { admin: SignedInAdmin; translation: Translation };
 };
 
@@ -153,6 +163,17 @@ export const signInStartPath = "/sso/start";
 
 /** The refusals the one callback of the deployment names on a Family's sign-in page. */
 const relayedProblems = ["sso-failed", "sso-not-in-group", "sso-no-family", "sso-other-family", "sso-not-member", "sso-email-unverified"] as const;
+
+/**
+ * The notice the page of a request shows: the Context's, which only a core in supplied mode
+ * passes in (a request in fixed mode has none), with the Admins' link only on the pages of a
+ * signed-in Admin, which only the Admin area has.
+ */
+function noticeOf(c: Context<Env>): ShownNotice | null {
+  const env = c.env as HttpEnv | undefined;
+  const admin = c.get("admin") as SignedInAdmin | undefined;
+  return shownNotice(env?.notice, c.get("translation").language, admin !== undefined);
+}
 
 function isRelayedProblem(text: string | undefined): text is (typeof relayedProblems)[number] {
   return (relayedProblems as readonly (string | undefined)[]).includes(text);
@@ -262,6 +283,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
   const version = options.version ?? "dev";
   const prefix = pathPrefixOf(options.publicUrl);
   const legalLinks = options.legalLinks ?? [];
+  const subscriptionUrl = options.subscriptionUrl ?? null;
   /** Sends the browser on to `path` below the prefix after a form was posted. */
   const seeOther = (c: Context, path: `/${string}`) => c.redirect(href(prefix, path), 303);
   const stylesheetFiles = servedStylesheets(prefix);
@@ -274,7 +296,11 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     c.html(
       <PathPrefixContext.Provider value={prefix}>
         <TranslationContext.Provider value={c.get("translation")}>
-          <LegalLinksContext.Provider value={legalLinks}>{node}</LegalLinksContext.Provider>
+          <LegalLinksContext.Provider value={legalLinks}>
+            <SubscriptionUrlContext.Provider value={subscriptionUrl}>
+              <NoticeContext.Provider value={noticeOf(c)}>{node}</NoticeContext.Provider>
+            </SubscriptionUrlContext.Provider>
+          </LegalLinksContext.Provider>
         </TranslationContext.Provider>
       </PathPrefixContext.Provider>,
       status,

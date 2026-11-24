@@ -42,6 +42,7 @@ import {
 } from "@family-agenda/domain";
 import type { Child } from "hono/jsx";
 import { raw } from "hono/html";
+import { SubscriptionNav } from "./subscription-link";
 import { useTranslation, type Translation } from "./i18n/translation";
 import type { Catalogue } from "./i18n/en";
 import { Layout, Problem } from "./layout";
@@ -463,6 +464,7 @@ function AdminLayout(props: {
               })}
             </>
           ))}
+          <SubscriptionNav />
           <span class="fam-settings__version">
             {t.settings.version(admin.settings.version)}
           </span>

@@ -1,9 +1,18 @@
 import { openAgendaAccess } from "@family-agenda/application";
 import type { Application } from "../../src/composition-root";
 import { createHttpApp, type HttpOptions } from "../../src/http/app";
+import type { Notice } from "../../src/http/notice";
 import { bootForTest, type SecondFamily, type TestInstance, type TestOptions } from "./boot";
 
-type RequestInit = { cookie?: string; headers?: Record<string, string> };
+type RequestInit = {
+  cookie?: string;
+  headers?: Record<string, string>;
+  /** The notice of the request's Context, which a core in supplied mode hands to the Family's pages with it. */
+  notice?: Notice;
+};
+
+/** What the app is handed beside a request: as in supplied mode, its Context's notice, if any. */
+type RequestEnv = { notice?: Notice } | undefined;
 
 /** Requests to one `api` container of an Instance. */
 export type HttpClient = {
@@ -31,24 +40,24 @@ export async function bootHttpForTest(
   let booted = instance.app;
   let current = httpAppOf(booted);
   const http = {
-    request: (path: string, init: Parameters<typeof current.request>[1]) => {
+    request: (path: string, init: Parameters<typeof current.request>[1], env: RequestEnv) => {
       if (instance.app !== booted) {
         booted = instance.app;
         current = httpAppOf(booted);
       }
-      return current.request(path, init);
+      return current.request(path, init, env);
     },
   };
   // The same object, so that `app` stays the one running after a restart.
   return Object.assign(instance, clientOf(http), {
     bootHttpApiContainer: async () => {
       const other = httpAppOf(await instance.bootApiContainer());
-      return clientOf({ request: (path, init) => other.request(path, init) });
+      return clientOf({ request: (path, init, env) => other.request(path, init, env) });
     },
     bootHttpSecondFamily: async () => {
       const family = await instance.bootSecondFamily();
       const other = httpAppOf(family.app);
-      return { ...family, ...clientOf({ request: (path, init) => other.request(path, init) }) };
+      return { ...family, ...clientOf({ request: (path, init, env) => other.request(path, init, env) }) };
     },
   });
 }
@@ -82,19 +91,20 @@ export async function bootHttpForTestBelow(
   });
 }
 
-function clientOf(http: { request: (path: string, init: { method?: string; body?: FormData | URLSearchParams; headers?: Record<string, string> }) => Response | Promise<Response> }): HttpClient {
+function clientOf(http: { request: (path: string, init: { method?: string; body?: FormData | URLSearchParams; headers?: Record<string, string> }, env: RequestEnv) => Response | Promise<Response> }): HttpClient {
   const headersFor = (init?: RequestInit) => ({
     ...(init?.cookie ? { cookie: init.cookie } : {}),
     ...init?.headers,
   });
+  const envOf = (init?: RequestInit): RequestEnv => (init?.notice ? { notice: init.notice } : undefined);
   return {
-    get: async (path, init) => http.request(path, { headers: headersFor(init) }),
+    get: async (path, init) => http.request(path, { headers: headersFor(init) }, envOf(init)),
     request: async (path, init) =>
       http.request(path, {
         method: "POST",
         body: init.body,
         headers: { origin: "http://localhost", ...headersFor(init) },
-      }),
+      }, envOf(init)),
     post: async (path, form, init) =>
       http.request(path, {
         method: "POST",
@@ -104,7 +114,7 @@ function clientOf(http: { request: (path: string, init: { method?: string; body?
           origin: "http://localhost",
           ...headersFor(init),
         },
-      }),
+      }, envOf(init)),
   };
 }
 

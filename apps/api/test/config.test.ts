@@ -351,3 +351,20 @@ describe("the operator's legal pages in the environment", () => {
     expect(() => readConfig({ ...base, TERMS_URL: "ftp://operator.example.org/terms" })).toThrow(/^TERMS_URL must be an absolute http or https address/);
   });
 });
+
+describe("the subscription page in the environment", () => {
+  it("is none unless SUBSCRIPTION_URL is set", () => {
+    expect(readConfig(base).subscriptionUrl).toBeNull();
+    expect(readConfig({ ...base, SUBSCRIPTION_URL: "" }).subscriptionUrl).toBeNull();
+  });
+
+  it("is the address SUBSCRIPTION_URL gives, as given, in either mode", () => {
+    expect(readConfig({ ...base, SUBSCRIPTION_URL: "https://operator.example.org/subscription?tab=invoices" }).subscriptionUrl).toBe("https://operator.example.org/subscription?tab=invoices");
+    expect(readSuppliedConfig({ CONTEXT_MODE: "supplied", CONTEXT_KEY: "a-context-key-of-at-least-32-characters", CALLER_PORT: "3002", ...suppliedOidc, SUBSCRIPTION_URL: "https://operator.example.org/subscription" }).subscriptionUrl).toBe("https://operator.example.org/subscription");
+  });
+
+  it("stops the start on an address that is not absolute http or https, naming the variable", () => {
+    expect(() => readConfig({ ...base, SUBSCRIPTION_URL: "/subscription" })).toThrow(/^SUBSCRIPTION_URL must be an absolute http or https address/);
+    expect(() => readConfig({ ...base, SUBSCRIPTION_URL: "mailto:billing@example.org" })).toThrow(/^SUBSCRIPTION_URL must be an absolute http or https address/);
+  });
+});

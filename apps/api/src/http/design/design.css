@@ -274,6 +274,14 @@ html[data-theme-mode="dark"] .fam-theme__icon--dark { display: block; }
 .fam-page .fam-legal a { color: inherit; }
 .fam-admin--narrow .fam-legal { padding-bottom: 0; }
 
+/* The notice from the Context (ADR-0003): one thin line above everything on every page. */
+.fam-notice {
+  display: flex; flex-wrap: wrap; justify-content: center; gap: var(--space-1) var(--space-3);
+  padding: var(--space-2) var(--space-4); background: var(--honey-tint); border-bottom: 1px solid var(--honey);
+  font-size: 14px; line-height: 20px; color: var(--ink); text-align: center;
+}
+.fam-page .fam-notice a { color: inherit; font-weight: 600; }
+
 /* On the narrowest phones the folded bar has no room for the date next to three avatars, the hint and the switch. */
 @media (max-width: 339px) {
   .fam-scrolled .fam-clock__date { display: none; }
@@ -814,7 +822,7 @@ html[data-theme-mode="dark"] .fam-theme__icon--dark { display: block; }
   .fam-page { background: #fff; color: #000; }
   .fam-page .fam-secret { background: #fff; color: #000; border: 1px solid #000; }
   .fam-page .fam-sheet { border: 0; box-shadow: none; padding: 0; }
-  .fam-settings__header, .fam-settings__nav, .fam-banner, .fam-group__actions, .fam-sheet__form, .fam-button, .fam-legal, .fam-legal-menu { display: none; }
+  .fam-settings__header, .fam-settings__nav, .fam-banner, .fam-group__actions, .fam-sheet__form, .fam-button, .fam-legal, .fam-legal-menu, .fam-notice { display: none; }
 }
 
 /* A spinner, standing in for a status while something runs in the background. */

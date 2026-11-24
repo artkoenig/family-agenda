@@ -293,6 +293,28 @@ describe("a core in supplied mode", () => {
     expect(closed.sort()).toEqual([a.databaseUrl, a.databaseUrl, b.databaseUrl]);
   });
 
+  it("shows the notice of each request's own Context, without opening the Family anew for it", async () => {
+    const trial = { text: { en: "Trial until 8 December", de: "Testzeitraum bis 8. Dezember" } };
+
+    const withNotice = await (await request({ ...a, notice: trial })).text();
+    const withAnother = await (await request({ ...a, notice: { text: { en: "Trial until 9 December", de: "Testzeitraum bis 9. Dezember" } } })).text();
+    const without = await (await request(a)).text();
+
+    expect(withNotice).toContain('<aside class="fam-notice"');
+    expect(withNotice).toContain("Trial until 8 December");
+    expect(withAnother).toContain("Trial until 9 December");
+    expect(without).not.toContain("fam-notice");
+    expect(opened).toEqual([a.databaseUrl]);
+  });
+
+  it("refuses a Context with a notice the core does not take, naming it, and opens nothing", async () => {
+    const answer = await request(sealUncheckedContext(contextKey, { ...a, notice: { text: { en: "Trial" } } }));
+
+    expect(answer.status).toBe(400);
+    expect(await answer.text()).toMatch(/^The Context is refused: notice must /);
+    expect(opened).toEqual([]);
+  });
+
   it("prepares an empty database on opening, with the Context's Family id, and then serves the request", async () => {
     others.set("postgres://empty", await PGlite.create());
     const empty = { ...a, databaseUrl: "postgres://empty", familyId: randomUUID() as FamilyId };
