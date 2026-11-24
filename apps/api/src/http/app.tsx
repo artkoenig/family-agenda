@@ -99,6 +99,7 @@ import {
 } from "./agenda-page";
 import { href, pathPrefixOf, PathPrefixContext, stylesheetBelow } from "./href";
 import { LegalLinksContext, type LegalLink } from "./legal-links";
+import { ContractLinksContext, type ContractLink } from "./contract-links";
 
 /**
  * Single sign-on through the one callback of a deployment in supplied mode (ADR-0009), for this
@@ -129,6 +130,8 @@ export type HttpOptions = {
   version?: string;
   /** The operator's legal pages, which every page links to (`IMPRINT_URL` and the others); none by default. */
   legalLinks?: readonly LegalLink[];
+  /** The operator's contract pages, which every Admin page links to (`CANCEL_URL` and the others); none by default. */
+  contractLinks?: readonly ContractLink[];
 };
 
 type Env = {
@@ -262,6 +265,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
   const version = options.version ?? "dev";
   const prefix = pathPrefixOf(options.publicUrl);
   const legalLinks = options.legalLinks ?? [];
+  const contractLinks = options.contractLinks ?? [];
   /** Sends the browser on to `path` below the prefix after a form was posted. */
   const seeOther = (c: Context, path: `/${string}`) => c.redirect(href(prefix, path), 303);
   const stylesheetFiles = servedStylesheets(prefix);
@@ -274,7 +278,9 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     c.html(
       <PathPrefixContext.Provider value={prefix}>
         <TranslationContext.Provider value={c.get("translation")}>
-          <LegalLinksContext.Provider value={legalLinks}>{node}</LegalLinksContext.Provider>
+          <LegalLinksContext.Provider value={legalLinks}>
+            <ContractLinksContext.Provider value={contractLinks}>{node}</ContractLinksContext.Provider>
+          </LegalLinksContext.Provider>
         </TranslationContext.Provider>
       </PathPrefixContext.Provider>,
       status,

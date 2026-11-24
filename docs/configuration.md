@@ -149,6 +149,18 @@ An operator who offers Family Agenda to the public links an imprint, a privacy p
 
 Each value is an absolute http or https address; any other stops the start, naming the variable. It is linked as given, whatever the Family Language (the page offers its own languages), with no path prefix and no Family data added. Only the variables set are linked, in this order. The Admin area, the sign-in page and the other pages show them at their foot, joined by „ · “; an Agenda, whose timeline loads more days without end, shows a small „§“ menu in its top bar that opens them. Print leaves them out. With none set, no page has a footer or menu. ICS feeds, the web app manifest, JSON answers and downloads carry none.
 
+## Contract pages
+
+An operator who sells Family Agenda as a contract must, under German consumer law, offer a cancel button (§ 312k BGB) and a withdrawal button (§ 356a BGB), and the hosted service a way to delete the whole Family. The core knows no contracts: it links pages the operator runs. Optionally, in either mode, set any of:
+
+| Variable | Link (English / German Family Language) |
+|---|---|
+| `CANCEL_URL` | Verträge hier kündigen / Verträge hier kündigen |
+| `WITHDRAW_URL` | Vertrag widerrufen / Vertrag widerrufen |
+| `DELETE_URL` | Delete family / Familie löschen |
+
+The two statutory labels stay German in every Family Language. Each value is an absolute http or https address; any other stops the start, naming the variable. Each is independent of the others. It is linked as given, in the same tab, whatever the Family Language (the page offers its own languages), with no path prefix and no Family id, user or token added: the operator's page signs the person in and finds their Family itself. Only the variables set are linked, in this order, as their own group, „Contract“ / „Vertrag“, at the end of the settings list on every page of the Admin area, so that they are always in reach. Every signed-in Admin sees them; the operator's page decides who may cancel, withdraw or delete. With none set, the Admin area shows no link and no group.
+
 ## Address of the Instance
 
 - **Home network only**: leave the defaults. `mdns` makes `http://family-agenda.local:8080` work from the home network. It needs a Linux host, not Docker Desktop.

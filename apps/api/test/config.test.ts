@@ -351,3 +351,32 @@ describe("the operator's legal pages in the environment", () => {
     expect(() => readConfig({ ...base, TERMS_URL: "ftp://operator.example.org/terms" })).toThrow(/^TERMS_URL must be an absolute http or https address/);
   });
 });
+
+describe("the operator's contract pages in the environment", () => {
+  const contract = { CANCEL_URL: "https://operator.example.org/cancel", WITHDRAW_URL: "https://operator.example.org/withdraw?from=admin", DELETE_URL: "http://operator.example.org/delete#family" };
+
+  it("are none when no variable is set", () => {
+    expect(readConfig(base).contractLinks).toEqual([]);
+    expect(readConfig({ ...base, CANCEL_URL: "", WITHDRAW_URL: "", DELETE_URL: "" }).contractLinks).toEqual([]);
+  });
+
+  it("are the pages set, each on its own, in the order cancel, withdraw, delete, with their addresses as given", () => {
+    expect(readConfig({ ...base, DELETE_URL: contract.DELETE_URL, WITHDRAW_URL: contract.WITHDRAW_URL, CANCEL_URL: contract.CANCEL_URL }).contractLinks).toEqual([
+      { kind: "cancel", url: contract.CANCEL_URL },
+      { kind: "withdraw", url: contract.WITHDRAW_URL },
+      { kind: "delete", url: contract.DELETE_URL },
+    ]);
+    expect(readConfig({ ...base, WITHDRAW_URL: contract.WITHDRAW_URL }).contractLinks).toEqual([{ kind: "withdraw", url: contract.WITHDRAW_URL }]);
+    expect(readConfig({ ...base, DELETE_URL: contract.DELETE_URL }).contractLinks).toEqual([{ kind: "delete", url: contract.DELETE_URL }]);
+  });
+
+  it("are read in supplied mode too", () => {
+    expect(readSuppliedConfig({ CONTEXT_MODE: "supplied", CONTEXT_KEY: "a-context-key-of-at-least-32-characters", CALLER_PORT: "3002", ...suppliedOidc, CANCEL_URL: contract.CANCEL_URL }).contractLinks).toEqual([{ kind: "cancel", url: contract.CANCEL_URL }]);
+  });
+
+  it("stop the start on an address that is not absolute http or https, naming the variable", () => {
+    expect(() => readConfig({ ...base, CANCEL_URL: "/cancel" })).toThrow(/^CANCEL_URL must be an absolute http or https address/);
+    expect(() => readConfig({ ...base, WITHDRAW_URL: "mailto:withdraw@example.org" })).toThrow(/^WITHDRAW_URL must be an absolute http or https address/);
+    expect(() => readConfig({ ...base, DELETE_URL: "ftp://operator.example.org/delete" })).toThrow(/^DELETE_URL must be an absolute http or https address/);
+  });
+});
