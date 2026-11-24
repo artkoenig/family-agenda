@@ -134,6 +134,7 @@ async function ingested(result: IngestResult, attributes: AttributeReporting): P
       externalId: record.externalId,
       attributes: record.attributes,
       sender: record.sender ?? null,
+      own: record.own ?? false,
       subject: record.subject ?? null,
       link: record.link ?? null,
       // A stated Item has no time of its own, even if the plugin gives one.

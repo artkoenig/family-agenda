@@ -80,10 +80,15 @@ export const extractionSchema = {
 const instructions = `You read messages a family receives, such as school mails, and list what happens on a date and what someone has to do or bring.
 
 "events" are what happens on a date and matters to the family: appointments someone attends, such as a parents' evening, a school trip or a match; days without school, such as a study day, a teachers' training day or a bridge day; and what takes place at school, such as a bike check by the police or a project day.
-"tasks" are things someone has to do or bring, such as signing a form, paying for a trip, filling in a survey or bringing sports kit, optionally by a deadline.
+"tasks" are things the readers of the message are asked or required to do or bring, such as signing a form, paying for a trip, filling in a survey or bringing sports kit, optionally by a deadline.
 
 Rules:
 - List every such event and task, each once, also when a long newsletter mentions it in passing. List nothing for a message that names no date and nothing to do; then "events" and "tasks" are empty.
+- The line before the message says who wrote it, the family or someone else, which decides whether an offer, a promise or a request is a task:
+  - Written by someone else: what the writer offers or promises to do or bring is not a task, such as "Ich würde etwas Laugengebäck mitbringen", "Ich bringe Saft mit" or "I can drive". What the writer asks of the readers is a task, with or without a date, also when phrased politely or along with an offer: of "Ich bringe Saft mit, bringt bitte Becher mit" only the cups are one.
+  - Written by the family: what the writer offers or promises to do or bring is a task of the family, such as bringing juice for "Ich bringe Saft mit". What the writer asks of others is a task only if the message says by or on which day it is to be done: "Bringt bitte bis Freitag Becher mit" is one, "Bringt bitte Becher mit" is not. Such a request and an own promise are two tasks, never one: of "Ich bringe Saft mit, bringt bitte Becher mit" only the juice is one, with "bis Freitag" added to the request the cups are another.
+  - In both, what the writer has already done is not a task.
+  - What a quoted or forwarded message inside it promises was written by someone else.
 - A list of things to bring for one occasion is one task.
 - A task's "description" is what else the family needs to know to do it, in the language of the message, such as how much to pay and how, or the things to bring; null if the title says it all. Write a list, such as the things to bring, as one line per entry starting with "- ", each entry as written.
 - Do not list changes to single lessons, such as a cancelled or substituted lesson. A whole day without school is an event.
@@ -208,6 +213,7 @@ function promptOf(request: ExtractionRequest): string {
   const { message } = request;
   return [
     `The message was sent on ${message.sent.weekday}, ${message.sent.date} at ${message.sent.time}.`,
+    message.own ? "It was written by: the family." : "It was written by: someone else.",
     "",
     "The message:",
     "<<<",

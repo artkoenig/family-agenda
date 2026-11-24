@@ -141,7 +141,7 @@ export function createExtraction(deps: ExtractionDeps) {
 
   async function read(message: PendingMessage, text: string, endpoint: LlmEndpoint, timeZone: string): Promise<ExtractionResult> {
     const sent = localDateTime(message.sentAt, timeZone);
-    return extractor.extract({ endpoint, message: { text, sent: { ...sent, weekday: weekdayOf(sent.date) } } });
+    return extractor.extract({ endpoint, message: { text, own: message.own, sent: { ...sent, weekday: weekdayOf(sent.date) } } });
   }
 
   /**

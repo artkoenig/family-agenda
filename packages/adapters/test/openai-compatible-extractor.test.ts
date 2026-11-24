@@ -76,6 +76,7 @@ describe("the OpenAI-compatible Extractor", () => {
     endpoint: { baseUrl: server.baseUrl, model: "qwen3.5:9b", apiKey },
     message: {
       text: "Der Elternabend am Donnerstag, 17.09., um 19:30 Uhr findet in Raum 104 statt.",
+      own: false,
       sent: { date: "2026-09-14" as LocalDate, time: "08:12" as LocalTime, weekday: "monday" },
     },
   });
@@ -109,6 +110,22 @@ describe("the OpenAI-compatible Extractor", () => {
     expect(system).toContain("quotes the message it answers");
     expect(system).toContain("Am 3. November 2026 um 08:12 schrieb");
     expect(system).toContain("A forwarded message");
+  });
+
+  it("tells the model of every message whether the family or someone else wrote it, which decides on offers", async () => {
+    server.answer(200, completion(JSON.stringify({ events: [], tasks: [] })));
+    const { endpoint, message } = request();
+
+    await new OpenAiCompatibleExtractor().extract({ endpoint, message: { ...message, own: true } });
+    await new OpenAiCompatibleExtractor().extract({ endpoint, message: { ...message, own: false } });
+
+    const contents = (role: string) =>
+      server.received.map((received) => (received.body.messages as { role: string; content: string }[]).find((sent) => sent.role === role)?.content);
+    expect(contents("user")[0]).toContain("It was written by: the family.");
+    expect(contents("user")[1]).toContain("It was written by: someone else.");
+    expect(contents("system")[0]).toContain("Written by someone else: what the writer offers or promises to do or bring is not a task");
+    expect(contents("system")[0]).toContain("Written by the family: what the writer offers or promises to do or bring is a task of the family");
+    expect(contents("system")[0]).toContain("What the writer asks of others is a task only if the message says by or on which day it is to be done");
   });
 
   it("sends no API key to an endpoint without one", async () => {

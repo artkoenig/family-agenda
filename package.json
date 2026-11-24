@@ -12,6 +12,7 @@
     "depcruise": "depcruise packages apps",
     "test": "vitest run",
     "test:image": "vitest run --config vitest.image.config.ts",
+    "eval": "vitest run --config vitest.eval.config.ts",
     "specs": "sh specs/check.sh",
     "check": "pnpm lint && pnpm typecheck && pnpm depcruise && pnpm crap && pnpm mutation",
     "mutation": "stryker run",
