@@ -158,6 +158,17 @@ export const en = {
     notSavedYet: "Not saved yet",
   },
 
+  export: {
+    title: "Export",
+    summary: "All data as one ZIP",
+    description: "Download the Family's data to take it elsewhere.",
+    contentsTitle: "What the file holds",
+    contents: [
+      "One ZIP file with all of the Family's Agendas and Items, each Agenda also as a calendar file, and the stored messages with their attachments, as far as they are still kept.",
+      "It holds no secrets: no credentials of the Sources, no Agenda Links and no Recovery Kit. Keep it safe all the same, as it holds the Family's messages.",
+    ],
+    download: "Download export",
+  },
   recoveryKit: {
     title: "Recovery Kit",
     description: "Restoring a Backup needs it to read the Source credentials. Keep it offline, away from the Instance.",

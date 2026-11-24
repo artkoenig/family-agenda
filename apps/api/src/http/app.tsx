@@ -63,6 +63,7 @@ import {
   LlmTestFragment,
   MessagePage,
   RecoveryKitPage,
+  ExportPage,
   recoveryKitText,
   SignInPage,
   SourcesPage,
@@ -85,6 +86,7 @@ import {
   type SourceAdding,
 } from "./pages";
 import { icsFeed } from "./ics-feed";
+import { exportZip } from "./export-zip";
 import { avatarImages, avatarStylesheet } from "./avatars";
 import {
   ActivityIndicator,
@@ -256,6 +258,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     singleSignOn,
     extraction,
     messages,
+    familyExport,
     timeZone: familyTimeZone,
   } = application;
   const app = new Hono<Env>();
@@ -785,6 +788,17 @@ export function createHttpApp(application: Application, options: HttpOptions) {
   };
 
   app.get("/admin/recovery-kit", (c) => recoveryKitPage(c));
+
+  app.get("/admin/export", (c) => render(c, <ExportPage admin={c.get("admin")} />));
+
+  // A stable path that other pages may link to, such as `<public address>/admin/export/download` (docs/export.md).
+  app.get("/admin/export/download", async (c) =>
+    c.body(exportZip(familyExport.entries((feed) => icsFeed(feed, null))), 200, {
+      "content-type": "application/zip",
+      "cache-control": "no-store",
+      "content-disposition": `attachment; filename="family-agenda-export-${await familyExport.exportedOn()}.zip"`,
+    }),
+  );
 
   app.get("/admin/recovery-kit/download", (c) =>
     c.text(

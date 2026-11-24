@@ -395,6 +395,15 @@ export class PostgresItemRepository implements ItemRepository {
     };
   }
 
+  async messageIds(): Promise<RawMessageId[]> {
+    const rows = await this.db
+      .select({ id: sourceRecords.id })
+      .from(sourceRecords)
+      .where(and(isNull(sourceRecords.stated), isNull(sourceRecords.withdrawnAt)))
+      .orderBy(asc(arrivedAt), asc(sourceRecords.id));
+    return rows.map((row) => row.id as RawMessageId);
+  }
+
   async itemsOfMessage(id: RawMessageId): Promise<ProjectedItem[]> {
     if (!uuidPattern.test(id)) return [];
     return this.projected(eq(items.recordId, id), false);
@@ -402,6 +411,10 @@ export class PostgresItemRepository implements ItemRepository {
 
   async overlapping(from: Date, to: Date | null): Promise<ProjectedItem[]> {
     return this.projected(and(to ? lte(windowFrom, to) : undefined, gte(windowTo, from)));
+  }
+
+  async all(): Promise<ProjectedItem[]> {
+    return this.projected(undefined, false);
   }
 
   async outstanding(): Promise<ProjectedItem[]> {

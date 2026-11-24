@@ -276,6 +276,8 @@ Whoever signs in with a verified email and `OIDC_REQUIRED_GROUP` in the groups c
 
 **Admins page** (`/admin/admins`, only with `IDP_MANAGEMENT_API`). Lists the Family's Admins and pending invitations. An Admin invites by email: the Identity Provider mails an Invitation link, valid 7 days, and the invitee becomes an Admin on first sign-in (see [Accepting an invitation](#accepting-an-invitation)). Pending invitations can be revoked, Admins removed from the organization.
 
+**Export** (`/admin/export`). An Admin downloads the Family's data as one ZIP from `<PUBLIC_URL>/admin/export/download`, without the Sources' credentials; it is not a backup. Its format: [export.md](export.md).
+
 **Signing out** ends the session and, for a session from single sign-on, signs out at the Identity Provider too (RP-initiated logout, ADR-0009): the browser goes to the provider's `end_session_endpoint` with the ID token, and the provider sends it back to `<PUBLIC_URL>/admin/sign-in`, in supplied mode to `OIDC_CALLBACK_URL`, which hands it on to its Family's sign-in page. Register that address as a post-logout redirect URI with the provider: the Logto setup does so, so **run it again after upgrading** to this release. Without it Logto refuses the sign-out. A provider that names no end session endpoint keeps the old behaviour: only the core's session ends, and the next sign-in may go through silently as the same person.
 
 In supplied mode each Admin belongs to exactly one Family: whoever signs in with a verified email and the Context's Family id in the claim `OIDC_FAMILY_ID_CLAIM` names. A token without that claim, or with another Family's id, is refused with a message saying so.

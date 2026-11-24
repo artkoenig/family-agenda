@@ -6,9 +6,10 @@ import { changeLabel, dateLabel, spanLabel } from "./agenda-page";
 /**
  * An Agenda's feed as an iCalendar document (RFC 5545), for calendar apps that subscribe to it. Each
  * Event keeps its Item's id as its UID, and each school day its key, so that apps update it in
- * place.
+ * place. Each entry links to the Agenda, unless `agendaLink` is null, as in an Export, which holds
+ * no Agenda Link.
  */
-export function icsFeed(feed: AgendaFeed, agendaLink: string): string {
+export function icsFeed(feed: AgendaFeed, agendaLink: string | null): string {
   const stamp = instant(feed.generatedAt);
   const translation = translationFor(feed.language);
   const lines = [
@@ -28,7 +29,7 @@ export function icsFeed(feed: AgendaFeed, agendaLink: string): string {
   return lines.map(folded).join("\r\n") + "\r\n";
 }
 
-function vevent(event: FeedEvent, stamp: string, agendaLink: string, translation: Translation): string[] {
+function vevent(event: FeedEvent, stamp: string, agendaLink: string | null, translation: Translation): string[] {
   const { span } = event;
   const { t } = translation;
   const details = [spanLabel(event.when, translation), event.place, event.cancelled ? t.agenda.cancelled : null].filter(Boolean);
@@ -41,8 +42,7 @@ function vevent(event: FeedEvent, stamp: string, agendaLink: string, translation
       : [`DTSTART:${instant(span.start)}`, `DTEND:${instant(span.end)}`]),
     `SUMMARY:${text(event.title)}`,
     ...(event.place ? [`LOCATION:${text(event.place)}`] : []),
-    `DESCRIPTION:${text(`${details.join("\n")}\n\n${agendaLink}`)}`,
-    `URL:${agendaLink}`,
+    ...described(details.join("\n"), agendaLink),
     ...(event.cancelled ? ["STATUS:CANCELLED"] : []),
     "END:VEVENT",
   ];
@@ -53,7 +53,7 @@ function vevent(event: FeedEvent, stamp: string, agendaLink: string, translation
  * where the feed names them, marked with ⚠ when the day has a Timetable Change. Its details list
  * the Lessons, each with its Timetable Change; a day whose every Lesson is cancelled is cancelled.
  */
-function schoolDayVevent(day: FeedSchoolDay, stamp: string, agendaLink: string, { t }: Translation): string[] {
+function schoolDayVevent(day: FeedSchoolDay, stamp: string, agendaLink: string | null, { t }: Translation): string[] {
   const title = day.names.length > 0 ? `${day.names.join(", ")}: ${t.agenda.school}` : t.agenda.school;
   const changeOf = (lesson: TimelineLesson) => day.timetableChanges.find((change) => sameSlot(change, lesson));
   const lines = day.lessons.map((lesson) => {
@@ -73,8 +73,7 @@ function schoolDayVevent(day: FeedSchoolDay, stamp: string, agendaLink: string, 
     `DTSTART;VALUE=DATE:${date(day.date)}`,
     `DTEND;VALUE=DATE:${date(addDays(day.date, 1))}`,
     `SUMMARY:${text(day.timetableChanges.length > 0 ? `⚠ ${title}` : title)}`,
-    `DESCRIPTION:${text(`${lines.join("\n")}\n\n${agendaLink}`)}`,
-    `URL:${agendaLink}`,
+    ...described(lines.join("\n"), agendaLink),
     ...(day.cancelled ? ["STATUS:CANCELLED"] : []),
     "END:VEVENT",
   ];
@@ -84,7 +83,7 @@ function schoolDayVevent(day: FeedSchoolDay, stamp: string, agendaLink: string, 
  * A Task as an all-day entry on its Deadline day, not a VTODO, which subscribed calendars ignore
  * (decisions in #20). Its details say when it is due and what else to know, as its description says it.
  */
-function taskVevent(task: FeedTask, stamp: string, agendaLink: string, { t, locale }: Translation): string[] {
+function taskVevent(task: FeedTask, stamp: string, agendaLink: string | null, { t, locale }: Translation): string[] {
   const deadline = dateLabel(task.deadline, locale);
   const details = [
     task.overdue ? t.agenda.overdueBy(deadline) : t.agenda.by(deadline),
@@ -98,11 +97,17 @@ function taskVevent(task: FeedTask, stamp: string, agendaLink: string, { t, loca
     `DTSTART;VALUE=DATE:${date(task.deadline)}`,
     `DTEND;VALUE=DATE:${date(addDays(task.deadline, 1))}`,
     `SUMMARY:${text(task.title)}`,
-    `DESCRIPTION:${text(`${details.join("\n")}\n\n${agendaLink}`)}`,
-    `URL:${agendaLink}`,
+    ...described(details.join("\n"), agendaLink),
     ...(task.cancelled ? ["STATUS:CANCELLED"] : []),
     "END:VEVENT",
   ];
+}
+
+/** An entry's details, followed by the link to its Agenda, and that link as its URL, if there is one. */
+function described(details: string, agendaLink: string | null): string[] {
+  return agendaLink === null
+    ? [`DESCRIPTION:${text(details)}`]
+    : [`DESCRIPTION:${text(`${details}\n\n${agendaLink}`)}`, `URL:${agendaLink}`];
 }
 
 /** Whether a Timetable Change is that of a Lesson: the same subject at the same time. */

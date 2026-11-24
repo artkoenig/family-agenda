@@ -54,6 +54,7 @@ import {
   type InvitationAcceptance,
   type FamilyAdmins,
   createMessageAccess,
+  createFamilyExport,
   createRecoveryKitAccess,
   createRetention,
   createSecretSweep,
@@ -90,6 +91,7 @@ import {
   type LlmEndpointAccess,
   type SingleSignOn,
   type MessageAccess,
+  type FamilyExport,
   type RecoveryKitAccess,
   type SecretStore,
   type Retention,
@@ -251,6 +253,8 @@ export type Application = {
   /** Extracts Items from the raw messages that wait for it, as part of due work. */
   extraction: ExtractionAccess;
   messages: MessageAccess;
+  /** The Family's data as files, for an Admin to download and take elsewhere. */
+  familyExport: FamilyExport;
   /** The Identity Provider's registration events (ADR-0010); null without `IDP_WEBHOOK_SECRET`. */
   registrationEvents: RegistrationEvents | null;
   /** What a registration does, and whether it is open (ADR-0010). */
@@ -615,6 +619,7 @@ function wireFamily(
     activity,
   });
   const messages = createMessageAccess({ items, blobs });
+  const familyExport = createFamilyExport({ clock, timeZone, members, agendas, sources: sourceRepository, items, blobs });
   const familyAdmins = createFamilyAdmins({
     clock,
     families,
@@ -644,6 +649,7 @@ function wireFamily(
     singleSignOn,
     extraction,
     messages,
+    familyExport,
     registrationEvents: registrationEventsOf(shared, registration, mode),
     registration,
     familyAdmins,
