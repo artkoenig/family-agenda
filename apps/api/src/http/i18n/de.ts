@@ -492,4 +492,10 @@ export const de: Catalogue = {
       none: "Nichts zu tun.",
     },
   },
+  legal: {
+    imprint: "Impressum",
+    privacy: "Datenschutz",
+    terms: "AGB",
+    menu: "Rechtliches",
+  },
 };

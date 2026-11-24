@@ -98,6 +98,7 @@ import {
   agendaUrl,
 } from "./agenda-page";
 import { href, pathPrefixOf, PathPrefixContext, stylesheetBelow } from "./href";
+import { LegalLinksContext, type LegalLink } from "./legal-links";
 
 /**
  * Single sign-on through the one callback of a deployment in supplied mode (ADR-0009), for this
@@ -126,6 +127,8 @@ export type HttpOptions = {
   agendaAccess: AgendaAccessPolicy;
   /** The release the image was built from; shown by the health check and in the Admin area. Defaults to a development build. */
   version?: string;
+  /** The operator's legal pages, which every page links to (`IMPRINT_URL` and the others); none by default. */
+  legalLinks?: readonly LegalLink[];
 };
 
 type Env = {
@@ -258,6 +261,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
   const app = new Hono<Env>();
   const version = options.version ?? "dev";
   const prefix = pathPrefixOf(options.publicUrl);
+  const legalLinks = options.legalLinks ?? [];
   /** Sends the browser on to `path` below the prefix after a form was posted. */
   const seeOther = (c: Context, path: `/${string}`) => c.redirect(href(prefix, path), 303);
   const stylesheetFiles = servedStylesheets(prefix);
@@ -270,7 +274,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     c.html(
       <PathPrefixContext.Provider value={prefix}>
         <TranslationContext.Provider value={c.get("translation")}>
-          {node}
+          <LegalLinksContext.Provider value={legalLinks}>{node}</LegalLinksContext.Provider>
         </TranslationContext.Provider>
       </PathPrefixContext.Provider>,
       status,

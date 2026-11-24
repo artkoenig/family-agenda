@@ -4,6 +4,7 @@ import { raw } from "hono/html";
 import { editGuards, lazyFragmentErrors } from "./lazy-fragment";
 import { useTranslation } from "./i18n/translation";
 import { href, usePathPrefix } from "./href";
+import { LegalFooter } from "./legal-links";
 
 /**
  * Opens a dialog the server rendered open as a modal one, so that the page behind it is inert
@@ -198,7 +199,10 @@ export function Layout(props: {
           {agenda ? (
             props.children
           ) : (
-            <div class={props.narrow ? "fam-admin fam-admin--narrow" : "fam-admin"}>{props.children}</div>
+            <div class={props.narrow ? "fam-admin fam-admin--narrow" : "fam-admin"}>
+              {props.children}
+              <LegalFooter />
+            </div>
           )}
           <script>{raw(agenda ? themeSwitches : modalDialogs + copyButtons + themeSwitches + submitOnChange + lazyFragmentErrors + editGuards)}</script>
         </body>

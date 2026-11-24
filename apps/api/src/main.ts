@@ -24,6 +24,7 @@ async function serveFixed() {
     { fetch: createHttpApp(application, {
         trustProxy: config.trustProxy,
         version: config.version,
+        legalLinks: config.legalLinks,
         ...(config.publicUrl ? { publicUrl: config.publicUrl } : {}),
         // The only listener in v1 is the local one, where Agendas open without a secret, until Agenda Links are reworked (ADR-0004).
         agendaAccess: openAgendaAccess,
