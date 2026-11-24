@@ -65,6 +65,14 @@ const copyTakesItems = sql<boolean>`(${copy.processedAt} IS NULL OR EXISTS (SELE
 /** A Copy whose message counts as delivered: one withdrawn, or back after it was, is no longer read and has no Items. */
 const copyDelivered = and(isNull(copy.withdrawnAt), or(isNotNull(copy.processedAt), isNotNull(copy.body)));
 
+/** Whether the Family sent the message itself: only the sender's own Copy tells, and another one may be read. */
+const ownByAnyCopy = sql<boolean>`(source_record.own OR EXISTS (
+  SELECT 1 FROM source AS own_source
+  JOIN source AS other_source ON other_source.source_type_id = own_source.source_type_id
+  JOIN source_record AS other ON other.source_id = other_source.id
+  WHERE own_source.id = source_record.source_id AND other.external_id = source_record.external_id AND other.own
+))`;
+
 /**
  * The Copies of the messages with these external ids in the other Sources of the Source's Source
  * Type, in the order they arrived, and whether each has the Items and still has its text.
@@ -260,7 +268,7 @@ export class PostgresItemRepository implements ItemRepository {
 
   async pendingMessages(limit: number): Promise<PendingMessage[]> {
     const rows = await this.db
-      .select({ id: sourceRecords.id, sourceId: sourceRecords.sourceId, sentAt: arrivedAt, recordedAt: sourceRecords.createdAt, body: sourceRecords.body })
+      .select({ id: sourceRecords.id, sourceId: sourceRecords.sourceId, sentAt: arrivedAt, recordedAt: sourceRecords.createdAt, own: ownByAnyCopy, body: sourceRecords.body })
       .from(sourceRecords)
       .where(pendingMessage)
       .orderBy(asc(sourceRecords.createdAt), asc(sourceRecords.occurredAt))
@@ -278,6 +286,7 @@ export class PostgresItemRepository implements ItemRepository {
       sourceId: row.sourceId as SourceId,
       sentAt: row.sentAt,
       recordedAt: row.recordedAt,
+      own: row.own,
       // The query takes only records with a body.
       body: row.body ?? "",
       attachments: attachments.flatMap((attachment) =>
@@ -525,6 +534,7 @@ async function recordMessage(tx: Transaction, run: SourceRun, origin: RunOrigin,
       externalId: origin.externalId,
       occurredAt: origin.occurredAt,
       sender: message.sender,
+      own: message.own,
       subject: message.subject,
       body: message.body,
       createdAt: run.at,

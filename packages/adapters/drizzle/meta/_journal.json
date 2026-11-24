@@ -148,6 +148,13 @@
       "when": 1795548286173,
       "tag": "0020_source_setting_up",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1795550919388,
+      "tag": "0021_own_message",
+      "breakpoints": true
     }
   ]
 }

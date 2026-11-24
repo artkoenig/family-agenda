@@ -306,6 +306,7 @@ CREATE TABLE source_record (
   external_id   TEXT NOT NULL,
   occurred_at   TIMESTAMPTZ,
   sender        TEXT,
+  own           BOOLEAN NOT NULL DEFAULT false,  -- the Family sent the message itself, as its plugin tells
   subject       TEXT,
   body          TEXT,
   stated        JSONB,

@@ -371,6 +371,8 @@ export const sourceRecords = pgTable(
     /** When the Source received a message, as its plugin tells; null for a stated Item. */
     occurredAt: timestamptz("occurred_at"),
     sender: text("sender"),
+    /** Whether the Family sent the message itself, as its plugin tells. */
+    own: boolean("own").notNull().default(false),
     subject: text("subject"),
     body: text("body"),
     /**
