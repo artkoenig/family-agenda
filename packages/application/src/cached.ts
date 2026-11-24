@@ -5,6 +5,11 @@ function failed(answer: unknown): boolean {
   return typeof answer === "object" && answer !== null && "ok" in answer && answer.ok === false;
 }
 
+/** Whether an answer only tells that there is none yet, as a plugin's still setting up does. */
+function pending(answer: unknown): boolean {
+  return failed(answer) && "settingUp" in (answer as object);
+}
+
 /** An answer that did not come within the cache's time limit. */
 export class CachedTimeout extends Error {
   constructor(key: string, ms: number) {
@@ -20,7 +25,7 @@ export type CachedOptions = {
 /**
  * Keeps slow answers, such as a plugin's or an LLM endpoint's, for `ttlMs` by key, and one saying
  * `ok: false` only for the shorter `failTtlMs`, so that a broken plugin is not asked on every page
- * but soon again. An answer that throws is not kept; one that takes longer than the cache's time
+ * but soon again. An answer that throws, or that there is none yet, is not kept; one that takes longer than the cache's time
  * limit fails with `CachedTimeout`, kept like a failure. Callers asking while an answer is on its
  * way share it.
  */
@@ -56,8 +61,9 @@ export function createCache(clock: Clock, options: { timeoutMs?: number } = {}):
       entry.settled = true;
       entry.until = now() + lifetimeMs;
     };
+    const lifetimeOf = (answer: unknown) => (pending(answer) ? 0 : failed(answer) ? failTtlMs : ttlMs);
     entry.answer.then(
-      (answer) => { settle(failed(answer) ? failTtlMs : ttlMs); },
+      (answer) => { settle(lifetimeOf(answer)); },
       (error: unknown) => {
         settle(failTtlMs);
         if (!(error instanceof CachedTimeout) && entries.get(key) === entry) entries.delete(key);

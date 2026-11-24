@@ -9,7 +9,7 @@ import { z } from "zod";
  * `major.minor`. A minor change is additive only, such as an optional field or an optional new
  * endpoint; anything else is a new major. CI compares `openapi.json` with the last release.
  */
-export const contractVersion = "3.0";
+export const contractVersion = "3.1";
 
 export type ContractVersion = { major: number; minor: number };
 
@@ -236,6 +236,12 @@ export const ingestResultSchema = z
     attributes: attributesSchema.optional(),
     /** Secrets the plugin changed, such as a refreshed token; the core stores them encrypted. */
     secrets: secretsSchema.optional(),
+    /**
+     * Says that the Source is still being set up, such as an account not linked yet or chats still
+     * loading, and what it waits for: no error, shown as such, and asked again soon. Left out once
+     * the Source is ready (since 3.1).
+     */
+    settingUp: pluginTextSchema.optional(),
   })
   .meta({ id: "IngestResult" });
 
@@ -248,7 +254,11 @@ export const sourceAttributesRequestSchema = runContextSchema;
 export const sourceAttributesResponseSchema = attributesSchema;
 export const fieldChoicesRequestSchema = z.object({ field: z.string().min(1), context: runContextSchema }).meta({ id: "FieldChoicesRequest" });
 export const fieldChoicesResponseSchema = z
-  .object({ choices: z.array(z.object({ value: z.string(), label: z.string() })) })
+  .object({
+    choices: z.array(z.object({ value: z.string(), label: z.string() })),
+    /** Says that the values are not known yet and why: no error, shown instead of them, and asked again soon (since 3.1). */
+    settingUp: pluginTextSchema.optional(),
+  })
   .meta({ id: "FieldChoicesResponse" });
 export const catalogueEntriesRequestSchema = runContextSchema
   .pick({ egressProxy: true })

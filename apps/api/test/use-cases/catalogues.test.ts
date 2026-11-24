@@ -201,6 +201,44 @@ describe("a Source Type's catalogue and the Sources that use it", () => {
     expect(testPluginControls.choicesAsked("bridged")).toBe(asked + 2);
   });
 
+  it("asks again at once while the plugin is still setting up, which is no error", async () => {
+    const { id } = await addWhatsApp();
+    testPluginControls.settingUp("bridged", "Loading chats.");
+    expect((await instance.app.sources.find(id))?.choices?.chats).toEqual({ ok: false, settingUp: "Loading chats." });
+
+    testPluginControls.settingUp("bridged", null);
+    expect((await instance.app.sources.find(id))?.choices?.chats?.ok).toBe(true);
+  });
+
+  it("asks for choice values again after a run, which may find others", async () => {
+    const { id } = await addWhatsApp();
+    await instance.app.sources.find(id);
+    const asked = testPluginControls.choicesAsked("bridged");
+
+    await instance.app.polling.pollDue();
+    await instance.app.sources.find(id);
+    expect(testPluginControls.choicesAsked("bridged")).toBe(asked + 1);
+  });
+
+  it("runs a Source at once when a setup step is done that its last run may have waited for, and else leaves it", async () => {
+    const { id } = await addWhatsApp();
+    const awaits = async () => (await instance.app.sources.list())[0]?.health.awaitingRead;
+    testPluginControls.failNext("bridged", "definite");
+    await instance.app.polling.pollDue();
+    testPluginControls.setupShows("bridged", { status: "waiting" });
+    await instance.app.sources.setupProgress(id, "login");
+    expect(await awaits()).toBe(false);
+
+    testPluginControls.setupShows("bridged", { status: "done" });
+    await instance.app.sources.setupProgress(id, "login");
+    expect(await awaits()).toBe(true);
+    await instance.app.polling.pollDue();
+    expect((await instance.app.sources.list())[0]?.health.status).toBe("ok");
+
+    await instance.app.sources.setupProgress(id, "login");
+    expect(await awaits()).toBe(false);
+  });
+
   it("lists the Sources of a Source Type without asking their plugins, whose values the page loads after it", async () => {
     await addWhatsApp();
     const asked = testPluginControls.choicesAsked("bridged");

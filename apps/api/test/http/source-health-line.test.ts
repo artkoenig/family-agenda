@@ -56,6 +56,24 @@ describe("a Source's health line, kept up to date without reloading", () => {
     expect(poller(await page()), "a page of a read Source does not poll").toBeNull();
   });
 
+  it("keeps asking while the Source is still being set up, saying what it waits for, and offers to go on", async () => {
+    testPluginControls.settingUp("school-mail", "Not linked yet.");
+    await instance.app.polling.pollDue();
+
+    const html = await health(4);
+    expect(html).toContain("Not linked yet.");
+    expect(html).toContain("fam-chip--waiting");
+    expect(html).not.toContain("fam-problem");
+    expect(poller(html)?.[2]).toBe("5");
+
+    const shown = await page();
+    expect(shown).toContain("Continue setup");
+    expect(await (await instance.get(`/admin/sources/${sourceId}/fix`, { cookie })).text()).toContain("Set up a Source");
+    const list = await (await instance.get("/admin/sources", { cookie })).text();
+    expect(list).toContain("Setting up …");
+    testPluginControls.settingUp("school-mail", null);
+  });
+
   it("stops once the Source is failing", async () => {
     testPluginControls.failNext("school-mail", "definite");
     await instance.app.polling.pollDue();

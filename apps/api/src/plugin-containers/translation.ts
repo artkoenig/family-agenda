@@ -72,7 +72,8 @@ export function loadedSourceType(description: Description, call: PluginCall, egr
       : null,
     async choices(field, context) {
       const answer = await call("fieldChoices", { field, context: runContextOf("fieldChoices", context) });
-      return answer.ok ? { ok: true, value: answer.body.choices } : { ok: false, message: answer.message };
+      if (!answer.ok) return { ok: false, message: answer.message };
+      return answer.body.settingUp === undefined ? { ok: true, value: answer.body.choices } : { ok: false, settingUp: answer.body.settingUp };
     },
     async setupProgress(stepId, context) {
       const answer = await call("setupProgress", { stepId, context: runContextOf("setupProgress", context) });
@@ -127,6 +128,7 @@ async function ingested(result: IngestResult, attributes: AttributeReporting): P
     ok: true,
     syncCursor: result.syncCursor,
     withdrawn: result.withdrawn ?? [],
+    settingUp: result.settingUp ?? null,
     secrets: result.secrets ?? {},
     origins: result.sourceRecords.map((record) => ({
       externalId: record.externalId,

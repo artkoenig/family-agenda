@@ -1423,6 +1423,9 @@ function SourcesSummary(props: { sources: SourceSummary[] }) {
   const failing = props.sources.filter(
     (source) => source.health.status === "failing",
   ).length;
+  const settingUp = props.sources.some(
+    (source) => shownStatusOf(source.health) === "settingUp",
+  );
   const silent = props.sources.filter(
     (source) => source.health.status === "silent",
   ).length;
@@ -1433,6 +1436,8 @@ function SourcesSummary(props: { sources: SourceSummary[] }) {
         <span class="fam-status fam-status--problem">
           {s.failingCount(failing)}
         </span>
+      ) : settingUp ? (
+        <span class="fam-status fam-status--waiting">{s.settingUp}</span>
       ) : silent > 0 ? (
         <span class="fam-status fam-status--waiting">
           {s.silentCount(silent)}
@@ -2082,7 +2087,9 @@ export function SourceAttributesSection(props: {
  * read it has declared what it will.
  */
 function attributesPendingOf(source: SourceSummary): boolean {
-  if (!source.health.awaitingRead || source.attributes.length > 0) return false;
+  const { awaitingRead, settingUp } = source.health;
+  if (!(awaitingRead || settingUp !== null) || source.attributes.length > 0)
+    return false;
   return Object.values(source.plain).some(
     (value) => Array.isArray(value) && value.length > 0,
   );
@@ -2114,10 +2121,13 @@ const sourceReadPoll: FragmentPoll = {
   maxSeconds: 300,
 };
 
+/** The same while it is still being set up, which waits for the Admin too, such as to scan a QR code. */
+const settingUpPoll: FragmentPoll = { every: 5, backoff: 1, maxSeconds: 3600 };
+
 /**
  * Asks for a Source's health line again after a while, with backoff and a cap, while it awaits a
- * read; invisible, as the line itself says it was not read yet. `attributes=pending` asks for the
- * Source Attributes too, which come with that read.
+ * read or is still being set up; invisible, as the line itself says it was not read yet.
+ * `attributes=pending` asks for the Source Attributes too, which come with that read.
  */
 function SourceReadPoller(props: {
   source: SourceSummary;
@@ -2127,14 +2137,15 @@ function SourceReadPoller(props: {
   const { source } = props;
   const prefix = usePathPrefix();
   // Also while a failure is stored: after a Fix, the next read tells whether it worked.
-  if (!source.health.awaitingRead) return null;
+  const settingUp = source.health.settingUp !== null;
+  if (!source.health.awaitingRead && !settingUp) return null;
   const pending = props.attributesPending ?? attributesPendingOf(source);
   return notReadyYet({
     href: href(
       prefix,
       `${sourceHref(source.id)}/health${pending ? "?attributes=pending" : ""}`,
     ),
-    poll: sourceReadPoll,
+    poll: settingUp ? settingUpPoll : sourceReadPoll,
     waitedSeconds: props.waitedSeconds,
     silent: true,
   });
@@ -2168,7 +2179,6 @@ export function SourceHealthFragment(props: {
           form={form}
           href={ownHref}
           timeZone={props.timeZone}
-          s={t.sources}
           text={text}
         />
       </div>
@@ -2333,10 +2343,9 @@ function SourcePageHeader(props: {
   form: SourceForm | undefined;
   href: string;
   timeZone: string;
-  s: Translation["t"]["sources"];
   text: (text: MultilingualText) => string;
 }) {
-  const { name, health, entry, form, href, s, text } = props;
+  const { name, health, entry, form, href, text } = props;
   return (
     <SectionHeader
       title={name}
@@ -2348,14 +2357,7 @@ function SourcePageHeader(props: {
         </span>
       }
       action={
-        health.status === "failing" && form ? (
-          <DialogLink
-            class="fam-button fam-button--secondary"
-            href={`${href}/fix`}
-          >
-            {s.fix}
-          </DialogLink>
-        ) : undefined
+        form ? <FixLink health={health} href={`${href}/fix`} /> : undefined
       }
     />
   );
@@ -2474,7 +2476,6 @@ export function SourcePage(props: {
           form={form}
           href={ownHref}
           timeZone={props.timeZone}
-          s={s}
           text={text}
         />
       </div>
@@ -2654,13 +2655,11 @@ function SourceRow(props: {
         <HealthStatus health={source.health} />
         <Chevron />
       </a>
-      {source.health.status === "failing" && form ? (
-        <DialogLink
-          class="fam-button fam-button--secondary"
+      {form ? (
+        <FixLink
+          health={source.health}
           href={href(prefix, `${sourceHref(source.id)}/fix`)}
-        >
-          {s.fix}
-        </DialogLink>
+        />
       ) : null}
     </li>
   );
@@ -2899,7 +2898,11 @@ export function FixDialog(props: {
   return (
     <Dialog
       id="fix-source"
-      eyebrow={s.fixEyebrow}
+      eyebrow={
+        shownStatusOf(source.health) === "settingUp"
+          ? s.setUpEyebrow
+          : s.fixEyebrow
+      }
       title={text(source.displayName)}
       closeHref={props.closeHref}
     >
@@ -3292,24 +3295,49 @@ function HealthLine(props: { health: SourceHealth; timeZone: string }) {
   );
 }
 
+/** A Source's status as shown: still being set up is neither OK nor Silent, as it was not read yet. */
+function shownStatusOf(
+  health: SourceHealth,
+): SourceHealth["status"] | "settingUp" {
+  return health.status !== "failing" && health.settingUp !== null
+    ? "settingUp"
+    : health.status;
+}
+
 /** A Source's status as a word with a dot, or as a chip beside a heading. */
 function HealthStatus(props: { health: SourceHealth; chip?: boolean }) {
   const { t } = useTranslation();
-  const tone = { ok: "ok", failing: "problem", silent: "waiting" }[
-    props.health.status
-  ];
+  const status = shownStatusOf(props.health);
+  const tone = {
+    ok: "ok",
+    failing: "problem",
+    silent: "waiting",
+    settingUp: "waiting",
+  }[status];
   const kind = props.chip ? "fam-chip" : "fam-status";
   return (
     <span class={`${kind} ${kind}--${tone}`}>
-      {t.sources.status[props.health.status]}
+      {status === "settingUp" ? t.sources.settingUp : t.sources.status[status]}
     </span>
+  );
+}
+
+/** Opens the dialog of a Source that needs an Admin: to fix it, or to go on setting it up. */
+function FixLink(props: { health: SourceHealth; href: string }) {
+  const { t } = useTranslation();
+  const status = shownStatusOf(props.health);
+  if (status !== "failing" && status !== "settingUp") return null;
+  return (
+    <DialogLink class="fam-button fam-button--secondary" href={props.href}>
+      {status === "failing" ? t.sources.fix : t.sources.goOnSettingUp}
+    </DialogLink>
   );
 }
 
 /** Whether there is more to say of how a Source is doing than that it is OK. */
 function hasHealthDetails(health: SourceHealth): boolean {
   return (
-    health.status !== "ok" ||
+    shownStatusOf(health) !== "ok" ||
     health.problem !== null ||
     health.invalidRecords.length > 0 ||
     health.unknownAttributes.length > 0 ||
@@ -3317,10 +3345,24 @@ function hasHealthDetails(health: SourceHealth): boolean {
   );
 }
 
+/** When a Source was last read successfully, or what it still waits for before. */
+function lastReadText(
+  health: SourceHealth,
+  s: Translation["t"]["sources"],
+  text: Translation["text"],
+  when: (date: Date) => string,
+): string {
+  if (shownStatusOf(health) === "settingUp" && health.settingUp !== null)
+    return text(health.settingUp);
+  return health.lastSuccessAt
+    ? s.lastRead(when(health.lastSuccessAt))
+    : s.notReadYet;
+}
+
 /** When a Source was last read successfully, and its last error. */
 function HealthDetails(props: { health: SourceHealth; timeZone: string }) {
   const { health } = props;
-  const { t, locale } = useTranslation();
+  const { t, locale, text } = useTranslation();
   const s = t.sources;
   const when = (date: Date) =>
     new Intl.DateTimeFormat(locale, {
@@ -3337,11 +3379,7 @@ function HealthDetails(props: { health: SourceHealth; timeZone: string }) {
       {health.status === "silent" ? (
         <span>{s.silentHint(silentAfterMs / (24 * 60 * 60 * 1000))}</span>
       ) : null}
-      <span>
-        {health.lastSuccessAt
-          ? s.lastRead(when(health.lastSuccessAt))
-          : s.notReadYet}
-      </span>
+      <span>{lastReadText(health, s, text, when)}</span>
       {problemText !== null ? (
         <span class="fam-problem">{problemText}</span>
       ) : null}
@@ -3511,7 +3549,7 @@ export function SourceValues(props: {
   const { t, text } = useTranslation();
   const fields = choiceFieldsWithValues(source, rowFields(props.form));
   const offered = fields.filter(
-    (field) => choiceProblemOf(source, field.key) === null,
+    (field) => source.choices?.[field.key]?.ok !== false,
   );
   const labels = chosenLabels(source, offered, t, text);
   return (
@@ -3781,7 +3819,26 @@ function offeredOf(
 /** Why the plugin offers nothing for a choice field; null if it answered. Kept apart from ChoiceField for its CRAP score. */
 function choiceProblemOf(source: ChoiceSource, key: string): string | null {
   const answer = source.choices?.[key];
-  return answer?.ok === false ? answer.message : null;
+  return answer?.ok === false && "message" in answer ? answer.message : null;
+}
+
+/** What the plugin waits for before it knows a choice field's values; null if it answered or failed. */
+function choiceSettingUpOf(
+  source: ChoiceSource,
+  key: string,
+): MultilingualText | null {
+  const answer = source.choices?.[key];
+  return answer?.ok === false && "settingUp" in answer
+    ? answer.settingUp
+    : null;
+}
+
+/** Whether a choice field's values still have to load: not asked for yet, or not known to the plugin yet. */
+function choiceLoads(source: ChoiceSource, key: string): boolean {
+  return (
+    source.choices?.[key] === undefined ||
+    choiceSettingUpOf(source, key) !== null
+  );
 }
 
 function optionsOf(
@@ -3820,7 +3877,6 @@ function ChoiceLoading(props: {
 }) {
   const { field, chosen } = props;
   const { t, text } = useTranslation();
-  const prefix = usePathPrefix();
   return (
     <>
       <div id={keptId(props.id)} hidden>
@@ -3829,34 +3885,62 @@ function ChoiceLoading(props: {
           <input type="hidden" name={`choice.${field.key}`} value={value} />
         ))}
       </div>
-      <LazyFragment
-        href={href(
-          prefix,
-          `${sourceHref(props.source.id)}/choices/${encodeURIComponent(field.key)}?id=${encodeURIComponent(props.id)}`,
-        )}
-        block
-      >
-        <fieldset class="fam-field" disabled aria-busy="true">
-          <legend>{props.label}</legend>
-          <small>
-            <span class="fam-spinner" aria-hidden="true"></span>{" "}
-            {t.loading.choices(text(field.label))}
-          </small>
-        </fieldset>
-      </LazyFragment>
+      <ChoiceLoader {...props} message={t.loading.choices(text(field.label))} />
     </>
+  );
+}
+
+/** The part of a loading choice field that asks for its values, after a while if `delaySeconds`. */
+function ChoiceLoader(props: {
+  field: ChoiceFieldSpec;
+  id: string;
+  source: ChoiceSource;
+  label: string;
+  message: string;
+  delaySeconds?: number;
+}) {
+  const prefix = usePathPrefix();
+  return (
+    <LazyFragment
+      href={href(
+        prefix,
+        `${sourceHref(props.source.id)}/choices/${encodeURIComponent(props.field.key)}?id=${encodeURIComponent(props.id)}`,
+      )}
+      {...(props.delaySeconds ? { delaySeconds: props.delaySeconds } : {})}
+      block
+    >
+      <fieldset class="fam-field" disabled aria-busy="true">
+        <legend>{props.label}</legend>
+        <small>
+          <span class="fam-spinner" aria-hidden="true"></span> {props.message}
+        </small>
+      </fieldset>
+    </LazyFragment>
   );
 }
 
 /**
  * One choice field of a Source with the values its plugin offered, as the fragment its form loads:
- * its checkboxes take over from the hidden inputs that kept its selection, which it removes.
+ * its checkboxes take over from the hidden inputs that kept its selection, which it removes. While
+ * the plugin still sets up, the field keeps loading and asks again, until it has values or fails.
  */
 export function LoadedChoiceField(props: {
   field: ChoiceFieldSpec;
   id: string;
   source: ChoiceSource;
 }) {
+  const { field, source } = props;
+  const { t, text } = useTranslation();
+  const settingUp = choiceSettingUpOf(source, field.key);
+  if (settingUp !== null)
+    return (
+      <ChoiceLoader
+        {...props}
+        label={fieldLabel(field, t, text)}
+        message={text(settingUp)}
+        delaySeconds={liveStepPollSeconds}
+      />
+    );
   return (
     <>
       <ChoiceField {...props} />
@@ -3887,8 +3971,8 @@ function ChoiceField(props: {
     );
   }
   const chosen = chosenOf(source, field.key);
-  // Its values were not asked for with the page: they load on their own, its selection kept meanwhile.
-  if (source.choices?.[field.key] === undefined)
+  // Its values were not asked for with the page, or are not known yet: they load on their own, its selection kept meanwhile.
+  if (choiceLoads(source, field.key))
     return (
       <ChoiceLoading
         field={field}

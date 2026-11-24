@@ -181,7 +181,9 @@ export class PostgresItemRepository implements ItemRepository {
         .set({
           syncCursor: cursorToJson(run.syncCursor),
           lastRunAt: run.at,
-          lastSuccessAt: run.at,
+          // Still being set up, it was not read yet.
+          ...(run.settingUp === null ? { lastSuccessAt: run.at } : {}),
+          settingUp: run.settingUp,
           ...failureColumns(null),
           lastNewRecordAt: sql`(${lastNewRecord})`,
           ...(await invalidColumns(tx, run, outcome, withdrawn)),

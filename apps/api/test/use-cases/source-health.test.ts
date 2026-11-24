@@ -61,7 +61,7 @@ describe("Source health", () => {
       problem: null,
       lastSuccessAt: new Date("2026-09-14T07:10:00Z"),
       invalidRecords: [],
-      unknownAttributes: [],
+      unknownAttributes: [], settingUp: null,
       awaitingRead: false,
       failedMessages: 0,
     });
@@ -77,7 +77,7 @@ describe("Source health", () => {
       problem: { kind: "run-failed", message: "school-portal failed" },
       lastSuccessAt: new Date("2026-09-14T07:10:00Z"),
       invalidRecords: [],
-      unknownAttributes: [],
+      unknownAttributes: [], settingUp: null,
       awaitingRead: false,
       failedMessages: 0,
     });
@@ -92,7 +92,7 @@ describe("Source health", () => {
       problem: { kind: "run-failed", message: "school-portal failed" },
       lastSuccessAt: new Date("2026-09-14T07:10:00Z"),
       invalidRecords: [],
-      unknownAttributes: [],
+      unknownAttributes: [], settingUp: null,
       awaitingRead: false,
       failedMessages: 0,
     });
@@ -109,11 +109,11 @@ describe("Source health", () => {
   it("is OK again after a successful run", async () => {
     testPluginControls.failNext("school-portal", "definite");
     await tick();
-    expect(await health()).toMatchObject({ status: "failing", lastSuccessAt: null, invalidRecords: [], unknownAttributes: [], awaitingRead: false, failedMessages: 0 });
+    expect(await health()).toMatchObject({ status: "failing", lastSuccessAt: null, invalidRecords: [], unknownAttributes: [], settingUp: null, awaitingRead: false, failedMessages: 0 });
 
     await tick();
 
-    expect(await health()).toEqual({ status: "ok", problem: null, lastSuccessAt: new Date("2026-09-14T07:20:00Z"), invalidRecords: [], unknownAttributes: [], awaitingRead: false, failedMessages: 0 });
+    expect(await health()).toEqual({ status: "ok", problem: null, lastSuccessAt: new Date("2026-09-14T07:20:00Z"), invalidRecords: [], unknownAttributes: [], settingUp: null, awaitingRead: false, failedMessages: 0 });
   });
 
   it("stays Failing after a definite error until a run succeeds, whatever errors follow", async () => {
@@ -127,9 +127,56 @@ describe("Source health", () => {
       problem: { kind: "run-failed", message: "school-portal failed" },
       lastSuccessAt: null,
       invalidRecords: [],
-      unknownAttributes: [],
+      unknownAttributes: [], settingUp: null,
       awaitingRead: false,
       failedMessages: 0,
+    });
+  });
+
+  describe("still being set up", () => {
+    const text = "Waiting for the account to be linked.";
+    beforeEach(() => { testPluginControls.settingUp("school-portal", text); });
+    afterEach(() => { testPluginControls.settingUp("school-portal", null); });
+
+    it("tells what it waits for, without an error and without having been read", async () => {
+      await tick();
+
+      expect(await health()).toMatchObject({ status: "ok", problem: null, settingUp: text, lastSuccessAt: null });
+    });
+
+    it("runs again within half a minute, and is ready once a run says so", async () => {
+      await tick();
+      testPluginControls.settingUp("school-portal", null);
+      await tick(29_000);
+      expect((await health())?.settingUp).toBe(text);
+
+      await tick(1_000);
+      const ready = await health();
+      expect(ready?.settingUp).toBeNull();
+      expect(ready?.lastSuccessAt).not.toBeNull();
+    });
+
+    it("clears an error, and is cleared by one", async () => {
+      testPluginControls.failNext("school-portal", "definite");
+      await tick();
+      expect(await health()).toMatchObject({ status: "failing", settingUp: null });
+
+      await tick();
+      expect(await health()).toMatchObject({ status: "ok", problem: null, settingUp: text });
+
+      testPluginControls.failNext("school-portal", "definite");
+      await tick();
+      expect(await health()).toMatchObject({ status: "failing", settingUp: null });
+    });
+
+    it("keeps when it was last read, if it was set up before", async () => {
+      testPluginControls.settingUp("school-portal", null);
+      await tick();
+      const read = (await health())?.lastSuccessAt;
+      testPluginControls.settingUp("school-portal", text);
+      await tick();
+
+      expect(await health()).toMatchObject({ settingUp: text, lastSuccessAt: read });
     });
   });
 
@@ -182,7 +229,7 @@ describe("Source health", () => {
       problem: { kind: "not-installed" },
       lastSuccessAt: new Date("2026-09-14T07:10:00Z"),
       invalidRecords: [],
-      unknownAttributes: [],
+      unknownAttributes: [], settingUp: null,
       awaitingRead: false,
       failedMessages: 0,
     });
@@ -194,7 +241,7 @@ describe("Source health", () => {
     await tick();
 
     expect(testPluginControls.runs("school-portal").at(-1)?.syncCursor).toBe("1");
-    expect(await health()).toEqual({ status: "ok", problem: null, lastSuccessAt: new Date("2026-09-14T07:30:00Z"), invalidRecords: [], unknownAttributes: [], awaitingRead: false, failedMessages: 0 });
+    expect(await health()).toEqual({ status: "ok", problem: null, lastSuccessAt: new Date("2026-09-14T07:30:00Z"), invalidRecords: [], unknownAttributes: [], settingUp: null, awaitingRead: false, failedMessages: 0 });
   });
 
   it("tells every Agenda it may be out of date while a Source is Failing, and only then", async () => {

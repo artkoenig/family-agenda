@@ -1,4 +1,4 @@
-import { sourceStatus, type SourceStatus } from "@family-agenda/domain";
+import { sourceStatus, type MultilingualText, type SourceStatus } from "@family-agenda/domain";
 import type { Clock, Source, SourceRepository, SourceTypeRegistry, SourceTypeRepository } from "./ports";
 import { enabledSourceType } from "./enabled-source-type";
 
@@ -25,6 +25,8 @@ export type SourceHealth = {
    * being declared, or after they were archived, so that those were refused. A plugin bug.
    */
   unknownAttributes: string[];
+  /** What it waits for while it is still being set up, as its plugin tells; null once it is ready. */
+  settingUp: MultilingualText | null;
   /** Whether it waits for its first read, or the next one since an Admin changed it. */
   awaitingRead: boolean;
   /** How many of its messages failed extraction for good, which makes it Failing until an Admin retries them. */
@@ -40,7 +42,7 @@ export type SourceHealthDeps = {
 
 /** How a Source is doing, as the Admin area shows it (ADR-0001). */
 export async function healthOf(source: Source, deps: SourceHealthDeps): Promise<SourceHealth> {
-  const { lastSuccessAt, failure, invalidRecords, unknownAttributes, failedMessages } = source;
+  const { lastSuccessAt, settingUp, failure, invalidRecords, unknownAttributes, failedMessages } = source;
   const awaitingRead = source.lastRunAt === null;
   const loaded = await enabledSourceType(source.sourceTypeId, deps);
   if (!loaded) {
@@ -48,7 +50,7 @@ export async function healthOf(source: Source, deps: SourceHealthDeps): Promise<
     const problem: HealthProblem = installed
       ? { kind: "not-loadable", reason: installed.notLoadable }
       : { kind: "not-installed" };
-    return { status: "failing", problem, lastSuccessAt, invalidRecords, unknownAttributes, awaitingRead, failedMessages };
+    return { status: "failing", problem, lastSuccessAt, invalidRecords, unknownAttributes, settingUp, awaitingRead, failedMessages };
   }
   const status = sourceStatus({
     failure,
@@ -58,7 +60,7 @@ export async function healthOf(source: Source, deps: SourceHealthDeps): Promise<
     now: deps.clock.now(),
     failedMessages,
   });
-  return { status, problem: failure ? { kind: "run-failed", message: failure.message } : null, lastSuccessAt, invalidRecords, unknownAttributes, awaitingRead, failedMessages };
+  return { status, problem: failure ? { kind: "run-failed", message: failure.message } : null, lastSuccessAt, invalidRecords, unknownAttributes, settingUp, awaitingRead, failedMessages };
 }
 
 /** Whether the Family's Sources work, as every Agenda hints at without detail. */

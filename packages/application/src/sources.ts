@@ -8,8 +8,7 @@ import type {
   Clock,
   ConfigFieldSpec,
   FamilyMemberRepository,
-  KnownValue,
-  PluginAnswer,
+  ChoicesAnswer,
   LoadedSourceType,
   PlainConfig,
   SecretRef,
@@ -77,8 +76,13 @@ export type SourceSummary = {
    * `find` and `listOfType` have them: asking a plugin may reach a mailbox or a homeserver, which
    * the list of all Sources should not.
    */
-  choices?: Record<string, PluginAnswer<KnownValue[]>>;
+  choices?: Record<string, ChoicesAnswer>;
 };
+
+/** Whether a Source's last run may have found it not set up, so that it is run again as soon as a setup step is done. */
+function waitsForSetup(source: Source): boolean {
+  return source.settingUp !== null || source.failure !== null || source.lastSuccessAt === null;
+}
 
 /** How long the values a plugin offers for a Source's choice fields are shown before it is asked again. */
 const choicesMaxAgeMs = 5 * 60_000;
@@ -292,9 +296,9 @@ export function createSourceAccess(deps: SourcesDeps) {
     };
   }
 
-  /** Where the values a choice field offers are kept: per field of a Source as it is configured now. */
+  /** Where the values a choice field offers are kept: per field of a Source as it is configured now, until its next run, which may find others. */
   function choiceKey(source: Source, key: string): string {
-    const configuration = JSON.stringify([source.id, source.sourceTypeId, source.configVersion, source.plain, source.secrets]);
+    const configuration = JSON.stringify([source.id, source.sourceTypeId, source.configVersion, source.plain, source.secrets, source.lastRunAt]);
     return `choices:${configuration}:${key}`;
   }
 
@@ -303,7 +307,7 @@ export function createSourceAccess(deps: SourcesDeps) {
    * showing a Source does not ask its plugin again each time, such as an IMAP plugin logging in to list
    * folders; none while its Source Type is not enabled.
    */
-  async function choicesOf(source: Source): Promise<Record<string, PluginAnswer<KnownValue[]>>> {
+  async function choicesOf(source: Source): Promise<Record<string, ChoicesAnswer>> {
     const sourceType = await enabled(source.sourceTypeId);
     const fields = sourceType?.configuration.fields.filter((field) => field.choice) ?? [];
     if (!sourceType || fields.length === 0) return {};
@@ -313,7 +317,7 @@ export function createSourceAccess(deps: SourcesDeps) {
       context ??= contextOf(source, sourceType);
       return context;
     };
-    const choices: Record<string, PluginAnswer<KnownValue[]>> = {};
+    const choices: Record<string, ChoicesAnswer> = {};
     // One after another, so that a plugin such as an IMAP one logs in once at a time.
     for (const field of fields) {
       choices[field.key] = await cached(choiceKey(source, field.key), choicesMaxAgeMs, failedChoicesMaxAgeMs, async () =>
@@ -398,6 +402,7 @@ export function createSourceAccess(deps: SourcesDeps) {
       attributes: [],
       lastRunAt: null,
       lastSuccessAt: null,
+      settingUp: null,
       failure: null,
       lastNewRecordAt: null,
       invalidRecords: [],
@@ -457,7 +462,7 @@ export function createSourceAccess(deps: SourcesDeps) {
     async choiceOf(
       id: SourceId,
       key: string,
-    ): Promise<{ field: ConfigFieldSpec; source: { id: SourceId; plain: PlainConfig; choices: Record<string, PluginAnswer<KnownValue[]>> } } | null> {
+    ): Promise<{ field: ConfigFieldSpec; source: { id: SourceId; plain: PlainConfig; choices: Record<string, ChoicesAnswer> } } | null> {
       const source = await sources.findById(id);
       const sourceType = source && (await enabled(source.sourceTypeId));
       const field = sourceType?.configuration.fields.find((candidate) => candidate.choice && !candidate.setByPlugin && candidate.key === key);
@@ -486,7 +491,9 @@ export function createSourceAccess(deps: SourcesDeps) {
       const source = await sources.findById(id);
       const sourceType = source ? await enabled(source.sourceTypeId) : null;
       if (!source || !sourceType?.setupSteps.some((step) => step.id === stepId && step.live)) return null;
-      return sourceType.setupProgress(stepId, await contextOf(source, sourceType));
+      const progress = await sourceType.setupProgress(stepId, await contextOf(source, sourceType));
+      if (progress.status === "done" && waitsForSetup(source)) await sources.runSoon(id);
+      return progress;
     },
 
     /** The forms of the enabled Source Types, for adding and editing their Sources. */

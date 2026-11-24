@@ -81,6 +81,9 @@ export type RunReport = {
 
 const emptyReport = (): RunReport => ({ ran: [], failed: [], invalid: [], refused: [], lost: [] });
 
+/** How often a Source still being set up is run at least, so that an Admin soon sees it ready. */
+const settingUpIntervalMs = 30_000;
+
 /** The refusal to report for a run, none if it refused nothing. */
 function refusalsOf(sourceId: SourceId, attributes: string[]): RunReport["refused"] {
   return attributes.length > 0 ? [{ sourceId, attributes }] : [];
@@ -254,7 +257,7 @@ export function createSourcePolling(deps: PollingDeps) {
       return await items.recordRun(
         // Retention by the clock now, not the run's start: a purge during the plugin's call may have
         // deleted the row of a message that has passed it since (specs/source-records).
-        { sourceId: source.id, holder, at: now, retainedSince: retainedSince(clock.now()), syncCursor: result.syncCursor, withdrawn: result.withdrawn, origins },
+        { sourceId: source.id, holder, at: now, retainedSince: retainedSince(clock.now()), syncCursor: result.syncCursor, withdrawn: result.withdrawn, settingUp: result.settingUp ?? null, origins },
         readStated,
       );
     } catch (error) {
@@ -310,7 +313,8 @@ function isDue(
   now: number,
 ): boolean {
   const own = catalogue ? (entryIntervals.get(String(source.plain[catalogue.configKey])) ?? null) : source.pollIntervalSeconds;
-  const interval = (own ?? ingestion.suggestedIntervalSeconds) * 1000;
+  const ready = (own ?? ingestion.suggestedIntervalSeconds) * 1000;
+  const interval = source.settingUp === null ? ready : Math.min(ready, settingUpIntervalMs);
   return !(source.lastRunAt && now - source.lastRunAt.getTime() < interval);
 }
 
