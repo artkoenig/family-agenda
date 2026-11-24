@@ -1,8 +1,9 @@
 import { createCipheriv, createDecipheriv, hkdfSync, randomBytes } from "node:crypto";
 import { parseFamilyId, type FamilyId } from "@family-agenda/adapters";
-import { isTimeZone } from "@family-agenda/domain";
+import { isTimeZone, type FamilyLanguage } from "@family-agenda/domain";
 import { z } from "zod";
 import { parsePublicUrl } from "../config";
+import type { Notice } from "../http/notice";
 
 /**
  * What a core in supplied mode needs to open the Family a request is for (ADR-0003): a trusted
@@ -35,6 +36,12 @@ export type Context = {
    */
   organizationId?: string;
   /**
+   * What every page of the Family shows in a banner at its top for this request, such as the end
+   * of a trial, and to a signed-in Admin a link too: plain text in every Family Language, at most
+   * `maximumNoticeLength` characters, the link an `https:` address. Nothing of it is stored.
+   */
+  notice?: Notice;
+  /**
    * Milliseconds since the epoch; the Context is refused from then on, after a little skew, and
    * when it lies further ahead than `maximumContextLifetimeMs`.
    */
@@ -52,6 +59,9 @@ export const contextHeader = "x-family-context";
 
 const familyKeyLength = 32;
 
+/** The most characters a text of a notice may have. */
+export const maximumNoticeLength = 200;
+
 const publicUrlProblem = "publicUrl must be an http or https address without credentials, query or fragment, such as https://home.example.org/agenda";
 
 /** Problems that name what is wrong, which the trusted caller is told; never a value of the Context. */
@@ -60,9 +70,25 @@ const problems = {
   publicUrl: publicUrlProblem,
   identityProvider:
     "identityProvider must not be set: in supplied mode the one Identity Provider comes from the core's OIDC_* variables, and the Family claim decides who signs in (ADR-0009)",
+  notice: `notice must be { text, admin? } with text, and admin.text, a plain text of 1 to ${maximumNoticeLength} characters in each of en and de, and admin.href an https address`,
 } as const;
 
 const custom = (context: z.RefinementCtx, message: string) => (context.addIssue({ code: "custom", message }), z.NEVER);
+
+/** A text of a notice: in each Family Language, and nothing else, of 1 to `maximumNoticeLength` characters each. */
+const noticeText = (() => {
+  const text = z.string().refine((value) => value.length > 0 && Array.from(value).length <= maximumNoticeLength);
+  return z.strictObject({ en: text, de: text } satisfies Record<FamilyLanguage, unknown>);
+})();
+
+const noticeSchema = z.strictObject({
+  text: noticeText,
+  admin: z.strictObject({ text: noticeText, href: z.string().refine(isHttpsUrl) }).optional(),
+});
+
+function isHttpsUrl(text: string): boolean {
+  return URL.canParse(text) && new URL(text).protocol === "https:";
+}
 
 const contextSchema = z
   .strictObject({
@@ -75,13 +101,30 @@ const contextSchema = z
     // Named when refused, so that a caller still sealing one learns where the Identity Provider went.
     identityProvider: z.unknown().refine((value) => value === undefined, problems.identityProvider).optional(),
     organizationId: z.string().min(1).optional(),
+    // Any problem anywhere in it is named as one, so that the caller learns which setting is wrong.
+    notice: z
+      .unknown()
+      .transform((value, context) => {
+        const parsed = noticeSchema.safeParse(value);
+        return parsed.success ? withoutAbsentAdmin(parsed.data) : custom(context, problems.notice);
+      })
+      .optional(),
     expiresAt: z.number(),
   })
   // Nothing of it is kept: it was refused unless absent.
-  .transform(({ organizationId, timeZone, ...parsed }): Context => {
+  .transform(({ organizationId, timeZone, notice, ...parsed }): Context => {
     delete parsed.identityProvider;
-    return { ...parsed, ...(timeZone === undefined ? {} : { timeZone }), ...(organizationId === undefined ? {} : { organizationId }) };
+    return {
+      ...parsed,
+      ...(timeZone === undefined ? {} : { timeZone }),
+      ...(organizationId === undefined ? {} : { organizationId }),
+      ...(notice === undefined ? {} : { notice }),
+    };
   });
+
+function withoutAbsentAdmin({ text, admin }: z.infer<typeof noticeSchema>): Notice {
+  return admin === undefined ? { text } : { text, admin };
+}
 
 const version = "v1";
 const ivLength = 12;

@@ -1,9 +1,8 @@
-import type { HttpBindings } from "@hono/node-server";
 import { serve } from "@hono/node-server";
 import { openAgendaAccess } from "@family-agenda/application";
 import { bootShared, invitationAcceptanceOf } from "../composition-root";
 import type { SuppliedConfig } from "../config";
-import { createHttpApp } from "../http/app";
+import { createHttpApp, type HttpEnv } from "../http/app";
 import { serveSuppliedTriggers, type TriggerLog } from "../triggered-operations";
 import { OidcIdentityProviderClient } from "@family-agenda/adapters";
 import { startSuppliedRegistration } from "./supplied-registration";
@@ -35,12 +34,13 @@ export async function serveSupplied(config: SuppliedConfig, log: TriggerLog) {
         trustProxy: config.trustProxy,
         version: config.version,
         legalLinks: config.legalLinks,
+        subscriptionUrl: config.subscriptionUrl,
         // The Family's own address, its path prefix included: the caller removed the prefix from the request.
         publicUrl: context.publicUrl,
         // As on the one listener of a fixed core: Agendas open without a secret until Agenda Links are reworked (ADR-0004).
         agendaAccess: openAgendaAccess,
       });
-      const fetch: FamilyFetch = (request, env) => app.fetch(request, env as HttpBindings);
+      const fetch: FamilyFetch = (request, env) => app.fetch(request, env as HttpEnv);
       return fetch;
     },
   });

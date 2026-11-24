@@ -1,5 +1,6 @@
 import { eventOutcomeStatus, idpEventsPath, idpSignatureHeader, type RegistrationEvents } from "@family-agenda/application";
 import type { HealthResponse } from "@family-agenda/contracts";
+import type { Notice } from "../http/notice";
 import { contextHeader, openContextOutcome } from "./context";
 import type { SuppliedFamilies } from "./supplied-families";
 
@@ -58,7 +59,7 @@ export function suppliedFetch({ contextKey, families, version, log, signInCallba
       return refusal(401, "A valid Context is required.");
     }
     const { context } = outcome;
-    const opening = await families.serve(context, async (family) => family.fetch(withoutContext(request), env));
+    const opening = await families.serve(context, async (family) => family.fetch(withoutContext(request), withNotice(env, context.notice)));
     if (opening.ok) return opening.family;
     log.warn(`Could not open the Family ${context.familyId} from its Context: ${opening.problem}${nameOf(opening.error)}`);
     return refusalOf[opening.problem]();
@@ -85,6 +86,14 @@ function withoutContext(request: Request): Request {
     signal: request.signal,
     ...(hasBody ? { body: request.body, duplex: "half" } : {}),
   });
+}
+
+/**
+ * The bindings the Family's pages get with the request, with the Context's notice if it has one:
+ * it comes with each request, so an opened Family shows whichever its latest Context carries.
+ */
+function withNotice(env: unknown, notice: Notice | undefined): unknown {
+  return notice === undefined ? env : { ...(env as object | undefined), notice };
 }
 
 /** Only the kind of error: its message could name the database it came from. */

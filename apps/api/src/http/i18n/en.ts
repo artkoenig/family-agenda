@@ -137,7 +137,9 @@ export const en = {
     title: "Settings",
     signOut: "Sign out",
     version: (version: string) => `Version ${version}`,
-    groups: { family: "Family", sources: "Sources", instance: "Instance" },
+    groups: { family: "Family", sources: "Sources", instance: "Instance", contract: "Contract" },
+    /** The link to the operator's page of the Family's subscription, from `SUBSCRIPTION_URL`. */
+    subscription: "Subscription",
     failingSource: "A Source is failing",
     failingSourceBody: "Some Items may be out of date until it is fixed.",
     lookAtSources: "Look at the Sources",

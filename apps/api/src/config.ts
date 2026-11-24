@@ -56,6 +56,8 @@ export type Config = {
    * `TERMS_URL` in that order; empty when none is set.
    */
   legalLinks: LegalLink[];
+  /** The operator's page of the Family's subscription, which the Admin area links to, from `SUBSCRIPTION_URL`; null when unset. */
+  subscriptionUrl: string | null;
 };
 
 export type TriggerConfig = {
@@ -291,6 +293,7 @@ function sharedConfigOf(env: NodeJS.ProcessEnv): Omit<Config, Exclude<FixedOnly,
     suppliedLlmEndpoint: suppliedLlmEndpointOf(env),
     version: versionOf(env),
     legalLinks: legalLinksOf(env),
+    subscriptionUrl: operatorUrlOf(env, "SUBSCRIPTION_URL"),
   };
 }
 
@@ -304,11 +307,17 @@ const legalVariables: readonly (readonly [LegalLinkKind, string])[] = [
 /** The legal pages that are set, each an absolute http or https address, kept as given. */
 function legalLinksOf(env: NodeJS.ProcessEnv): LegalLink[] {
   return legalVariables.flatMap(([kind, variable]) => {
-    const url = env[variable] ?? "";
-    if (url === "") return [];
-    if (!isAbsoluteHttpUrl(url)) throw new Error(`${variable} must be an absolute http or https address, such as https://example.org/legal`);
-    return [{ kind, url }];
+    const url = operatorUrlOf(env, variable);
+    return url === null ? [] : [{ kind, url }];
   });
+}
+
+/** A page of the operator's that `variable` sets, an absolute http or https address kept as given; null when unset or empty. */
+function operatorUrlOf(env: NodeJS.ProcessEnv, variable: string): string | null {
+  const url = env[variable] ?? "";
+  if (url === "") return null;
+  if (!isAbsoluteHttpUrl(url)) throw new Error(`${variable} must be an absolute http or https address, such as https://example.org/legal`);
+  return url;
 }
 
 function isAbsoluteHttpUrl(text: string): boolean {

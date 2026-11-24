@@ -5,6 +5,7 @@ import { editGuards, lazyFragmentErrors } from "./lazy-fragment";
 import { useTranslation } from "./i18n/translation";
 import { href, usePathPrefix } from "./href";
 import { LegalFooter } from "./legal-links";
+import { NoticeBanner } from "./notice";
 
 /**
  * Opens a dialog the server rendered open as a modal one, so that the page behind it is inert
@@ -196,6 +197,7 @@ export function Layout(props: {
           <script src={href(prefix, "/static/htmx.min.js")} defer></script>
         </head>
         <body class={agenda ? "fam-page fam-agenda" : "fam-page"}>
+          <NoticeBanner />
           {agenda ? (
             props.children
           ) : (
