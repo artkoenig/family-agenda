@@ -22,6 +22,11 @@ export class InMemoryBlobStore implements BlobStore {
     return Promise.resolve(blob ? new Uint8Array(blob) : null);
   }
 
+  async stream(ref: BlobRef): Promise<AsyncIterable<Uint8Array> | null> {
+    const blob = await this.get(ref);
+    return blob ? ReadableStream.from([blob]) : null;
+  }
+
   remove(ref: BlobRef): Promise<void> {
     this.blobs.delete(ref);
     return Promise.resolve();

@@ -159,7 +159,8 @@ type SectionId =
   | "display"
   | "sources"
   | "llm"
-  | "recovery-kit";
+  | "recovery-kit"
+  | "export";
 
 /** `fragment` loads a fresher summary right after the page, which does not wait for it. */
 type Summary = { text: string; tone?: "attention"; fragment?: `/${string}` };
@@ -249,6 +250,12 @@ function settingsGroups(translation: Translation): SettingsGroup[] {
             settings.kitSaved
               ? { text: s.saved }
               : { text: s.notSavedYet, tone: "attention" },
+        },
+        {
+          id: "export",
+          href: "/admin/export",
+          label: t.export.title,
+          summary: () => ({ text: t.export.summary }),
         },
       ],
     },
@@ -389,6 +396,12 @@ function SectionIcon(props: { id: SectionId }) {
       <>
         <circle cx="8" cy="15" r="4"></circle>
         <path d="M11 12l9-9M16 7l3 3M14 9l2 2"></path>
+      </>
+    ),
+    export: (
+      <>
+        <path d="M12 4v11M7 10l5 5 5-5"></path>
+        <path d="M4 17v2a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-2"></path>
       </>
     ),
   };
@@ -709,6 +722,34 @@ export function recoveryKitText(kit: RecoveryKit, t: Catalogue): string {
   const { fileTitle, masterKeyLine, purpose } = t.recoveryKit;
   return [fileTitle, "", masterKeyLine, kit.masterKey, "", ...purpose, ""].join(
     "\n",
+  );
+}
+
+/** The Export: what the file holds, and the button that downloads it. */
+export function ExportPage(props: { admin: SignedInAdmin }) {
+  const prefix = usePathPrefix();
+  const { t } = useTranslation();
+  const e = t.export;
+  return (
+    <AdminLayout title={e.title} admin={props.admin} current="export">
+      <SectionHeader title={e.title} description={e.description} />
+      <section class="fam-sheet">
+        <Group title={e.contentsTitle} level={2}>
+          <div class="fam-group__fields">
+            <div class="fam-prose">
+              {e.contents.map((sentence) => (
+                <p>{sentence}</p>
+              ))}
+            </div>
+          </div>
+          <div class="fam-group__actions">
+            <a class="fam-button fam-button--primary" href={href(prefix, "/admin/export/download")} download>
+              {e.download}
+            </a>
+          </div>
+        </Group>
+      </section>
+    </AdminLayout>
   );
 }
 

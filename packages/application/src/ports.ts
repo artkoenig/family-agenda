@@ -131,6 +131,11 @@ export interface BlobStore {
   put(contents: Uint8Array): Promise<BlobRef>;
   /** The contents, or null if no file has this reference. */
   get(ref: BlobRef): Promise<Uint8Array<ArrayBuffer> | null>;
+  /**
+   * The contents in chunks, read as they are asked for, so a large file need not fit in memory;
+   * or null if no file has this reference.
+   */
+  stream(ref: BlobRef): Promise<AsyncIterable<Uint8Array> | null>;
   remove(ref: BlobRef): Promise<void>;
 }
 
@@ -710,6 +715,8 @@ export interface ItemRepository {
   /** Lets a failed message wait for extraction again, its failures forgotten. Returns whether it had failed. */
   retryExtraction(id: RawMessageId): Promise<boolean>;
   findMessage(id: RawMessageId): Promise<RawMessage | null>;
+  /** The messages `findMessage` shows, a purged one's tombstone among them, oldest first. */
+  messageIds(): Promise<RawMessageId[]>;
   /** The Items written from a message, in the order they were, also those of a hidden Source. */
   itemsOfMessage(id: RawMessageId): Promise<ProjectedItem[]>;
   /**
@@ -717,6 +724,8 @@ export interface ItemRepository {
    * `to` of null means all of the future. Items of a hidden Source are left out.
    */
   overlapping(from: Date, to: Date | null): Promise<ProjectedItem[]>;
+  /** All of the Family's Items, as `overlapping` gives them, also those of a hidden Source. */
+  all(): Promise<ProjectedItem[]>;
   /** The Family's Tasks not done yet, whatever their time, as `overlapping` gives them. */
   outstanding(): Promise<ProjectedItem[]>;
   /** The Item as `overlapping` gives it, or null if there is none or it is not shown. */

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { mkdir, open, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { BlobStore } from "@family-agenda/application";
 import type { BlobRef } from "@family-agenda/domain";
@@ -47,6 +47,13 @@ export class FileBlobStore implements BlobStore {
       readFile(join(this.folder, ref)).then((contents) => new Uint8Array(contents)),
       null,
     );
+  }
+
+  async stream(ref: BlobRef): Promise<AsyncIterable<Uint8Array> | null> {
+    if (!uuidPattern.test(ref)) return null;
+    // Opened here, so a missing file is null now rather than an error while reading.
+    const handle = await unlessMissing(open(join(this.folder, ref)), null);
+    return handle?.createReadStream() ?? null;
   }
 
   async remove(ref: BlobRef): Promise<void> {

@@ -247,6 +247,9 @@ importers:
       '@iconify-json/fluent-emoji-flat':
         specifier: 1.2.6
         version: 1.2.6
+      client-zip:
+        specifier: ^2.5.1
+        version: 2.5.1
       hono:
         specifier: ^4.13.14
         version: 4.13.19
@@ -278,6 +281,9 @@ importers:
       drizzle-orm:
         specifier: ^0.45.4
         version: 0.45.4(@electric-sql/pglite@0.5.17)(@opentelemetry/api@1.10.0)(@types/pg@8.23.1)(pg@8.23.1)
+      fflate:
+        specifier: ^0.8.3
+        version: 0.8.3
       ical.js:
         specifier: ^2.2.1
         version: 2.2.1
@@ -1806,6 +1812,9 @@ packages:
     resolution: {integrity: sha512-ouuZd4/dm2Sw5Gmqy6bGyNNNe1qt9RpmxveLSO7KcgsTnU7RXfsw+/bukWGo1abgBiMAic068rclZsO4IWmmxQ==}
     engines: {node: '>= 12'}
 
+  client-zip@2.5.1:
+    resolution: {integrity: sha512-yOvNSBsQX1B7wtdvIVXJEIIShrlPiX+adhli7sWvQhsx3nX1DjvpSt+AwOxaX+3DCsT/Yx0nRy5hIjRLIYfebw==}
+
   cliui@6.0.0:
     resolution: {integrity: sha512-t6wbgtoCXvAzst7QgXxJYqPt0usEfbgQdftEPbLL/cvv6HPE5VgvqCuAIDR0NgU52ds6rFwqrgakNLrHEjCbrQ==}
 
@@ -2131,6 +2140,9 @@ packages:
     peerDependenciesMeta:
       picomatch:
         optional: true
+
+  fflate@0.8.3:
+    resolution: {integrity: sha512-tbZNuJrLwGUp3zshBtdy4W+ORxZuIh8a5ilyIEQDC5rY1f3U20JMry0Ll3WBzU58EZKsEuJFXhb5gwv8CsPvgA==}
 
   figures@6.1.0:
     resolution: {integrity: sha512-d+l3qxjSesT4V7v2fh+QnmFnUWv9lSpjarhShNTgBOfA0ttejbQUAlHLitbjkoRiDulW0OPoQPYIGhIC8ohejg==}
@@ -4391,6 +4403,8 @@ snapshots:
 
   cli-width@4.1.0: {}
 
+  client-zip@2.5.1: {}
+
   cliui@6.0.0:
     dependencies:
       string-width: 4.2.3
@@ -4739,6 +4753,8 @@ snapshots:
   fdir@6.5.0(picomatch@4.0.7):
     optionalDependencies:
       picomatch: 4.0.7
+
+  fflate@0.8.3: {}
 
   figures@6.1.0:
     dependencies:

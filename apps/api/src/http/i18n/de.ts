@@ -142,6 +142,17 @@ export const de: Catalogue = {
     notSavedYet: "Noch nicht gespeichert",
   },
 
+  export: {
+    title: "Export",
+    summary: "Alle Daten als ein ZIP",
+    description: "Lade die Daten der Familie herunter, um sie anderswohin mitzunehmen.",
+    contentsTitle: "Was die Datei enthält",
+    contents: [
+      "Eine ZIP-Datei mit allen Agenden und Einträgen der Familie, jede Agenda auch als Kalenderdatei, und den gespeicherten Nachrichten mit ihren Anhängen, soweit sie noch aufbewahrt werden.",
+      "Sie enthält keine Geheimnisse: keine Zugangsdaten der Quellen, keine Agenda-Links und kein Recovery Kit. Bewahre sie trotzdem sicher auf, denn sie enthält die Nachrichten der Familie.",
+    ],
+    download: "Export herunterladen",
+  },
   recoveryKit: {
     title: "Wiederherstellungs-Kit",
     description:

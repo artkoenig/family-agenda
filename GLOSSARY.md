@@ -212,6 +212,10 @@ _Avoid_: Base path, subpath
 What an Admin prints or saves after the first sign-in to recover the Instance; the Admin area shows it until an Admin confirms it was saved; without it, a backup cannot restore Source credentials.
 _Avoid_: Recovery key, master key (for the document), backup code
 
+**Export**:
+The file an Admin downloads with all of the Family's Agendas, Items and stored files, without the Sources' credentials, to take the data elsewhere.
+_Avoid_: Backup (the operator's copies), dump, download
+
 **Single sign-on**:
 Signing in as an Admin through the Identity Provider, the only way to sign in. The Family Agenda session that follows is its own and lasts 12 hours.
 _Avoid_: SSO login, passkey login

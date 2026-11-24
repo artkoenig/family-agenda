@@ -68,6 +68,32 @@ describe("the blob volume", () => {
     await expect(store.get(ref)).rejects.toThrow();
   });
 
+  it("streams a blob in chunks that add up to its contents", async () => {
+    const contents = new Uint8Array(200_000).map((_, index) => index % 251);
+    const ref = await store.put(contents);
+
+    const chunks: Uint8Array[] = [];
+    for await (const chunk of (await store.stream(ref)) ?? []) chunks.push(chunk);
+
+    expect(chunks.length).toBeGreaterThan(1);
+    expect(new Uint8Array(Buffer.concat(chunks))).toEqual(contents);
+  });
+
+  it("has no stream for a reference that is unknown or not one, and fails on one it cannot open", async () => {
+    expect(await store.stream("00000000-0000-4000-8000-000000000000" as BlobRef)).toBeNull();
+    expect(await store.stream("../etc/passwd" as BlobRef)).toBeNull();
+    const ref = await store.put(new Uint8Array([1]));
+    await rm(join(directory, familyId, ref));
+    await mkdir(join(directory, familyId, ref));
+    // Opening a directory succeeds on Linux; reading it fails.
+    await expect(
+      (async () => {
+        const chunks: Uint8Array[] = [];
+        for await (const chunk of (await store.stream(ref)) ?? []) chunks.push(chunk);
+      })(),
+    ).rejects.toThrow();
+  });
+
   it("removes a blob, and ignores a reference that is not one", async () => {
     const ref = await store.put(new Uint8Array([1]));
     await writeFile(join(directory, "outside"), "kept");
