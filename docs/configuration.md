@@ -137,6 +137,18 @@ By default each Family's Admins set the LLM endpoint on the Admin area's AI page
 
 With them, every Family extracts through that endpoint; a Family's own saved endpoint is not read, and cannot override it. The AI page shows no connection card (URL, model, API key, acknowledgement, test, switching the AI off); saving, testing and removing an endpoint answer `404`. No Family is asked to acknowledge that third parties' messages leave the house: the operator obtains that through their terms of service. The OCR options and waiting messages stay.
 
+## Legal pages
+
+An operator who offers Family Agenda to the public links an imprint, a privacy policy and terms from every page. Optionally, in either mode, set any of:
+
+| Variable | Link (English / German Family Language) |
+|---|---|
+| `IMPRINT_URL` | Imprint / Impressum |
+| `PRIVACY_URL` | Privacy / Datenschutz |
+| `TERMS_URL` | Terms / AGB |
+
+Each value is an absolute http or https address; any other stops the start, naming the variable. It is linked as given, whatever the Family Language (the page offers its own languages), with no path prefix and no Family data added. Only the variables set are linked, in this order. The Admin area, the sign-in page and the other pages show them at their foot, joined by „ · “; an Agenda, whose timeline loads more days without end, shows a small „§“ menu in its top bar that opens them. Print leaves them out. With none set, no page has a footer or menu. ICS feeds, the web app manifest, JSON answers and downloads carry none.
+
 ## Address of the Instance
 
 - **Home network only**: leave the defaults. `mdns` makes `http://family-agenda.local:8080` work from the home network. It needs a Linux host, not Docker Desktop.

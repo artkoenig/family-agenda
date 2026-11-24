@@ -2,6 +2,7 @@ import { logtoOrganizations, parseFamilyId, type FamilyId } from "@family-agenda
 import { readFileSync } from "node:fs";
 import { parseFamilyIdClaim, parseIdentityDirectorySettings, parseIdentityProviderConnection, parseIdentityProviderSettings, type IdentityDirectorySettings, type IdentityProviderConnectionSettings, type OrganizationsClaim, type IdentityProviderSettings, type LlmEndpoint } from "@family-agenda/application";
 import { parsePluginUrls, type PluginBinding } from "./plugin-containers/bindings";
+import type { LegalLink, LegalLinkKind } from "./http/legal-links";
 import { versionOf } from "./version";
 
 export type Config = {
@@ -50,6 +51,11 @@ export type Config = {
   suppliedLlmEndpoint: LlmEndpoint | null;
   /** The release the image was built from, such as `0.3.1` or `main-1a2b3c4`; `dev` for a build from the working tree. */
   version: string;
+  /**
+   * The operator's legal pages every page links to, from `IMPRINT_URL`, `PRIVACY_URL` and
+   * `TERMS_URL` in that order; empty when none is set.
+   */
+  legalLinks: LegalLink[];
 };
 
 export type TriggerConfig = {
@@ -284,7 +290,29 @@ function sharedConfigOf(env: NodeJS.ProcessEnv): Omit<Config, Exclude<FixedOnly,
     ...identityDirectoryConfigOf(env),
     suppliedLlmEndpoint: suppliedLlmEndpointOf(env),
     version: versionOf(env),
+    legalLinks: legalLinksOf(env),
   };
+}
+
+/** The variable of each legal page, in the order the pages link them. */
+const legalVariables: readonly (readonly [LegalLinkKind, string])[] = [
+  ["imprint", "IMPRINT_URL"],
+  ["privacy", "PRIVACY_URL"],
+  ["terms", "TERMS_URL"],
+];
+
+/** The legal pages that are set, each an absolute http or https address, kept as given. */
+function legalLinksOf(env: NodeJS.ProcessEnv): LegalLink[] {
+  return legalVariables.flatMap(([kind, variable]) => {
+    const url = env[variable] ?? "";
+    if (url === "") return [];
+    if (!isAbsoluteHttpUrl(url)) throw new Error(`${variable} must be an absolute http or https address, such as https://example.org/legal`);
+    return [{ kind, url }];
+  });
+}
+
+function isAbsoluteHttpUrl(text: string): boolean {
+  return URL.canParse(text) && /^https?:$/.test(new URL(text).protocol);
 }
 
 /** The Family id `FAMILY_ID` gives a database that has none yet; none if empty. */

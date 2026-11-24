@@ -512,6 +512,14 @@ export const en = {
       none: "Nothing to do.",
     },
   },
+  /** The operator's legal pages, linked from every page when configured. */
+  legal: {
+    imprint: "Imprint",
+    privacy: "Privacy",
+    terms: "Terms",
+    /** The menu that holds them on an Agenda. */
+    menu: "Legal",
+  },
 };
 
 export type Catalogue = typeof en;

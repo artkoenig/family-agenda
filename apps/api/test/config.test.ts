@@ -323,3 +323,31 @@ describe("the LLM endpoint in the environment", () => {
     expect(() => readConfig({ ...base, ...llm, LLM_BASE_URL: "ftp://llm" })).toThrow(/^LLM_BASE_URL must be an http or https address/);
   });
 });
+
+describe("the operator's legal pages in the environment", () => {
+  const legal = { IMPRINT_URL: "https://operator.example.org/imprint", PRIVACY_URL: "https://operator.example.org/privacy#de", TERMS_URL: "http://operator.example.org/terms?v=2" };
+
+  it("are none when no variable is set", () => {
+    expect(readConfig(base).legalLinks).toEqual([]);
+    expect(readConfig({ ...base, IMPRINT_URL: "" }).legalLinks).toEqual([]);
+  });
+
+  it("are the pages set, in the order imprint, privacy, terms, with their addresses as given", () => {
+    expect(readConfig({ ...base, TERMS_URL: legal.TERMS_URL, PRIVACY_URL: legal.PRIVACY_URL, IMPRINT_URL: legal.IMPRINT_URL }).legalLinks).toEqual([
+      { kind: "imprint", url: legal.IMPRINT_URL },
+      { kind: "privacy", url: legal.PRIVACY_URL },
+      { kind: "terms", url: legal.TERMS_URL },
+    ]);
+    expect(readConfig({ ...base, PRIVACY_URL: legal.PRIVACY_URL }).legalLinks).toEqual([{ kind: "privacy", url: legal.PRIVACY_URL }]);
+  });
+
+  it("are read in supplied mode too", () => {
+    expect(readSuppliedConfig({ CONTEXT_MODE: "supplied", CONTEXT_KEY: "a-context-key-of-at-least-32-characters", CALLER_PORT: "3002", ...suppliedOidc, IMPRINT_URL: legal.IMPRINT_URL }).legalLinks).toEqual([{ kind: "imprint", url: legal.IMPRINT_URL }]);
+  });
+
+  it("stop the start on an address that is not absolute http or https, naming the variable", () => {
+    expect(() => readConfig({ ...base, IMPRINT_URL: "/imprint" })).toThrow(/^IMPRINT_URL must be an absolute http or https address/);
+    expect(() => readConfig({ ...base, PRIVACY_URL: "mailto:privacy@example.org" })).toThrow(/^PRIVACY_URL must be an absolute http or https address/);
+    expect(() => readConfig({ ...base, TERMS_URL: "ftp://operator.example.org/terms" })).toThrow(/^TERMS_URL must be an absolute http or https address/);
+  });
+});
