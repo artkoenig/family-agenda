@@ -11,6 +11,7 @@ export * from "./family-members";
 export * from "./languages";
 export * from "./llm-endpoint";
 export * from "./messages";
+export * from "./past-items";
 export * from "./poll-interval";
 export * from "./polling";
 export * from "./ports";

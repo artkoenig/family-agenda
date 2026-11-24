@@ -40,7 +40,7 @@ type Transaction = Parameters<Parameters<Database["transaction"]>[0]>[0];
 
 type RunOrigin = SourceRun["origins"][number];
 
-/** What recording a run's stated Source Records found: which wrote their Item, and which were invalid. */
+/** What recording a run's stated Source Records found: which are valid, whether or not they wrote an Item, and which were invalid. */
 type StatedOutcome = { written: string[]; invalid: InvalidRecord[] };
 
 /** The Source Attributes of a Source by external id, as `recordRun` resolves what Origins name. */
@@ -260,7 +260,7 @@ export class PostgresItemRepository implements ItemRepository {
 
   async pendingMessages(limit: number): Promise<PendingMessage[]> {
     const rows = await this.db
-      .select({ id: sourceRecords.id, sourceId: sourceRecords.sourceId, sentAt: arrivedAt, body: sourceRecords.body })
+      .select({ id: sourceRecords.id, sourceId: sourceRecords.sourceId, sentAt: arrivedAt, recordedAt: sourceRecords.createdAt, body: sourceRecords.body })
       .from(sourceRecords)
       .where(pendingMessage)
       .orderBy(asc(sourceRecords.createdAt), asc(sourceRecords.occurredAt))
@@ -277,6 +277,7 @@ export class PostgresItemRepository implements ItemRepository {
       id: row.id as RawMessageId,
       sourceId: row.sourceId as SourceId,
       sentAt: row.sentAt,
+      recordedAt: row.recordedAt,
       // The query takes only records with a body.
       body: row.body ?? "",
       attachments: attachments.flatMap((attachment) =>
@@ -561,8 +562,8 @@ async function recordMessage(tx: Transaction, run: SourceRun, origin: RunOrigin,
 /**
  * Records an entry stating its one Item. One stating what it stated before, and not withdrawn, is
  * not written, apart from where it came from if that changed. Otherwise its Item is overwritten,
- * keeping the Item itself, or written as new if it had none; one that is invalid leaves its Source
- * Record without an Item.
+ * keeping the Item itself, or written as new if it had none and is not long over; one that is
+ * invalid leaves its Source Record without an Item.
  */
 async function recordStated(
   tx: Transaction,
@@ -587,7 +588,7 @@ async function recordStated(
   await replaceAttributes(tx, run.sourceId, row.id, attributeIds);
   const [current] = await tx.select({ id: items.id, kind: items.kind }).from(items).where(eq(items.recordId, row.id)).limit(1);
   const result = read(stated);
-  const problems = result.ok ? await writeStated(tx, row.id, current ?? null, result.item, run.at) : result.problems;
+  const problems = result.ok ? await writeUnlessLongOver(tx, run, row.id, current ?? null, result.item) : result.problems;
   if (problems.length === 0) {
     outcome.written.push(origin.externalId);
     return;
@@ -622,6 +623,13 @@ async function keptUnchanged(
   if (!known.sameOrigin) await tx.update(sourceRecords).set({ link: origin.link }).where(where);
   await replaceAttributes(tx, run.sourceId, known.id, attributeIds);
   return true;
+}
+
+/** As `writeStated`, but an entry without an Item stating one long over is only marked processed. */
+async function writeUnlessLongOver(tx: Transaction, run: SourceRun, recordId: string, current: { id: string; kind: string } | null, item: StatedItem): Promise<string[]> {
+  if (current || !run.isLongOver(item)) return writeStated(tx, recordId, current, item, run.at);
+  await tx.update(sourceRecords).set({ processedAt: run.at }).where(eq(sourceRecords.id, recordId));
+  return [];
 }
 
 /**

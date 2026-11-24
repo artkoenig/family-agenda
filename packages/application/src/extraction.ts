@@ -16,6 +16,7 @@ import {
 } from "@family-agenda/domain";
 import type { ActivityLog } from "./activity";
 import { familyEndpointOf } from "./llm-endpoint";
+import { wasOverOnArrival } from "./past-items";
 import type {
   AttachmentProblem,
   BlobStore,
@@ -84,7 +85,8 @@ const countsAgainstMessage = (problem: Extract<ExtractionResult, { ok: false }>[
  * Extraction of Items from raw messages (ADR-0005): once per message, through the Family's LLM
  * endpoint. The model only reads; code resolves dates against the send time and checks what the
  * message says. An Item failing a check has the message read once more; failing again, it is
- * not written.
+ * not written. Nor is one that was over before the day its message arrived here; by arrival, not by
+ * the time of the reading, so that a message that waited for its endpoint loses nothing.
  */
 export function createExtraction(deps: ExtractionDeps) {
   const { clock, families, items, blobs, extractor, textExtractor, ocrModels, activity } = deps;
@@ -153,6 +155,7 @@ export function createExtraction(deps: ExtractionDeps) {
   async function extractOne(message: PendingMessage, text: string, problems: AttachmentProblem[], endpoint: LlmEndpoint) {
     const timeZone = await deps.timeZone();
     const reading: Reading = { text, sentOn: localDateTime(message.sentAt, timeZone).date, timeZone };
+    const arrivedOn = localDateTime(message.recordedAt, timeZone).date;
     let result = await readIfPending(message, text, endpoint, timeZone);
     if (!result?.ok) return { result, dropped: [] };
     let checkedItems = checkAll(result, reading);
@@ -161,7 +164,8 @@ export function createExtraction(deps: ExtractionDeps) {
       if (!result?.ok) return { result, dropped: [] };
       checkedItems = checkAll(result, reading);
     }
-    await items.recordExtraction({ messageId: message.id, at: clock.now(), items: checkedItems.passing, attachmentProblems: problems });
+    const current = checkedItems.passing.filter((item) => !wasOverOnArrival(item, arrivedOn, timeZone));
+    await items.recordExtraction({ messageId: message.id, at: clock.now(), items: current, attachmentProblems: problems });
     return { result, dropped: checkedItems.failing.map((failing) => ({ messageId: message.id, ...failing })) };
   }
 

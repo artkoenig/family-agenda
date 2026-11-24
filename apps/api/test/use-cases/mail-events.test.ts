@@ -4,7 +4,7 @@ import type { AgendaId } from "@family-agenda/domain";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { bootForTest, type TestInstance } from "../support/boot";
 import { InMemoryBlobStore } from "../support/in-memory-blob-store";
-import { extracted, ScriptedExtractor } from "../support/scripted-extractor";
+import { extracted, extractedTask, ScriptedExtractor } from "../support/scripted-extractor";
 import { testPluginControls } from "../support/test-source-plugin";
 import { openTimeline } from "../support/timeline";
 
@@ -60,6 +60,8 @@ describe("Events extracted from mail", () => {
     return instance.app.extraction.extractPending();
   };
 
+  const titles = () => instance.query("SELECT title FROM event UNION ALL SELECT title FROM task ORDER BY title");
+
   const timeline = async () => {
     const page = await openTimeline(instance.app, agenda, { access: openAgendaAccess });
     return Object.fromEntries(
@@ -68,6 +70,35 @@ describe("Events extracted from mail", () => {
         .map((day) => [day.date, day.items.map((row) => `${row.from ?? ""}-${row.until ?? ""} ${row.title}${row.cancelled ? " (cancelled)" : ""}`)]),
     );
   };
+
+  it("writes no Item that was over before the day its mail arrived here, without reading it again", async () => {
+    extractor.script(
+      "Elternabend",
+      [parentsEvening, extracted({ title: "Schulfest", date: { day: 18, month: 9 }, evidence: "Schulfest am 18.09." })],
+      [
+        extractedTask({ title: "Zettel abgeben", deadline: { day: 17, month: 9 }, evidence: "Zettel bis 17.09. abgeben" }),
+        extractedTask({ title: "Geld mitgeben", deadline: { day: 30, month: 9 }, evidence: "Geld bis 30.09. mitgeben" }),
+      ],
+    );
+    instance.clock.advance(4 * 24 * 60 * minutes);
+
+    await arrive(mail("m1", "2026-09-14T06:12:00Z", `${invitation} Schulfest am 18.09. Zettel bis 17.09. abgeben. Geld bis 30.09. mitgeben.`));
+
+    expect(await titles()).toEqual([{ title: "Geld mitgeben" }, { title: "Schulfest" }]);
+    expect(extractor.requests).toHaveLength(1);
+  });
+
+  it("writes an Event that ended while its mail waited for the LLM endpoint", async () => {
+    extractor.script("Elternabend", [parentsEvening]);
+    testPluginControls.emit("mailbox", [mail("m1", "2026-09-14T06:12:00Z", invitation)]);
+    instance.clock.advance(15 * minutes);
+    await instance.app.polling.pollDue();
+    instance.clock.advance(5 * 24 * 60 * minutes);
+
+    await instance.app.extraction.extractPending();
+
+    expect(await titles()).toEqual([{ title: "Elternabend Klasse 5b" }]);
+  });
 
   it("turns a mail into an Event on the timeline, with the mail in its details", async () => {
     extractor.script("Elternabend", [parentsEvening]);
