@@ -177,6 +177,7 @@ CREATE TABLE source_run (
   sync_cursor               JSONB,
   last_run_at               TIMESTAMPTZ,
   last_success_at           TIMESTAMPTZ,
+  setting_up                JSONB,          -- what a Source still being set up waits for; null once ready
   failing_since             TIMESTAMPTZ,
   last_error_kind           TEXT,
   last_error                TEXT,

@@ -252,7 +252,8 @@ export type IngestedOrigin = {
 export type SourceRunResult =
   /** `withdrawn` are the external ids of Origins the Source deleted since, such as redacted messages. */
   /** `secrets` are the secret fields the plugin changed, such as a refreshed token, if any. */
-  | { ok: true; origins: IngestedOrigin[]; syncCursor: string | null; withdrawn: string[]; secrets?: Record<string, string> }
+  /** `settingUp` is what a Source still being set up waits for, none for one that is ready. */
+  | { ok: true; origins: IngestedOrigin[]; syncCursor: string | null; withdrawn: string[]; secrets?: Record<string, string>; settingUp?: MultilingualText | null }
   /** A definite error needs an Admin; a temporary one is retried. */
   | { ok: false; kind: "definite" | "temporary"; message: string };
 
@@ -303,7 +304,7 @@ export type LoadedSourceType = {
   /** What an Admin enables within it, such as Messengers; null if it has none. */
   catalogue: CatalogueSpec | null;
   /** The values a choice field offers for an existing Source, or why asking the plugin failed. */
-  choices(key: string, context: SourceRunContext): Promise<PluginAnswer<KnownValue[]>>;
+  choices(key: string, context: SourceRunContext): Promise<ChoicesAnswer>;
   /** What a live setup step of an existing Source shows now. */
   setupProgress(stepId: string, context: SourceRunContext): Promise<SetupProgress>;
   /**
@@ -327,6 +328,9 @@ export type ReportedAttributes = { declared: DeclaredAttribute[]; archived: stri
 
 /** What a plugin answered, or why asking it failed, in words an Admin can act on. */
 export type PluginAnswer<T> = { ok: true; value: T } | { ok: false; message: string };
+
+/** What a plugin answers when asked for a choice field's values: `settingUp` is why they are not known yet, which is no error. */
+export type ChoicesAnswer = PluginAnswer<KnownValue[]> | { ok: false; settingUp: MultilingualText };
 
 /** What the plugin answered, or `fallback` where asking it failed. */
 export function valueOr<T>(answer: PluginAnswer<T>, fallback: T): T {
@@ -406,6 +410,8 @@ export type Source = {
   lastRunAt: Date | null;
   /** When it last ran successfully; null before then. */
   lastSuccessAt: Date | null;
+  /** What it waits for while it is still being set up, as its last run told; null once it is ready. */
+  settingUp: MultilingualText | null;
   /** Its failed runs since the last successful one; null if the last run succeeded. */
   failure: SourceFailure | null;
   /** When its last Origin not seen before came; null before the first. */
@@ -468,6 +474,8 @@ export interface SourceRepository {
    * have replaced and removed one of them meanwhile (ADR-0005, specs/sweep).
    */
   update(source: Source, changedSecrets: Record<string, SecretRef>): Promise<void>;
+  /** Clears the time of the last run, so that the Source runs again on the next tick. */
+  runSoon(id: SourceId): Promise<void>;
   /**
    * Records a run that failed, which keeps the sync cursor for the next one. The Source fails since the
    * first failed run after its last successful one, and definitely once any of them did.
@@ -550,6 +558,8 @@ export type SourceRun = {
   retainedSince: Date;
   /** External ids of Origins the Source deleted, whose Items are deleted and whose messages go. */
   withdrawn: string[];
+  /** What a Source still being set up waits for, whose run was no successful read; null for one that is ready. */
+  settingUp: MultilingualText | null;
   origins: {
     externalId: string;
     /** When the Source received a message; null for a stated Item. */

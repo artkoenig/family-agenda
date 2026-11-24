@@ -412,6 +412,7 @@ export class PostgresSourceRepository implements SourceRepository {
         syncCursor: cursorToJson(source.syncCursor),
         lastRunAt: source.lastRunAt,
         lastSuccessAt: source.lastSuccessAt,
+        settingUp: source.settingUp,
         ...failureColumns(source.failure),
         lastNewRecordAt: source.lastNewRecordAt,
       });
@@ -453,6 +454,10 @@ export class PostgresSourceRepository implements SourceRepository {
         .where(eq(sources.id, source.id));
       await tx.update(sourceRuns).set({ lastRunAt: source.lastRunAt }).where(eq(sourceRuns.sourceId, source.id));
     });
+  }
+
+  async runSoon(id: SourceId): Promise<void> {
+    await this.db.update(sourceRuns).set({ lastRunAt: null }).where(eq(sourceRuns.sourceId, id));
   }
 
   async replaceSecretsInTurn(id: SourceId, holder: string, changed: Record<string, SecretRef>): Promise<boolean> {
@@ -552,6 +557,7 @@ export class PostgresSourceRepository implements SourceRepository {
       attributes: attributes.get(source.id) ?? [],
       lastRunAt: run.lastRunAt,
       lastSuccessAt: run.lastSuccessAt,
+      settingUp: run.settingUp,
       failure:
         run.failingSince && run.lastError !== null
           ? { kind: run.lastErrorKind === "definite" ? "definite" : "temporary", message: run.lastError, since: run.failingSince }
@@ -737,6 +743,7 @@ async function failedRunRecorded(db: Database | Transaction, id: SourceId, at: D
     .update(sourceRuns)
     .set({
       lastRunAt: at,
+      settingUp: null,
       failingSince: sql`coalesce(${sourceRuns.failingSince}, ${at})`,
       lastErrorKind: sql`CASE WHEN ${sourceRuns.lastErrorKind} = 'definite' THEN 'definite' ELSE ${error.kind} END`,
       lastError: error.message,

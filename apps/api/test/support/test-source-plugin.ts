@@ -84,6 +84,7 @@ const refreshed = new Map<string, Record<string, string>>();
 const askingFails = new Map<string, string>();
 /** Choice fields whose values the plugin cannot offer, by `<sourceTypeId>:<field>`. */
 const choiceFieldFails = new Map<string, string>();
+const settingUp = new Map<string, PluginText>();
 const removed = new Map<string, RunContext[]>();
 const named = new Map<string, { declared: SourceAttributeDeclaration[]; archived: string[] }>();
 const namingAsked = new Map<string, number>();
@@ -135,6 +136,11 @@ export const testPluginControls = {
   failChoiceField(sourceTypeId: string, field: string, message: string | null): void {
     if (message === null) choiceFieldFails.delete(`${sourceTypeId}:${field}`);
     else choiceFieldFails.set(`${sourceTypeId}:${field}`, message);
+  },
+  /** The plugin's Sources are still being set up from now on, waiting for this; null makes them ready. */
+  settingUp(sourceTypeId: string, text: PluginText | null): void {
+    if (text === null) settingUp.delete(sourceTypeId);
+    else settingUp.set(sourceTypeId, text);
   },
   /** Makes preparing the next Source being added fail. */
   failAdding(sourceTypeId: string): void {
@@ -268,6 +274,7 @@ export function testSourcePlugin(plugin: TestPluginPackage): PluginImplementatio
         syncCursor: String(Number(context.syncCursor ?? 0) + 1),
         ...(next.withdrawn ? { withdrawn: next.withdrawn } : {}),
         attributes: attributesOf(sourceTypeId, next.origins),
+        ...settingUpOf(sourceTypeId),
       };
     },
     sourceAdded: async () => {
@@ -288,7 +295,7 @@ export function testSourcePlugin(plugin: TestPluginPackage): PluginImplementatio
       choicesAsked.set(sourceTypeId, (choicesAsked.get(sourceTypeId) ?? 0) + 1);
       const fieldFailure = choiceFieldFails.get(`${sourceTypeId}:${field}`);
       if (fieldFailure !== undefined) throw new PluginError("temporary", fieldFailure);
-      return { choices: askedOf(sourceTypeId, knownValues.get(sourceTypeId) ?? []) };
+      return { choices: askedOf(sourceTypeId, knownValues.get(sourceTypeId) ?? []), ...settingUpOf(sourceTypeId) };
     },
     ...(plugin.namesAttributes
       ? {
@@ -332,6 +339,12 @@ function attributesOf(sourceTypeId: string, origins: Origin[]): { declared: Sour
   const archived = archiving.get(sourceTypeId) ?? [];
   archiving.delete(sourceTypeId);
   return { declared: [...named].map(([externalId, name]) => ({ externalId, name })), archived };
+}
+
+/** What the plugin says its Sources wait for while still being set up. */
+function settingUpOf(sourceTypeId: string): { settingUp?: PluginText } {
+  const text = settingUp.get(sourceTypeId);
+  return text === undefined ? {} : { settingUp: text };
 }
 
 /** What the plugin answers when asked, or the failure set with `failAsking`. */

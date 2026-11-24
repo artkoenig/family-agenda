@@ -29,6 +29,7 @@ describe("A Source's page, whose choice fields load as fragments", () => {
   });
   afterEach(async () => {
     testPluginControls.failChoiceField("mail", "labels", null);
+    testPluginControls.settingUp("mail", null);
     await instance.close();
   });
 
@@ -64,6 +65,20 @@ describe("A Source's page, whose choice fields load as fragments", () => {
     const saved = await instance.post(`/admin/sources/${id}`, { "plain.host": "imap.example.org", "choice.folders": "Work", "choice.labels": "urgent", pollIntervalMinutes: "" }, { cookie });
     expect(saved.status).toBe(303);
     expect((await instance.app.sources.list()).find((source) => source.id === id)?.plain.labels).toEqual(["urgent"]);
+  });
+
+  it("keeps loading while the plugin is still setting up, saying so, its selection kept", async () => {
+    testPluginControls.settingUp("mail", "Loading folders.");
+    const url = `/admin/sources/${id}/choices/folders?id=${id}-folders`;
+    const field = await (await instance.get(url, { cookie })).text();
+    expect(field).toContain(`hx-get="${url}"`);
+    expect(field).toContain("delay:3s");
+    expect(field).toMatch(/aria-busy="true"><legend>Folders.*Loading folders\./);
+    expect(field, "the kept selection stays").not.toContain("hx-swap-oob");
+    expect(field).not.toContain("fam-banner");
+
+    testPluginControls.settingUp("mail", null);
+    expect(await (await instance.get(url, { cookie })).text()).toMatch(/value="Work" checked=""/);
   });
 
   it("answers no field for a Source or a field that does not exist", async () => {

@@ -1,5 +1,5 @@
 import type { ActivityKind, AddingProgress } from "@family-agenda/application";
-import { memberAvatars, statedItemKinds, familyLanguages, horizonDaysRange, itemKinds, photoTypes, agendaLayouts, timetableChangeKinds, type RunError } from "@family-agenda/domain";
+import { memberAvatars, statedItemKinds, familyLanguages, horizonDaysRange, itemKinds, photoTypes, agendaLayouts, timetableChangeKinds, type MultilingualText, type RunError } from "@family-agenda/domain";
 import { sql, type SQL } from "drizzle-orm";
 import {
   bigint,
@@ -256,6 +256,8 @@ export const sourceRuns = pgTable(
     lastRunAt: timestamptz("last_run_at"),
     /** When it last ran successfully, which the Admin area shows. */
     lastSuccessAt: timestamptz("last_success_at"),
+    /** What a Source still being set up waits for, as its last run told, a text or one per language; null once it is ready. */
+    settingUp: jsonb("setting_up").$type<MultilingualText>(),
     /** The first failed run since the last successful one; null while it runs successfully. */
     failingSince: timestamptz("failing_since"),
     /** `definite` once any error since `failingSince` was, else `temporary`; null with `failingSince`. */
