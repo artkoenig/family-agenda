@@ -1,0 +1,1 @@
+ALTER TABLE "source_attribute" ADD COLUMN "run_declared" boolean DEFAULT false NOT NULL;

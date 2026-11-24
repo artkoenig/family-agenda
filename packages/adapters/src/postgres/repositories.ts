@@ -12,6 +12,7 @@ import type {
   CatalogueRecord,
   CatalogueRepository,
   DeclaredAttribute,
+  ReportedAttributes,
   FamilyMemberRepository,
   FamilyRepository,
   SoleAssignment,
@@ -52,7 +53,7 @@ import type {
   AgendaLayout,
 } from "@family-agenda/domain";
 import { defaultFamilyLanguage, isFamilyLanguage } from "@family-agenda/domain";
-import { and, asc, eq, gt, inArray, isNotNull, isNull, lt, lte, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, isNotNull, isNull, lt, lte, notInArray, or, sql, type SQL } from "drizzle-orm";
 import { uuidPattern } from "../uuid";
 import type { Database } from "./database";
 import {
@@ -484,21 +485,31 @@ export class PostgresSourceRepository implements SourceRepository {
     await this.db.update(sources).set({ name }).where(eq(sources.id, id));
   }
 
-  async declareAttributes(id: SourceId, attributes: DeclaredAttribute[]): Promise<void> {
-    if (!uuidPattern.test(id) || attributes.length === 0) return;
-    await this.db.transaction((tx) => attributesDeclared(tx, id, attributes));
+  async nameAttributes(id: SourceId, reported: ReportedAttributes): Promise<void> {
+    if (!uuidPattern.test(id)) return;
+    await this.db.transaction(async (tx) => {
+      if (reported.declared.length > 0) await attributesDeclared(tx, id, reported.declared, false);
+      for (const externalId of reported.archived) await attributeArchived(tx, id, externalId);
+      const named = reported.declared.map((attribute) => attribute.externalId);
+      await tx
+        .update(sourceAttributes)
+        .set({ archivedAt: sql`now()` })
+        .where(
+          and(
+            eq(sourceAttributes.sourceId, id),
+            eq(sourceAttributes.runDeclared, false),
+            isNull(sourceAttributes.archivedAt),
+            notInArray(sourceAttributes.externalId, named),
+          ),
+        );
+    });
   }
 
   async declareAttributesInTurn(id: SourceId, holder: string, attributes: DeclaredAttribute[]): Promise<boolean> {
     if (!uuidPattern.test(id)) return false;
     return inHeldTurn(this.db, id, holder, async (tx) => {
-      if (attributes.length > 0) await attributesDeclared(tx, id, attributes);
+      if (attributes.length > 0) await attributesDeclared(tx, id, attributes, true);
     });
-  }
-
-  async archiveAttribute(id: SourceId, externalId: string): Promise<void> {
-    if (!uuidPattern.test(id)) return;
-    await attributeArchived(this.db, id, externalId);
   }
 
   async archiveAttributeInTurn(id: SourceId, holder: string, externalId: string): Promise<boolean> {
@@ -704,18 +715,24 @@ function inHeldTurn(db: Database, sourceId: SourceId, holder: string, work: (tx:
 
 /**
  * Makes the Source Attributes known: an unknown id is inserted, a known one gets its name and is
- * revived; the ids no longer count as unknown on the Source's run state.
+ * revived; the ids no longer count as unknown on the Source's run state. `byRun` is whether a run
+ * declares them, rather than the plugin naming them apart from one.
  */
-async function attributesDeclared(tx: Transaction, id: SourceId, attributes: DeclaredAttribute[]): Promise<void> {
+async function attributesDeclared(tx: Transaction, id: SourceId, attributes: DeclaredAttribute[], byRun: boolean): Promise<void> {
   const ids = [...new Set(attributes.map((attribute) => attribute.externalId))];
   // A later declaration of the same id in one call wins.
   const named = new Map(attributes.map((attribute) => [attribute.externalId, attribute.name]));
   await tx
     .insert(sourceAttributes)
-    .values([...named].map(([externalId, name]) => ({ sourceId: id, externalId, name })))
+    .values([...named].map(([externalId, name]) => ({ sourceId: id, externalId, name, runDeclared: byRun })))
     .onConflictDoUpdate({
       target: [sourceAttributes.sourceId, sourceAttributes.externalId],
-      set: { name: sql`excluded.name`, archivedAt: null },
+      set: {
+        name: sql`excluded.name`,
+        archivedAt: null,
+        // What a run declared before it was archived no longer counts once it is revived.
+        runDeclared: byRun ? true : sql`${sourceAttributes.runDeclared} AND ${sourceAttributes.archivedAt} IS NULL`,
+      },
     });
   // The ids that were refused as unknown no longer are.
   const declared = sql`ARRAY[${sql.join(ids.map((externalId) => sql`${externalId}`), sql`, `)}]::text[]`;

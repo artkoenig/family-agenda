@@ -303,7 +303,6 @@ export const de: Catalogue = {
     attributesPending: "Die Quelle wird zum ersten Mal gelesen. Ihre Teile erscheinen hier, sobald sie bekannt sind.",
     attributeMembers: (name) => `Betrifft, für ${name}`,
     attributeWholeFamily: "Betrifft die ganze Familie",
-    attributeArchived: "In der Quelle nicht mehr da",
     remove: "Diese Quelle entfernen",
     removeHint: "Beendet das Lesen und entfernt alles, was sie gebracht hat.",
     removeButton: "Entfernen",

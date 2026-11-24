@@ -333,8 +333,7 @@ export function createSourceAccess(deps: SourcesDeps) {
     if (!sourceType?.attributes) return null;
     const answer = await sourceType.attributes(await contextOf(source, sourceType));
     if (!answer.ok) return answer.message;
-    await sources.declareAttributes(source.id, answer.value.declared);
-    for (const externalId of answer.value.archived) await sources.archiveAttribute(source.id, externalId);
+    await sources.nameAttributes(source.id, answer.value);
     return null;
   }
 
@@ -631,8 +630,8 @@ export function createSourceAccess(deps: SourcesDeps) {
     },
 
     /**
-     * Asks the plugin of a Source which Source Attributes it has now, declaring and archiving them
-     * as a run does, and returns the Source with them; null if the Source is unknown. Where asking
+     * Asks the plugin of a Source which Source Attributes it has now, declaring and archiving them,
+     * and archiving those only asking ever declared that it no longer names, and returns the Source with them; null if the Source is unknown. Where asking
      * fails, the Source keeps those it had, with the reason.
      */
     async refreshAttributes(id: SourceId): Promise<{ source: SourceSummary; problem: string | null } | null> {

@@ -497,16 +497,19 @@ export interface SourceRepository {
   /** Names the Source as an Admin calls it; null for the name derived from its settings. */
   rename(id: SourceId, name: string | null): Promise<void>;
   /**
-   * Makes the Source Attributes known on a plugin's behalf, in one transaction: an unknown id is
-   * inserted, a known one gets its name and is revived. The ids no longer count as unknown on the
-   * Source's run state.
+   * Declares and archives the Source Attributes a plugin named apart from a run, in one transaction.
+   * No sync cursor remembers such a declaration, so one that no run has made since is archived too
+   * once the plugin no longer names it.
    */
-  declareAttributes(id: SourceId, attributes: DeclaredAttribute[]): Promise<void>;
-  /** Archives a Source Attribute by its external id; an unknown one is ignored. */
-  archiveAttribute(id: SourceId, externalId: string): Promise<void>;
-  /** Declares the attributes as `declareAttributes` does, only while `holder` holds the Source's turn (ADR-0008); whether it did. */
+  nameAttributes(id: SourceId, reported: ReportedAttributes): Promise<void>;
+  /**
+   * Makes the Source Attributes known on a plugin's behalf, in one transaction and only while
+   * `holder` holds the Source's turn (ADR-0008): an unknown id is inserted, a known one gets its
+   * name and is revived. The ids no longer count as unknown on the Source's run state. Returns
+   * whether it did.
+   */
   declareAttributesInTurn(id: SourceId, holder: string, attributes: DeclaredAttribute[]): Promise<boolean>;
-  /** Archives as `archiveAttribute` does, only while `holder` holds the Source's turn (ADR-0008); whether it did. */
+  /** Archives a Source Attribute by its external id, ignoring an unknown one, only while `holder` holds the Source's turn (ADR-0008); whether it did. */
   archiveAttributeInTurn(id: SourceId, holder: string, externalId: string): Promise<boolean>;
   /**
    * Assigns the Source Attribute to the Family Members, replacing those it was assigned to; none

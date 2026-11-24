@@ -320,7 +320,6 @@ export const en = {
     attributesPending: "Reading the Source for the first time. Its parts appear here as soon as they are known.",
     attributeMembers: (name: string) => `Concerns, for ${name}`,
     attributeWholeFamily: "Concerns the whole Family",
-    attributeArchived: "Gone from the Source",
     remove: "Remove this Source",
     removeHint: "Stops reading it and removes everything it has brought in.",
     removeButton: "Remove",

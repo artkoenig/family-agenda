@@ -1605,6 +1605,8 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     if (!source) return seeOther(c, "/admin/sources");
     const form = await c.req.parseBody({ all: true });
     for (const attribute of source.attributes) {
+      // The form does not show an archived one, which keeps its assignment.
+      if (attribute.archived) continue;
       const chosen = form[`member.${attribute.id}`];
       const concerns = (Array.isArray(chosen) ? chosen : [chosen]).filter(
         (id): id is string => typeof id === "string",

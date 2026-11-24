@@ -328,6 +328,8 @@ export const sourceAttributes = pgTable(
     externalId: text("external_id").notNull(),
     name: text("name").notNull(),
     archivedAt: timestamptz("archived_at"),
+    /** Whether a run declared it since it was last revived, so that the plugin's sync cursor knows it and the plugin archives it. */
+    runDeclared: boolean("run_declared").notNull().default(false),
   },
   (table) => [unique("source_attribute_external_id_unique").on(table.sourceId, table.externalId)],
 );
