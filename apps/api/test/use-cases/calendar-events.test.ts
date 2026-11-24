@@ -83,6 +83,36 @@ describe("calendar Events on the timeline", () => {
       "SELECT r.xmin::text AS record, r.processed_at IS NOT NULL AS processed, i.id AS item, e.xmin::text AS event FROM source_record r LEFT JOIN item i ON i.record_id = r.id LEFT JOIN event e ON e.item_id = i.id WHERE r.external_id = 'piano'",
     );
 
+  const lastMonth = { span: timed("2026-08-14T14:00:00Z", "2026-08-14T15:00:00Z") };
+
+  it("records an entry whose Event ended more than 30 days ago without writing it, until it is moved", async () => {
+    const start = { span: timed("2026-08-01T14:00:00Z", "2026-08-01T15:00:00Z") };
+    testPluginControls.emit("calendar", [piano(start)]);
+    instance.clock.advance(15 * minutes);
+    expect((await instance.app.polling.pollDue()).invalid).toEqual([]);
+    expect(await written()).toMatchObject([{ processed: true, item: null }]);
+
+    await arrive(piano());
+
+    expect(await timeline()).toEqual({ "2026-09-15": ["16:00-17:00 Piano lesson"] });
+  });
+
+  it("writes an entry whose Event ended within 30 days", async () => {
+    await arrive(piano({ span: timed("2026-08-16T14:00:00Z", "2026-08-16T15:00:00Z") }));
+
+    expect((await written())[0]?.item).toEqual(expect.any(String));
+  });
+
+  it("keeps and updates a known Event moved to more than 30 days ago", async () => {
+    await arrive(piano());
+    const [before] = await written();
+
+    await arrive(piano(lastMonth));
+
+    expect((await written())[0]?.item).toBe(before?.item);
+    expect(await instance.query("SELECT starts_at::date::text AS day FROM event")).toEqual([{ day: "2026-08-14" }]);
+  });
+
   it("writes nothing for an entry stated as it was", async () => {
     await arrive(piano());
     const before = await written();

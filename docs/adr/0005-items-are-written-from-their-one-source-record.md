@@ -84,6 +84,14 @@ The model of extraction ([`specs/extraction`](../../specs/extraction), ADR-0012)
 
 The model checks that no attempt reads a message more than twice, that Items and `processed_at` are written together or not at all, that no run reads a message it found read, and, as bounds, that every message ends read, or failed and retryable. It does not model withdrawal or retention, which only make a message stop waiting, nor a worker that dies on the same message every time, whose crashes count against nothing.
 
+### Past Items
+
+A Source's first run brought many Items that were over long ago: a calendar states all it ever held, and a mailbox or chat what it received in the past weeks. The core does not know what kind of Source a run is of, nor whether it is its first; it judges each Item by its own dates, in days of the Family's time zone.
+
+- **An extracted Item that was over on arrival is not written**: an Event whose last day, or a Task whose Deadline, is before the day the message was recorded (`created_at`). Not before the day it is read, as a message that waited for its endpoint would lose Items that were news when it arrived. The message still counts as read, and is not read once more for it. A Task without a Deadline is always written.
+- **A stated Event that ended more than 30 days ago is not written as new.** Its Source Record is kept, as processed and not as invalid, and writes its Item once it states a later date. An Event already written is kept and goes on being updated, however long ago it was. 30 days is as far back as a feed reaches.
+- **How far back a Source reads is its plugin's.** Items written before this rule stay.
+
 ## Consequences
 
 - An improved prompt or model applies only to new messages. Earlier messages keep what they stated.

@@ -1,7 +1,8 @@
 import { createHash, randomUUID } from "node:crypto";
 import { setTimeout as sleep } from "node:timers/promises";
-import type { SourceId, SourceTypeId } from "@family-agenda/domain";
+import { localDateTime, type SourceId, type SourceTypeId } from "@family-agenda/domain";
 import type { ActivityLog } from "./activity";
+import { isLongOver } from "./past-items";
 import { retainedSince } from "./retention";
 import type {
   BlobStore,
@@ -254,10 +255,12 @@ export function createSourcePolling(deps: PollingDeps) {
   /** Records a successful run with its Origins, null if its turn was lost; their files go again if it is not recorded. */
   async function recordRun(source: Source, now: Date, result: Extract<SourceRunResult, { ok: true }>, origins: Awaited<ReturnType<typeof buildOrigins>>) {
     try {
+      const timeZone = await deps.timeZone();
+      const today = localDateTime(now, timeZone).date;
       return await items.recordRun(
         // Retention by the clock now, not the run's start: a purge during the plugin's call may have
         // deleted the row of a message that has passed it since (specs/source-records).
-        { sourceId: source.id, holder, at: now, retainedSince: retainedSince(clock.now()), syncCursor: result.syncCursor, withdrawn: result.withdrawn, settingUp: result.settingUp ?? null, origins },
+        { sourceId: source.id, holder, at: now, retainedSince: retainedSince(clock.now()), syncCursor: result.syncCursor, withdrawn: result.withdrawn, settingUp: result.settingUp ?? null, origins, isLongOver: (item) => isLongOver(item, today, timeZone) },
         readStated,
       );
     } catch (error) {

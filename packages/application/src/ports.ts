@@ -560,6 +560,8 @@ export type SourceRun = {
   withdrawn: string[];
   /** What a Source still being set up waits for, whose run was no successful read; null for one that is ready. */
   settingUp: MultilingualText | null;
+  /** Whether an entry without an Item writes none, as what it states is long over. */
+  isLongOver: (item: StatedItem) => boolean;
   origins: {
     externalId: string;
     /** When the Source received a message; null for a stated Item. */
@@ -592,6 +594,8 @@ export type PendingMessage = {
   id: RawMessageId;
   sourceId: SourceId;
   sentAt: Date;
+  /** When a run first recorded it, however long after it was sent. */
+  recordedAt: Date;
   body: string;
   /** In the order the message has them. */
   attachments: PendingAttachment[];
@@ -680,6 +684,8 @@ export interface ItemRepository {
    * message is not recorded or read again. Returns the external ids of messages recorded before or
    * withdrawn, whose new attachments the caller removes, the attachments of the withdrawn
    * messages, for the caller to remove, and the entries whose Item was invalid.
+   *
+   * An entry that has no Item and states one long over, by `isLongOver`, is recorded without one.
    *
    * An Origin naming a Source Attribute that is unknown or archived is refused, as a plugin bug:
    * it is not recorded, and the ids are returned and kept among the Source's unknown attributes
