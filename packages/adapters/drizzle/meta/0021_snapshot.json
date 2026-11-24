@@ -1,5 +1,5 @@
 {
-  "id": "a00267fb-3e9b-4eeb-b252-82d7d1991650",
+  "id": "209a62c1-f9c6-47c0-af76-9eec5121f9aa",
   "prevId": "cbdf2286-b780-40df-84db-0f950cc93b8a",
   "version": "7",
   "dialect": "postgresql",
@@ -1261,13 +1261,6 @@
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
-        },
-        "run_declared": {
-          "name": "run_declared",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
         }
       },
       "indexes": {},
@@ -1511,6 +1504,13 @@
           "type": "text",
           "primaryKey": false,
           "notNull": false
+        },
+        "own": {
+          "name": "own",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
         },
         "subject": {
           "name": "subject",

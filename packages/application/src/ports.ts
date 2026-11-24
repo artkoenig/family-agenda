@@ -242,6 +242,8 @@ export type IngestedOrigin = {
   attributes: string[];
   /** Who sent a message, if the plugin tells. */
   sender: string | null;
+  /** Whether the Family sent a message itself, as far as the plugin tells. */
+  own: boolean;
   subject: string | null;
   link: string | null;
   /** The Item an entry states; null for a message. */
@@ -544,6 +546,8 @@ export type StoredFile = { blob: BlobRef; sha256: string; size: number };
 /** A message as it is recorded: its text, and its attachments already in the BlobStore. */
 export type StoredMessage = {
   sender: string | null;
+  /** Whether the Family sent it itself. */
+  own: boolean;
   subject: string | null;
   body: string;
   attachments: (StoredFile & { filename: string; contentType: string })[];
@@ -575,6 +579,8 @@ export type SourceRun = {
      */
     attributes: string[];
     sender: string | null;
+    /** Whether the Family sent a message itself. */
+    own: boolean;
     subject: string | null;
     link: string | null;
     /** The Item an entry states, as its plugin states it; null for a message. */
@@ -599,6 +605,8 @@ export type PendingMessage = {
   sentAt: Date;
   /** When a run first recorded it, however long after it was sent. */
   recordedAt: Date;
+  /** Whether the Family sent it itself, which any of its Copies may tell. */
+  own: boolean;
   body: string;
   /** In the order the message has them. */
   attachments: PendingAttachment[];
@@ -873,6 +881,8 @@ export type ExtractionRequest = {
   endpoint: LlmEndpoint;
   message: {
     text: string;
+    /** Whether the Family sent it itself, so that what it offers is a Task. */
+    own: boolean;
     /** When it was sent, on the Family's clocks, which relative dates are resolved against. */
     sent: { date: LocalDate; time: LocalTime; weekday: string };
   };

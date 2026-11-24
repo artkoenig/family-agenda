@@ -9,7 +9,7 @@ import { z } from "zod";
  * `major.minor`. A minor change is additive only, such as an optional field or an optional new
  * endpoint; anything else is a new major. CI compares `openapi.json` with the last release.
  */
-export const contractVersion = "3.1";
+export const contractVersion = "3.2";
 
 export type ContractVersion = { major: number; minor: number };
 
@@ -204,6 +204,11 @@ export const sourceRecordSchema = z
     /** External ids of declared Source Attributes. */
     attributes: z.array(z.string().min(1)),
     sender: z.string().optional(),
+    /**
+     * Whether the Family sent the message itself, from the account the Source reads: what it offers
+     * is then something the Family has to do. False if left out (since 3.2).
+     */
+    own: z.boolean().optional(),
     subject: z.string().optional(),
     link: z.url({ protocol: /^https?$/ }).optional(),
     content: z.discriminatedUnion("kind", [

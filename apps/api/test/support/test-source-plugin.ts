@@ -30,6 +30,7 @@ export type Origin = {
   occurredAt?: Date;
   attributes: string[];
   sender?: string;
+  own?: boolean;
   subject?: string;
   link?: string;
   content:

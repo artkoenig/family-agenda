@@ -149,6 +149,7 @@ export function createSourcePolling(deps: PollingDeps) {
     }
     return {
       sender: origin.sender,
+      own: origin.own,
       subject: origin.subject,
       body: message.text,
       attachments,
@@ -295,6 +296,7 @@ export function createSourcePolling(deps: PollingDeps) {
         occurredAt: origin.occurredAt,
         attributes: origin.attributes,
         sender: origin.sender,
+        own: origin.own,
         subject: origin.subject,
         link: origin.link,
         stated: origin.stated,

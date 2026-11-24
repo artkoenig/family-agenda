@@ -310,6 +310,21 @@ describe("A message that several Sources of one Source Type deliver", () => {
       extractorRequestsBefore = extractor.requests.length;
     });
 
+    it("is read as one the Family sent itself if any Copy tells so", async () => {
+      testPluginControls.emitFor("mail", leos, [{ ...mail(), own: true }, { ...mail(), externalId: "<other>" }]);
+      testPluginControls.emitFor("mail", mias, [{ ...mail(), externalId: "<own>" }]);
+      extractor.fail("unreachable");
+      await run();
+      testPluginControls.emitFor("mail", leos, [{ ...mail(), externalId: "<own>", own: true }]);
+      extractor.recover();
+      const failed = extractor.requests.length;
+      await run();
+
+      const read = extractor.requests.slice(failed).map(({ message }) => message.own);
+      expect(read, "the known message stays as it was recorded, and the others are read once each").toHaveLength(3);
+      expect(read.filter((own) => own), "the one Leo's later Copy tells of").toHaveLength(1);
+    });
+
     it("follows a later Copy to another folder", async () => {
       testPluginControls.emitFor("mail", leos, [mail("Schule")]);
       await run();
