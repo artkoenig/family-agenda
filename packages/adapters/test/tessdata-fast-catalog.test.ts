@@ -9,14 +9,12 @@ describe("tessdataFastCatalog's download", () => {
     globalThis.fetch = originalFetch;
   });
 
-  const okResponse = (body: Uint8Array, contentLength?: string) =>
-    ({
-      ok: true,
+  const okResponse = (body: Uint8Array<ArrayBuffer>, contentLength?: string) =>
+    new Response(body, {
       status: 200,
       statusText: "OK",
-      headers: new Headers(contentLength !== undefined ? { "content-length": contentLength } : {}),
-      arrayBuffer: () => Promise.resolve(body.buffer as ArrayBuffer),
-    }) as Response;
+      headers: contentLength !== undefined ? { "content-length": contentLength } : {},
+    });
 
   it("returns the bytes of a model that fits", async () => {
     const bytes = new TextEncoder().encode("model data");
@@ -32,13 +30,7 @@ describe("tessdataFastCatalog's download", () => {
   });
 
   it("throws when GitHub answers with an error status", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValue({
-      ok: false,
-      status: 404,
-      statusText: "Not Found",
-      headers: new Headers(),
-      arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)),
-    } as Response);
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(null, { status: 404, statusText: "Not Found" }));
 
     const catalog = tessdataFastCatalog({ timeoutMs: 1000 });
     await expect(catalog.download("eng" as OcrLanguage)).rejects.toThrow("GitHub answered 404 Not Found.");
