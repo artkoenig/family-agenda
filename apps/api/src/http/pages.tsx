@@ -42,7 +42,6 @@ import {
 } from "@family-agenda/domain";
 import type { Child } from "hono/jsx";
 import { raw } from "hono/html";
-import { SubscriptionNav } from "./subscription-link";
 import { useTranslation, type Translation } from "./i18n/translation";
 import type { Catalogue } from "./i18n/en";
 import { Layout, Problem } from "./layout";
@@ -55,6 +54,7 @@ import {
 import { Avatar, MessageItems, agendaUrl } from "./agenda-page";
 import { avatarUrl } from "./avatars";
 import { href, usePathPrefix } from "./href";
+import { ContractLinks } from "./contract-links";
 
 /** The Family Languages to choose from, the given one selected. */
 function FamilyLanguageOptions(props: { selected: FamilyLanguage }) {
@@ -411,8 +411,8 @@ function SectionIcon(props: { id: SectionId }) {
 }
 
 /**
- * The Admin area: the settings list beside the current section's details, and a dialog over
- * them while something is being added.
+ * The Admin area: the settings list, with the operator's contract pages at its end if any,
+ * beside the current section's details, and a dialog over them while something is being added.
  */
 function AdminLayout(props: {
   title: string;
@@ -464,7 +464,7 @@ function AdminLayout(props: {
               })}
             </>
           ))}
-          <SubscriptionNav />
+          <ContractLinks />
           <span class="fam-settings__version">
             {t.settings.version(admin.settings.version)}
           </span>

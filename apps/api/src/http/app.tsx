@@ -101,6 +101,7 @@ import { href, pathPrefixOf, PathPrefixContext, stylesheetBelow } from "./href";
 import { LegalLinksContext, type LegalLink } from "./legal-links";
 import { NoticeContext, shownNotice, type Notice, type ShownNotice } from "./notice";
 import { SubscriptionUrlContext } from "./subscription-link";
+import { ContractLinksContext, type ContractLink } from "./contract-links";
 
 /**
  * Single sign-on through the one callback of a deployment in supplied mode (ADR-0009), for this
@@ -133,6 +134,8 @@ export type HttpOptions = {
   legalLinks?: readonly LegalLink[];
   /** The operator's page of the Family's subscription, which the Admin area links to (`SUBSCRIPTION_URL`); none by default. */
   subscriptionUrl?: string | null;
+  /** The operator's contract pages, which every Admin page links to (`CANCEL_URL` and the others); none by default. */
+  contractLinks?: readonly ContractLink[];
 };
 
 /**
@@ -173,6 +176,17 @@ function noticeOf(c: Context<Env>): ShownNotice | null {
   const env = c.env as HttpEnv | undefined;
   const admin = c.get("admin") as SignedInAdmin | undefined;
   return shownNotice(env?.notice, c.get("translation").language, admin !== undefined);
+}
+
+/** `node` with the operator's pages it links to: legal pages, subscription page, contract pages; none by default. */
+function withOperatorPages(options: HttpOptions, node: Child) {
+  return (
+    <LegalLinksContext.Provider value={options.legalLinks ?? []}>
+      <SubscriptionUrlContext.Provider value={options.subscriptionUrl ?? null}>
+        <ContractLinksContext.Provider value={options.contractLinks ?? []}>{node}</ContractLinksContext.Provider>
+      </SubscriptionUrlContext.Provider>
+    </LegalLinksContext.Provider>
+  );
 }
 
 function isRelayedProblem(text: string | undefined): text is (typeof relayedProblems)[number] {
@@ -282,8 +296,6 @@ export function createHttpApp(application: Application, options: HttpOptions) {
   const app = new Hono<Env>();
   const version = options.version ?? "dev";
   const prefix = pathPrefixOf(options.publicUrl);
-  const legalLinks = options.legalLinks ?? [];
-  const subscriptionUrl = options.subscriptionUrl ?? null;
   /** Sends the browser on to `path` below the prefix after a form was posted. */
   const seeOther = (c: Context, path: `/${string}`) => c.redirect(href(prefix, path), 303);
   const stylesheetFiles = servedStylesheets(prefix);
@@ -296,11 +308,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     c.html(
       <PathPrefixContext.Provider value={prefix}>
         <TranslationContext.Provider value={c.get("translation")}>
-          <LegalLinksContext.Provider value={legalLinks}>
-            <SubscriptionUrlContext.Provider value={subscriptionUrl}>
-              <NoticeContext.Provider value={noticeOf(c)}>{node}</NoticeContext.Provider>
-            </SubscriptionUrlContext.Provider>
-          </LegalLinksContext.Provider>
+          {withOperatorPages(options, <NoticeContext.Provider value={noticeOf(c)}>{node}</NoticeContext.Provider>)}
         </TranslationContext.Provider>
       </PathPrefixContext.Provider>,
       status,

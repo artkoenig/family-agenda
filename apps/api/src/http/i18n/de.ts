@@ -121,7 +121,7 @@ export const de: Catalogue = {
     title: "Einstellungen",
     signOut: "Abmelden",
     version: (version: string) => `Version ${version}`,
-    groups: { family: "Familie", sources: "Quellen", instance: "Instanz", contract: "Vertrag" },
+    groups: { family: "Familie", sources: "Quellen", instance: "Instanz" },
     subscription: "Abonnement",
     failingSource: "Eine Quelle funktioniert nicht",
     failingSourceBody: "Manche Einträge sind vielleicht nicht aktuell, bis sie behoben ist.",
@@ -498,5 +498,11 @@ export const de: Catalogue = {
     privacy: "Datenschutz",
     terms: "AGB",
     menu: "Rechtliches",
+  },
+  contract: {
+    group: "Vertrag",
+    cancel: "Verträge hier kündigen",
+    withdraw: "Vertrag widerrufen",
+    delete: "Familie löschen",
   },
 };

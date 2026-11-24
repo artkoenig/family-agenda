@@ -7,17 +7,14 @@ import { useTranslation } from "./i18n/translation";
  */
 export const SubscriptionUrlContext = createContext<string | null>(null);
 
-/** The group of the Admin area's settings list that links the subscription page; nothing without one. */
+/** The link to the subscription page, first in the contract group; nothing without one. */
 export function SubscriptionNav() {
   const url = useContext(SubscriptionUrlContext);
   const { t } = useTranslation();
   if (url === null) return null;
   return (
     <>
-      <span class="fam-settings__group" id="subscription">
-        {t.settings.groups.contract}
-      </span>
-      <a class="fam-navitem" href={url}>
+      <a class="fam-navitem" id="subscription" href={url}>
         <svg
           class="fam-navitem__icon"
           viewBox="0 0 24 24"

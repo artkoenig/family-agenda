@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { parseFamilyIdClaim, parseIdentityDirectorySettings, parseIdentityProviderConnection, parseIdentityProviderSettings, type IdentityDirectorySettings, type IdentityProviderConnectionSettings, type OrganizationsClaim, type IdentityProviderSettings, type LlmEndpoint } from "@family-agenda/application";
 import { parsePluginUrls, type PluginBinding } from "./plugin-containers/bindings";
 import type { LegalLink, LegalLinkKind } from "./http/legal-links";
+import type { ContractLink, ContractLinkKind } from "./http/contract-links";
 import { versionOf } from "./version";
 
 export type Config = {
@@ -58,6 +59,11 @@ export type Config = {
   legalLinks: LegalLink[];
   /** The operator's page of the Family's subscription, which the Admin area links to, from `SUBSCRIPTION_URL`; null when unset. */
   subscriptionUrl: string | null;
+  /**
+   * The operator's contract pages every Admin page links to, from `CANCEL_URL`, `WITHDRAW_URL`
+   * and `DELETE_URL` in that order; empty when none is set.
+   */
+  contractLinks: ContractLink[];
 };
 
 export type TriggerConfig = {
@@ -292,8 +298,9 @@ function sharedConfigOf(env: NodeJS.ProcessEnv): Omit<Config, Exclude<FixedOnly,
     ...identityDirectoryConfigOf(env),
     suppliedLlmEndpoint: suppliedLlmEndpointOf(env),
     version: versionOf(env),
-    legalLinks: legalLinksOf(env),
-    subscriptionUrl: operatorUrlOf(env, "SUBSCRIPTION_URL"),
+    legalLinks: linksOf(env, legalVariables, "https://example.org/legal"),
+    subscriptionUrl: operatorUrlOf(env, "SUBSCRIPTION_URL", "https://example.org/subscription"),
+    contractLinks: linksOf(env, contractVariables, "https://example.org/cancel"),
   };
 }
 
@@ -304,19 +311,26 @@ const legalVariables: readonly (readonly [LegalLinkKind, string])[] = [
   ["terms", "TERMS_URL"],
 ];
 
-/** The legal pages that are set, each an absolute http or https address, kept as given. */
-function legalLinksOf(env: NodeJS.ProcessEnv): LegalLink[] {
-  return legalVariables.flatMap(([kind, variable]) => {
-    const url = operatorUrlOf(env, variable);
+/** The variable of each contract page, in the order the Admin area links them. */
+const contractVariables: readonly (readonly [ContractLinkKind, string])[] = [
+  ["cancel", "CANCEL_URL"],
+  ["withdraw", "WITHDRAW_URL"],
+  ["delete", "DELETE_URL"],
+];
+
+/** The operator's pages that are set, each an absolute http or https address, kept as given. */
+function linksOf<Kind extends string>(env: NodeJS.ProcessEnv, variables: readonly (readonly [Kind, string])[], example: string): { kind: Kind; url: string }[] {
+  return variables.flatMap(([kind, variable]) => {
+    const url = operatorUrlOf(env, variable, example);
     return url === null ? [] : [{ kind, url }];
   });
 }
 
 /** A page of the operator's that `variable` sets, an absolute http or https address kept as given; null when unset or empty. */
-function operatorUrlOf(env: NodeJS.ProcessEnv, variable: string): string | null {
+function operatorUrlOf(env: NodeJS.ProcessEnv, variable: string, example: string): string | null {
   const url = env[variable] ?? "";
   if (url === "") return null;
-  if (!isAbsoluteHttpUrl(url)) throw new Error(`${variable} must be an absolute http or https address, such as https://example.org/legal`);
+  if (!isAbsoluteHttpUrl(url)) throw new Error(`${variable} must be an absolute http or https address, such as ${example}`);
   return url;
 }
 

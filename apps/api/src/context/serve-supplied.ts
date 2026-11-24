@@ -35,6 +35,7 @@ export async function serveSupplied(config: SuppliedConfig, log: TriggerLog) {
         version: config.version,
         legalLinks: config.legalLinks,
         subscriptionUrl: config.subscriptionUrl,
+        contractLinks: config.contractLinks,
         // The Family's own address, its path prefix included: the caller removed the prefix from the request.
         publicUrl: context.publicUrl,
         // As on the one listener of a fixed core: Agendas open without a secret until Agenda Links are reworked (ADR-0004).

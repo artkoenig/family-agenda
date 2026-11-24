@@ -41,6 +41,10 @@ x-app: &app
     TERMS_URL: ${TERMS_URL:-}
     # The operator's page of the Family's subscription, linked from the Admin area; none while empty.
     SUBSCRIPTION_URL: ${SUBSCRIPTION_URL:-}
+    # The operator's contract pages, linked from every Admin page; none while all are empty.
+    CANCEL_URL: ${CANCEL_URL:-}
+    WITHDRAW_URL: ${WITHDRAW_URL:-}
+    DELETE_URL: ${DELETE_URL:-}
     MASTER_KEY_FILE: /var/lib/family-agenda/master-key/master.key
     BLOB_DIRECTORY: /var/lib/family-agenda/blobs
     TESSDATA_DIRECTORY: /var/lib/family-agenda/tessdata

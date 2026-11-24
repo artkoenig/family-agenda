@@ -137,7 +137,7 @@ export const en = {
     title: "Settings",
     signOut: "Sign out",
     version: (version: string) => `Version ${version}`,
-    groups: { family: "Family", sources: "Sources", instance: "Instance", contract: "Contract" },
+    groups: { family: "Family", sources: "Sources", instance: "Instance" },
     /** The link to the operator's page of the Family's subscription, from `SUBSCRIPTION_URL`. */
     subscription: "Subscription",
     failingSource: "A Source is failing",
@@ -521,6 +521,15 @@ export const en = {
     terms: "Terms",
     /** The menu that holds them on an Agenda. */
     menu: "Legal",
+  },
+  /** The operator's contract pages, linked from every Admin page when configured. */
+  contract: {
+    /** Their group in the settings list. */
+    group: "Contract",
+    /** The statutory labels of § 312k and § 356a BGB, German in every Family Language. */
+    cancel: "Verträge hier kündigen",
+    withdraw: "Vertrag widerrufen",
+    delete: "Delete family",
   },
 };
 

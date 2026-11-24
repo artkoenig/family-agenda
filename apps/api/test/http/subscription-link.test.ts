@@ -20,8 +20,8 @@ const pagesOf = async (instance: HttpTestInstance, language: "en" | "de", base =
 
 /** The subscription link of a page, as label and address; empty for none. */
 const subscriptionLinkOf = (page: string) => {
-  const link = /<a class="fam-navitem" href="([^"]*)"[^>]*>[\s\S]*?<span class="fam-navitem__label">([^<]*)<\/span>/.exec(page.slice(page.indexOf('id="subscription"')));
-  return page.includes('id="subscription"') && link ? `${link[2]} ${link[1]?.replaceAll("&amp;", "&")}` : "";
+  const link = /<a class="fam-navitem" id="subscription" href="([^"]*)"[^>]*>[\s\S]*?<span class="fam-navitem__label">([^<]*)<\/span>/.exec(page);
+  return link ? `${link[2]} ${link[1]?.replaceAll("&amp;", "&")}` : "";
 };
 
 describe("the subscription link in the Admin area", () => {
