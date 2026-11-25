@@ -667,8 +667,11 @@ export type ItemDetails =
 
 export type ProjectedItem = ItemDetails & {
   id: ItemId;
-  /** Where its Source Record can be looked at, with the Source Type and name of its Source. */
-  links: { url: string; sourceTypeId: SourceTypeId; sourceName: string | null }[];
+  /**
+   * Where its Source Record can be looked at, with the Source Type and name of its Source. A stated
+   * one that names no place to look at is there too, without a URL.
+   */
+  links: { url: string | null; sourceTypeId: SourceTypeId; sourceName: string | null }[];
   /** The message it was extracted from, if any, with the Source Type and name of its Source. */
   messages: { id: RawMessageId; sourceTypeId: SourceTypeId; sourceName: string | null; sentAt: Date }[];
   /**

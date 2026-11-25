@@ -143,6 +143,15 @@ describe("Events in an Agenda over HTTP", () => {
     for (const title of ["School breakfast", "Dentist", "Class trip"]) expect(rowOf(page, title)).not.toContain("fam-item--now");
   });
 
+  it("names the Source of an Event that the Source links nowhere", async () => {
+    await arrive(event("trip", { title: "Class trip", span: { allDay: true, firstDay: "2026-09-14", lastDay: "2026-09-14" } }));
+
+    const row = rowOf(await (await instance.get(path)).text(), "Class trip");
+
+    expect(row).toContain('<span class="fam-item__meta">School calendar</span>');
+    expect(row).not.toContain("<a ");
+  });
+
   it("scrolls into the past and the future, one horizon at a time", async () => {
     await arrive(
       event("swim", { title: "Swimming", span: { allDay: false, start: "2026-09-10T14:00:00Z", end: "2026-09-10T15:00:00Z" } }),

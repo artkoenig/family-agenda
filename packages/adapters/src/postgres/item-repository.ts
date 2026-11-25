@@ -460,7 +460,7 @@ export class PostgresItemRepository implements ItemRepository {
         {
           ...details,
           id: row.id as ItemId,
-          links: row.link ? [{ url: row.link, ...source }] : [],
+          links: row.link || !row.isMessage ? [{ url: row.link, ...source }] : [],
           messages: row.isMessage ? [{ id: row.recordId as RawMessageId, ...source, sentAt: row.occurredAt }] : [],
           assignments: assignments.get(row.recordId) ?? [],
         },

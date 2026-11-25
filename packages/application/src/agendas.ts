@@ -91,8 +91,8 @@ export type TimelineEvent = {
   cancelled: boolean;
   /** Over before now; earlier rows of today are dimmed. */
   earlier: boolean;
-  /** Where the original can be looked at, each with its Source's name, else its Source Type's. */
-  links: { url: string; source: MultilingualText }[];
+  /** Where the original can be looked at, if anywhere, each with its Source's name, else its Source Type's. */
+  links: { url: string | null; source: MultilingualText }[];
   /** The raw messages it was extracted from, which Admins can open, each with its Source's name, else its Source Type's. */
   messages: { id: RawMessageId; source: MultilingualText; sentAt: Date }[];
   /** Whom it concerns, by the Family Members its Sources are assigned to, the Family Members in the Family's order. */
