@@ -242,34 +242,8 @@ html[data-theme-mode="dark"] .fam-theme__icon--dark { display: block; }
   .fam-scrolled.fam-filter-open .fam-bar__inner > .fam-filter { display: flex; }
 }
 
-/* The operator's legal pages (`legal-links.tsx`), when configured: a quiet "§" beside the Theme
-   switch, which opens a small card of links. The bar gets a column for it only where it is. */
-.fam-bar__inner:has(> .fam-legal-menu) {
-  grid-template-columns: 1fr auto auto auto;
-  grid-template-areas: "clock summary legal theme" "title title title title" "notes notes notes notes" "filter filter filter filter";
-}
-.fam-legal-menu { grid-area: legal; position: relative; }
-.fam-legal-menu__toggle {
-  display: grid; place-items: center; width: 32px; height: var(--bar-control); list-style: none; cursor: pointer;
-  border-radius: var(--radius-full); color: var(--ink-muted); font-size: 17px; font-weight: 700;
-}
-.fam-legal-menu__toggle::-webkit-details-marker { display: none; }
-@media (hover: hover) { .fam-legal-menu__toggle:hover { color: var(--ink); } }
-.fam-legal-menu__links {
-  position: absolute; top: calc(100% + var(--space-1)); right: 0; z-index: 2; display: flex; flex-direction: column; min-width: 160px;
-  padding: var(--space-1) 0; border: 1px solid var(--line); border-radius: var(--radius-md);
-  background: var(--surface-raised); box-shadow: var(--shadow-raised); font-size: 15px; line-height: 20px;
-}
-.fam-page .fam-legal-menu__links a { padding: var(--space-2) var(--space-4); color: var(--ink); text-decoration: none; white-space: nowrap; }
-@media (hover: hover) { .fam-page .fam-legal-menu__links a:hover { background: var(--hearth-tint); } }
-@media (max-width: 999px) {
-  .fam-scrolled .fam-bar__inner:has(> .fam-legal-menu) {
-    grid-template-columns: 1fr auto auto auto auto;
-    grid-template-areas: "clock notes summary legal theme" "filter filter filter filter filter";
-  }
-}
-
-/* The same pages at the foot of every other page, in one small, muted line. */
+/* The operator's legal pages (`legal-links.tsx`), when configured: at the foot of every page but an
+   Agenda, in one small, muted line. */
 .fam-legal { padding: var(--space-6) var(--space-4) var(--space-5); text-align: center; font-size: 13px; line-height: 20px; color: var(--ink-muted); }
 .fam-page .fam-legal a { color: inherit; }
 .fam-admin--narrow .fam-legal { padding-bottom: 0; }
@@ -798,9 +772,6 @@ html[data-theme-mode="dark"] .fam-theme__icon--dark { display: block; }
     grid-template-areas: "clock title theme" ". notes ." "filter filter filter";
   }
   .fam-agenda .fam-theme { justify-self: end; }
-  /* The "§" goes beside the Theme switch, in its cell, so that the title stays in the middle. */
-  .fam-agenda .fam-bar__inner:has(> .fam-legal-menu) { grid-template-columns: 1fr auto 1fr; grid-template-areas: "clock title theme" ". notes ." "filter filter filter"; }
-  .fam-agenda .fam-legal-menu { grid-area: theme; justify-self: end; margin-right: calc(var(--bar-control) + var(--space-2)); }
   .fam-agenda .fam-clock { gap: 12px; font-size: 40px; line-height: 44px; }
   .fam-agenda .fam-clock__date { font-size: 18px; line-height: 24px; }
   .fam-agenda .fam-bar__title { margin: 0; font-size: 26px; line-height: 32px; }
@@ -821,7 +792,7 @@ html[data-theme-mode="dark"] .fam-theme__icon--dark { display: block; }
   .fam-page { background: #fff; color: #000; }
   .fam-page .fam-secret { background: #fff; color: #000; border: 1px solid #000; }
   .fam-page .fam-sheet { border: 0; box-shadow: none; padding: 0; }
-  .fam-settings__header, .fam-contract, .fam-settings__nav, .fam-banner, .fam-group__actions, .fam-sheet__form, .fam-button, .fam-legal, .fam-legal-menu { display: none; }
+  .fam-settings__header, .fam-contract, .fam-settings__nav, .fam-banner, .fam-group__actions, .fam-sheet__form, .fam-button, .fam-legal { display: none; }
 }
 
 /* A spinner, standing in for a status while something runs in the background. */

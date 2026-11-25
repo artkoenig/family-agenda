@@ -497,7 +497,6 @@ export const de: Catalogue = {
     imprint: "Impressum",
     privacy: "Datenschutz",
     terms: "AGB",
-    menu: "Rechtliches",
   },
 
   contract: {

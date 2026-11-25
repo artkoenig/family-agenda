@@ -53,7 +53,7 @@ export type Config = {
   /** The release the image was built from, such as `0.3.1` or `main-1a2b3c4`; `dev` for a build from the working tree. */
   version: string;
   /**
-   * The operator's legal pages every page links to, from `IMPRINT_URL`, `PRIVACY_URL` and
+   * The operator's legal pages every page but an Agenda links to, from `IMPRINT_URL`, `PRIVACY_URL` and
    * `TERMS_URL` in that order; empty when none is set.
    */
   legalLinks: LegalLink[];

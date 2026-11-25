@@ -513,13 +513,11 @@ export const en = {
       none: "Nothing to do.",
     },
   },
-  /** The operator's legal pages, linked from every page when configured. */
+  /** The operator's legal pages, linked from every page but an Agenda when configured. */
   legal: {
     imprint: "Imprint",
     privacy: "Privacy",
     terms: "Terms",
-    /** The menu that holds them on an Agenda. */
-    menu: "Legal",
   },
 
   /** The operator's contract pages, linked from the Admin area when configured. */
