@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>Family Agenda: die ganze Familienwoche auf einer Seite</title>
-  <meta name="description" content="Von Eltern für Eltern: Family Agenda liest Stundenplan, Kalender, Schul-Mails und Elternchats und zeigt der ganzen Familie eine einfache Übersicht. Bei dir zuhause oder von uns in Deutschland gehostet.">
+  <title>Family Agenda: der Familienplaner für zuhause, Open Source</title>
+  <meta name="description" content="Der Familienplaner, der WebUntis-Stundenplan, Kalender, Schul-Mails und Elternchats für dich liest und die ganze Familienwoche auf eine Seite bringt. Open Source, bei dir zuhause oder von uns in Deutschland gehostet.">
   <meta name="theme-color" content="#faf6f0" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#1c1814" media="(prefers-color-scheme: dark)">
   <link rel="alternate" hreflang="en" href="../">
@@ -33,9 +33,9 @@
     <div class="lp-nav__inner">
       <a class="lp-brand" href="#top"><img src="app-icon.svg" alt="" width="28" height="28"><span class="lp-brand__name">Family Agenda</span></a>
       <nav class="lp-nav__links" aria-label="Seite">
-        <a class="lp-nav__link lp-nav__lang" href="../" lang="en" hreflang="en" data-lang="en" aria-label="English" title="English">EN</a>
         <a class="lp-nav__link" href="#hosted">Für dich gehostet</a>
         <a class="fam-button fam-button--primary fam-button--pill" href="https://github.com/artkoenig/family-agenda">Hol's dir auf GitHub</a>
+        <a class="lp-nav__link lp-nav__lang" href="../" lang="en" hreflang="en" data-lang="en" aria-label="English" title="English">EN</a>
       </nav>
     </div>
   </header>
@@ -43,8 +43,8 @@
   <main id="top">
     <section class="lp-hero">
       <img class="lp-hero__icon" src="app-icon.svg" alt="" width="88" height="88">
-      <h1 class="lp-hero__title">Liebling, ich habe <span class="lp-accent">den Mental Load geschrumpft.</span></h1>
-      <p class="lp-hero__lead">Wir sind auch Eltern. Irgendwann hatten wir genug davon, uns vor dem Frühstück durch Stundenplan-Apps, Schul-Mails und Elternchats zu wühlen. Also haben wir Family Agenda gebaut: Es liest das alles für dich und bringt die ganze Woche auf eine einzige Seite.</p>
+      <h1 class="lp-hero__title">Liebling, ich habe <span class="lp-accent">das Familienchaos geschrumpft.</span> <span class="lp-hero__sub">Der Familienplaner, der Stundenplan, Kalender, Schul-Mails und Elternchats für dich liest.</span></h1>
+      <p class="lp-hero__lead">Wir sind auch Eltern. Irgendwann hatten wir genug davon, uns vor dem Frühstück durch Stundenplan-App, Kalender, Schul-Mails und Elternchats zu wühlen. Family Agenda liest das alles für dich und bringt die ganze Woche auf eine einzige Seite.</p>
       <ul class="lp-hero__facts">
         <li><svg class="lp-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>Von Eltern gemacht</li>
         <li><svg class="lp-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>Von Grund auf privat</li>
@@ -82,7 +82,7 @@
               <span class="fam-status fam-status--ok lp-src__ok">OK</span>
             </div>
 
-            <p class="lp-reader"><svg viewBox="0 0 24 24"><use href="#i-spark"/></svg>Einmal gelesen von deinem LLM</p>
+            <p class="lp-reader"><svg viewBox="0 0 24 24"><use href="#i-spark"/></svg>Einmal gelesen von deinem KI-Modell</p>
             <ul class="lp-items">
               <li class="fam-item"><span class="fam-item__lead"><span class="fam-chip fam-chip--small">Stunde</span></span><span class="fam-item__text"><span class="fam-item__title">Deutsch: Vertretung</span><span class="fam-item__meta">Heute, 08:50</span></span><span class="fam-avatar fam-avatar--m5 lp-av">M</span></li>
               <li class="fam-item"><span class="fam-item__lead"><span class="fam-chip fam-chip--small">Termin</span></span><span class="fam-item__text"><span class="fam-item__title">Fußballtraining</span><span class="fam-item__meta">16:30 · Sportplatz Nord</span></span><span class="fam-avatar fam-avatar--m5 lp-av">M</span></li>
@@ -128,31 +128,31 @@
         <li class="lp-step" data-step="1">
           <p class="lp-step__eyebrow">Kommt dir bekannt vor?</p>
           <h2 class="lp-step__title">Es ist 7:15. Ist heute Schwimmen?</h2>
-          <p>Der Stundenplan steckt in der einen App, das Fußballtraining in der anderen. Die Klassenkasse versteckt sich in einem PDF von der Schule, und die Erinnerung an die Schwimmsachen irgendwo zwischen 84 ungelesenen Chatnachrichten. Bei uns musste immer einer von uns alles im Kopf behalten.</p>
+          <p>Der Stundenplan steckt in der einen App, das Fußballtraining in einem Kalender. Die Klassenkasse versteckt sich in einem PDF von der Schule, und die Erinnerung an die Schwimmsachen irgendwo zwischen 84 ungelesenen Chatnachrichten. Bei uns musste immer einer von uns alles im Kopf behalten.</p>
         </li>
         <li class="lp-step" data-step="2">
-          <p class="lp-step__eyebrow">Also haben wir einen Helfer gebaut</p>
-          <h2 class="lp-step__title">Es liest mit, damit du es nicht musst.</h2>
-          <p>Verbinde einmal den Stundenplan, eure Kalender, das Schul-Postfach und die Elternchats. Ab dann behält Family Agenda sie im Blick, Tag und Nacht. Es liest immer nur: Es schreibt nichts, antwortet nicht und löscht nichts.</p>
+          <p class="lp-step__eyebrow">Einmal einrichten</p>
+          <h2 class="lp-step__title">Family Agenda liest, damit du es nicht musst.</h2>
+          <p>Verbinde einmal den Stundenplan, deine Kalender, das Postfach, in dem die Schul-Mails landen, und die Elternchats. Ab dann behält Family Agenda sie im Blick, Tag und Nacht. Dabei liest es nur: Es schreibt nichts, antwortet nicht und löscht nichts.</p>
         </li>
         <li class="lp-step" data-step="3">
           <p class="lp-step__eyebrow">Der schlaue Teil</p>
           <h2 class="lp-step__title">Es findet, was wirklich zählt.</h2>
-          <p>Lange Mails, eingescannte Briefe, plauderfreudige Gruppen: Ein KI-Modell liest sie für dich und zieht heraus, was eure Familie wissen muss. Was ansteht, was zu erledigen ist und wen es betrifft.</p>
+          <p>Lange Rundmails, eingescannte Elternbriefe, plauderfreudige Gruppen: Ein KI-Modell liest sie für dich und zieht heraus, was deine Familie wissen muss. Was ansteht, was zu erledigen ist und wen es betrifft.</p>
         </li>
         <li class="lp-step" data-step="4">
           <p class="lp-step__eyebrow">Das Aufatmen</p>
           <h2 class="lp-step__title">Und da ist sie: die ganze Woche an einem Ort.</h2>
-          <p>Oben steht, was zu erledigen ist, darunter folgen die Tage. Alle sehen auf einen Blick, wo sie sein müssen und was mit muss. Kein Durchklicken durch fünf Apps vor dem Frühstück mehr, und kein „Das hat mir keiner gesagt!“</p>
+          <p>Die ganze Familie hat den Überblick über die Termine und Aufgaben des Tages. Kein Durchklicken durch fünf Apps vor dem Frühstück mehr, und kein „Das hat mir keiner gesagt!“</p>
         </li>
         <li class="lp-step" data-step="5">
           <p class="lp-step__eyebrow">Für alle</p>
           <h2 class="lp-step__title">Jeder bekommt seine eigene Agenda.</h2>
-          <p>Eine für jedes Kind, eine für jeden Elternteil, eine für die ganze Familie. Ein Tipp, und Mia sieht nur Mias Tag. Am wohlsten fühlt sie sich auf einem Tablet in der Küche.</p>
+          <p>Eine für jedes Kind, eine für jeden Elternteil, eine für die ganze Familie. Ein Tipp, und Mia sieht nur Mias Tag. Auf dem Handy unterwegs genauso wie auf dem Tablet in der Küche.</p>
         </li>
         <li class="lp-step" data-step="6">
           <p class="lp-step__eyebrow">Privat</p>
-          <h2 class="lp-step__title">Euer Familienleben bleibt eures.</h2>
+          <h2 class="lp-step__title">Dein Familienleben bleibt deins.</h2>
           <p>Es geht um unsere Kinder, deshalb waren wir hier streng. Family Agenda kann auf einem kleinen Rechner bei dir zuhause laufen, etwa einem Raspberry Pi oder einem NAS, und nichts muss das Haus verlassen. Kein Server im Schrank? <a href="#hosted">Wir hosten es für dich.</a></p>
         </li>
       </ol>
@@ -160,12 +160,12 @@
 
     <section class="lp-section" id="sources">
       <p class="lp-step__eyebrow">Funktioniert mit</p>
-      <h2 class="lp-section__title">Es liest dort, wo Schule und Vereine dir sowieso schon schreiben.</h2>
+      <h2 class="lp-section__title">Passt zu dem, was Schule und Verein ohnehin nutzen.</h2>
       <ul class="fam-type-cards">
         <li><div class="fam-type-card"><svg class="lp-icon" viewBox="0 0 24 24"><use href="#i-timetable"/></svg><span class="fam-type-card__name">Stundenplan</span><span class="fam-type-card__description">Stunden, Vertretungen, Raumwechsel und Ausfälle aus WebUntis.</span></div></li>
-        <li><div class="fam-type-card"><svg class="lp-icon" viewBox="0 0 24 24"><use href="#i-calendar"/></svg><span class="fam-type-card__name">Kalender</span><span class="fam-type-card__description">Der Verein, die Schule, die Ferien, euer gemeinsamer Familienkalender.</span></div></li>
+        <li><div class="fam-type-card"><svg class="lp-icon" viewBox="0 0 24 24"><use href="#i-calendar"/></svg><span class="fam-type-card__name">Kalender</span><span class="fam-type-card__description">Der Verein, die Schule, die Ferien, dein gemeinsamer Familienkalender.</span></div></li>
         <li><div class="fam-type-card"><svg class="lp-icon" viewBox="0 0 24 24"><use href="#i-mail"/></svg><span class="fam-type-card__name">Schul-Mails</span><span class="fam-type-card__description">Rundbriefe und Elternbriefe, sogar das eingescannte PDF, das niemand öffnet.</span></div></li>
-        <li><div class="fam-type-card"><svg class="lp-icon" viewBox="0 0 24 24"><use href="#i-chat"/></svg><span class="fam-type-card__name">Elternchats</span><span class="fam-type-card__description">WhatsApp und andere Messenger. Gelesen werden nur die Chats, die du auswählst.</span></div></li>
+        <li><div class="fam-type-card"><svg class="lp-icon" viewBox="0 0 24 24"><use href="#i-chat"/></svg><span class="fam-type-card__name">Elternchats</span><span class="fam-type-card__description">WhatsApp und andere Messenger. Gelesen werden nur die Chats, die du auswählst. Nur beim Selbstbetrieb und auf eigenes Risiko.</span></div></li>
       </ul>
     </section>
 
@@ -173,9 +173,9 @@
       <p class="lp-step__eyebrow">Unsere Versprechen</p>
       <h2 class="lp-section__title">Von Eltern gebaut, nicht von einem Datenkonzern.</h2>
       <ul class="lp-principles">
-        <li><svg class="lp-icon" viewBox="0 0 24 24"><use href="#i-server"/></svg><h3>Eure Daten bleiben eure</h3><p>Keine Werbung, kein Tracking, kein Verkauf von irgendwas. Die Daten eurer Familie liegen dort, wo du es entscheidest: auf deinem eigenen Rechner zuhause oder bei uns in Deutschland.</p></li>
-        <li><svg class="lp-icon" viewBox="0 0 24 24"><use href="#i-eye"/></svg><h3>Es liest nur</h3><p>Es schreibt nie in einen Chat, markiert keine Mail als gelesen und fasst euren Kalender nicht an. Niemand merkt, dass es da ist.</p></li>
-        <li><svg class="lp-icon" viewBox="0 0 24 24"><use href="#i-spark"/></svg><h3>KI, die schweigen kann</h3><p>Das Modell, das eure Mails liest, kann lokal laufen, sodass kein Wort bei einem großen KI-Konzern landet. Und die ganze App ist Open Source: Jeder kann nachsehen, was sie tut.</p></li>
+        <li><svg class="lp-icon" viewBox="0 0 24 24"><use href="#i-server"/></svg><h3>Deine Daten bleiben deine</h3><p>Keine Werbung, kein Tracking, kein Datenverkauf. Die Daten deiner Familie liegen dort, wo du es entscheidest: auf deinem eigenen Rechner zuhause oder bei uns in Deutschland.</p></li>
+        <li><svg class="lp-icon" viewBox="0 0 24 24"><use href="#i-eye"/></svg><h3>Es liest nur</h3><p>Family Agenda schreibt nie in einen Chat, markiert keine Mail als gelesen und fasst deinen Kalender nicht an.</p></li>
+        <li><svg class="lp-icon" viewBox="0 0 24 24"><use href="#i-spark"/></svg><h3>KI, die schweigen kann</h3><p>Das Modell, das deine Mails liest, kann bei dir zuhause laufen, sodass kein Wort bei einem großen KI-Konzern landet. Und die ganze App ist Open Source: Jeder kann nachsehen, was sie tut.</p></li>
       </ul>
     </section>
 
@@ -185,12 +185,13 @@
       <div class="lp-ways">
         <article class="lp-way lp-way--hosted" id="hosted">
           <p class="lp-way__kicker"><svg class="lp-icon" viewBox="0 0 24 24"><use href="#i-spark"/></svg>Wir betreiben es für dich <span class="fam-chip fam-chip--small">Kommt bald</span></p>
-          <h3 class="lp-way__title">family-agenda.cloud</h3>
-          <p>Nicht jeder hat einen Server zuhause oder will sich um einen kümmern. Kein Problem: Wir machen das für dich, für einen kleinen Monatspreis.</p>
+          <h3 class="lp-way__title">Family Agenda Cloud</h3>
+          <p>Nicht jeder hat einen Server zuhause oder will sich um einen kümmern. Wir betreiben es für dich, für 4,99 € im Monat oder 49,90 € im Jahr, inkl.&nbsp;USt. 2 Wochen kostenlos, ohne Zahlungsdaten.</p>
           <ul class="lp-way__list">
-            <li>Sicher und privat in Deutschland gehostet</li>
-            <li>Gelesen nur von lokalen KI-Modellen: Eure Mails und Chats gehen nie an einen KI-Konzern</li>
-            <li>Genau dieselbe App, startklar sobald du dich anmeldest</li>
+            <li>In Deutschland gehostet</li>
+            <li>Offene KI, in Deutschland betrieben: Nichts geht an einen KI-Konzern</li>
+            <li>Stundenplan, Kalender und Schul-Mails als Quellen, ohne Messenger</li>
+            <li>Um Betrieb, Updates und Backups kümmern wir uns</li>
           </ul>
           <a class="fam-button fam-button--primary" href="https://family-agenda.cloud">Zu family-agenda.cloud</a>
         </article>
@@ -201,7 +202,7 @@
           <pre class="fam-secret lp-code" tabindex="0"><code>mkdir family-agenda &amp;&amp; cd family-agenda
 curl -fsSLO https://github.com/artkoenig/family-agenda/releases/latest/download/compose.yaml
 docker compose up -d</code></pre>
-          <p class="lp-way__note"><svg class="lp-icon" viewBox="0 0 24 24"><use href="#i-spark"/></svg><span><b>Du brauchst außerdem ein lokales LLM.</b> Es liest die Mails und Chats, damit nichts dein Zuhause verlässt. Ollama auf einem Rechner mit 8 bis 12 GB Grafikspeicher reicht dafür.</span></p>
+          <p class="lp-way__note"><svg class="lp-icon" viewBox="0 0 24 24"><use href="#i-spark"/></svg><span><b>Du brauchst außerdem ein lokales KI-Modell (LLM).</b> Es liest die Mails und Chats, damit nichts dein Zuhause verlässt. Ollama auf einem Rechner mit 8 bis 12 GB Grafikspeicher reicht dafür.</span></p>
           <a class="fam-button fam-button--secondary" href="https://github.com/artkoenig/family-agenda#-install--start">Zur Installationsanleitung</a>
         </article>
       </div>
