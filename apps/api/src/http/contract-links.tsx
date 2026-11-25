@@ -13,6 +13,9 @@ export type ContractLink = { kind: ContractLinkKind; url: string };
  */
 export const ContractLinksContext = createContext<readonly ContractLink[]>([]);
 
+/** The kinds whose label the law gives, German in every Family Language. */
+const statutory: ReadonlySet<ContractLinkKind> = new Set(["cancel", "withdraw"]);
+
 /**
  * The contract pages below the header of the Admin area, so that they are in sight on each of its
  * pages (§ 312k Abs. 2 BGB): on a phone, the settings list scrolls sideways and would hide them.
@@ -25,7 +28,7 @@ export function ContractLinks() {
   return (
     <nav class="fam-contract" aria-label={t.contract.title}>
       {links.map(({ kind, url }) => (
-        <a href={url} lang={kind === "delete" ? undefined : "de"}>
+        <a href={url} lang={statutory.has(kind) ? "de" : undefined}>
           {t.contract[kind]}
         </a>
       ))}
