@@ -499,4 +499,11 @@ export const de: Catalogue = {
     terms: "AGB",
     menu: "Rechtliches",
   },
+
+  contract: {
+    title: "Vertrag",
+    cancel: "Verträge hier kündigen",
+    withdraw: "Vertrag widerrufen",
+    delete: "Familie löschen",
+  },
 };

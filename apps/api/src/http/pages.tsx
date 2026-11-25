@@ -44,6 +44,7 @@ import type { Child } from "hono/jsx";
 import { raw } from "hono/html";
 import { useTranslation, type Translation } from "./i18n/translation";
 import type { Catalogue } from "./i18n/en";
+import { ContractLinks } from "./contract-links";
 import { Layout, Problem } from "./layout";
 import {
   FragmentError,
@@ -440,6 +441,7 @@ function AdminLayout(props: {
           </form>
         </div>
       </header>
+      <ContractLinks />
       <div class="fam-settings">
         <nav class="fam-settings__nav" aria-label={t.settings.title}>
           {settingsGroups(translation).map((group) => (

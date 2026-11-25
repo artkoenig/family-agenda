@@ -2,6 +2,7 @@ import { logtoOrganizations, parseFamilyId, type FamilyId } from "@family-agenda
 import { readFileSync } from "node:fs";
 import { parseFamilyIdClaim, parseIdentityDirectorySettings, parseIdentityProviderConnection, parseIdentityProviderSettings, type IdentityDirectorySettings, type IdentityProviderConnectionSettings, type OrganizationsClaim, type IdentityProviderSettings, type LlmEndpoint } from "@family-agenda/application";
 import { parsePluginUrls, type PluginBinding } from "./plugin-containers/bindings";
+import type { ContractLink, ContractLinkKind } from "./http/contract-links";
 import type { LegalLink, LegalLinkKind } from "./http/legal-links";
 import { versionOf } from "./version";
 
@@ -56,6 +57,11 @@ export type Config = {
    * `TERMS_URL` in that order; empty when none is set.
    */
   legalLinks: LegalLink[];
+  /**
+   * The operator's contract pages the Admin area links to, from `CANCEL_URL`, `WITHDRAW_URL` and
+   * `DELETE_URL` in that order; empty when none is set.
+   */
+  contractLinks: ContractLink[];
 };
 
 export type TriggerConfig = {
@@ -290,7 +296,8 @@ function sharedConfigOf(env: NodeJS.ProcessEnv): Omit<Config, Exclude<FixedOnly,
     ...identityDirectoryConfigOf(env),
     suppliedLlmEndpoint: suppliedLlmEndpointOf(env),
     version: versionOf(env),
-    legalLinks: legalLinksOf(env),
+    legalLinks: operatorLinksOf(env, legalVariables),
+    contractLinks: operatorLinksOf(env, contractVariables),
   };
 }
 
@@ -301,12 +308,19 @@ const legalVariables: readonly (readonly [LegalLinkKind, string])[] = [
   ["terms", "TERMS_URL"],
 ];
 
-/** The legal pages that are set, each an absolute http or https address, kept as given. */
-function legalLinksOf(env: NodeJS.ProcessEnv): LegalLink[] {
-  return legalVariables.flatMap(([kind, variable]) => {
+/** The variable of each contract page, in the order the Admin area links them. */
+const contractVariables: readonly (readonly [ContractLinkKind, string])[] = [
+  ["cancel", "CANCEL_URL"],
+  ["withdraw", "WITHDRAW_URL"],
+  ["delete", "DELETE_URL"],
+];
+
+/** The operator's pages that are set among `variables`, each an absolute http or https address, kept as given. */
+function operatorLinksOf<K extends string>(env: NodeJS.ProcessEnv, variables: readonly (readonly [K, string])[]): { kind: K; url: string }[] {
+  return variables.flatMap(([kind, variable]) => {
     const url = env[variable] ?? "";
     if (url === "") return [];
-    if (!isAbsoluteHttpUrl(url)) throw new Error(`${variable} must be an absolute http or https address, such as https://example.org/legal`);
+    if (!isAbsoluteHttpUrl(url)) throw new Error(`${variable} must be an absolute http or https address, such as https://example.org/page`);
     return [{ kind, url }];
   });
 }
