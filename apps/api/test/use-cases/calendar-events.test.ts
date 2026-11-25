@@ -70,7 +70,7 @@ describe("calendar Events on the timeline", () => {
     expect(page?.days[1]?.items[0]).toMatchObject({
       place: "Music school",
       span: { allDay: false, start: { date: "2026-09-15", time: "16:00" }, end: { date: "2026-09-15", time: "17:00" } },
-      links: [],
+      links: [{ url: null, source: "calendar" }],
     });
   });
 

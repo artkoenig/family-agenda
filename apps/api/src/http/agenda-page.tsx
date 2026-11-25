@@ -711,7 +711,7 @@ function EventRow(props: { row: TimelineEvent; day: LocalDate; members: FamilyMe
   );
 }
 
-/** Where an Event or a Task comes from: its links, and the messages it was read from, which only Admins open. */
+/** Where an Event or a Task comes from: its links, or just its Source's name, and the messages it was read from, which only Admins open. */
 function Sources(props: { row: Pick<TimelineEvent, "links" | "messages"> }) {
   const { t, text, locale } = useTranslation();
   const prefix = usePathPrefix();
@@ -719,9 +719,13 @@ function Sources(props: { row: Pick<TimelineEvent, "links" | "messages"> }) {
     <>
       {props.row.links.map((link) => (
         <span class="fam-item__meta">
-          <a href={link.url} rel="noreferrer" target="_blank">
-            {text(link.source)}
-          </a>
+          {link.url === null ? (
+            text(link.source)
+          ) : (
+            <a href={link.url} rel="noreferrer" target="_blank">
+              {text(link.source)}
+            </a>
+          )}
         </span>
       ))}
       {props.row.messages.map((message) => (
