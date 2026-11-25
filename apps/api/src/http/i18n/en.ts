@@ -105,6 +105,8 @@ export const en = {
   },
 
   loading: {
+    unavailable: "This content cannot be loaded.",
+    tryAgain: "Try again",
     default: "Loading…",
     choices: (label: string) => `Loading ${label}…`,
     catalogue: (title: string) => `Loading ${title}…`,
@@ -137,7 +139,7 @@ export const en = {
     title: "Settings",
     signOut: "Sign out",
     version: (version: string) => `Version ${version}`,
-    groups: { family: "Family", sources: "Sources", instance: "Instance" },
+    groups: { family: "Family", sources: "Sources", instance: "Instance", more: "More" },
     failingSource: "A Source is failing",
     failingSourceBody: "Some Items may be out of date until it is fixed.",
     lookAtSources: "Look at the Sources",
@@ -518,15 +520,6 @@ export const en = {
     imprint: "Imprint",
     privacy: "Privacy",
     terms: "Terms",
-  },
-
-  /** The operator's contract pages, linked from the Admin area when configured. */
-  contract: {
-    title: "Contract",
-    /** The labels of § 312k and § 356a BGB, German in every Family Language. */
-    cancel: "Verträge hier kündigen",
-    withdraw: "Vertrag widerrufen",
-    delete: "Delete family",
   },
 };
 

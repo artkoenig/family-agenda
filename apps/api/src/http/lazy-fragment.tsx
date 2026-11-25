@@ -12,9 +12,11 @@ export type FragmentPoll = { every: number; backoff: number; maxSeconds: number 
  * is how long it waits before asking, as `notReadyYet` sets it. `block` makes it a `div`, for one
  * standing in for a section, whose placeholder may hold block content. `silent` makes it an
  * invisible one, such as a poll for what the page already says it waits for: no placeholder, not
- * announced as busy, and left alone when its request fails.
+ * announced as busy, and left alone when its request fails. `retry` makes it one whose content is
+ * another server's: only a 2xx answer within 30 seconds is content, and anything else leaves a line
+ * saying it cannot be loaded, with a button that asks again.
  */
-export function LazyFragment(props: { href: string; children?: Child; delaySeconds?: number; block?: boolean; silent?: boolean }) {
+export function LazyFragment(props: { href: string; children?: Child; delaySeconds?: number; block?: boolean; silent?: boolean; retry?: boolean }) {
   const { t } = useTranslation();
   const trigger = props.delaySeconds ? `load delay:${props.delaySeconds}s` : "load";
   const Tag = props.block ? "div" : "span";
@@ -27,9 +29,9 @@ export function LazyFragment(props: { href: string; children?: Child; delaySecon
       hx-swap="outerHTML"
       aria-busy="true"
       aria-live="polite"
-      data-failed={t.loading.failed}
-      data-failed-message={t.loading.failedMessage}
-      data-gone={t.loading.gone}
+      {...(props.retry
+        ? { "hx-request": '{"timeout":30000}', "data-unavailable": t.loading.unavailable, "data-retry": t.loading.tryAgain }
+        : { "data-failed": t.loading.failed, "data-failed-message": t.loading.failedMessage, "data-gone": t.loading.gone })}
     >
       {props.children ?? (
         <>
@@ -82,13 +84,43 @@ function QuietlySlow() {
 /**
  * Turns a fragment whose request failed, or could not be sent, into an error in its place, with the
  * words the fragment carries, so that its spinner does not turn forever: that what it shows is gone
- * for a 4xx answer, that the server could not be reached otherwise.
+ * for a 4xx answer, that the server could not be reached otherwise. One with a retry says that its
+ * content cannot be loaded, and its button puts the fragment back, which asks again.
  */
 export const lazyFragmentErrors = `
-for (const name of ["htmx:responseError", "htmx:sendError"]) {
+const offerRetry = (pending) => {
+  const again = pending.cloneNode(true);
+  again.classList.remove("htmx-request");
+  const failed = document.createElement("div");
+  failed.className = "fam-lazy fam-lazy--failed fam-lazy--retry";
+  failed.setAttribute("role", "alert");
+  const line = document.createElement("p");
+  line.textContent = pending.dataset.unavailable;
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "fam-button fam-button--secondary";
+  button.textContent = pending.dataset.retry;
+  button.addEventListener("click", () => {
+    failed.replaceWith(again);
+    htmx.process(again);
+  });
+  failed.append(line, button);
+  pending.replaceWith(failed);
+};
+// An answer without content, such as 204, is no error to htmx, but no content either.
+document.body.addEventListener("htmx:beforeSwap", (event) => {
+  const { elt, xhr } = event.detail;
+  if (!(elt instanceof HTMLElement) || !elt.matches(".fam-lazy[data-retry]")) return;
+  if (xhr.status >= 200 && xhr.status < 300 && xhr.status !== 204) return;
+  event.detail.shouldSwap = false;
+  offerRetry(elt);
+});
+// The path is invalid to htmx when it is not at the origin the page is open at.
+for (const name of ["htmx:responseError", "htmx:sendError", "htmx:timeout", "htmx:invalidPath"]) {
   document.body.addEventListener(name, (event) => {
     const pending = event.detail.elt;
-    if (!(pending instanceof HTMLElement) || !pending.matches(".fam-lazy[aria-busy]")) return;
+    if (!(pending instanceof HTMLElement) || !pending.matches(".fam-lazy[aria-busy]") || !pending.isConnected) return;
+    if (pending.dataset.retry) return offerRetry(pending);
     const failed = document.createElement("span");
     failed.className = "fam-lazy fam-lazy--failed";
     failed.setAttribute("role", "alert");

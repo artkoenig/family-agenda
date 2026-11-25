@@ -3,6 +3,7 @@ import { cp, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/pr
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PGlite } from "@electric-sql/pglite";
+import type { HttpBindings } from "@hono/node-server";
 import { FileBlobStore, migrateFamily, migrationsFolder, parseFamilyId, postgresSchema, refuseNewerMigrationHistory, refuseOldMigrationHistory, type FamilyId, type PostgresConnection } from "@family-agenda/adapters";
 import { drizzle } from "drizzle-orm/pglite";
 import { migrate as migrateUpTo } from "drizzle-orm/pglite/migrator";
@@ -138,9 +139,9 @@ describe("a core in supplied mode", () => {
       now: () => now,
       serving: (application, context) => {
         const app = createHttpApp(application, { trustProxy: false, publicUrl: context.publicUrl, agendaAccess: openAgendaAccess, signInRelay: relay.forFamily(context) });
-        const serve: FamilyFetch = (incoming, env) => {
+        const serve: FamilyFetch = (incoming, env, sections) => {
           seen.push(incoming);
-          return app.fetch(incoming, env as never);
+          return app.fetch(incoming, { ...(env as HttpBindings), sections });
         };
         return serve;
       },
@@ -291,6 +292,40 @@ describe("a core in supplied mode", () => {
     expect(opened).toEqual([a.databaseUrl, b.databaseUrl, a.databaseUrl]);
     await families.close();
     expect(closed.sort()).toEqual([a.databaseUrl, a.databaseUrl, b.databaseUrl]);
+  });
+
+  it("shows each request the sections of its own Context, in the one Family opened for them, and forgets them with it", async () => {
+    const publicUrl = "https://core";
+    const section = (id: string) => ({ id, label: { en: `Named ${id}`, de: `Genannt ${id}` }, src: { en: `https://core/platform/${id}`, de: `https://core/plattform/${id}` } });
+    const first = { ...a, publicUrl, sections: [section("contract")] };
+    const cookie = await on(first, async (application) => {
+      await application.recoveryKit.confirm();
+      return `fb_session=${await application.admins.startSession({ subject: "sub-anna", email: "anna@example.org" })}`;
+    });
+    const page = async (context: Context, path: string) => {
+      const response = await request(context, path, { headers: { cookie } });
+      return { status: response.status, html: await response.text() };
+    };
+
+    expect((await page(first, "/admin/sections/contract")).html).toContain('hx-get="https://core/platform/contract"');
+    const second = { ...first, sections: [section("help")] };
+    expect((await page(second, "/admin/sections/help")).html).toContain('hx-get="https://core/platform/help"');
+    expect((await page(second, "/admin/sections/contract")).status).toBe(404);
+    const none: Context = { ...first };
+    delete none.sections;
+    expect((await page(none, "/admin")).html).not.toContain("/admin/sections/");
+    expect((await page(none, "/admin/sections/contract")).status).toBe(404);
+    expect(opened).toEqual([a.databaseUrl]);
+  });
+
+  it("answers 400 naming the sections for a Context whose sections break a limit, and opens nothing", async () => {
+    const src = { en: "https://elsewhere.example.org/s3cret", de: "https://elsewhere.example.org/s3cret" };
+    const response = await request({ ...a, publicUrl: "https://core", sections: [{ id: "contract", label: { en: "Contract", de: "Vertrag" }, src }] });
+    expect(response.status).toBe(400);
+    const text = await response.text();
+    expect(text).toMatch(/sections must be/);
+    expect(text).not.toContain("s3cret");
+    expect(opened).toEqual([]);
   });
 
   it("prepares an empty database on opening, with the Context's Family id, and then serves the request", async () => {

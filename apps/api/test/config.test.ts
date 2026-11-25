@@ -165,6 +165,14 @@ describe("the Identity Provider in the environment", () => {
     expect(() => readConfig({ ...oidc, OIDC_KNOWN_ADMINS_ONLY: "" })).toThrow(/OIDC_KNOWN_ADMINS_ONLY is not a known variable/);
   });
 
+  it.each(["CANCEL_URL", "WITHDRAW_URL", "DELETE_URL"])("refuses to start with %s, which is no longer known, unless it is empty", (variable) => {
+    const supplied = { CONTEXT_MODE: "supplied", CONTEXT_KEY: "a-context-key-of-at-least-32-characters", CALLER_PORT: "3002", ...suppliedOidc };
+    const set = { [variable]: "https://operator.example.org/page" };
+    expect(() => readConfig({ ...oidc, ...set })).toThrow(new RegExp(`^${variable} is not a known variable`));
+    expect(() => readSuppliedConfig({ ...supplied, ...set })).toThrow(new RegExp(`^${variable} is not a known variable`));
+    expect(() => readConfig({ ...oidc, [variable]: "" })).not.toThrow();
+  });
+
   it("refuses to start with a variable missing, naming it", () => {
     expect(() => readConfig({ ...oidc, PUBLIC_URL: undefined })).toThrow(/PUBLIC_URL must be set/);
     expect(() => readConfig({ ...oidc, OIDC_CLIENT_SECRET: undefined })).toThrow(/OIDC_CLIENT_SECRET/);
@@ -349,33 +357,5 @@ describe("the operator's legal pages in the environment", () => {
     expect(() => readConfig({ ...base, IMPRINT_URL: "/imprint" })).toThrow(/^IMPRINT_URL must be an absolute http or https address/);
     expect(() => readConfig({ ...base, PRIVACY_URL: "mailto:privacy@example.org" })).toThrow(/^PRIVACY_URL must be an absolute http or https address/);
     expect(() => readConfig({ ...base, TERMS_URL: "ftp://operator.example.org/terms" })).toThrow(/^TERMS_URL must be an absolute http or https address/);
-  });
-});
-
-describe("the operator's contract pages in the environment", () => {
-  const contract = { CANCEL_URL: "https://operator.example.org/cancel", WITHDRAW_URL: "http://operator.example.org/withdraw?v=2", DELETE_URL: "https://operator.example.org/delete#family" };
-
-  it("are none when no variable is set", () => {
-    expect(readConfig(base).contractLinks).toEqual([]);
-    expect(readConfig({ ...base, CANCEL_URL: "", WITHDRAW_URL: "", DELETE_URL: "" }).contractLinks).toEqual([]);
-  });
-
-  it("are the pages set, in the order cancel, withdraw, delete, with their addresses as given", () => {
-    expect(readConfig({ ...base, DELETE_URL: contract.DELETE_URL, WITHDRAW_URL: contract.WITHDRAW_URL, CANCEL_URL: contract.CANCEL_URL }).contractLinks).toEqual([
-      { kind: "cancel", url: contract.CANCEL_URL },
-      { kind: "withdraw", url: contract.WITHDRAW_URL },
-      { kind: "delete", url: contract.DELETE_URL },
-    ]);
-    expect(readConfig({ ...base, WITHDRAW_URL: contract.WITHDRAW_URL }).contractLinks).toEqual([{ kind: "withdraw", url: contract.WITHDRAW_URL }]);
-  });
-
-  it("are read in supplied mode too", () => {
-    expect(readSuppliedConfig({ CONTEXT_MODE: "supplied", CONTEXT_KEY: "a-context-key-of-at-least-32-characters", CALLER_PORT: "3002", ...suppliedOidc, DELETE_URL: contract.DELETE_URL }).contractLinks).toEqual([{ kind: "delete", url: contract.DELETE_URL }]);
-  });
-
-  it("stop the start on an address that is not absolute http or https, naming the variable", () => {
-    expect(() => readConfig({ ...base, CANCEL_URL: "/cancel" })).toThrow(/^CANCEL_URL must be an absolute http or https address/);
-    expect(() => readConfig({ ...base, WITHDRAW_URL: "mailto:withdraw@example.org" })).toThrow(/^WITHDRAW_URL must be an absolute http or https address/);
-    expect(() => readConfig({ ...base, DELETE_URL: "ftp://operator.example.org/delete" })).toThrow(/^DELETE_URL must be an absolute http or https address/);
   });
 });

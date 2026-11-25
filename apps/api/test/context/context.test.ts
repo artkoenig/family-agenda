@@ -120,6 +120,63 @@ describe("a Context", () => {
     expect(outcome.ok ? "" : outcome.problem).not.toContain("s3cret");
   });
 
+  describe("with sections of the platform", () => {
+    const section = {
+      id: "contract",
+      label: { en: "Contract", de: "Vertrag" },
+      src: { en: "https://a.example.org/platform/contract?lang=en", de: "https://a.example.org/platform/contract?lang=de" },
+    };
+    const openWith = (sections: unknown) => openContextOutcome(key, sealContext(key, { ...context, sections } as Context), 1_000);
+    const numbered = (count: number) => Array.from({ length: count }, (_, index) => ({ ...section, id: `section-${index}` }));
+    const addressOfLength = (length: number) => "https://a.example.org/".padEnd(length, "x");
+
+    it("carries them as given, in their order, and none when it names none", () => {
+      const sections = [{ ...section, onlyFor: "sub-anna" }, { ...section, id: "help-2" }];
+      expect(openWith(sections)).toEqual({ ok: true, context: { ...context, sections } });
+      expect(openWith([])).toEqual({ ok: true, context: { ...context, sections: [] } });
+      expect(openContext(key, sealContext(key, context), 1_000)).not.toHaveProperty("sections");
+    });
+
+    it("takes them up to their limits", () => {
+      expect(openWith(numbered(5)).ok).toBe(true);
+      expect(openWith([{ ...section, id: "a".repeat(32) }]).ok).toBe(true);
+      expect(openWith([{ ...section, label: { en: "x".repeat(60), de: "x".repeat(60) } }]).ok).toBe(true);
+      expect(openWith([{ ...section, src: { ...section.src, de: addressOfLength(500) } }]).ok).toBe(true);
+    });
+
+    it.each([
+      ["no list", { contract: "s3cret" }],
+      ["more than 5", numbered(6)],
+      ["an id that is no slug", [{ ...section, id: "s3cret Contract" }]],
+      ["an empty id", [{ ...section, id: "" }]],
+      ["an id of more than 32 characters", [{ ...section, id: "a".repeat(33) }]],
+      ["an id twice", [section, section]],
+      ["a label of more than 60 characters", [{ ...section, label: { ...section.label, de: "x".repeat(61) } }]],
+      ["a blank label", [{ ...section, label: { ...section.label, en: " " } }]],
+      ["a label missing a Family Language", [{ ...section, label: { en: "s3cret" } }]],
+      ["an address missing a Family Language", [{ ...section, src: { de: section.src.de } }]],
+      ["an address of more than 500 characters", [{ ...section, src: { ...section.src, en: addressOfLength(501) } }]],
+      ["an http address", [{ ...section, src: { ...section.src, en: "http://a.example.org/s3cret" } }]],
+      ["a path alone", [{ ...section, src: { ...section.src, en: "/s3cret" } }]],
+      ["no address", [{ ...section, src: { ...section.src, en: "https://" } }]],
+      ["an address with credentials", [{ ...section, src: { ...section.src, en: "https://anna:s3cret@a.example.org/" } }]],
+      ["an address of another host", [{ ...section, src: { ...section.src, en: "https://platform.example.org/s3cret" } }]],
+      ["an address of another port", [{ ...section, src: { ...section.src, en: "https://a.example.org:8443/s3cret" } }]],
+      ["an empty onlyFor", [{ ...section, onlyFor: "" }]],
+      ["a field it does not know", [{ ...section, href: "s3cret" }]],
+    ])("is refused with %s, naming sections and no value", (_, sections) => {
+      const outcome = openWith(sections);
+      expect(outcome.ok).toBe(false);
+      expect(outcome.ok ? "" : outcome.problem).toMatch(/^sections must be /);
+      expect(outcome.ok ? "" : outcome.problem).not.toContain("s3cret");
+    });
+
+    it("is refused with them below an http publicUrl, as no https address is of its origin", () => {
+      const outcome = openContextOutcome(key, sealContext(key, { ...context, publicUrl: "http://a.example.org", sections: [section] }), 1_000);
+      expect(outcome.ok ? "" : outcome.problem).toMatch(/^sections must be /);
+    });
+  });
+
   it("names no problem of a Context that does not open", () => {
     expect(openContextOutcome(key, `${sealContext(key, { ...context, timeZone: "x" }).slice(0, -2)}AA`, 1_000)).toEqual({ ok: false, problem: null });
     expect(openContextOutcome("another-context-key-of-at-least-32-chars", sealContext(key, { ...context, timeZone: "x" }), 1_000)).toEqual({ ok: false, problem: null });

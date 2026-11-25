@@ -44,7 +44,7 @@ import type { Child } from "hono/jsx";
 import { raw } from "hono/html";
 import { useTranslation, type Translation } from "./i18n/translation";
 import type { Catalogue } from "./i18n/en";
-import { ContractLinks } from "./contract-links";
+import type { ContextSection } from "../context/sections";
 import { Layout, Problem } from "./layout";
 import {
   FragmentError,
@@ -149,8 +149,11 @@ export type SettingsSummary = {
   ocr: { enabled: boolean; languages: OcrLanguage[]; missing: boolean };
 };
 
-/** The Admin a page is shown to, and the settings list. */
-export type SignedInAdmin = SignedInIdentity & { settings: SettingsSummary };
+/** The Admin a page is shown to, the settings list, and the platform's sections this Admin may see. */
+export type SignedInAdmin = SignedInIdentity & {
+  settings: SettingsSummary;
+  sections: readonly ContextSection[];
+};
 
 type SectionId =
   | "members"
@@ -346,8 +349,8 @@ function NavSummary(props: { summary: Summary }) {
 }
 
 /** A section's line icon, drawn in the text colour. */
-function SectionIcon(props: { id: SectionId }) {
-  const paths: Record<SectionId, Child> = {
+function SectionIcon(props: { id: SectionId | "platform" }) {
+  const paths: Record<SectionId | "platform", Child> = {
     members: (
       <>
         <circle cx="9" cy="8" r="3.5"></circle>
@@ -392,6 +395,12 @@ function SectionIcon(props: { id: SectionId }) {
         <path d="M11 12l9-9M16 7l3 3M14 9l2 2"></path>
       </>
     ),
+    platform: (
+      <>
+        <rect x="4" y="3" width="16" height="18" rx="2.5"></rect>
+        <path d="M8 8h8M8 12h8M8 16h4"></path>
+      </>
+    ),
   };
   return (
     <svg
@@ -419,6 +428,8 @@ function AdminLayout(props: {
   title: string;
   admin: SignedInAdmin;
   current: SectionId | null;
+  /** The id of the platform's section shown, for one of its pages. */
+  platformSection?: string;
   dialog?: Child;
   children: Child;
 }) {
@@ -442,7 +453,6 @@ function AdminLayout(props: {
           </form>
         </div>
       </header>
-      <ContractLinks />
       <div class="fam-settings">
         <nav class="fam-settings__nav" aria-label={t.settings.title}>
           {settingsGroups(translation).map((group) => (
@@ -466,6 +476,7 @@ function AdminLayout(props: {
               })}
             </>
           ))}
+          <PlatformSectionsNav sections={admin.sections} current={props.platformSection} />
           <span class="fam-settings__version">
             {t.settings.version(admin.settings.version)}
           </span>
@@ -494,6 +505,42 @@ function AdminLayout(props: {
       {/* Where a dialog opens, also one loaded on its own into the open page (`DialogLink`). */}
       <div id="fam-dialog-slot">{props.dialog}</div>
     </Layout>
+  );
+}
+
+/** The platform's sections in the settings list, in a group of their own; nothing without any. */
+function PlatformSectionsNav(props: { sections: readonly ContextSection[]; current: string | undefined }) {
+  const prefix = usePathPrefix();
+  const { t, language } = useTranslation();
+  if (props.sections.length === 0) return null;
+  return (
+    <>
+      <span class="fam-settings__group">{t.settings.groups.more}</span>
+      {props.sections.map((section) => (
+        <a
+          class="fam-navitem"
+          href={href(prefix, `/admin/sections/${section.id}`)}
+          aria-current={props.current === section.id ? "page" : undefined}
+        >
+          <SectionIcon id="platform" />
+          <span class="fam-navitem__text">
+            <span class="fam-navitem__label">{section.label[language]}</span>
+          </span>
+        </a>
+      ))}
+    </>
+  );
+}
+
+/** The page of one of the platform's sections: its content is the platform's, loaded by the browser at the address given. */
+export function PlatformSectionPage(props: { admin: SignedInAdmin; section: ContextSection }) {
+  const { language } = useTranslation();
+  const { section } = props;
+  return (
+    <AdminLayout title={section.label[language]} admin={props.admin} current={null} platformSection={section.id}>
+      <SectionHeader title={section.label[language]} />
+      <LazyFragment href={section.src[language]} block retry />
+    </AdminLayout>
   );
 }
 

@@ -89,6 +89,8 @@ export const de: Catalogue = {
   },
 
   loading: {
+    unavailable: "Dieser Inhalt kann nicht geladen werden.",
+    tryAgain: "Erneut versuchen",
     default: "Wird geladen …",
     choices: (label: string) => `${label} werden geladen …`,
     catalogue: (title: string) => `${title} werden geladen …`,
@@ -121,7 +123,7 @@ export const de: Catalogue = {
     title: "Einstellungen",
     signOut: "Abmelden",
     version: (version: string) => `Version ${version}`,
-    groups: { family: "Familie", sources: "Quellen", instance: "Instanz" },
+    groups: { family: "Familie", sources: "Quellen", instance: "Instanz", more: "Weiteres" },
     failingSource: "Eine Quelle funktioniert nicht",
     failingSourceBody: "Manche Einträge sind vielleicht nicht aktuell, bis sie behoben ist.",
     lookAtSources: "Zu den Quellen",
@@ -497,12 +499,5 @@ export const de: Catalogue = {
     imprint: "Impressum",
     privacy: "Datenschutz",
     terms: "AGB",
-  },
-
-  contract: {
-    title: "Vertrag",
-    cancel: "Verträge hier kündigen",
-    withdraw: "Vertrag widerrufen",
-    delete: "Familie löschen",
   },
 };

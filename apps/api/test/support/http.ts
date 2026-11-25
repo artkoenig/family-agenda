@@ -1,5 +1,6 @@
 import { openAgendaAccess } from "@family-agenda/application";
 import type { Application } from "../../src/composition-root";
+import type { ContextSection } from "../../src/context/sections";
 import { createHttpApp, type HttpOptions } from "../../src/http/app";
 import { bootForTest, type SecondFamily, type TestInstance, type TestOptions } from "./boot";
 
@@ -20,9 +21,12 @@ export type HttpTestInstance = TestInstance & HttpClient & {
   bootHttpSecondFamily(): Promise<HttpClient & SecondFamily>;
 };
 
+/** How the app serves, and the sections the Context of each request names. */
+type HttpTestOptions = Partial<HttpOptions> & { sections?: readonly ContextSection[] | undefined };
+
 /** Boots an Instance and drives its Hono app with in-process requests. */
 export async function bootHttpForTest(
-  options: Partial<HttpOptions> = {},
+  { sections, ...options }: HttpTestOptions = {},
   testOptions: TestOptions = {},
 ): Promise<HttpTestInstance> {
   const instance = await bootForTest(testOptions);
@@ -36,19 +40,19 @@ export async function bootHttpForTest(
         booted = instance.app;
         current = httpAppOf(booted);
       }
-      return current.request(path, init);
+      return current.request(path, init, { sections });
     },
   };
   // The same object, so that `app` stays the one running after a restart.
   return Object.assign(instance, clientOf(http), {
     bootHttpApiContainer: async () => {
       const other = httpAppOf(await instance.bootApiContainer());
-      return clientOf({ request: (path, init) => other.request(path, init) });
+      return clientOf({ request: (path, init) => other.request(path, init, {}) });
     },
     bootHttpSecondFamily: async () => {
       const family = await instance.bootSecondFamily();
       const other = httpAppOf(family.app);
-      return { ...family, ...clientOf({ request: (path, init) => other.request(path, init) }) };
+      return { ...family, ...clientOf({ request: (path, init) => other.request(path, init, {}) }) };
     },
   });
 }
@@ -65,7 +69,7 @@ export type HttpPrefixedTestInstance = HttpTestInstance & {
  */
 export async function bootHttpForTestBelow(
   prefix: string,
-  options: Partial<HttpOptions> = {},
+  options: HttpTestOptions = {},
   testOptions: TestOptions = {},
 ): Promise<HttpPrefixedTestInstance> {
   const instance = await bootHttpForTest({ publicUrl: `http://localhost${prefix}`, ...options }, testOptions);
