@@ -1946,6 +1946,13 @@ export function SourceTypePage(props: {
   );
 }
 
+/** The Source Attributes a Source still has; the archived ones are gone for the Admin, though their Items stay. */
+function currentAttributesOf(
+  source: SourceSummary,
+): SourceSummary["attributes"] {
+  return source.attributes.filter((attribute) => !attribute.archived);
+}
+
 /**
  * A Source's page: its name, settings and polling interval, whether it shows on the timeline, and
  * removing it. Fixing it opens in a dialog over it.
@@ -1961,12 +1968,13 @@ function SourceAttributesForm(props: {
 }) {
   const { source, members, href, t, s, asked } = props;
   if (members.length === 0) return null;
-  if (source.attributes.length === 0 && !asked)
+  const attributes = currentAttributesOf(source);
+  if (attributes.length === 0 && !asked)
     return <AttributesPending source={source} s={s} />;
   const problem = asked?.problem ? (
     <p class="fam-problem">{s.attributesFailed(asked.problem)}</p>
   ) : null;
-  if (source.attributes.length === 0) {
+  if (attributes.length === 0) {
     return (
       <div class="fam-sheet__form" id="source-attributes">
         <Group title={s.attributes} level={2}>
@@ -1986,16 +1994,9 @@ function SourceAttributesForm(props: {
       <Group title={s.attributes} level={2} intro={s.attributesHint}>
         {problem}
         <div class="fam-attributes">
-          {source.attributes.map((attribute) => (
+          {attributes.map((attribute) => (
             <div class="fam-attribute">
-              <p class="fam-attribute__name">
-                {attribute.name}
-                {attribute.archived ? (
-                  <span class="fam-chip fam-chip--small">
-                    {s.attributeArchived}
-                  </span>
-                ) : null}
-              </p>
+              <p class="fam-attribute__name">{attribute.name}</p>
               <div
                 class="fam-attribute__members"
                 role="group"
@@ -2088,7 +2089,10 @@ export function SourceAttributesSection(props: {
  */
 function attributesPendingOf(source: SourceSummary): boolean {
   const { awaitingRead, settingUp } = source.health;
-  if (!(awaitingRead || settingUp !== null) || source.attributes.length > 0)
+  if (
+    !(awaitingRead || settingUp !== null) ||
+    currentAttributesOf(source).length > 0
+  )
     return false;
   return Object.values(source.plain).some(
     (value) => Array.isArray(value) && value.length > 0,

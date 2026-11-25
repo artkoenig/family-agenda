@@ -254,6 +254,9 @@ CREATE TABLE source_attribute (
   external_id  TEXT NOT NULL,
   name         TEXT NOT NULL,
   archived_at  TIMESTAMPTZ,
+  -- Whether a run declared it since it was last revived. One only the Source's page declared, when it
+  -- asked the plugin, is archived once the plugin no longer names it there: no sync cursor knows it.
+  run_declared BOOLEAN NOT NULL DEFAULT FALSE,
   CONSTRAINT source_attribute_external_id_unique UNIQUE (source_id, external_id)
 );
 
