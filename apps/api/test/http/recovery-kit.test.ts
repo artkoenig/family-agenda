@@ -51,6 +51,19 @@ describe("Recovery Kit over HTTP", () => {
     expect((await instance.get("/admin", { cookie })).status).toBe(200);
   });
 
+  it("loads no fragment into the kit's page before saving is confirmed, as the answer would be the page again", async () => {
+    await instance.app.llmEndpoint.save({ baseUrl: "http://ollama:11434/v1", model: "qwen3.5:9b", apiKey: "" });
+
+    const unconfirmed = await (await instance.get("/admin/recovery-kit", { cookie })).text();
+
+    expect(unconfirmed).toContain("qwen3.5:9b");
+    expect(unconfirmed).not.toContain("hx-get=");
+
+    await instance.post("/admin/recovery-kit/confirm", { saved: "yes" }, { cookie });
+    const confirmed = await (await instance.get("/admin/recovery-kit", { cookie })).text();
+    expect(confirmed).toContain('hx-get="/admin/llm/nav-status"');
+  });
+
   it("can be shown again to a signed-in Admin once confirmed", async () => {
     await instance.post("/admin/recovery-kit/confirm", { saved: "yes" }, { cookie });
 

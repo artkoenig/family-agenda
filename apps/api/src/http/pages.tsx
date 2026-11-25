@@ -270,7 +270,8 @@ function adminsSections(translation: Translation): SettingsGroup["sections"] {
 
 /**
  * What the settings list says about the AI: whether its endpoint answers, as `health` says, and the
- * OCR languages. Without `health`, which the page does not wait for, it loads as a fragment.
+ * OCR languages. Without `health`, which the page does not wait for, it loads as a fragment: not
+ * before the Recovery Kit is saved, as until then every other address answers the kit's page.
  */
 function llmSummary(
   translation: Translation,
@@ -285,7 +286,7 @@ function llmSummary(
   const tone =
     failing || settings.ocr.missing ? { tone: "attention" as const } : {};
   const fragment =
-    settings.llm && health === null
+    settings.llm && health === null && settings.kitSaved
       ? { fragment: "/admin/llm/nav-status" as const }
       : {};
   return { text, ...tone, ...fragment };
