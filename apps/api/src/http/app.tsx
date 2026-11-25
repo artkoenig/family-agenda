@@ -128,7 +128,7 @@ export type HttpOptions = {
   agendaAccess: AgendaAccessPolicy;
   /** The release the image was built from; shown by the health check and in the Admin area. Defaults to a development build. */
   version?: string;
-  /** The operator's legal pages, which every page links to (`IMPRINT_URL` and the others); none by default. */
+  /** The operator's legal pages, which every page but an Agenda links to (`IMPRINT_URL` and the others); none by default. */
   legalLinks?: readonly LegalLink[];
   /** The operator's contract pages, which the Admin area links to (`CANCEL_URL` and the others); none by default. */
   contractLinks?: readonly ContractLink[];

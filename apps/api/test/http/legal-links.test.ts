@@ -10,7 +10,7 @@ const all: LegalLink[] = [
 
 /** The legal links of a page, as label and address, in the order it shows them. */
 const legalLinksOf = (page: string) => {
-  const part = /<(footer class="fam-legal"|details id="legal-menu")[\s\S]*?<\/(footer|details)>/.exec(page)?.[0] ?? "";
+  const part = /<footer class="fam-legal">[\s\S]*?<\/footer>/.exec(page)?.[0] ?? "";
   return [...part.matchAll(/<a href="([^"]*)">([^<]*)<\/a>/g)].map(([, url, label]) => `${label} ${url?.replaceAll("&amp;", "&")}`);
 };
 
@@ -46,21 +46,24 @@ describe("the operator's legal pages", () => {
     }
   });
 
-  it("are linked from every page, in the Family Language, in one quiet line or the Agenda's menu", async () => {
+  it("are linked from every page but an Agenda, in the Family Language, in one quiet line", async () => {
     instance = await bootHttpForTest({ legalLinks: all });
     const pages = await pagesOf("de");
     const german = ["Impressum https://operator.example.org/imprint", "Datenschutz https://operator.example.org/privacy?lang=auto#top", "AGB https://operator.example.org/terms"];
-    for (const page of Object.values(pages)) expect(legalLinksOf(page)).toEqual(german);
     for (const page of [pages.admin, pages.signIn, pages.recoveryKit]) {
+      expect(legalLinksOf(page)).toEqual(german);
       expect(page).toContain('<footer class="fam-legal">');
       expect(page).toContain("</a><span aria-hidden=\"true\"> · </span><a");
     }
-    // On an Agenda the menu sits in the top bar, in sight from wherever the page is scrolled to.
+  });
+
+  it("are not shown on an Agenda, of either kind, though configured", async () => {
+    instance = await bootHttpForTest({ legalLinks: all });
+    const pages = await pagesOf("de");
     for (const page of [pages.timeline, pages.taskList]) {
+      expect(page).not.toContain("fam-legal");
       expect(page).not.toContain("<footer");
-      const bar = /<header class="fam-bar">[\s\S]*?<\/header>/.exec(page)?.[0] ?? "";
-      expect(bar).toContain('<summary class="fam-legal-menu__toggle" aria-label="Rechtliches" title="Rechtliches">');
-      expect(bar).toContain('hx-preserve="true"');
+      for (const link of all) expect(page).not.toContain(link.url.split("?")[0]);
     }
   });
 
@@ -68,14 +71,12 @@ describe("the operator's legal pages", () => {
     instance = await bootHttpForTest({ legalLinks: all });
     const pages = await pagesOf("en");
     expect(legalLinksOf(pages.signIn).map((link) => link.split(" ")[0])).toEqual(["Imprint", "Privacy", "Terms"]);
-    expect(pages.timeline).toContain('aria-label="Legal"');
   });
 
   it("shows only those configured, without a stray separator", async () => {
     instance = await bootHttpForTest({ legalLinks: [all[0] as LegalLink] });
     const pages = await pagesOf("de");
     expect(pages.signIn).toContain('<footer class="fam-legal"><a href="https://operator.example.org/imprint">Impressum</a></footer>');
-    expect(legalLinksOf(pages.timeline)).toEqual(["Impressum https://operator.example.org/imprint"]);
   });
 
   it("link the configured addresses as given below a path prefix", async () => {

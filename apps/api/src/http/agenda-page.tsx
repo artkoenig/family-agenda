@@ -20,7 +20,6 @@ import { useTranslation, type Translation } from "./i18n/translation";
 import { Layout } from "./layout";
 import { avatarUrl } from "./avatars";
 import { href, usePathPrefix } from "./href";
-import { LegalMenu } from "./legal-links";
 
 // The Agenda layouts: a vertical timeline, or a Task List, that works on a phone, a
 // desktop and a wall tablet, in the Family Agenda design system (`design/design.css`).
@@ -243,8 +242,8 @@ export function TaskList(props: { page: TaskListPage }) {
 
 /**
  * An Agenda's sticky top bar, whatever its kind: the clock, the Theme switch, its title if it has
- * one, a hint that some of it may be out of date, the quick filter, the operator's legal pages if
- * any, and, as a line along its bottom edge, what the worker is busy with.
+ * one, a hint that some of it may be out of date, the quick filter, and, as a line along its bottom
+ * edge, what the worker is busy with.
  *
  * On a phone the title, the hint and the filter are rows under the clock, and `agendaBar` folds the
  * bar into one line once the page is scrolled, the filter becoming the avatars of those shown, which
@@ -313,7 +312,6 @@ function AgendaBar(props: { page: AgendaPage | TaskListPage; kind?: string }) {
             </nav>
           </>
         ) : null}
-        <LegalMenu />
         <ThemeSwitch />
       </div>
       <ActivityIndicator agendaId={page.id} activity={page.activity} />

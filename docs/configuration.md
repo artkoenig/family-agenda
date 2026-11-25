@@ -139,7 +139,7 @@ With them, every Family extracts through that endpoint; a Family's own saved end
 
 ## Legal pages
 
-An operator who offers Family Agenda to the public links an imprint, a privacy policy and terms from every page. Optionally, in either mode, set any of:
+An operator who offers Family Agenda to the public links an imprint, a privacy policy and terms from every page but an Agenda. Optionally, in either mode, set any of:
 
 | Variable | Link (English / German Family Language) |
 |---|---|
@@ -147,7 +147,7 @@ An operator who offers Family Agenda to the public links an imprint, a privacy p
 | `PRIVACY_URL` | Privacy / Datenschutz |
 | `TERMS_URL` | Terms / AGB |
 
-Each value is an absolute http or https address; any other stops the start, naming the variable. It is linked as given, whatever the Family Language (the page offers its own languages), with no path prefix and no Family data added. Only the variables set are linked, in this order. The Admin area, the sign-in page and the other pages show them at their foot, joined by „ · “; an Agenda, whose timeline loads more days without end, shows a small „§“ menu in its top bar that opens them. Print leaves them out. With none set, no page has a footer or menu. ICS feeds, the web app manifest, JSON answers and downloads carry none.
+Each value is an absolute http or https address; any other stops the start, naming the variable. It is linked as given, whatever the Family Language (the page offers its own languages), with no path prefix and no Family data added. Only the variables set are linked, in this order. The Admin area, the sign-in page and the other pages show them at their foot, joined by „ · “; an Agenda shows none. Print leaves them out. With none set, no page has a footer. ICS feeds, the web app manifest, JSON answers and downloads carry none.
 
 ## Contract pages
 

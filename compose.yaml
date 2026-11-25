@@ -35,7 +35,7 @@ x-app: &app
     LLM_BASE_URL: ${LLM_BASE_URL:-}
     LLM_MODEL: ${LLM_MODEL:-}
     LLM_API_KEY: ${LLM_API_KEY:-}
-    # The operator's legal pages, linked from every page; none while all are empty.
+    # The operator's legal pages, linked from every page but an Agenda; none while all are empty.
     IMPRINT_URL: ${IMPRINT_URL:-}
     PRIVACY_URL: ${PRIVACY_URL:-}
     TERMS_URL: ${TERMS_URL:-}
