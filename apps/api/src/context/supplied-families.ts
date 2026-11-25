@@ -4,9 +4,13 @@ import { connectPostgres, FamilyIdConflictError, NewerMigrationHistoryError, Old
 import { checkPreparedSchema, FamilyNotPreparedError, OrganizationIdConflictError, openPreparedFamily, prepareFamily, type Application, type FamilyConfig, type SharedWiring } from "../composition-root";
 import type { SuppliedIdentityProvider } from "../config";
 import type { Context } from "./context";
+import type { ContextSection } from "./sections";
 
-/** What a Family's pages answer a request with, such as its Hono app's `fetch`. */
-export type FamilyFetch = (request: Request, env?: unknown) => Response | Promise<Response>;
+/**
+ * What a Family's pages answer a request with, such as its Hono app's `fetch`; `sections` are those
+ * of the request's own Context, as requests of one opened Family may name different ones.
+ */
+export type FamilyFetch = (request: Request, env: unknown, sections: readonly ContextSection[]) => Response | Promise<Response>;
 
 /** What every Family gets alike; its time zone and public address come with its Context. */
 export type FamilySettings = Pick<FamilyConfig, "identityProviderClient" | "sourceRunTurns">;

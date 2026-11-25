@@ -3,6 +3,7 @@ import { parseFamilyId, type FamilyId } from "@family-agenda/adapters";
 import { isTimeZone } from "@family-agenda/domain";
 import { z } from "zod";
 import { parsePublicUrl } from "../config";
+import { parseSections, type ContextSection } from "./sections";
 
 /**
  * What a core in supplied mode needs to open the Family a request is for (ADR-0003): a trusted
@@ -34,6 +35,8 @@ export type Context = {
    * Context naming another. Left out by a caller that registers no Families.
    */
   organizationId?: string;
+  /** The platform's own sections of the Admin area, shown for this request and stored nowhere. */
+  sections?: ContextSection[];
   /**
    * Milliseconds since the epoch; the Context is refused from then on, after a little skew, and
    * when it lies further ahead than `maximumContextLifetimeMs`.
@@ -60,6 +63,8 @@ const problems = {
   publicUrl: publicUrlProblem,
   identityProvider:
     "identityProvider must not be set: in supplied mode the one Identity Provider comes from the core's OIDC_* variables, and the Family claim decides who signs in (ADR-0009)",
+  sections:
+    "sections must be a list of at most 5, each with an id of its own (at most 32 of a-z, 0-9 and -), a label of at most 60 characters and an https src of at most 500 at the origin of publicUrl, both in every Family Language, and optionally onlyFor, not empty",
 } as const;
 
 const custom = (context: z.RefinementCtx, message: string) => (context.addIssue({ code: "custom", message }), z.NEVER);
@@ -75,12 +80,20 @@ const contextSchema = z
     // Named when refused, so that a caller still sealing one learns where the Identity Provider went.
     identityProvider: z.unknown().refine((value) => value === undefined, problems.identityProvider).optional(),
     organizationId: z.string().min(1).optional(),
+    // Parsed below, as their addresses depend on the public one.
+    sections: z.unknown().optional(),
     expiresAt: z.number(),
   })
   // Nothing of it is kept: it was refused unless absent.
-  .transform(({ organizationId, timeZone, ...parsed }): Context => {
+  .transform(({ organizationId, timeZone, sections: described, ...parsed }, context): Context => {
     delete parsed.identityProvider;
-    return { ...parsed, ...(timeZone === undefined ? {} : { timeZone }), ...(organizationId === undefined ? {} : { organizationId }) };
+    const sections = described === undefined ? undefined : (parseSections(described, parsed.publicUrl) ?? custom(context, problems.sections));
+    return {
+      ...parsed,
+      ...(timeZone === undefined ? {} : { timeZone }),
+      ...(organizationId === undefined ? {} : { organizationId }),
+      ...(sections === undefined ? {} : { sections }),
+    };
   });
 
 const version = "v1";

@@ -24,6 +24,12 @@ describe("family-agenda seal-context", () => {
     expect(openContext(key, sealContextCommand(key, JSON.stringify({ ...described, organizationId: "org-1" }), 1_000), 1_000)).toEqual({ ...described, organizationId: "org-1", expiresAt: 301_000 });
   });
 
+  it("seals the platform's sections when they are described, and refuses ones the core would not take", () => {
+    const sections = [{ id: "help", label: { en: "Help", de: "Hilfe" }, src: { en: "https://b.example.org/help", de: "https://b.example.org/hilfe" } }];
+    expect(openContext(key, sealContextCommand(key, JSON.stringify({ ...described, sections }), 1_000), 1_000)).toEqual({ ...described, sections, expiresAt: 301_000 });
+    expect(() => sealContextCommand(key, JSON.stringify({ ...described, sections: [{ ...sections[0], id: "" }] }), 0)).toThrow(/sections must be/);
+  });
+
   it("refuses what the core would not open", () => {
     expect(() => sealContextCommand("", JSON.stringify(described), 0)).toThrow(/CONTEXT_KEY/);
     expect(() => sealContextCommand(key, "no json", 0)).toThrow(/Expected JSON/);

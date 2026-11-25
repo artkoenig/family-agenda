@@ -513,12 +513,6 @@ html[data-theme-mode="dark"] .fam-theme__icon--dark { display: block; }
 .fam-settings__account { display: flex; align-items: center; gap: var(--space-3); }
 .fam-settings__account form { margin: 0; }
 .fam-settings__who { color: var(--ink-muted); font-size: 14px; }
-/* The operator's contract pages, in sight on every page of the Admin area. */
-.fam-contract {
-  display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 0 var(--space-5);
-  padding: var(--space-1) var(--space-6); border-bottom: 1px solid var(--line);
-}
-.fam-page .fam-contract a { display: flex; align-items: center; min-height: 44px; color: var(--ink); }
 .fam-settings { display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--space-6); max-width: 1200px; margin: 0 auto; padding: var(--space-6); }
 .fam-settings__nav { flex: 1 1 260px; max-width: 320px; display: flex; flex-direction: column; gap: var(--space-1); }
 .fam-settings__group {
@@ -733,7 +727,6 @@ html[data-theme-mode="dark"] .fam-theme__icon--dark { display: block; }
 /* On a phone the settings list becomes a row of sections above the details. */
 @media (max-width: 719px) {
   .fam-settings__header { padding: var(--space-3) var(--space-4); }
-  .fam-contract { justify-content: flex-start; padding: 0 var(--space-4); }
   .fam-settings { gap: var(--space-5); padding: var(--space-4); }
   .fam-settings__nav {
     flex: 1 1 100%; max-width: none; flex-direction: row; gap: var(--space-2);
@@ -792,7 +785,7 @@ html[data-theme-mode="dark"] .fam-theme__icon--dark { display: block; }
   .fam-page { background: #fff; color: #000; }
   .fam-page .fam-secret { background: #fff; color: #000; border: 1px solid #000; }
   .fam-page .fam-sheet { border: 0; box-shadow: none; padding: 0; }
-  .fam-settings__header, .fam-contract, .fam-settings__nav, .fam-banner, .fam-group__actions, .fam-sheet__form, .fam-button, .fam-legal { display: none; }
+  .fam-settings__header, .fam-settings__nav, .fam-banner, .fam-group__actions, .fam-sheet__form, .fam-button, .fam-legal { display: none; }
 }
 
 /* A spinner, standing in for a status while something runs in the background. */
@@ -832,3 +825,10 @@ html[data-theme-mode="dark"] .fam-theme__icon--dark { display: block; }
 .fam-lazy--failed {
   color: var(--danger);
 }
+.fam-lazy--retry {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+.fam-lazy--retry p { margin: 0; }

@@ -2,7 +2,6 @@ import { logtoOrganizations, parseFamilyId, type FamilyId } from "@family-agenda
 import { readFileSync } from "node:fs";
 import { parseFamilyIdClaim, parseIdentityDirectorySettings, parseIdentityProviderConnection, parseIdentityProviderSettings, type IdentityDirectorySettings, type IdentityProviderConnectionSettings, type OrganizationsClaim, type IdentityProviderSettings, type LlmEndpoint } from "@family-agenda/application";
 import { parsePluginUrls, type PluginBinding } from "./plugin-containers/bindings";
-import type { ContractLink, ContractLinkKind } from "./http/contract-links";
 import type { LegalLink, LegalLinkKind } from "./http/legal-links";
 import { versionOf } from "./version";
 
@@ -57,11 +56,6 @@ export type Config = {
    * `TERMS_URL` in that order; empty when none is set.
    */
   legalLinks: LegalLink[];
-  /**
-   * The operator's contract pages the Admin area links to, from `CANCEL_URL`, `WITHDRAW_URL` and
-   * `DELETE_URL` in that order; empty when none is set.
-   */
-  contractLinks: ContractLink[];
 };
 
 export type TriggerConfig = {
@@ -107,10 +101,17 @@ const retiredVariables = {
   OIDC_KNOWN_ADMINS_ONLY: "Admins exist only in the Identity Provider (ADR-0009), so every sign-in is checked against OIDC_REQUIRED_GROUP alone",
 } as const;
 
+/** The addresses of the contract pages the Admin area linked in 0.11: an operator who set one must learn that nothing links it any more. */
+const retiredContractVariables = ["CANCEL_URL", "WITHDRAW_URL", "DELETE_URL"] as const;
+
 /** Refuses a variable no release reads any more. */
 function checkRetiredVariables(env: NodeJS.ProcessEnv): void {
   for (const [variable, reason] of Object.entries(retiredVariables)) {
     if (env[variable] !== undefined) throw new Error(`${variable} is not a known variable: ${reason}; unset it`);
+  }
+  // Empty ones are let pass, as the compose.yaml of the release that knew them passes them empty.
+  for (const variable of retiredContractVariables) {
+    if (env[variable]) throw new Error(`${variable} is not a known variable: the Admin area links no contract pages; unset it`);
   }
 }
 
@@ -297,7 +298,6 @@ function sharedConfigOf(env: NodeJS.ProcessEnv): Omit<Config, Exclude<FixedOnly,
     suppliedLlmEndpoint: suppliedLlmEndpointOf(env),
     version: versionOf(env),
     legalLinks: operatorLinksOf(env, legalVariables),
-    contractLinks: operatorLinksOf(env, contractVariables),
   };
 }
 
@@ -306,13 +306,6 @@ const legalVariables: readonly (readonly [LegalLinkKind, string])[] = [
   ["imprint", "IMPRINT_URL"],
   ["privacy", "PRIVACY_URL"],
   ["terms", "TERMS_URL"],
-];
-
-/** The variable of each contract page, in the order the Admin area links them. */
-const contractVariables: readonly (readonly [ContractLinkKind, string])[] = [
-  ["cancel", "CANCEL_URL"],
-  ["withdraw", "WITHDRAW_URL"],
-  ["delete", "DELETE_URL"],
 ];
 
 /** The operator's pages that are set among `variables`, each an absolute http or https address, kept as given. */

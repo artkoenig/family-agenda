@@ -62,6 +62,7 @@ import {
   LlmSuppliedStatusFragment,
   LlmTestFragment,
   MessagePage,
+  PlatformSectionPage,
   RecoveryKitPage,
   recoveryKitText,
   SignInPage,
@@ -98,7 +99,7 @@ import {
   agendaUrl,
 } from "./agenda-page";
 import { href, pathPrefixOf, PathPrefixContext, stylesheetBelow } from "./href";
-import { ContractLinksContext, type ContractLink } from "./contract-links";
+import { sectionsFor, type ContextSection } from "../context/sections";
 import { LegalLinksContext, type LegalLink } from "./legal-links";
 
 /**
@@ -130,12 +131,11 @@ export type HttpOptions = {
   version?: string;
   /** The operator's legal pages, which every page but an Agenda links to (`IMPRINT_URL` and the others); none by default. */
   legalLinks?: readonly LegalLink[];
-  /** The operator's contract pages, which the Admin area links to (`CANCEL_URL` and the others); none by default. */
-  contractLinks?: readonly ContractLink[];
 };
 
 type Env = {
-  Bindings: HttpBindings;
+  /** `sections` are those the request's Context names; without one, as in fixed mode, none. */
+  Bindings: HttpBindings & { sections?: readonly ContextSection[] };
   Variables: { admin: SignedInAdmin; translation: Translation };
 };
 
@@ -265,7 +265,6 @@ export function createHttpApp(application: Application, options: HttpOptions) {
   const version = options.version ?? "dev";
   const prefix = pathPrefixOf(options.publicUrl);
   const legalLinks = options.legalLinks ?? [];
-  const contractLinks = options.contractLinks ?? [];
   /** Sends the browser on to `path` below the prefix after a form was posted. */
   const seeOther = (c: Context, path: `/${string}`) => c.redirect(href(prefix, path), 303);
   const stylesheetFiles = servedStylesheets(prefix);
@@ -279,7 +278,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
       <PathPrefixContext.Provider value={prefix}>
         <TranslationContext.Provider value={c.get("translation")}>
           <LegalLinksContext.Provider value={legalLinks}>
-            <ContractLinksContext.Provider value={contractLinks}>{node}</ContractLinksContext.Provider>
+            {node}
           </LegalLinksContext.Provider>
         </TranslationContext.Provider>
       </PathPrefixContext.Provider>,
@@ -725,7 +724,7 @@ export function createHttpApp(application: Application, options: HttpOptions) {
     // Without a session, or once it expired, through the Identity Provider again: silently while its own session lasts.
     if (!admin)
       return c.redirect(href(prefix, singleSignOn.isOfferedAt(requestBaseOf(c)) ? signInStartPath : "/admin/sign-in"));
-    c.set("admin", { ...admin, settings: await settings() });
+    c.set("admin", { ...admin, settings: await settings(), sections: sectionsFor(admin.subject, c.env.sections ?? []) });
     await next();
   });
   // Until an Admin confirms saving the Recovery Kit, the Admin area shows only the kit (ADR-0003).
@@ -891,6 +890,12 @@ export function createHttpApp(application: Application, options: HttpOptions) {
   app.post("/admin/admins/:userId/remove", async (c) => {
     const result = await application.familyAdmins.remove(c.req.param("userId"));
     return result.ok ? seeOther(c, "/admin/admins") : adminsPage(c, result.problem);
+  });
+
+  app.get("/admin/sections/:id", (c) => {
+    const admin = c.get("admin");
+    const section = admin.sections.find(({ id }) => id === c.req.param("id"));
+    return section ? render(c, <PlatformSectionPage admin={admin} section={section} />) : c.notFound();
   });
 
   app.get("/admin/family-members", (c) => familyMembersPage(c));

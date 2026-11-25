@@ -58,7 +58,7 @@ export function suppliedFetch({ contextKey, families, version, log, signInCallba
       return refusal(401, "A valid Context is required.");
     }
     const { context } = outcome;
-    const opening = await families.serve(context, async (family) => family.fetch(withoutContext(request), env));
+    const opening = await families.serve(context, async (family) => family.fetch(withoutContext(request), env, context.sections ?? []));
     if (opening.ok) return opening.family;
     log.warn(`Could not open the Family ${context.familyId} from its Context: ${opening.problem}${nameOf(opening.error)}`);
     return refusalOf[opening.problem]();

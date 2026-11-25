@@ -35,13 +35,12 @@ export async function serveSupplied(config: SuppliedConfig, log: TriggerLog) {
         trustProxy: config.trustProxy,
         version: config.version,
         legalLinks: config.legalLinks,
-        contractLinks: config.contractLinks,
         // The Family's own address, its path prefix included: the caller removed the prefix from the request.
         publicUrl: context.publicUrl,
         // As on the one listener of a fixed core: Agendas open without a secret until Agenda Links are reworked (ADR-0004).
         agendaAccess: openAgendaAccess,
       });
-      const fetch: FamilyFetch = (request, env) => app.fetch(request, env as HttpBindings);
+      const fetch: FamilyFetch = (request, env, sections) => app.fetch(request, { ...(env as HttpBindings), sections });
       return fetch;
     },
   });
