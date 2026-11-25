@@ -24,7 +24,7 @@ plugins:
   # `ready` in it last; the companion waits for it, then starts from it. A companion without `ready`
   # after five minutes exits and is restarted. (`$$` is a `$` to Docker Compose.)
   # - id: matrix
-  #   image: ghcr.io/artkoenig/family-agenda-matrix:0.3.0@sha256:20675817b3a88a5b5aabda4bc1b36d713fe91f574fd5b70f6d6f9b26709d735e
+  #   image: ghcr.io/artkoenig/family-agenda-matrix:0.4.0@sha256:189404a34cdeb45ced61af1f468b173f51ef38fb9f261ec70d4432c4a1fbc504
   #   # No egress: the plugin talks only to its companions.
   #   volumes:
   #     matrix-secrets: /config
