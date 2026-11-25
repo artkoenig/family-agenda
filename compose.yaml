@@ -39,6 +39,10 @@ x-app: &app
     IMPRINT_URL: ${IMPRINT_URL:-}
     PRIVACY_URL: ${PRIVACY_URL:-}
     TERMS_URL: ${TERMS_URL:-}
+    # The operator's contract pages, linked from the Admin area; none while all are empty.
+    CANCEL_URL: ${CANCEL_URL:-}
+    WITHDRAW_URL: ${WITHDRAW_URL:-}
+    DELETE_URL: ${DELETE_URL:-}
     MASTER_KEY_FILE: /var/lib/family-agenda/master-key/master.key
     BLOB_DIRECTORY: /var/lib/family-agenda/blobs
     TESSDATA_DIRECTORY: /var/lib/family-agenda/tessdata

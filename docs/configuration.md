@@ -149,6 +149,18 @@ An operator who offers Family Agenda to the public links an imprint, a privacy p
 
 Each value is an absolute http or https address; any other stops the start, naming the variable. It is linked as given, whatever the Family Language (the page offers its own languages), with no path prefix and no Family data added. Only the variables set are linked, in this order. The Admin area, the sign-in page and the other pages show them at their foot, joined by „ · “; an Agenda, whose timeline loads more days without end, shows a small „§“ menu in its top bar that opens them. Print leaves them out. With none set, no page has a footer or menu. ICS feeds, the web app manifest, JSON answers and downloads carry none.
 
+## Contract pages
+
+An operator who sells Family Agenda as a contract links the pages to cancel it (§ 312k BGB), to withdraw from it (§ 356a BGB) and to delete the Family from the Admin area. Optionally, in either mode, set any of:
+
+| Variable | Link (English / German Family Language) |
+|---|---|
+| `CANCEL_URL` | Verträge hier kündigen (the statutory label, German in either) |
+| `WITHDRAW_URL` | Vertrag widerrufen (the statutory label, German in either) |
+| `DELETE_URL` | Delete family / Familie löschen |
+
+Each value is an absolute http or https address; any other stops the start, naming the variable. It is linked as given, whatever the Family Language (the page offers its own languages), with no path prefix and no Family data, user or token added: the operator's page signs the person in itself, finds their Family and decides whether they may act. Every page of the Admin area shows the links set, in this order, to every signed-in Admin, below its header and in the same tab. With none set, nothing shows.
+
 ## Address of the Instance
 
 - **Home network only**: leave the defaults. `mdns` makes `http://family-agenda.local:8080` work from the home network. It needs a Linux host, not Docker Desktop.

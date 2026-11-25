@@ -521,6 +521,15 @@ export const en = {
     /** The menu that holds them on an Agenda. */
     menu: "Legal",
   },
+
+  /** The operator's contract pages, linked from the Admin area when configured. */
+  contract: {
+    title: "Contract",
+    /** The labels of § 312k and § 356a BGB, German in every Family Language. */
+    cancel: "Verträge hier kündigen",
+    withdraw: "Vertrag widerrufen",
+    delete: "Delete family",
+  },
 };
 
 export type Catalogue = typeof en;
