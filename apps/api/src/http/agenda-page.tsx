@@ -581,12 +581,14 @@ function SchoolDayRow(props: { row: TimelineSchoolDay; members: FamilyMemberSumm
         </span>
         <Concerned concerns={row.concerns} members={props.members} />
       </summary>
-      <ol class="fam-lessons" aria-label={v.lessons}>
-        {periodsOf(row.lessons).map((lesson) => (
-          <LessonItem lesson={lesson} now={now} />
-        ))}
-      </ol>
-      <LessonNotes notes={notes} />
+      <div class="fam-school-day">
+        <ol class="fam-lessons" aria-label={v.lessons}>
+          {periodsOf(row.lessons).map((lesson) => (
+            <LessonItem lesson={lesson} now={now} />
+          ))}
+        </ol>
+        <LessonNotes notes={notes} />
+      </div>
     </details>
   );
 }
