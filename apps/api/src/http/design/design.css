@@ -337,13 +337,12 @@ html[data-theme-mode="dark"] .fam-theme__icon--dark { display: block; }
   list-style: none; margin: 0;
 }
 .fam-lesson { display: contents; }
-.fam-lesson__time { justify-self: end; color: var(--ink-muted); font-variant-numeric: tabular-nums; }
+.fam-lesson__time { color: var(--ink-muted); font-variant-numeric: tabular-nums; }
 .fam-lesson__subject { font-weight: 600; }
 .fam-lesson__where { color: var(--ink-muted); }
 .fam-lesson--cancelled > * { color: var(--ink-muted); text-decoration: line-through; }
 .fam-lesson--cancelled .fam-lesson__subject { font-weight: 400; }
-/* The notes of a school day's Lessons, each by its subject: the subject under the times, the note under the Lessons, with the school's line breaks. */
-.fam-lesson-notes dt { justify-self: end; text-align: right; }
+/* The notes of a school day's Lessons, each by its subject: the subject in the time column, the note under the Lessons' subjects, with the school's line breaks. */
 .fam-lesson-notes dd { grid-column: 2 / -1; white-space: pre-line; }
 
 /* Tasks: pinned at the top while Due, else on their day, or a Task List -- */
