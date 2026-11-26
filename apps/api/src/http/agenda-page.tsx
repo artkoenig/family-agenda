@@ -7,6 +7,7 @@ import type {
   TimelineDays,
   TimelineDay,
   TimelineEvent,
+  TimelineLesson,
   TimelineSchoolDay,
   TimelineTask,
   TimelineTimetableChange,
@@ -471,10 +472,8 @@ function DayEntry(props: { page: AgendaPage; day: TimelineDay }) {
   const show = (row: DayRow) =>
     row.kind === "event" ? (
       <EventRow row={row.row} day={day.date} members={othersThanSole(page)} now={now} />
-    ) : row.kind === "school" ? (
-      <SchoolDayRow row={row.row} members={othersThanSole(page)} now={now} />
     ) : (
-      <TimetableChangeRow row={row.row} members={othersThanSole(page)} now={now} />
+      <SchoolDayRow row={row.row} members={othersThanSole(page)} now={now} />
     );
   return (
     <li class={day.date === page.now.date ? "fam-day fam-day--today" : "fam-day"} data-date={day.date}>
@@ -495,19 +494,12 @@ function DayEntry(props: { page: AgendaPage; day: TimelineDay }) {
   );
 }
 
-type DayRow =
-  | { kind: "event"; row: TimelineEvent }
-  | { kind: "school"; row: TimelineSchoolDay }
-  | { kind: "change"; row: TimelineTimetableChange };
+type DayRow = { kind: "event"; row: TimelineEvent } | { kind: "school"; row: TimelineSchoolDay };
 
-/**
- * A day's rows in order of time: all-day Events first, and a school day before the Timetable
- * Changes and Events that start with it.
- */
+/** A day's rows in order of time: all-day Events first, and a school day before the Events that start with it. */
 function rowsOf(day: TimelineDay): DayRow[] {
   const rows: DayRow[] = [
     ...day.schoolDays.map((row) => ({ kind: "school" as const, row })),
-    ...day.timetableChanges.map((row) => ({ kind: "change" as const, row })),
     ...day.items.map((row) => ({ kind: "event" as const, row })),
   ];
   const key = (row: DayRow) => (row.kind === "event" ? (row.row.span.allDay ? "" : (row.row.from ?? "00:00")) : row.row.from);
@@ -556,7 +548,11 @@ function Concerned(props: { concerns: TimelineEvent["concerns"]; members: Family
   ) : null;
 }
 
-/** A school day as one row, "School until hh:mm", that lists its Lessons on tap; today's marks the Lesson running, and the whole row while it is closed. */
+/**
+ * A school day as one row, "School until hh:mm", with its Timetable Changes and the number of notes
+ * beneath; it lists its Lessons on tap, a double period as one, and then the day's notes. Today's
+ * marks the Lesson running, and the whole row while it is closed.
+ */
 function SchoolDayRow(props: { row: TimelineSchoolDay; members: FamilyMemberSummary[]; now: string | undefined }) {
   const { row, now } = props;
   const { t } = useTranslation();
@@ -571,6 +567,7 @@ function SchoolDayRow(props: { row: TimelineSchoolDay; members: FamilyMemberSumm
   ]
     .filter(Boolean)
     .join(" ");
+  const notes = notesOf(row.lessons);
   return (
     <details class={classes}>
       <summary>
@@ -578,88 +575,129 @@ function SchoolDayRow(props: { row: TimelineSchoolDay; members: FamilyMemberSumm
           {running ? <RunningMark /> : null}
           {row.from}
         </span>
-        <span class="fam-event__title">
-          {row.cancelled ? (
-            <>
-              <s>{v.school}</s> <span class="fam-event__tag">{v.cancelled}</span>
-            </>
-          ) : (
-            v.schoolUntil(row.until)
-          )}
+        <span class="fam-event__text">
+          <span class="fam-event__title">{row.cancelled ? <CancelledSchool /> : v.schoolUntil(row.until)}</span>
+          <SchoolDaySummary summary={schoolDaySummary(row, notes.length, t)} />
         </span>
         <Concerned concerns={row.concerns} members={props.members} />
       </summary>
       <ol class="fam-lessons" aria-label={v.lessons}>
-        {row.lessons.map((lesson) => {
-          const running = !lesson.cancelled && runsAt(now, lesson.from, lesson.until);
-          const classes = ["fam-lesson", lesson.cancelled ? "fam-lesson--cancelled" : "", running ? "fam-lesson--now" : ""].filter(Boolean).join(" ");
-          return (
-            <li class={classes} aria-current={running ? "time" : undefined}>
-              <span class="fam-lesson__time">
-                {running ? <RunningMark /> : null}
-                {lesson.from} – {lesson.until}
-              </span>
-              <span class="fam-lesson__subject">{lesson.cancelled ? <s>{lesson.subject}</s> : lesson.subject}</span>
-              <span class="fam-lesson__where">{[lesson.room, lesson.teacher].filter(Boolean).join(" · ")}</span>
-            </li>
-          );
-        })}
+        {periodsOf(row.lessons).map((lesson) => (
+          <LessonItem lesson={lesson} now={now} />
+        ))}
       </ol>
+      <LessonNotes notes={notes} />
     </details>
   );
 }
 
-/** A Timetable Change as its own highlighted row, such as "Physics: cancelled", with what changed on tap. */
-function TimetableChangeRow(props: { row: TimelineTimetableChange; members: FamilyMemberSummary[]; now: string | undefined }) {
-  const { row } = props;
-  const { t } = useTranslation();
-  const v = t.agenda;
-  const running = row.change !== "cancellation" && runsAt(props.now, row.from, row.until);
-  const classes = ["fam-event", "fam-event--change", row.earlier ? "fam-event--earlier" : "", running ? "fam-event--now" : ""]
-    .filter(Boolean)
-    .join(" ");
-  const label = changeLabel({ ...row, note: null }, t);
-  return (
-    <details class={classes}>
-      <summary>
-        <span class="fam-event__time">
-          {running ? <RunningMark /> : null}
-          {row.from} – {row.until}
-        </span>
-        <span class="fam-event__title">
-          <span aria-hidden="true">⚠ </span>
-          {row.subject}: {label}
-        </span>
-        <Concerned concerns={row.concerns} members={props.members} />
-      </summary>
-      <dl class="fam-event__details">
-        <dt>{v.timetableChange}</dt>
-        <dd>
-          {row.subject}: {label}
-        </dd>
-        <ChangedValue label={v.where} value={row.room} previous={row.previousRoom} />
-        <ChangedValue label={v.teacher} value={row.teacher} previous={row.previousTeacher} onlyChanged />
-        <ChangedValue label={v.note} value={row.note} previous={null} />
-      </dl>
-    </details>
-  );
-}
-
-/** A detail of a Timetable Change, with what it was instead if that differs; nothing without a value. */
-function ChangedValue(props: { label: string; value: string | null; previous: string | null; onlyChanged?: boolean }) {
-  const { label, value, previous, onlyChanged } = props;
-  const { t } = useTranslation();
-  const instead = previous && previous !== value ? ` (${t.agenda.instead(previous)})` : "";
-  if (!value || (onlyChanged && !instead)) return null;
+function CancelledSchool() {
+  const v = useTranslation().t.agenda;
   return (
     <>
-      <dt>{label}</dt>
-      <dd>
-        {value}
-        {instead}
-      </dd>
+      <s>{v.school}</s> <span class="fam-event__tag">{v.cancelled}</span>
     </>
   );
+}
+
+/** The line beneath a school day: its Timetable Changes, marked, and the number of its notes. */
+function SchoolDaySummary(props: { summary: ReturnType<typeof schoolDaySummary> }) {
+  const { summary } = props;
+  return summary ? (
+    <span class="fam-item__meta">
+      {summary.changed ? <span aria-hidden="true">⚠ </span> : null}
+      {summary.text}
+    </span>
+  ) : null;
+}
+
+/** The day's notes after its Lessons, each by its subject. */
+function LessonNotes(props: { notes: ReturnType<typeof notesOf> }) {
+  const { t } = useTranslation();
+  return props.notes.length > 0 ? (
+    <dl class="fam-event__details fam-lesson-notes" aria-label={t.agenda.notesTitle}>
+      {props.notes.map((note) => (
+        <>
+          <dt>{note.subject}</dt>
+          <dd>{note.note}</dd>
+        </>
+      ))}
+    </dl>
+  ) : null;
+}
+
+/** A Lesson, or a double period, as its school day lists it: struck through if cancelled, with a substitute or a new room where it is. */
+function LessonItem(props: { lesson: TimelineLesson; now: string | undefined }) {
+  const { lesson, now } = props;
+  const { t } = useTranslation();
+  const running = !lesson.cancelled && runsAt(now, lesson.from, lesson.until);
+  const classes = ["fam-lesson", lesson.cancelled ? "fam-lesson--cancelled" : "", running ? "fam-lesson--now" : ""].filter(Boolean).join(" ");
+  return (
+    <li class={classes} aria-current={running ? "time" : undefined}>
+      <span class="fam-lesson__time">
+        {running ? <RunningMark /> : null}
+        {lesson.from} – {lesson.until}
+      </span>
+      <span class="fam-lesson__subject">{lesson.cancelled ? <s>{lesson.subject}</s> : lesson.subject}</span>
+      <span class="fam-lesson__where">{whereOf(lesson, t).join(" · ")}</span>
+    </li>
+  );
+}
+
+/** Where a Lesson is and who teaches it, a substitute or a new room as its Timetable Change tells. */
+function whereOf(lesson: TimelineLesson, t: Catalogue): string[] {
+  const { changed } = t.agenda;
+  if (lesson.change === "substitution") return [lesson.room, changed.substitution(lesson.teacher)].filter((part) => part !== null);
+  if (lesson.change === "room-change") return [changed["room-change"](lesson.room), lesson.teacher].filter((part) => part !== null);
+  return [lesson.room, lesson.teacher].filter((part) => part !== null);
+}
+
+/**
+ * The Lessons in order of time, each run of the same Lesson one after another, a double period, as
+ * one from the first's start to the last's end.
+ */
+export function periodsOf(lessons: TimelineLesson[]): TimelineLesson[] {
+  const periods: TimelineLesson[] = [];
+  for (const lesson of lessons) {
+    const last = periods.at(-1);
+    if (last && samePeriod(last, lesson)) periods[periods.length - 1] = { ...last, until: lesson.until };
+    else periods.push(lesson);
+  }
+  return periods;
+}
+
+function samePeriod(a: TimelineLesson, b: TimelineLesson): boolean {
+  const keys = ["subject", "room", "teacher", "cancelled", "change", "previousRoom", "previousTeacher", "note"] as const;
+  return keys.every((key) => a[key] === b[key]);
+}
+
+/** The notes of a day's Lessons in order of time, each note of a subject once. */
+export function notesOf(lessons: TimelineLesson[]): { subject: string; note: string }[] {
+  const seen = new Set<string>();
+  return lessons.flatMap(({ subject, note }) => {
+    const key = JSON.stringify([subject, note]);
+    if (note === null || seen.has(key)) return [];
+    seen.add(key);
+    return [{ subject, note }];
+  });
+}
+
+/**
+ * What a school day's row says beneath its title: its Timetable Changes, such as "Latin, Sport
+ * cancelled · Substitution in Maths", and how many notes it lists; null if it has neither. A day
+ * cancelled whole says so in its title.
+ */
+export function schoolDaySummary(row: TimelineSchoolDay, notes: number, t: Catalogue): { changed: boolean; text: string } | null {
+  const v = t.agenda.summary;
+  const subjects = (kind: TimelineLesson["change"]) => [...new Set(row.lessons.filter((lesson) => lesson.change === kind).map((lesson) => lesson.subject))];
+  const cancelled = row.cancelled ? [] : subjects("cancellation");
+  const changes = [
+    cancelled.length > 0 ? v.cancelled(cancelled) : null,
+    ...[subjects("substitution")].filter((found) => found.length > 0).map(v.substitution),
+    ...[subjects("room-change")].filter((found) => found.length > 0).map(v.roomChange),
+  ].filter((part) => part !== null);
+  const parts = [...changes, ...(notes > 0 ? [v.notes(notes)] : [])];
+  return parts.length > 0 ? { changed: changes.length > 0, text: parts.join(" · ") } : null;
 }
 
 /** Whether an Event that is not cancelled, nor all day, is on at `now`, today's time; no Event is on any other day. */

@@ -468,7 +468,7 @@ CREATE TABLE lesson (
   CONSTRAINT lesson_change_known CHECK (change IN ('cancellation', 'substitution', 'room-change')),
   CONSTRAINT lesson_previous_only_when_changed CHECK (
     change IS NOT NULL OR (previous_subject IS NULL AND previous_room IS NULL
-                           AND previous_teacher IS NULL AND note IS NULL)),
+                           AND previous_teacher IS NULL)),
   CONSTRAINT lesson_text_length CHECK (
     char_length(subject) <= 200 AND char_length(room) <= 200 AND char_length(teacher) <= 200
     AND char_length(previous_subject) <= 200 AND char_length(previous_room) <= 200

@@ -563,7 +563,10 @@ export const tasks = pgTable(
   ],
 );
 
-/** One slot of a Timetable; `change` is its Timetable Change, with the values it replaces. */
+/**
+ * One slot of a Timetable; `change` is its Timetable Change, with the values it replaces. `note` is
+ * what the school wrote about the Lesson, changed or not.
+ */
 export const lessons = pgTable(
   "lesson",
   {
@@ -586,7 +589,7 @@ export const lessons = pgTable(
     oneOf("lesson_change_known", table.change, timetableChangeKinds),
     check(
       "lesson_previous_only_when_changed",
-      sql`${table.change} IS NOT NULL OR (${table.previousSubject} IS NULL AND ${table.previousRoom} IS NULL AND ${table.previousTeacher} IS NULL AND ${table.note} IS NULL)`,
+      sql`${table.change} IS NOT NULL OR (${table.previousSubject} IS NULL AND ${table.previousRoom} IS NULL AND ${table.previousTeacher} IS NULL)`,
     ),
     check(
       "lesson_text_length",

@@ -66,7 +66,9 @@ function lessonsOn(day: Day): Origin[] {
     lesson(2, "German", "08:55", "09:40", "101", "Ms Weber"),
     lesson(3, "Sport", "10:00", "10:45", "Gym", "Mr Keller"),
   ];
-  // The teacher of the first lesson is away on Wednesdays, and the gym is closed on Fridays.
+  // The teacher of the first lesson is away on Wednesdays, and the gym is closed on Fridays. On
+  // Tuesdays the German teacher leaves a note.
+  if (day.weekday === 2) lessons[1] = lesson(2, "German", "08:55", "09:40", "101", "Ms Weber", { note: "Bring the reading book." });
   if (day.weekday === 3) {
     lessons[0] = lesson(1, "Mathematics", "08:00", "08:45", "101", "Mr Braun", { change: "substitution", previousTeacher: "Ms Weber", note: "Ms Weber is ill." });
   }

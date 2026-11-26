@@ -1,0 +1,2 @@
+ALTER TABLE "lesson" DROP CONSTRAINT "lesson_previous_only_when_changed";--> statement-breakpoint
+ALTER TABLE "lesson" ADD CONSTRAINT "lesson_previous_only_when_changed" CHECK ("lesson"."change" IS NOT NULL OR ("lesson"."previous_subject" IS NULL AND "lesson"."previous_room" IS NULL AND "lesson"."previous_teacher" IS NULL));

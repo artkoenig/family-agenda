@@ -81,7 +81,7 @@ describe("Timetables on the timeline and in the feed", () => {
     await instance.app.polling.pollDue();
   };
 
-  /** Tuesday as its school-day rows, with their Lessons, and its Timetable Change rows. */
+  /** Tuesday as its school-day rows, with their Lessons, and the Timetable Changes of those Lessons. */
   const tuesday = async () => {
     const page = await openTimeline(instance.app, agenda, { access: openAgendaAccess });
     const day = page?.days.find((candidate) => candidate.date === "2026-09-15");
@@ -96,7 +96,9 @@ describe("Timetables on the timeline and in the feed", () => {
             [`${one.from}-${one.until}`, one.subject, one.room, one.teacher, one.cancelled ? "(cancelled)" : null].filter(Boolean).join(" "),
         ),
       })),
-      changes: (day?.timetableChanges ?? []).map((row) => ({ from: row.from, change: row.change, subject: row.subject })),
+      changes: (day?.schoolDays ?? [])
+        .flatMap((row) => row.lessons)
+        .flatMap((one) => (one.change ? [{ from: one.from, change: one.change, subject: one.subject }] : [])),
     };
   };
 
@@ -117,7 +119,7 @@ describe("Timetables on the timeline and in the feed", () => {
     });
   });
 
-  it("shows a cancelled Lesson as its own highlighted row, and ends the school day with the last Lesson that takes place", async () => {
+  it("marks a cancelled Lesson, and ends the school day with the last Lesson that takes place", async () => {
     await arrive(maths(), english(), physics());
 
     await arrive(physics(cancelled("Teacher ill")));

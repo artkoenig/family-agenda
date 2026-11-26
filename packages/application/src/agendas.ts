@@ -99,7 +99,7 @@ export type TimelineEvent = {
   concerns: Attribution;
 };
 
-/** A Lesson as a school-day row lists it on tap. */
+/** A Lesson as a school-day row lists it on tap, with its Timetable Change, if any, and its note. */
 export type TimelineLesson = {
   itemId: ItemId;
   subject: string;
@@ -108,6 +108,11 @@ export type TimelineLesson = {
   room: string | null;
   teacher: string | null;
   cancelled: boolean;
+  change: TimetableChangeKind | null;
+  previousRoom: string | null;
+  previousTeacher: string | null;
+  /** What the school wrote about the Lesson, changed or not. */
+  note: string | null;
 };
 
 /**
@@ -129,7 +134,7 @@ export type TimelineSchoolDay = {
   concerns: Attribution;
 };
 
-/** A Timetable Change as its own highlighted row; one the school withdrew is gone. */
+/** A Timetable Change as a School entry of the feed lists it; one the school withdrew is gone. */
 export type TimelineTimetableChange = {
   itemId: ItemId;
   change: TimetableChangeKind;
@@ -218,7 +223,6 @@ export type TimelineDay = {
   /** The Tasks on the day that are not pinned: not Due yet, or done. */
   tasks: TimelineTask[];
   schoolDays: TimelineSchoolDay[];
-  timetableChanges: TimelineTimetableChange[];
 };
 
 /** Days of a timeline, from `first` to `last`, both included. */
@@ -349,7 +353,7 @@ export function createAgendaAccess(deps: AgendasDeps) {
     if (item.kind === "event") found.events.push({ id: item.id, event: item.event, links, messages, concerns });
     else if (item.kind === "task") found.tasks.push({ id: item.id, task: item.task, links, messages, concerns });
     else {
-      found.lessons.push({ id: item.id, lesson: item.lesson, concerns });
+      found.lessons.push({ id: item.id, lesson: item.lesson, change: item.change, concerns });
       if (item.change) found.changes.push({ id: item.id, change: item.change, concerns });
     }
   }
@@ -363,9 +367,11 @@ export function createAgendaAccess(deps: AgendasDeps) {
   /** What depends on the time zone the Family lives in, which a request reads once. */
   function zoned(timeZone: string) {
     /** The Lesson on the Family's clocks. */
-    function lessonRow(id: ItemId, lesson: Lesson): TimelineLesson {
-      const { subject, room, teacher, cancelled } = lesson;
-      return { itemId: id, subject, ...clockTimes(lesson.span), room, teacher, cancelled };
+    function lessonRow(id: ItemId, lesson: Lesson, change: TimetableChange | null): TimelineLesson {
+      const { subject, room, teacher, cancelled, note } = lesson;
+      const previousRoom = change?.previousRoom ?? null;
+      const previousTeacher = change?.previousTeacher ?? null;
+      return { itemId: id, subject, ...clockTimes(lesson.span), room, teacher, cancelled, change: change?.change ?? null, previousRoom, previousTeacher, note };
     }
 
     function changeRow(id: ItemId, change: TimetableChange, concerns: Attribution, now: Date): TimelineTimetableChange {
@@ -406,8 +412,8 @@ export function createAgendaAccess(deps: AgendasDeps) {
         days.set(key, found);
         return found;
       };
-      for (const { id, lesson, concerns } of around.lessons) {
-        if (dayOf(lesson.span) === date) dayFor(concerns).lessons.push({ lesson, row: lessonRow(id, lesson) });
+      for (const { id, lesson, change, concerns } of around.lessons) {
+        if (dayOf(lesson.span) === date) dayFor(concerns).lessons.push({ lesson, row: lessonRow(id, lesson, change) });
       }
       const changes = around.changes
         .filter(({ change }) => dayOf(change.span) === date)
@@ -457,7 +463,7 @@ export function createAgendaAccess(deps: AgendasDeps) {
         .sort(byDeadline);
       const unpinned = around.tasks.filter(({ task }) => !isPinned(task, today));
       const days = dates.map((date) => {
-        const { schoolDays, changes } = schoolDaysOn(date, around, now);
+        const { schoolDays } = schoolDaysOn(date, around, now);
         return {
           date,
           tasks: unpinned
@@ -471,7 +477,6 @@ export function createAgendaAccess(deps: AgendasDeps) {
             })
             .sort(byTime),
           schoolDays: schoolDays.map(({ school }) => school).sort(byFrom),
-          timetableChanges: changes,
         };
       });
       return { pinned, days };
@@ -724,7 +729,7 @@ export type AgendaAccess = ReturnType<typeof createAgendaAccess>;
 /** The Items around some days, by kind, each with whom it concerns. */
 type Around = {
   events: { id: ItemId; event: Event; links: TimelineEvent["links"]; messages: TimelineEvent["messages"]; concerns: Attribution }[];
-  lessons: { id: ItemId; lesson: Lesson; concerns: Attribution }[];
+  lessons: { id: ItemId; lesson: Lesson; change: TimetableChange | null; concerns: Attribution }[];
   /** Those the school withdrew are left out. */
   changes: { id: ItemId; change: TimetableChange; concerns: Attribution }[];
   tasks: { id: ItemId; task: Task; links: TimelineEvent["links"]; messages: TimelineEvent["messages"]; concerns: Attribution }[];

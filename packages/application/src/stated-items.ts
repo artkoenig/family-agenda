@@ -32,14 +32,14 @@ function lessonFrom(fields: StatedJson): ReturnType<ReadStated> {
   const problems = problemsWithLessonFields(fields);
   const lesson = problems.length === 0 ? lessonOf({ fields, cancelled: false }) : null;
   if (!lesson) return { ok: false, problems };
-  const { subject, span, room, teacher } = lesson;
+  const { subject, span, room, teacher, note } = lesson;
   const change = timetableChangeOf({ fields, cancelled: false });
   return {
     ok: true,
     item: {
       kind: "lesson",
-      lesson: { subject, span, room, teacher },
-      change: change && { change: change.change, previousRoom: change.previousRoom, previousTeacher: change.previousTeacher, note: change.note },
+      lesson: { subject, span, room, teacher, note },
+      change: change && { change: change.change, previousRoom: change.previousRoom, previousTeacher: change.previousTeacher },
     },
   };
 }

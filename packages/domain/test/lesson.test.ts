@@ -159,6 +159,10 @@ describe("a Lesson's fields", () => {
     expect(partial ? completed(fields) : problemsWithLessonFields(fields)).toEqual(problems);
   });
 
+  it("takes a note on a Lesson as planned", () => {
+    expect(completed({ note: "Bring the atlas" })).toEqual([]);
+  });
+
   it("does not report a problem for a null optional text field", () => {
     const problems = completed({ room: null });
     expect(problems).not.toContain("room is not a non-empty text or null");
@@ -235,13 +239,14 @@ describe("a changed Lesson's fields", () => {
 describe("lessonOf", () => {
   it("returns the Lesson its fields describe", () => {
     const result = lessonOf(
-      folded({ subject: "Math", span: span(), room: "201", teacher: "Ms. Smith" }, { cancelled: true }),
+      folded({ subject: "Math", span: span(), room: "201", teacher: "Ms. Smith", note: "Bring the atlas" }, { cancelled: true }),
     );
     expect(result).toEqual({
       subject: "Math",
       span: { start: new Date("2026-09-15T08:00:00.000Z"), end: new Date("2026-09-15T09:00:00.000Z") },
       room: "201",
       teacher: "Ms. Smith",
+      note: "Bring the atlas",
       cancelled: true,
     });
   });

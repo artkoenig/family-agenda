@@ -162,6 +162,13 @@
       "when": 1795555901934,
       "tag": "0022_source_attribute_run_declared",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1795702776129,
+      "tag": "0023_lesson_note_unchanged",
+      "breakpoints": true
     }
   ]
 }

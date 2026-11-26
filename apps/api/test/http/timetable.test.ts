@@ -37,7 +37,7 @@ describe("Timetables in an Agenda over HTTP", () => {
     if (!created.ok) throw new Error("creating failed");
     path = `/agendas/${created.id}`;
     testPluginControls.emit("untis-test", [
-      period("maths", "Maths", at("08:00", "08:45"), "101", "Mr Brandt"),
+      period("maths", "Maths", at("08:00", "08:45"), "101", "Mr Brandt", { note: "Bring the atlas" }),
       period("english", "English", at("08:50", "09:35"), "102", "Ms Weber", { change: "substitution", previousTeacher: "Mr Roth" }),
       period("physics", "Physics", at("09:55", "10:40"), "Lab", "Ms Lang", { change: "cancellation", note: "Teacher ill" }),
     ]);
@@ -64,7 +64,7 @@ describe("Timetables in an Agenda over HTTP", () => {
     expect(page).not.toMatch(/<summary>(?:(?!<\/summary>).)*Maths(?:(?!<\/summary>).)*<\/summary>/s);
   });
 
-  it("marks what runs today: the Lesson and the school day, and the Timetable Change that is no cancellation", async () => {
+  it("marks what runs today: the Lesson and the school day", async () => {
     instance.clock.advance(24 * 60 * 60 * 1000);
 
     const page = await (await instance.get(path)).text();
@@ -73,8 +73,6 @@ describe("Timetables in an Agenda over HTTP", () => {
     expect(school).toMatch(/^<details class="fam-event fam-event--school fam-event--now"/);
     expect(school.match(/fam-lesson--now/g)).toHaveLength(1);
     expect(school).toMatch(/fam-lesson--now" aria-current="time">\s*<span class="fam-lesson__time">\s*<span class="fam-running">Now<\/span>\s*08:50 – 09:35/);
-    expect(rowOf(page, "English: substituted by Ms Weber")).toMatch(/^<details class="fam-event fam-event--change fam-event--now"/);
-    expect(rowOf(page, "Physics: cancelled")).not.toContain("fam-event--now");
   });
 
   it("marks nothing of a school day that is not on", async () => {
@@ -83,16 +81,29 @@ describe("Timetables in an Agenda over HTTP", () => {
     expect(page).not.toContain("--now");
   });
 
-  it("shows each Timetable Change as its own highlighted row", async () => {
+  it("says the day's Timetable Changes and notes beneath the school day, and lists the notes after its Lessons", async () => {
     const page = await (await instance.get(path)).text();
 
-    const cancelled = rowOf(page, "Physics: cancelled");
-    expect(cancelled).toMatch(/^<details class="fam-event fam-event--change"/);
-    expect(cancelled).toMatch(/<summary>.*09:55 – 10:40.*Physics: cancelled.*<\/summary>/s);
-    expect(cancelled).toContain("Teacher ill");
-    const substituted = rowOf(page, "English: substituted by Ms Weber");
-    expect(substituted).toMatch(/^<details class="fam-event fam-event--change"/);
-    expect(substituted).toContain("instead of Mr Roth");
+    const school = rowOf(page, "School until 09:35");
+    expect(school).toMatch(/<summary>.*<span aria-hidden="true">⚠ <\/span>\s*Physics cancelled · Substitution in English · 2 notes.*<\/summary>/s);
+    expect(school).toMatch(/English<\/span>\s*<span class="fam-lesson__where">102 · substituted by Ms Weber<\/span>/);
+    expect(school).toMatch(/<dt>Maths<\/dt>\s*<dd>Bring the atlas<\/dd>\s*<dt>Physics<\/dt>\s*<dd>Teacher ill<\/dd>/);
+    expect(page).not.toContain("fam-event--change");
+  });
+
+  it("says only the notes beneath a school day without Timetable Changes, and lists a double period as one", async () => {
+    testPluginControls.withdraw("untis-test", ["english", "physics"], [
+      period("maths", "Maths", at("08:00", "08:45"), "101", "Mr Brandt", { note: "Bring the atlas" }),
+      period("maths-2", "Maths", at("08:45", "09:30"), "101", "Mr Brandt", { note: "Bring the atlas" }),
+    ]);
+    instance.clock.advance(30 * 60 * 1000);
+    await instance.app.polling.pollDue();
+
+    const school = rowOf(await (await instance.get(path)).text(), "School until 09:30");
+    expect(school).toMatch(/<span class="fam-item__meta">\s*1 note<\/span>/);
+    expect(school).not.toContain("⚠");
+    expect(school.match(/class="fam-lesson"/g)).toHaveLength(1);
+    expect(school).toMatch(/08:00 – 09:30/);
   });
 
   it("says it in German in a German Family", async () => {
@@ -101,6 +112,6 @@ describe("Timetables in an Agenda over HTTP", () => {
     const page = await (await instance.get(path)).text();
 
     expect(page).toContain("Schule bis 09:35");
-    expect(page).toContain("Physics: entfällt");
+    expect(page).toContain("Physics fällt aus · Vertretung in English · 2 Hinweise");
   });
 });
