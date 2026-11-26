@@ -119,11 +119,11 @@ The regular school schedule of a Family Member, made up of Lessons.
 _Avoid_: Schedule, plan
 
 **Lesson**:
-One slot of a Timetable on a date: a subject at a time, in a room, with a teacher; it may be cancelled, held by a substitute, or moved to another room.
+One slot of a Timetable on a date: a subject at a time, in a room, with a teacher, and what the school noted about it; it may be cancelled, held by a substitute, or moved to another room.
 _Avoid_: Class, period
 
 **School Day**:
-The Lessons of a Family Member on one date, shown together as one entry; not an Item of its own.
+The Lessons of a Family Member on one date, shown together as one entry with their Timetable Changes and notes; not an Item of its own.
 _Avoid_: School row, school entry
 
 **Task**:

@@ -36,7 +36,14 @@ describe("reading the Item a calendar or timetable entry states", () => {
   it("reads a Lesson as planned", () => {
     expect(readStated(lesson)).toEqual({
       ok: true,
-      item: { kind: "lesson", lesson: { subject: "Physics", span: timed, room: "Lab", teacher: "Ms Weber" }, change: null },
+      item: { kind: "lesson", lesson: { subject: "Physics", span: timed, room: "Lab", teacher: "Ms Weber", note: null }, change: null },
+    });
+  });
+
+  it("reads a Lesson as planned with the school's note", () => {
+    expect(readStated({ ...lesson, note: "Bring the atlas" })).toEqual({
+      ok: true,
+      item: { kind: "lesson", lesson: { subject: "Physics", span: timed, room: "Lab", teacher: "Ms Weber", note: "Bring the atlas" }, change: null },
     });
   });
 
@@ -46,8 +53,8 @@ describe("reading the Item a calendar or timetable entry states", () => {
       ok: true,
       item: {
         kind: "lesson",
-        lesson: { subject: "Physics", span: timed, room: "Lab", teacher: "Ms Weber" },
-        change: { change: "substitution", previousRoom: null, previousTeacher: "Mr Roth", note: "Teacher ill" },
+        lesson: { subject: "Physics", span: timed, room: "Lab", teacher: "Ms Weber", note: "Teacher ill" },
+        change: { change: "substitution", previousRoom: null, previousTeacher: "Mr Roth" },
       },
     });
   });

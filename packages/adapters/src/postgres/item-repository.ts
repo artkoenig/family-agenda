@@ -495,7 +495,7 @@ function taskDetails(row: typeof tasks.$inferSelect, arrivedAt: Date): ItemDetai
 function lessonDetails(row: typeof lessons.$inferSelect): ItemDetails {
   const { subject, startsAt, endsAt, room, teacher, previousRoom, previousTeacher, note } = row;
   const change = row.change as TimetableChangeKind | null;
-  const lesson = { subject, span: { start: startsAt, end: endsAt }, room, teacher, cancelled: change === "cancellation" };
+  const lesson = { subject, span: { start: startsAt, end: endsAt }, room, teacher, note, cancelled: change === "cancellation" };
   return { kind: "lesson", lesson, change: change && { change, subject, span: lesson.span, room, teacher, previousRoom, previousTeacher, note } };
 }
 
@@ -815,10 +815,10 @@ function taskColumns(task: StatedTask) {
   return { title: task.title, deadline: task.deadline, description: task.description, cancelled: task.cancelled };
 }
 
-const asPlanned = { change: null, previousRoom: null, previousTeacher: null, note: null };
+const asPlanned = { change: null, previousRoom: null, previousTeacher: null };
 
 /** A Lesson and its Timetable Change as the columns of its row. */
 function lessonColumns(item: Extract<StatedItem, { kind: "lesson" }>) {
-  const { subject, span, room, teacher } = item.lesson;
-  return { subject, startsAt: span.start, endsAt: span.end, room, teacher, ...(item.change ?? asPlanned) };
+  const { subject, span, room, teacher, note } = item.lesson;
+  return { subject, startsAt: span.start, endsAt: span.end, room, teacher, note, ...(item.change ?? asPlanned) };
 }

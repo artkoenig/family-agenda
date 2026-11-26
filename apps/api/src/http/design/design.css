@@ -291,7 +291,6 @@ html[data-theme-mode="dark"] .fam-theme__icon--dark { display: block; }
 .fam-event__time { flex: none; min-width: var(--time-column); color: var(--ink-muted); }
 .fam-event__title { font-weight: 600; flex: 1; }
 .fam-event__who { flex: none; align-self: center; }
-.fam-event--earlier .fam-event__title { color: var(--ink-muted); font-weight: 400; }
 .fam-event--cancelled .fam-event__title { color: var(--ink-muted); font-weight: 400; text-decoration: line-through; }
 .fam-event__tag {
   display: inline-block; margin-left: var(--space-2); padding: 0 8px; border-radius: var(--radius-full);
@@ -315,7 +314,7 @@ html[data-theme-mode="dark"] .fam-theme__icon--dark { display: block; }
 /* A Task's description: its lines as paragraphs, its `- ` lines as a list. */
 .fam-task__description > :is(p, ul) { margin: 0; }
 .fam-task__description > ul { padding-left: 1.25em; }
-.fam-item--earlier .fam-item__title, .fam-item--cancelled .fam-item__title { color: var(--ink-muted); font-weight: 400; }
+.fam-item--cancelled .fam-item__title { color: var(--ink-muted); font-weight: 400; }
 /* What is running: the dot and "Now" above its time, its text in the accent colour; a school day shows its Lesson instead once open. */
 .fam-running {
   display: flex; align-items: center; gap: var(--space-2);
@@ -337,6 +336,8 @@ html[data-theme-mode="dark"] .fam-theme__icon--dark { display: block; }
 .fam-lesson__where { color: var(--ink-muted); }
 .fam-lesson--cancelled > * { color: var(--ink-muted); text-decoration: line-through; }
 .fam-lesson--cancelled .fam-lesson__subject { font-weight: 400; }
+/* The notes of a school day's Lessons, after them, each by its subject, with the school's line breaks. */
+.fam-lesson-notes dd { white-space: pre-line; }
 
 /* Tasks: pinned at the top while Due, else on their day, or a Task List -- */
 .fam-tasks { margin: var(--space-4) auto 0; padding: 0 var(--space-4); max-width: calc(var(--content-width) + 2 * var(--space-4)); }

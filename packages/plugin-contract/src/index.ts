@@ -9,7 +9,7 @@ import { z } from "zod";
  * `major.minor`. A minor change is additive only, such as an optional field or an optional new
  * endpoint; anything else is a new major. CI compares `openapi.json` with the last release.
  */
-export const contractVersion = "3.2";
+export const contractVersion = "3.3";
 
 export type ContractVersion = { major: number; minor: number };
 
@@ -179,6 +179,7 @@ export const statedItemSchema = z
       change: z.enum(["cancellation", "substitution", "room-change"]).nullable(),
       previousRoom: text(statedTextLimits.lesson).nullable(),
       previousTeacher: text(statedTextLimits.lesson).nullable(),
+      /** What the school wrote about the Lesson; since 3.3 also on one without a change. */
       note: text(statedTextLimits.lesson).nullable(),
     }),
     z.object({

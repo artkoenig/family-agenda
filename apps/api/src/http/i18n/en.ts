@@ -489,16 +489,21 @@ export const en = {
     schoolUntil: (time: string) => `School until ${time}`,
     lessons: "Lessons",
     running: "Now",
-    timetableChange: "Timetable change",
-    teacher: "Teacher",
-    note: "Note",
     /** What a Timetable Change did to its Lesson, after the Lesson's subject. */
     changed: {
       cancellation: "cancelled",
       substitution: (teacher: string | null) => (teacher ? `substituted by ${teacher}` : "substitution"),
       "room-change": (room: string | null) => (room ? `moved to room ${room}` : "room change"),
     },
-    instead: (previous: string) => `instead of ${previous}`,
+    /** A school day's Timetable Changes and notes, beneath its title; each gets the subjects it changes. */
+    summary: {
+      cancelled: (subjects: string[]) => `${subjects.join(", ")} cancelled`,
+      substitution: (subjects: string[]) => `Substitution in ${subjects.join(", ")}`,
+      roomChange: (subjects: string[]) => `Room change in ${subjects.join(", ")}`,
+      notes: (count: number) => plural(count, { one: `${count} note`, other: `${count} notes` }),
+    },
+    /** The notes a school day lists after its Lessons. */
+    notesTitle: "Notes",
     /** The pinned Tasks at the top of an Agenda. */
     toDo: "To do",
     by: (date: string) => `By ${date}`,

@@ -532,7 +532,7 @@ export type StatedItem =
   | { kind: "task"; task: StatedTask };
 
 /** A Lesson's Timetable Change as it is stored on the Lesson. */
-export type StoredChange = Pick<TimetableChange, "change" | "previousRoom" | "previousTeacher" | "note">;
+export type StoredChange = Pick<TimetableChange, "change" | "previousRoom" | "previousTeacher">;
 
 /** The Item an entry states, or why it is none. */
 export type ReadStated = (stated: StatedJson) => { ok: true; item: StatedItem } | { ok: false; problems: string[] };

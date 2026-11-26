@@ -3,8 +3,11 @@ import type { ItemFields } from "./item";
 /** When a Lesson takes place: from one instant to another, never all day. */
 export type LessonSpan = { start: Date; end: Date };
 
-/** One slot of a Timetable, as it takes place: its subject, time, room and teacher. */
-export type Lesson = { subject: string; span: LessonSpan; room: string | null; teacher: string | null; cancelled: boolean };
+/**
+ * One slot of a Timetable, as it takes place: its subject, time, room and teacher, and `note`, what
+ * the school wrote about it, whether it is changed or not.
+ */
+export type Lesson = { subject: string; span: LessonSpan; room: string | null; teacher: string | null; note: string | null; cancelled: boolean };
 
 export const timetableChangeKinds = ["cancellation", "substitution", "room-change"] as const;
 
@@ -13,7 +16,7 @@ export type TimetableChangeKind = (typeof timetableChangeKinds)[number];
 /**
  * A deviation from the Timetable on one date: a Lesson cancelled, taught by a substitute, or moved
  * to another room. `room` and `teacher` are those the Lesson has now, `previousRoom` and
- * `previousTeacher` those it had; `note` is what the school wrote about it. It is stored on its
+ * `previousTeacher` those it had; `note` is what the school wrote about the Lesson. It is stored on its
  * Lesson (ADR-0005).
  */
 export type TimetableChange = {
@@ -31,16 +34,16 @@ export const maximumLessonTextLength = 200;
 
 /**
  * The fields of a Lesson, as a Source states them in JSON: `subject` (text), `span`
- * (`{ allDay: false, start, end }` with ISO instants), `room` and `teacher` (text or null), and its
- * Timetable Change: `change` (one of `timetableChangeKinds`, or null as planned), with
- * `previousRoom`, `previousTeacher` and `note` (text or null), which only a change has.
+ * (`{ allDay: false, start, end }` with ISO instants), `room` and `teacher` and `note` (text or null), and
+ * its Timetable Change: `change` (one of `timetableChangeKinds`, or null as planned), with
+ * `previousRoom` and `previousTeacher` (text or null), which only a change has.
  */
 const lessonFields = ["subject", "span", "room", "teacher", "change", "previousRoom", "previousTeacher", "note"] as const;
 
 const optionalTexts = ["room", "teacher", "previousRoom", "previousTeacher", "note"];
 
 /** What only a Lesson with a Timetable Change has. */
-const changeDetails = ["previousRoom", "previousTeacher", "note"];
+const changeDetails = ["previousRoom", "previousTeacher"];
 
 /** Why the fields describe no Lesson; none if they do. */
 export function problemsWithLessonFields(fields: Record<string, unknown>): string[] {
@@ -83,8 +86,8 @@ export function lessonOf(folded: ItemFields | null): Lesson | null {
   const subject = parseText(folded.fields.subject);
   const span = parseSpan(folded.fields.span);
   if (subject === null || span === null) return null;
-  const { room, teacher } = folded.fields;
-  return { subject, span, room: parseText(room), teacher: parseText(teacher), cancelled: folded.cancelled };
+  const { room, teacher, note } = folded.fields;
+  return { subject, span, room: parseText(room), teacher: parseText(teacher), note: parseText(note), cancelled: folded.cancelled };
 }
 
 /** The Timetable Change its fields describe, or null while it lacks its kind, subject or span. */
@@ -92,7 +95,7 @@ export function timetableChangeOf(folded: ItemFields | null): TimetableChange | 
   const lesson = lessonOf(folded);
   const change = parseChange(folded?.fields.change);
   if (!folded || !lesson || !change) return null;
-  const { previousRoom, previousTeacher, note } = folded.fields;
+  const { previousRoom, previousTeacher } = folded.fields;
   return {
     subject: lesson.subject,
     span: lesson.span,
@@ -101,7 +104,7 @@ export function timetableChangeOf(folded: ItemFields | null): TimetableChange | 
     change,
     previousRoom: parseText(previousRoom),
     previousTeacher: parseText(previousTeacher),
-    note: parseText(note),
+    note: lesson.note,
   };
 }
 
