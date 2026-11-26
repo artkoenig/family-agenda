@@ -575,7 +575,7 @@ function SchoolDayRow(props: { row: TimelineSchoolDay; members: FamilyMemberSumm
           {running ? <RunningMark /> : null}
           {row.from}
         </span>
-        <span class="fam-event__text">
+        <span class="fam-item__text">
           <span class="fam-event__title">{row.cancelled ? <CancelledSchool /> : v.schoolUntil(row.until)}</span>
           <SchoolDaySummary summary={schoolDaySummary(row, notes.length, t)} />
         </span>

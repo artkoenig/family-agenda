@@ -291,7 +291,6 @@ html[data-theme-mode="dark"] .fam-theme__icon--dark { display: block; }
 .fam-event__time { flex: none; min-width: var(--time-column); color: var(--ink-muted); }
 .fam-event__title { font-weight: 600; flex: 1; }
 /* A row's title with what else to know below it, such as a school day's Timetable Changes. */
-.fam-event__text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .fam-event__who { flex: none; align-self: center; }
 .fam-event--earlier .fam-event__title { color: var(--ink-muted); font-weight: 400; }
 .fam-event--cancelled .fam-event__title { color: var(--ink-muted); font-weight: 400; text-decoration: line-through; }
