@@ -337,7 +337,7 @@ html[data-theme-mode="dark"] .fam-theme__icon--dark { display: block; }
   list-style: none; margin: 0;
 }
 .fam-lesson { display: contents; }
-.fam-lesson__time { color: var(--ink-muted); font-variant-numeric: tabular-nums; }
+.fam-lesson__time { justify-self: end; color: var(--ink-muted); font-variant-numeric: tabular-nums; }
 .fam-lesson__subject { font-weight: 600; }
 .fam-lesson__where { color: var(--ink-muted); }
 .fam-lesson--cancelled > * { color: var(--ink-muted); text-decoration: line-through; }
