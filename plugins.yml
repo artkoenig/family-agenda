@@ -11,7 +11,7 @@ plugins:
 
   # Mailboxes over IMAP. The mail server is a host field, which the egress proxy allows by itself.
   - id: imap
-    image: ghcr.io/artkoenig/family-agenda-imap:0.4.0@sha256:53f5fe9e26fd4f0c0e5db7e10aa482239dca8ca4e32f6806e192dc1d0efd7c8d
+    image: ghcr.io/artkoenig/family-agenda-imap:0.5.0@sha256:364d66b26cfb035275da42f7989915ca5198b07dca674f45060cee95910f6431
 
   # Timetables from WebUntis. The server is a host field, which the egress proxy allows by itself.
   - id: webuntis
@@ -24,7 +24,7 @@ plugins:
   # `ready` in it last; the companion waits for it, then starts from it. A companion without `ready`
   # after five minutes exits and is restarted. (`$$` is a `$` to Docker Compose.)
   # - id: matrix
-  #   image: ghcr.io/artkoenig/family-agenda-matrix:0.4.0@sha256:189404a34cdeb45ced61af1f468b173f51ef38fb9f261ec70d4432c4a1fbc504
+  #   image: ghcr.io/artkoenig/family-agenda-matrix:0.5.0@sha256:77d136edd930bb25c608965ec907c4ae998cd288003b339c899abb4f9ebe9f9f
   #   # No egress: the plugin talks only to its companions.
   #   volumes:
   #     matrix-secrets: /config
