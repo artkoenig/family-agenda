@@ -26,7 +26,7 @@
   "devDependencies": {
     "@barney-media/crap-typescript": "2.0.2",
     "@eslint/js": "^10.0.1",
-    "@informalsystems/quint": "0.33.1",
+    "@informalsystems/quint": "0.34.0",
     "@stryker-mutator/core": "10.1.1",
     "@stryker-mutator/vitest-runner": "10.1.1",
     "@types/node": "^26.0.0",
