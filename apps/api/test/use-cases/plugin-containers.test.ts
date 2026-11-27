@@ -593,6 +593,30 @@ describe("A plugin container bound to another Source Type", () => {
     }
   });
 
+  it("is reported in the log once, however often it is asked again, and not while it only does not answer", async () => {
+    const reported = vi.spyOn(console, "error").mockImplementation(() => {});
+    const server = await servePlugin(fakePlugin({ runs: [], poll: () => Promise.resolve({}) }), { host: "127.0.0.1" });
+    const url = urlOf(server);
+    const instance = await bootForTest({
+      pluginContainers: [
+        { sourceTypeId: "club-portal" as SourceTypeId, url },
+        { sourceTypeId: "silent-portal" as SourceTypeId, url: "http://127.0.0.1:1" },
+      ],
+      pluginContainerOptions: { descriptionMaxAgeMs: 0 },
+    });
+    try {
+      await instance.app.sourceTypes.enable("club-portal");
+      await instance.app.sourceTypes.enable("club-portal");
+      expect(reported.mock.calls).toEqual([
+        [`Loading the plugin of Source Type "club-portal" failed: the plugin at ${url} is for Source Type "school-portal", but it is bound to "club-portal"`],
+      ]);
+    } finally {
+      reported.mockRestore();
+      await instance.close();
+      await closed(server);
+    }
+  });
+
   it("is not loadable when it never answered", async () => {
     const instance = await bootForTest({ pluginContainers: [{ sourceTypeId: "club-portal" as SourceTypeId, url: "http://127.0.0.1:1" }] });
     try {

@@ -116,7 +116,11 @@ export class PluginContainers implements SourceTypeRegistry {
     return state;
   }
 
-  /** Asks the plugin for its description and checks it; one that fails temporarily keeps the last it gave. */
+  /**
+   * Asks the plugin for its description and checks it; one that fails temporarily keeps the last it
+   * gave. A description that keeps the core from loading the plugin is reported in the log when the
+   * problem is new: nothing else tells the Operator of a plugin built for a newer plugin contract.
+   */
   private async describe(binding: PluginBinding): Promise<State> {
     const previous = this.states.get(binding.sourceTypeId) ?? initialState;
     const answer = await callPlugin(binding.url, "description", undefined, this.options);
@@ -127,6 +131,10 @@ export class PluginContainers implements SourceTypeRegistry {
       state = { ...previous, unreachable: answer.unreachable ? answer.message : null };
     } else {
       state = { description: null, problem: answer.message, unreachable: null };
+    }
+    // The Admin area shows the problem to a Family; the log tells the Operator, once per problem.
+    if (state.problem !== null && state.problem !== previous.problem) {
+      console.error(`Loading the plugin of Source Type "${binding.sourceTypeId}" failed: ${state.problem}`);
     }
     this.states.set(binding.sourceTypeId, state);
     return state;
