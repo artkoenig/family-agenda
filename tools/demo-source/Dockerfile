@@ -1,6 +1,6 @@
 # The demo Source as a plugin container (ADR-0001). Built from the repository root:
 #   docker build -f tools/demo-source/Dockerfile -t family-agenda-demo-source .
-FROM node:26-bookworm-slim@sha256:5df79989ed685e09f0a98019db4cebfb22fb9df1a53c0161664a011f7ff6b0f1
+FROM node:26-bookworm-slim@sha256:0042e17d232a87a2cd485be1da7900fca4d10a4ad11b29e9285da1d2e54798c9
 
 ENV NODE_ENV=production
 # Node.js has not shipped Corepack since version 25, so it comes from npm.

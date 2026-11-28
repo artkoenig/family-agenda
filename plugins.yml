@@ -15,7 +15,7 @@ plugins:
 
   # Timetables from WebUntis. The server is a host field, which the egress proxy allows by itself.
   - id: webuntis
-    image: ghcr.io/artkoenig/family-agenda-webuntis:0.4.0@sha256:7a72a4e24a5af9ac5e1b6b5bf83cb86e241125a0b6fb1ca65cc6a14edefac303
+    image: ghcr.io/artkoenig/family-agenda-webuntis:0.5.0@sha256:9021a2a040957beb1a4017439156b27bd8417e0c87ce5a7569a4328cc12da47c
 
   # Opt-in: messengers through Matrix bridges (ADR-0002), as in plugins.example.yml of the plugin's repository.
   # Uncomment the block to use it.
